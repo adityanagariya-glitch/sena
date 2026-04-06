@@ -1,0 +1,16 @@
+{
+  "version": "1.0.1",
+  "name": "SENA",
+  "path": "C:\\Users\\Admin\\Downloads\\SENA",
+  "stats": {
+    "files": 28,
+    "symbols": 64,
+    "relationships": 194,
+    "clusters": 9,
+    "flows": 2,
+    "dead_code": 12,
+    "coupled_pairs": 0,
+    "embeddings": 92
+  },
+  "last_indexed_at": "2026-03-11T07:05:48.211540+00:00"
+}

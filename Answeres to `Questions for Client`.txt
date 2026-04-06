@@ -1,0 +1,34 @@
+Answeres to `Questions for Client (Sandeep / Nishant / Jill)`
+
+1.1: Option B: AI services get direct read/write access to specific tables in the shared Postgres database.
+
+1.2: seperate api gateway
+
+1.3: Postgres DB SQL
+
+Not Answered : 2. Authentication & Authorization
+
+3 
+
+3.1 : Yes they will provide
+
+3.2 : It Cna Be NAy Document not sure shoul handle allkinds of documents
+
+
+
+5.1: AWS Ec2 
+
+
+`Directely connecting the database becasu so many data
+
+(connect to nishant abotu databse )
+
+start working on*(clint onbording) onoarding flow first ptiority is voice assisten
+
+ocr using llm (document varies so fix structure)
+
+case not resister same as onbording via voice assistent , just usecase is diffrent
+
+aws is being used
+
+services is on us , ec2 aws as databse , sql postress sql (just this much currentely)`

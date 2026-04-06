@@ -1,0 +1,118 @@
+AI Planning & R&D Kickoff
+Mon, Mar 2, 2026
+
+Summary:
+
+The meeting reviewed scope and high-level flows for an AI-enabled portal for Australian NDIS service providers, introduced the project contacts, and clarified project roles and communication channels. Sandeep Shah introduced Jill and Nishant as primary frontend and backend contacts and confirmed his role coordinating between vendor and client teams; he will create a Teams group and share Figma access and a recorded discussion with Varun.
+
+The group walked through product flows for provider registration, subscription, onboarding and admin approval, and management modules (clients, workforce, shifts, accounting, compliance, documentation). Two AI priorities were defined: an OCR service to extract and map text from uploaded images to named fields, and a conversational voice assistant to guide mobile onboarding and populate forms. Design discussions covered an AI-enabled chat and shift-management feature with strict per-provider data isolation, plus surfacing organization and NDIS policy/registers to employees; policy data may exist as portal entries and stored documents and must be fetched from the database without cross-provider access.
+
+Shift and mobile worker flows were reviewed (clock in/out, edits, allowances, reimbursements) alongside AI-generated past-shift summaries and AI-assisted case-note and incident drafting. The AI knowledge base must use official NDIS documentation and restrictive-practice guidance to detect flags. Web-only roster/dashboard summaries and reporting requirements were confirmed. Open items include obtaining field definitions for registers and policies and locating source documents for flagging rules; sample case-note data will be provided, with real data expected around end of March.
+
+
+Chapters & Topics:
+
+Call start and attendance checks
+The meeting began with audio/video checks and brief procedural interruptions while participants confirmed they could hear and see each other. Ritika and others exchanged greetings and prepared to start the session.
+* The project is a portal for NDIS service providers covering HR, workforce, client management, payroll, and scheduling
+* The client (participant) onboarding is mobile-only and initiated via an invitation link that requires password reset
+* The system must use official NDIS restrictive-practice documentation as a knowledge base to detect restricted practices from case-note content.
+* A compliance and risk dashboard will check registers and asset details and surface issues for escalation to higher authority.
+
+Team introductions and roles
+Sandeep Shah introduced the core project team, naming Jill as team lead and Nishant as backend manager, and stated his role as project manager who will oversee coordination.
+* Jill will act as team lead and Nishant will manage backend development for the project
+
+Meeting setup and tooling notes
+Sandeep indicated he would share his screen to show AI-related features and said the team will create a Teams group for direct communication between both teams. Screen- and access-related checks occurred, including mention of Figma access and feedback to share.
+* The team will set up a Teams group for internal communication between the client and vendor teams
+
+OCR and image upload feature discussion
+The team discussed an image-upload flow that must perform OCR to extract text and align values to specific field names, noting AI involvement is needed for key-value alignment.
+* Two AI priorities are OCR with key-value alignment and a conversational voice assistant that fills onboarding forms
+
+Project overview — NDIS context and portal scope
+Sandeep explained NDIS as Australia’s disability insurance and described the portal’s purpose to serve service providers who deliver services, manage staff, schedule services, and process payments including payroll.
+
+Client onboarding flow and roles within provider organizations
+The group reviewed the invitation-based mobile onboarding for participants, role types within organizations (support coordinator, manager, guardian, allied health professional), and states such as invited, in-progress, and pending verification.
+
+AI onboarding assistant and Sena AI chat module
+The meeting detailed the planned conversational voice assistant that will guide and verbally collect onboarding fields, behave as an agent that fills forms, and present friendly voice UI; the team also referenced a web chat module labeled Sena AI.
+* Service providers must register, subscribe, complete onboarding, and await master admin approval before accessing modules
+
+Chat module, policies and data isolation
+The team discussed a chat module intended for employees and service-provider admins to query policies and get updates. They emphasized strict per–service-provider data isolation so one provider cannot access another provider's policy data.
+* The chat module will be used by employees and service-provider admins to query organization-specific and NDIS policies, and must restrict access to each service provider's own data.
+* Policy and register data must be fetched from the database and may include portal-entered items and uploaded documents.
+
+Sources and structure of policies and registers
+Participants clarified that policies may be common NDIS items or provider-specific and can exist as portal entries or documents; the system must fetch these from the database. The team reviewed a library of roughly 20 registers (asset, document control, risk, medication storage, financial reports, participant supervision, etc.) to be surfaced under procedures.
+
+Shift scheduling and mobile staff flow
+The organization schedules shifts on the web with client, service, date/time, assigned support workers, to-dos, notes, and costing flags; these appear on the support worker's main mobile screen as upcoming shifts and next shift details.
+* Shift scheduling is created on the web and pushed to support-worker mobile screens, including service details, to-dos, flags, and rate-related attributes (e.g., sleepover/24-hour care).
+
+Shift lifecycle, review, and AI past-shift summaries
+Support workers review client information and an AI-generated summary of prior shifts before acknowledging and starting a shift, then may pause or complete it and update time entries, breaks, allowances, or reimbursements after completion.
+* Support workers will clock in, review client information and an AI-generated summary of past shifts, then pause or complete shifts and submit time entries and optional allowances or reimbursements.
+* AI will assist in generating detailed shift case notes from minimal staff input and summarize the case note with highlighted flags drawn from official NDIS guidance.
+
+AI-assisted case notes and flagging
+The AI will prompt staff after a shift to create detailed case notes, auto-fill content, and generate a summary with flagged highlights; flagged conditions must reference official NDIS documents to determine when to raise alerts.
+
+Incidents, draft incident reports, and registers
+If an incident is indicated in the case note, the system will produce a draft incident report for verification and completion; incident and case-note registers will be viewable per shift and can be completed later by staff.
+* If an incident is indicated in the case note, the system will generate a draft incident report that must be verified and can be completed later; incident and case-note registers will be linked to shifts where incidents occurred.
+
+Roster and past-shift dashboard views
+The group demonstrated the rosters area and explained that users can view past shift data summarized, including whether past handovers were submitted for specific shifts. The example noted Alexa's past two shifts and an overall summary view intended for web access by managers or support coordinators.
+* The rosters/dashboard shows past shift data and summaries for handovers and submission status on the web.
+
+Web vs mobile access and summary availability
+Participants clarified that the summary screens and detailed reports are available on the web only and not in the mobile application used by support workers. The team reiterated that support workers only have mobile access while managers/support coordinators access the web summaries.
+* The summary and report views are accessible only to managers and support coordinators on the web, not via the mobile app used by support workers.
+
+Reports and report-generation requirements
+The discussion covered report types including a monthly overview report and a client-provided document that specifies the required report format. The current screen mock was noted as incorrect and the final report will be populated after approval workflows are completed.
+* A client-provided document will define how the generated monthly/overview reports should look for report generation.
+
+AI features: case notes, incident drafting, and insights
+The team reviewed AI-related functionality planned for the mobile app, including case-note drafting, insight extraction during case submission, and incident/restrictive-practice drafting. A specific example was the summary shown for shifts that start before submission and recommendation mechanisms tied to these AI features.
+* Several AI-driven features were proposed: case-note drafting, incident/restrictive-practice drafting, and insight extraction during case submission.
+
+Compliance, risk detection, and dashboards
+Discussion covered compliance audit UIs and registers to validate asset and process compliance. The team described detecting rule violations (for example, stale asset details) and surfacing risks in a dashboard so higher-authority users can escalate and remediate issues.
+
+Collaboration, deliverables, and next steps
+Sandeep proposed sharing a recorded discussion with Varun, confirmed Figma access, offered to generate sample case-note data, and committed to creating a Teams group and sending invites; sharing in Teams will require Google Drive links for documents.
+* Sandeep offered to share a recorded discussion with Varun and to provide sample case-note data and Figma access to support development and R&D.
+* Sandeep will create a Teams group and invite relevant participants to centralize communication.
+
+
+Action Items:
+
+* Sandeep Shah will create a Teams group for internal communication between the client and vendor teams
+* Ritika will check where to obtain definitions for each field referenced in registers and policies and add a note
+* Sandeep Shah will share the recorded video discussion with Varun about the AI screens
+* Sandeep Shah will create a Teams group and send invites to the project participants including Aditya
+* Sandeep Shah will add participants to the Teams group and advise that documents be shared via Google Drive links in the group
+* Jill and Nishant will implement OCR with key-value alignment for uploaded images, using AI to map extracted text to named fields
+* The development team will design and implement a conversational voice assistant that conducts onboarding, asks fields one-by-one, and fills the form in a friendly, non‑robotic manner
+* Sandeep Shah will share the report document that shows the report structure and sample outputs
+* Sandeep Shah will provide or help generate sample case-note data for R&D and demo use
+
+
+Key Questions:
+
+* Will the policy and register data be provided to the team or entered directly by service providers given confidentiality concerns?
+* But what about the meaning and handling of "flags" in case notes?
+* Can you repeat the request about definitions?
+* Should Sandeep share the video discussion with Varun about the AI sections?
+* Do you have an idea of the project or do you need a detailed overview?
+* Do you have Figma access?
+
+
+Notepad:
+
+* No notes
