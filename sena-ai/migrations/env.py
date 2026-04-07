@@ -1,67 +1,17 @@
-"""Alembic environment configuration for async SQLAlchemy."""
-
-from __future__ import annotations
-
-import asyncio
-from logging.config import fileConfig
-
-from alembic import context
-from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
-
-from sena_common.db.base import Base
-
-# Alembic Config object
-config = context.config
-
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-# Target metadata for autogenerate
-target_metadata = Base.metadata
-
-
-def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
-    context.configure(
-        url=url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-    )
-
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-def do_run_migrations(connection):  # type: ignore[no-untyped-def]
-    context.configure(connection=connection, target_metadata=target_metadata)
-
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_async_migrations() -> None:
-    """Run migrations in 'online' mode with async engine."""
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
-
-
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    asyncio.run(run_async_migrations())
-
-
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
+# Alembic Environment Configuration (migrations/env.py)
+#
+# Purpose: Configures Alembic to run async database migrations with SQLAlchemy
+#
+# Key Functions:
+# 1. run_migrations_offline() - Runs migrations without connecting to DB
+# 2. run_migrations_online() - Connects to PostgreSQL and runs migrations
+# 3. run_async_migrations() - Uses asyncio to handle async SQLAlchemy engine
+#
+# Workflow:
+# - Reads Alembic config from alembic.ini
+# - Uses Base.metadata from sena_common.db.base (SQLAlchemy declarative models)
+# - Creates async_engine using asyncpg driver
+# - Determines if running offline or online and executes accordingly
+# - Automatically generates migrations from model changes
+#
+# Used by: 'make migrate' command

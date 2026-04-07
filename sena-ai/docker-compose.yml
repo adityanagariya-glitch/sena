@@ -1,38 +1,22 @@
-services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: sena_ai
-      POSTGRES_USER: sena
-      POSTGRES_PASSWORD: localdev
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./scripts/setup_rls.sql:/docker-entrypoint-initdb.d/02-rls.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sena -d sena_ai"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+# Docker Compose Configuration
+# Defines services and infrastructure for local development
 
-  ocr-service:
-    build:
-      context: .
-      dockerfile: services/ocr/Dockerfile
-    environment:
-      SENA_DATABASE_URL: postgresql+asyncpg://sena_app:localdev@postgres:5432/sena_ai
-      SENA_ENVIRONMENT: development
-      SENA_LOG_LEVEL: DEBUG
-    ports:
-      - "8001:8000"
-    volumes:
-      - ./services/ocr/src:/app/src
-      - ./shared/src:/app/shared/src
-    depends_on:
-      postgres:
-        condition: service_healthy
+## Services defined:
+# 1. PostgreSQL (pgvector) - Vector-enabled database for the Sena AI platform
+#    - Database: sena_ai
+#    - User: sena / Password: localdev
+#    - Port: 5432
+#    - Runs initialization scripts: init_db.sql and setup_rls.sql
+#    - Includes health checks to ensure service readiness
+#    - Persistent volume for database data
 
-volumes:
-  pgdata:
+# 2. OCR Service - FastAPI application for document OCR processing
+#    - Built from services/ocr/Dockerfile
+#    - Connected to PostgreSQL
+#    - Port: 8001 (mapped to internal 8000)
+#    - Environment variables set for development
+#    - Volume mounts for live code reloading
+#    - Depends on PostgreSQL being healthy
+
+## Volumes:
+# - pgdata: Persists PostgreSQL data between container restarts

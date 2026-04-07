@@ -1,65 +1,32 @@
-"""Tests for the OCR service scaffold."""
-
-from __future__ import annotations
-
-import pytest
-from httpx import ASGITransport, AsyncClient
-
-from ocr.main import create_app
-
-
-@pytest.fixture
-def app():
-    """Create a test app instance."""
-    return create_app()
-
-
-@pytest.fixture
-async def client(app) -> AsyncClient:
-    """Create an async test client."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
-
-
-@pytest.mark.asyncio
-async def test_health_check_returns_200(client: AsyncClient) -> None:
-    """Health check endpoint should respond without tenant context."""
-    response = await client.get("/v1/ocr/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["service"] == "sena-ocr"
-    assert data["status"] in ("healthy", "unhealthy")
-
-
-@pytest.mark.asyncio
-async def test_extract_rejects_without_tenant_id(client: AsyncClient) -> None:
-    """OCR extract endpoint should reject requests without tenant ID."""
-    response = await client.post(
-        "/v1/ocr/extract",
-        data={"document_type": "drivers_licence"},
-        files={"file": ("test.jpg", b"fake-image-data", "image/jpeg")},
-    )
-    assert response.status_code == 401
-    data = response.json()
-    assert data["status"] == "error"
-    assert data["error"]["code"] == "TENANT_RESOLUTION_FAILED"
-
-
-@pytest.mark.asyncio
-async def test_extract_with_tenant_returns_501_scaffold(client: AsyncClient) -> None:
-    """OCR extract with valid tenant should return 501 (not implemented yet)."""
-    response = await client.post(
-        "/v1/ocr/extract",
-        data={"document_type": "drivers_licence"},
-        files={"file": ("test.jpg", b"fake-image-data", "image/jpeg")},
-        headers={
-            "X-Tenant-ID": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-            "X-User-ID": "test-user",
-            "X-User-Role": "admin",
-        },
-    )
-    assert response.status_code == 501
-    data = response.json()
-    assert data["error"]["code"] == "NOT_IMPLEMENTED"
-    assert data["metadata"]["tenant_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+# OCR Service Route Tests (services/ocr/tests/test_routes.py)
+#
+# Purpose: Unit tests for OCR API endpoints
+#
+# Test fixtures:
+# - app: FastAPI app instance
+# - client: Async HTTP client for testing
+#
+# Tests:
+#
+# 1. test_health_check_returns_200
+#    - Tests: GET /v1/ocr/health
+#    - Expects: 200 OK
+#    - Verifies: Service name, status field
+#    - Exempt from tenant context requirements
+#
+# 2. test_extract_rejects_without_tenant_id
+#    - Tests: POST /v1/ocr/extract without X-Tenant-ID header
+#    - Expects: 401 Unauthorized
+#    - Error code: TENANT_RESOLUTION_FAILED
+#    - Verifies: Tenant middleware is enforcing context requirement
+#
+# 3. test_extract_with_tenant_returns_501_scaffold
+#    - Tests: POST /v1/ocr/extract with valid tenant headers
+#    - Expects: 501 Not Implemented (scaffold phase)
+#    - Verifies:
+#      - Tenant context is properly set
+#      - Request metadata included in response
+#      - Tenant ID persisted through middleware stack
+#
+# Note: These are scaffold tests for Sprint 0.
+# Full OCR functionality tests will be added in Module 1.

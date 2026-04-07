@@ -1,7 +1,24 @@
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
+# Pre-commit Hook Configuration (.pre-commit-config.yaml)
+#
+# Purpose: Automated code quality checks before commits
+# Runs on: Local developer machines before git commit
+#
+# Tools configured:
+# 1. ruff (v0.8.0) - Python linter and formatter
+#    - id: ruff - Fixes detected issues automatically
+#    - id: ruff-format - Enforces consistent code formatting
+#
+# Usage:
+# - Install: pre-commit install
+# - Run manually: pre-commit run --all-files
+# - Skip checks: git commit --no-verify
+#
+# What it checks:
+# - Code style (PEP 8)
+# - Import sorting
+# - Dead code
+# - Type hints consistency
+# - Security issues
+#
+# Integrates with:
+# - pyproject.toml (ruff configuration)

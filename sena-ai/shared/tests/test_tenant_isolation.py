@@ -1,103 +1,37 @@
-"""Tenant isolation integration tests.
-
-These are the most critical tests in the entire codebase.
-If any of these fail, it means tenant data is leaking — which is
-a legal violation under Australian privacy law.
-
-These tests run against a REAL Postgres database (not mocked).
-RLS policies must be active and enforced.
-"""
-
-from __future__ import annotations
-
-import uuid
-
-import pytest
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from .conftest import SYSTEM_TENANT_ID, TENANT_A_ID, TENANT_B_ID
-
-
-@pytest.mark.asyncio
-class TestTenantIsolation:
-    """Verify that Row-Level Security prevents cross-tenant data access."""
-
-    async def _insert_as_tenant(
-        self,
-        session: AsyncSession,
-        tenant_id: uuid.UUID,
-        table: str,
-        extra_columns: str = "",
-        extra_values: str = "",
-    ) -> uuid.UUID:
-        """Insert a row into a tenant-scoped table and return its ID."""
-        row_id = uuid.uuid4()
-        await session.execute(
-            text(f"SET app.current_tenant = '{tenant_id}'")
-        )
-        await session.execute(
-            text(f"""
-                INSERT INTO {table} (id, tenant_id{extra_columns})
-                VALUES (:id, :tenant_id{extra_values})
-            """),
-            {"id": str(row_id), "tenant_id": str(tenant_id)},
-        )
-        await session.commit()
-        return row_id
-
-    async def _count_as_tenant(
-        self,
-        session: AsyncSession,
-        tenant_id: uuid.UUID,
-        table: str,
-    ) -> int:
-        """Count rows visible to a specific tenant."""
-        await session.execute(
-            text(f"SET app.current_tenant = '{tenant_id}'")
-        )
-        result = await session.execute(text(f"SELECT count(*) FROM {table}"))
-        row = result.first()
-        return row[0] if row else 0
-
-    @pytest.mark.asyncio
-    async def test_tenant_a_cannot_see_tenant_b_ocr_jobs(
-        self,
-        test_session_factory: async_sessionmaker[AsyncSession],
-        seed_tenants: None,
-    ) -> None:
-        """Tenant A's OCR jobs are invisible to Tenant B."""
-        async with test_session_factory() as session:
-            # Use the restricted app user (not superuser) for RLS to apply
-            await session.execute(text("SET ROLE sena_app"))
-
-            # Insert an OCR job as Tenant A
-            await self._insert_as_tenant(
-                session,
-                TENANT_A_ID,
-                "ocr_jobs",
-                extra_columns=", document_type, status",
-                extra_values=", 'drivers_licence', 'pending'",
-            )
-
-            # Query as Tenant B — should see zero of Tenant A's rows
-            count_b = await self._count_as_tenant(session, TENANT_B_ID, "ocr_jobs")
-            assert count_b == 0, (
-                f"TENANT ISOLATION BREACH: Tenant B can see {count_b} rows "
-                f"that belong to Tenant A in ocr_jobs"
-            )
-
-            # Query as Tenant A — should see their own row
-            count_a = await self._count_as_tenant(session, TENANT_A_ID, "ocr_jobs")
-            assert count_a >= 1, "Tenant A cannot see their own OCR jobs"
-
-            # Reset role
-            await session.execute(text("RESET ROLE"))
-
-    @pytest.mark.asyncio
-    async def test_system_documents_visible_to_all_tenants(
-        self,
-        test_session_factory: async_sessionmaker[AsyncSession],
+# Tenant Isolation Integration Tests (shared/tests/test_tenant_isolation.py)
+#
+# Purpose: THE MOST CRITICAL tests in the codebase
+# If any fail, tenant data is leaking - a legal violation under Australian privacy law
+#
+# Important: 
+# - Tests run against REAL PostgreSQL database (not mocked)
+# - RLS policies must be active and enforced
+# - Uses restricted sena_app user (non-superuser) to verify RLS applies
+#
+# Test scenarios:
+#
+# 1. test_tenant_a_cannot_see_tenant_b_ocr_jobs
+#    - Inserts OCR job as Tenant A
+#    - Querys as Tenant B
+#    - Expects: Tenant B sees 0 rows
+#    - Verifies: RLS blocks cross-tenant access
+#
+# 2. test_system_documents_visible_to_all_tenants
+#    - Inserts document chunk as SYSTEM tenant
+#    - Queries as Tenant A and B
+#    - Expects: Both see SYSTEM documents
+#    - Verifies: Shared resource model works
+#
+# Test helpers:
+# - _insert_as_tenant(): Sets app.current_tenant, inserts row, commits
+# - _count_as_tenant(): Sets app.current_tenant, counts visible rows
+#
+# RLS mechanism tested:
+# - app.current_tenant session variable
+# - PostgreSQL RLS policies on tables
+# - Restricted app user role enforcement
+#
+# This test suite validates the entire isolation strategy.
         seed_tenants: None,
     ) -> None:
         """SYSTEM tenant documents (shared NDIS docs) are visible to all tenants."""

@@ -1,16 +1,13 @@
-[project]
-name = "sena-ocr"
-version = "0.1.0"
-description = "Sena OCR Document Extraction Service"
-requires-python = ">=3.12"
-dependencies = [
-    "sena-common",
-    "python-multipart>=0.0.9",
-]
-
-[build-system]
-requires = ["setuptools>=75.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
+# OCR Service Project Configuration (services/ocr/pyproject.toml)
+#
+# Project: sena-ocr
+# Description: Document OCR extraction service for Sena AI platform
+#
+# Dependencies:
+# - sena-common: Shared library containing DB, middleware, and utilities
+# - python-multipart: Handles multipart form data (file uploads)
+#
+# Purpose:
+# - Defines the OCR service as a standalone Python package
+# - Declares dependency on shared sena-common library
+# - Uses setuptools for packaging and installation

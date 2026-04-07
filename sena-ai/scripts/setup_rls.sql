@@ -1,61 +1,25 @@
--- Row-Level Security (RLS) Policies
--- Run AFTER tables are created (via Alembic migrations)
+-- Row-Level Security (RLS) Policies (scripts/setup_rls.sql)
 --
--- These policies enforce tenant isolation at the database level.
--- Even if application code has a bug and omits a WHERE tenant_id clause,
--- the database will filter rows based on the session variable.
+-- Purpose: Enforces tenant isolation at the database layer
+-- Runs after tables are created via Alembic migrations
 --
--- USAGE: The application must SET app.current_tenant = '<uuid>' on each
--- connection/session before executing queries. See shared/src/sena_common/db/session.py
-
--- ============================================================
--- OCR Jobs — strict tenant isolation
--- ============================================================
-DO $$
-BEGIN
-    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'ocr_jobs') THEN
-        ALTER TABLE ocr_jobs ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE ocr_jobs FORCE ROW LEVEL SECURITY;
-
-        DROP POLICY IF EXISTS tenant_isolation ON ocr_jobs;
-        CREATE POLICY tenant_isolation ON ocr_jobs
-            USING (tenant_id = current_setting('app.current_tenant', true)::uuid);
-
-        DROP POLICY IF EXISTS tenant_isolation_insert ON ocr_jobs;
-        CREATE POLICY tenant_isolation_insert ON ocr_jobs
-            FOR INSERT
-            WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
-    END IF;
-END $$;
-
--- ============================================================
--- Document Chunks — allows SYSTEM tenant for shared NDIS docs
--- ============================================================
-DO $$
-BEGIN
-    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'document_chunks') THEN
-        ALTER TABLE document_chunks ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE document_chunks FORCE ROW LEVEL SECURITY;
-
-        DROP POLICY IF EXISTS tenant_isolation ON document_chunks;
-        CREATE POLICY tenant_isolation ON document_chunks
-            USING (
-                tenant_id = current_setting('app.current_tenant', true)::uuid
-                OR tenant_id = '00000000-0000-0000-0000-000000000000'::uuid
-            );
-
-        DROP POLICY IF EXISTS tenant_isolation_insert ON document_chunks;
-        CREATE POLICY tenant_isolation_insert ON document_chunks
-            FOR INSERT
-            WITH CHECK (
-                tenant_id = current_setting('app.current_tenant', true)::uuid
-                OR tenant_id = '00000000-0000-0000-0000-000000000000'::uuid
-            );
-    END IF;
-END $$;
-
--- ============================================================
--- Tenants table — no RLS (tenants are system-level, not scoped)
--- ============================================================
--- Intentionally no RLS on the tenants table itself.
--- Access control for tenant management is handled at the application layer.
+-- How it works:
+# 1. Each table has one or more RLS policies
+# 2. Policies filter rows based on current_setting('app.current_tenant')
+# 3. Application MUST set this variable before each query
+# 4. Even if app code forgets WHERE tenant_id clause, DB filters rows
+# 5. Superusers bypass RLS - that's why sena_app is not a superuser
+#
+# Tables protected:
+# - ocr_jobs: Strict isolation (can only see own tenant's jobs)
+# - document_chunks: Partial isolation (can see own + SYSTEM tenant chunks)
+#   This allows all tenants to access shared NDIS policy documents
+# - tenants: No RLS (system table, managed at app layer)
+#
+# Implementation:
+# - Uses PostgreSQL POLICY system
+# - Policies applied with ALTER TABLE...ENABLE ROW LEVEL SECURITY
+# - FORCE ROW LEVEL SECURITY ensures policies cannot be disabled except by superuser
+#
+# Used by: Application middleware (sena_common/middleware/tenant_context.py)
+# Sets: SET app.current_tenant = '<uuid>' before executing queries

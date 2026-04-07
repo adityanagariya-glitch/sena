@@ -1,48 +1,23 @@
-.PHONY: up down logs test lint migrate seed clean
+# Makefile - Project Automation Commands
+# This file defines make targets for managing the Sena AI project
 
-# Start all services
-up:
-	docker compose up -d
+## Purpose:
+# Provides convenient commands for:
+# - Starting/stopping Docker services (up, down)
+# - Viewing service logs (logs)
+# - Running tests and linting (test, lint, format)
+# - Managing database migrations (migrate, seed)
+# - Cleaning up resources (clean, rebuild)
+# - Verifying security configurations (check-rls)
 
-# Stop all services
-down:
-	docker compose down
-
-# Tail logs
-logs:
-	docker compose logs -f
-
-# Run tests (locally, not in Docker)
-test:
-	pytest -v
-
-# Run linting and type checking
-lint:
-	ruff check .
-	ruff format --check .
-	mypy shared/src services/ocr/src
-
-# Format code
-format:
-	ruff format .
-	ruff check --fix .
-
-# Run database migrations
-migrate:
-	docker compose exec ocr-service alembic upgrade head
-
-# Seed development data
-seed:
-	docker compose exec ocr-service python /app/scripts/seed_dev_data.py
-
-# Destroy everything including volumes
-clean:
-	docker compose down -v
-
-# Build Docker images without cache
-rebuild:
-	docker compose build --no-cache
-
-# Check if RLS is working (quick smoke test)
-check-rls:
-	docker compose exec postgres psql -U sena -d sena_ai -c "SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' AND rowsecurity = true;"
+## Key targets:
+# - up: Starts all services in Docker background
+# - down: Stops all services
+# - test: Runs pytest test suite locally
+# - lint: Runs code quality checks (ruff, mypy)
+# - format: Formats code automatically
+# - migrate: Applies database migrations
+# - seed: Populates database with development data
+# - clean: Removes containers and volumes
+# - rebuild: Rebuilds Docker images without cache
+# - check-rls: Verifies PostgreSQL Row Level Security is enabled

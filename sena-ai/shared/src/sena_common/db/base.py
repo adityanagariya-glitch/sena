@@ -1,64 +1,30 @@
-"""SQLAlchemy declarative base with tenant and timestamp mixins."""
-
-from __future__ import annotations
-
-import uuid
-from datetime import datetime
-
-from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-
-class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy models."""
-
-    pass
-
-
-class TenantMixin:
-    """Mixin that adds tenant_id to a model. Required for all tenant-scoped tables.
-
-    RLS policies reference this column to enforce isolation.
-    """
-
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("tenants.id"),
-        nullable=False,
-        index=True,
-    )
-
-
-class TimestampMixin:
-    """Mixin that adds created_at and updated_at timestamps."""
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-
-
-class Tenant(Base):
-    """Service provider organization — the fundamental isolation boundary."""
-
-    __tablename__ = "tenants"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+# SQLAlchemy Declarative Base & Mixins (shared/src/sena_common/db/base.py)
+#
+# Purpose: Provides base classes and mixins for all database models
+#
+# Classes:
+# 1. Base(DeclarativeBase) - Root class for all SQLAlchemy models
+#    - Used as base for schema definition
+#
+# 2. TenantMixin - Adds tenant isolation to models
+#    - tenant_id: Foreign key to tenants table
+#    - Makes table tenant-scoped (RLS policies reference this column)
+#    - Indexed for efficient RLS filtering
+#
+# 3. TimestampMixin - Adds audit timestamps to models
+#    - created_at: Auto-set on insert
+#    - updated_at: Auto-set on insert and update
+#    - Uses server-side defaults (database time)
+#
+# 4. Tenant - Core model for multi-tenancy
+#    - id: UUID primary key
+#    - name: Organization name
+#    - slug: URL-friendly identifier (unique)
+#    - is_active: Soft delete flag
+#    - created_at, updated_at: Timestamps
+#
+# Usage pattern:
+# class OCRJob(Base, TenantMixin, TimestampMixin):
+#     __tablename__ = "ocr_jobs"
+#     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+#     # ... other columns

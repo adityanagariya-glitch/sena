@@ -1,30 +1,45 @@
-"""Application settings — reads from environment variables."""
-
-from __future__ import annotations
-
-from pydantic_settings import BaseSettings
-
-
-class Settings(BaseSettings):
-    """Base settings for all Sena AI services.
-
-    All values are read from environment variables. Default values
-    are for local development only.
-    """
-
-    # Database
-    database_url: str = "postgresql+asyncpg://sena_app:localdev@localhost:5432/sena_ai"
-
-    # Environment
-    environment: str = "development"  # development | staging | production
-    debug: bool = False
-
-    # Service info (overridden per service)
-    service_name: str = "sena-ai"
-    service_version: str = "0.1.0"
-
-    # Logging
-    log_level: str = "INFO"
-    log_format: str = "json"  # json | text
-
-    model_config = {"env_prefix": "SENA_", "case_sensitive": False}
+# Application Settings (shared/src/sena_common/config/settings.py)
+#
+# Purpose: Pydantic BaseSettings model for application configuration
+#
+# Settings (read from environment with SENA_ prefix):
+#
+# Database:
+# - database_url: PostgreSQL connection string (async SQLAlchemy URL)
+#   Default: postgresql+asyncpg://sena_app:localdev@localhost:5432/sena_ai
+#   Env: SENA_DATABASE_URL
+#
+# Environment:
+# - environment: deployment environment (development | staging | production)
+#   Default: development
+#   Env: SENA_ENVIRONMENT
+#
+# - debug: Enable debug mode
+#   Default: False
+#   Env: SENA_DEBUG
+#
+# Service info (overridden in service-specific settings):
+# - service_name: Service identifier
+#   Default: sena-ai
+#   Env: SENA_SERVICE_NAME
+#
+# - service_version: Semantic version
+#   Default: 0.1.0
+#   Env: SENA_SERVICE_VERSION
+#
+# Logging:
+# - log_level: INFO, DEBUG, WARNING, ERROR, CRITICAL
+#   Default: INFO
+#   Env: SENA_LOG_LEVEL
+#
+# - log_format: json or text
+#   Default: json
+#   Env: SENA_LOG_FORMAT
+#
+# Model config:
+# - env_prefix: SENA_ (all env vars must start with this)
+# - case_sensitive: False (SENA_DATABASE_URL or sena_database_url both work)
+#
+# Usage:
+# settings = Settings()  # Reads from environment
+# print(settings.database_url)

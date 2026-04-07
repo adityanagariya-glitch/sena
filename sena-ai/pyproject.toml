@@ -1,4 +1,21 @@
-[project]
+# Main Project Configuration (pyproject.toml)
+# 
+# Project: sena-ai
+# Description: Multi-service backend for Sena AI platform
+# 
+# Package Structure:
+# - sena-common: Shared library with DB, middleware, schemas
+# - services/ocr: OCR document processing service
+# 
+# Key Features Configured:
+# - Monorepo setup with workspace packages
+# - Development tools: pytest, ruff, mypy
+# - Database: AsyncPG with SQLAlchemy ORM
+# - Web framework: FastAPI with Uvicorn
+# - Logging: structlog for structured logging
+# - Migrations: Alembic for schema versioning
+#
+# This replaces: [project]
 name = "sena-ai"
 version = "0.1.0"
 description = "Sena AI/ML Backend — workspace root"
