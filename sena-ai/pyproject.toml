@@ -1,0 +1,48 @@
+[project]
+name = "sena-ai"
+version = "0.1.0"
+description = "Sena AI/ML Backend — workspace root"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["shared/src", "services/*/src"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sena_common", "ocr", "rag"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "shared/src:services/ocr/src:services/rag/src"
+namespace_packages = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*", "pgvector.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["shared/tests", "services/ocr/tests", "services/rag/tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"

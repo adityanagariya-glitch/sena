@@ -43,7 +43,9 @@ Git refuses to commit without identity.
 git config --global core.autocrlf true
 ```
 
-### ❗ Issue
+### 💡 Why?
+
+Prevents spam warnings like:
 
 ```
 LF will be replaced by CRLF
