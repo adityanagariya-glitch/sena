@@ -1122,6 +1122,22 @@ class RedisService:
         ok = await self.redis.set(key, session_id, ex=settings.redis_lock_ttl_seconds, nx=True)
         return bool(ok)
 
+    async def promote_participant_lock(self, tenant_id: str, participant_id: str, expected_value: str, new_value: str) -> bool:
+      key = f"participant_session:{tenant_id}:{participant_id}"
+      # CAS update prevents race windows between releasing and re-acquiring locks.
+      lua = """
+      local key = KEYS[1]
+      local expected = ARGV[1]
+      local replacement = ARGV[2]
+      if redis.call('GET', key) == expected then
+        redis.call('SET', key, replacement, 'KEEPTTL')
+        return 1
+      end
+      return 0
+      """
+      updated = await self.redis.eval(lua, 1, key, expected_value, new_value)
+      return bool(updated)
+
     async def release_participant_lock(self, tenant_id: str, participant_id: str) -> None:
         key = f"participant_session:{tenant_id}:{participant_id}"
         await self.redis.delete(key)
@@ -1235,6 +1251,7 @@ from __future__ import annotations
 
 import json
 import uuid
+import json
 from datetime import datetime, timezone
 import boto3
 from voice.core.settings import settings
@@ -1281,6 +1298,7 @@ class EventService:
 ```
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import HTTPException, status
@@ -1341,12 +1359,13 @@ class DictationService:
     async def process_turn(
         self,
         db: AsyncSession,
+        tenant_id: UUID,
         session_id: UUID,
         transcript: str,
         transcript_confidence: float,
         sequence_number: int,
     ) -> dict:
-        session = await self.repo.get_session_by_id(db, session_id)
+        session = await self.repo.get_session_by_id(db, tenant_id, session_id)
         if session is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         if session.status != "ACTIVE":
@@ -1403,6 +1422,7 @@ class DictationService:
         )
         await self.repo.update_session_progress(
             db=db,
+            tenant_id=session.tenant_id,
             session_id=session.id,
             draft_preview=" ".join([v for v in merged.values() if v]).strip(),
             section_coverage=section_coverage,
@@ -1422,8 +1442,10 @@ class DictationService:
 ```
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from uuid import UUID
+
 from fastapi import HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1432,77 +1454,78 @@ from voice.repositories.voice_repo import VoiceRepository
 
 
 class ApprovalService:
-    def __init__(self, repo: VoiceRepository):
-        self.repo = repo
+  def __init__(self, repo: VoiceRepository):
+    self.repo = repo
 
-    async def decide(
-        self,
-        ai_db: AsyncSession,
-        shared_db: AsyncSession,
-        approval_item_id: UUID,
-        decision: str,
-        reviewer_id: UUID,
-        review_notes: str,
-    ) -> dict:
-        item = await self.repo.get_approval_item(ai_db, approval_item_id)
-        if item is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval item not found")
-        if item.status not in {"PENDING", "ASSIGNED", "REVIEWED"}:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already decided")
+  async def decide(
+    self,
+    ai_db: AsyncSession,
+    shared_db: AsyncSession,
+    tenant_id: UUID,
+    approval_item_id: UUID,
+    decision: str,
+    reviewer_id: UUID,
+    review_notes: str,
+  ) -> dict:
+    item = await self.repo.get_approval_item(ai_db, tenant_id, approval_item_id)
+    if item is None:
+      raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval item not found")
+    if item.status not in {"PENDING", "ASSIGNED", "REVIEWED"}:
+      raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already decided")
 
-        draft = await self.repo.get_case_note_draft(ai_db, item.item_id)
-        if draft is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case note draft not found")
+    draft = await self.repo.get_case_note_draft(ai_db, tenant_id, item.item_id)
+    if draft is None:
+      raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case note draft not found")
 
-        if decision == "REJECTED":
-            now = datetime.now(timezone.utc)
-            await self.repo.mark_approval_rejected(ai_db, item.id, reviewer_id, review_notes, now)
-            await self.repo.mark_draft_status(ai_db, draft.id, "REJECTED")
-            return {
-                "approval_item_id": item.id,
-                "decision": "REJECTED",
-                "status": "REJECTED",
-                "shared_case_note_id": None,
-                "delivered_at": None,
-            }
+    if decision == "REJECTED":
+      now = datetime.now(timezone.utc)
+      await self.repo.mark_approval_rejected(ai_db, tenant_id, item.id, reviewer_id, review_notes, now)
+      await self.repo.mark_draft_status(ai_db, tenant_id, draft.id, "REJECTED")
+      return {
+        "approval_item_id": item.id,
+        "decision": "REJECTED",
+        "status": "REJECTED",
+        "shared_case_note_id": None,
+        "delivered_at": None,
+      }
 
-        case_note_id = draft.id
-        payload = draft.draft_json
-        insert_sql = text(
-            """
-            INSERT INTO case_notes (
-              id, tenant_id, participant_id, staff_id, shift_id, content_json, created_at, updated_at
-            ) VALUES (
-              :id, :tenant_id, :participant_id, :staff_id, :shift_id, :content_json::jsonb, now(), now()
-            )
-            ON CONFLICT (id) DO UPDATE SET
-              content_json = EXCLUDED.content_json,
-              updated_at = now()
-            """
-        )
-        await shared_db.execute(
-            insert_sql,
-            {
-                "id": str(case_note_id),
-                "tenant_id": str(draft.tenant_id),
-                "participant_id": str(draft.participant_id),
-                "staff_id": str(draft.staff_id),
-                "shift_id": str(draft.shift_id),
-                "content_json": str(payload).replace("'", '"'),
-            },
-        )
+    case_note_id = draft.id
+    payload = draft.draft_json
+    insert_sql = text(
+      """
+      INSERT INTO case_notes (
+        id, tenant_id, participant_id, staff_id, shift_id, content_json, created_at, updated_at
+      ) VALUES (
+        :id, :tenant_id, :participant_id, :staff_id, :shift_id, :content_json::jsonb, now(), now()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        content_json = EXCLUDED.content_json,
+        updated_at = now()
+      """
+    )
+    await shared_db.execute(
+      insert_sql,
+      {
+        "id": str(case_note_id),
+        "tenant_id": str(draft.tenant_id),
+        "participant_id": str(draft.participant_id),
+        "staff_id": str(draft.staff_id),
+        "shift_id": str(draft.shift_id),
+        "content_json": json.dumps(payload),
+      },
+    )
 
-        now = datetime.now(timezone.utc)
-        await self.repo.mark_approval_delivered(ai_db, item.id, reviewer_id, review_notes, now)
-        await self.repo.mark_draft_delivered(ai_db, draft.id, now)
+    now = datetime.now(timezone.utc)
+    await self.repo.mark_approval_delivered(ai_db, tenant_id, item.id, reviewer_id, review_notes, now)
+    await self.repo.mark_draft_delivered(ai_db, tenant_id, draft.id, now)
 
-        return {
-            "approval_item_id": item.id,
-            "decision": "APPROVED",
-            "status": "DELIVERED",
-            "shared_case_note_id": case_note_id,
-            "delivered_at": now,
-        }
+    return {
+      "approval_item_id": item.id,
+      "decision": "APPROVED",
+      "status": "DELIVERED",
+      "shared_case_note_id": case_note_id,
+      "delivered_at": now,
+    }
 ```
 
 ### FILE: /sena-ai/services/voice/src/voice/repositories/voice_repo.py
@@ -1541,14 +1564,16 @@ class VoiceRepository:
         await db.flush()
         return row
 
-    async def get_session_by_id(self, db: AsyncSession, session_id: UUID) -> VoiceSession | None:
-        result = await db.execute(select(VoiceSession).where(VoiceSession.id == session_id))
+    async def get_session_by_id(self, db: AsyncSession, tenant_id: UUID, session_id: UUID) -> VoiceSession | None:
+        result = await db.execute(
+            select(VoiceSession).where(VoiceSession.id == session_id, VoiceSession.tenant_id == tenant_id)
+        )
         return result.scalar_one_or_none()
 
-    async def update_session_progress(self, db: AsyncSession, session_id: UUID, draft_preview: str, section_coverage: dict, missing_topics: list) -> None:
+    async def update_session_progress(self, db: AsyncSession, tenant_id: UUID, session_id: UUID, draft_preview: str, section_coverage: dict, missing_topics: list) -> None:
         await db.execute(
             update(VoiceSession)
-            .where(VoiceSession.id == session_id)
+        .where(VoiceSession.id == session_id, VoiceSession.tenant_id == tenant_id)
             .values(
                 draft_preview=draft_preview,
                 section_coverage=section_coverage,
@@ -1557,8 +1582,12 @@ class VoiceRepository:
             )
         )
 
-    async def mark_session_completed(self, db: AsyncSession, session_id: UUID, ended_at: datetime) -> None:
-        await db.execute(update(VoiceSession).where(VoiceSession.id == session_id).values(status="COMPLETED", ended_at=ended_at))
+    async def mark_session_completed(self, db: AsyncSession, tenant_id: UUID, session_id: UUID, ended_at: datetime) -> None:
+      await db.execute(
+        update(VoiceSession)
+        .where(VoiceSession.id == session_id, VoiceSession.tenant_id == tenant_id)
+        .values(status="COMPLETED", ended_at=ended_at)
+      )
 
     async def add_turn(
         self,
@@ -1650,33 +1679,45 @@ class VoiceRepository:
     async def mark_outbox_published(self, db: AsyncSession, outbox_id: UUID, published_at: datetime) -> None:
         await db.execute(update(OutboxEvent).where(OutboxEvent.id == outbox_id).values(status="PUBLISHED", published_at=published_at))
 
-    async def get_approval_item(self, db: AsyncSession, approval_item_id: UUID) -> ApprovalQueueItem | None:
-        result = await db.execute(select(ApprovalQueueItem).where(ApprovalQueueItem.id == approval_item_id))
+    async def get_approval_item(self, db: AsyncSession, tenant_id: UUID, approval_item_id: UUID) -> ApprovalQueueItem | None:
+        result = await db.execute(
+            select(ApprovalQueueItem).where(ApprovalQueueItem.id == approval_item_id, ApprovalQueueItem.tenant_id == tenant_id)
+        )
         return result.scalar_one_or_none()
 
-    async def get_case_note_draft(self, db: AsyncSession, draft_id: UUID) -> CaseNoteDraft | None:
-        result = await db.execute(select(CaseNoteDraft).where(CaseNoteDraft.id == draft_id))
+    async def get_case_note_draft(self, db: AsyncSession, tenant_id: UUID, draft_id: UUID) -> CaseNoteDraft | None:
+        result = await db.execute(
+            select(CaseNoteDraft).where(CaseNoteDraft.id == draft_id, CaseNoteDraft.tenant_id == tenant_id)
+        )
         return result.scalar_one_or_none()
 
-    async def mark_approval_rejected(self, db: AsyncSession, approval_item_id: UUID, reviewer_id: UUID, notes: str, reviewed_at: datetime) -> None:
+    async def mark_approval_rejected(self, db: AsyncSession, tenant_id: UUID, approval_item_id: UUID, reviewer_id: UUID, notes: str, reviewed_at: datetime) -> None:
         await db.execute(
             update(ApprovalQueueItem)
-            .where(ApprovalQueueItem.id == approval_item_id)
+        .where(ApprovalQueueItem.id == approval_item_id, ApprovalQueueItem.tenant_id == tenant_id)
             .values(status="REJECTED", decision="REJECTED", reviewed_by=reviewer_id, decision_notes=notes, reviewed_at=reviewed_at)
         )
 
-    async def mark_approval_delivered(self, db: AsyncSession, approval_item_id: UUID, reviewer_id: UUID, notes: str, delivered_at: datetime) -> None:
+    async def mark_approval_delivered(self, db: AsyncSession, tenant_id: UUID, approval_item_id: UUID, reviewer_id: UUID, notes: str, delivered_at: datetime) -> None:
         await db.execute(
             update(ApprovalQueueItem)
-            .where(ApprovalQueueItem.id == approval_item_id)
+            .where(ApprovalQueueItem.id == approval_item_id, ApprovalQueueItem.tenant_id == tenant_id)
             .values(status="DELIVERED", decision="APPROVED", reviewed_by=reviewer_id, decision_notes=notes, reviewed_at=delivered_at, delivered_at=delivered_at)
         )
 
-    async def mark_draft_status(self, db: AsyncSession, draft_id: UUID, status: str) -> None:
-        await db.execute(update(CaseNoteDraft).where(CaseNoteDraft.id == draft_id).values(status=status))
+    async def mark_draft_status(self, db: AsyncSession, tenant_id: UUID, draft_id: UUID, status: str) -> None:
+        await db.execute(
+            update(CaseNoteDraft)
+            .where(CaseNoteDraft.id == draft_id, CaseNoteDraft.tenant_id == tenant_id)
+            .values(status=status)
+        )
 
-    async def mark_draft_delivered(self, db: AsyncSession, draft_id: UUID, delivered_at: datetime) -> None:
-        await db.execute(update(CaseNoteDraft).where(CaseNoteDraft.id == draft_id).values(status="DELIVERED", delivered_at=delivered_at))
+    async def mark_draft_delivered(self, db: AsyncSession, tenant_id: UUID, draft_id: UUID, delivered_at: datetime) -> None:
+        await db.execute(
+            update(CaseNoteDraft)
+            .where(CaseNoteDraft.id == draft_id, CaseNoteDraft.tenant_id == tenant_id)
+            .values(status="DELIVERED", delivered_at=delivered_at)
+        )
 ```
 
 ### FILE: /sena-ai/services/voice/src/voice/utils/idempotency.py
@@ -1719,8 +1760,10 @@ async def get_shared_db() -> AsyncSession:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
+import boto3
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from voice.api.deps import get_ai_db, get_shared_db, redis_client
@@ -1765,11 +1808,11 @@ async def health_ready(ai_db: AsyncSession = Depends(get_ai_db), shared_db: Asyn
     checks = {"ai_database": "healthy", "shared_database": "healthy", "redis": "healthy", "bedrock": "healthy", "sns": "healthy"}
     overall = "healthy"
     try:
-        await ai_db.execute("SELECT 1")
+      await ai_db.execute(text("SELECT 1"))
     except Exception:
         checks["ai_database"] = "unhealthy"
     try:
-        await shared_db.execute("SELECT 1")
+      await shared_db.execute(text("SELECT 1"))
     except Exception:
         checks["shared_database"] = "unhealthy"
     try:
@@ -1780,6 +1823,10 @@ async def health_ready(ai_db: AsyncSession = Depends(get_ai_db), shared_db: Asyn
         event_service.sns.get_topic_attributes(TopicArn=settings.sns_case_note_topic_arn)
     except Exception:
         checks["sns"] = "unhealthy"
+    try:
+      boto3.client("bedrock", region_name=settings.aws_region).list_foundation_models()
+    except Exception:
+      checks["bedrock"] = "unhealthy"
     if "unhealthy" in checks.values():
         overall = "degraded"
     return {"status": overall, "checks": checks}
@@ -1794,7 +1841,8 @@ async def start_session(
     require_roles(auth, {"support_worker", "manager", "admin"})
     await redis_service.increment_rate_limit(f"start:{auth.tenant_id}", settings.rate_limit_start_per_minute)
 
-    lock_ok = await redis_service.acquire_participant_lock(str(auth.tenant_id), str(req.participant_id), "pending")
+    pending_lock_value = f"pending:{uuid4()}"
+    lock_ok = await redis_service.acquire_participant_lock(str(auth.tenant_id), str(req.participant_id), pending_lock_value)
     if not lock_ok:
         existing = await redis_service.get_existing_session(str(auth.tenant_id), str(req.participant_id))
         raise HTTPException(
@@ -1802,18 +1850,30 @@ async def start_session(
             detail={"error": "Active session exists", "existing_session_id": existing},
         )
 
-    session = await dictation_service.start_session(
+    try:
+      session = await dictation_service.start_session(
         db=ai_db,
         tenant_id=auth.tenant_id,
         participant_id=req.participant_id,
         staff_id=req.staff_id,
         shift_id=req.shift_id,
         objective=req.objective,
-    )
-    await ai_db.commit()
+      )
+      await ai_db.commit()
+    except Exception:
+      await ai_db.rollback()
+      await redis_service.release_participant_lock(str(auth.tenant_id), str(req.participant_id))
+      raise
 
-    await redis_service.release_participant_lock(str(auth.tenant_id), str(req.participant_id))
-    await redis_service.acquire_participant_lock(str(auth.tenant_id), str(req.participant_id), str(session.id))
+    promoted = await redis_service.promote_participant_lock(
+      str(auth.tenant_id),
+      str(req.participant_id),
+      pending_lock_value,
+      str(session.id),
+    )
+    if not promoted:
+      await redis_service.release_participant_lock(str(auth.tenant_id), str(req.participant_id))
+      raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Failed to finalize session lock")
 
     livekit = generate_livekit_access(session_id=str(session.id), participant_name=str(auth.user_id))
 
@@ -1837,6 +1897,7 @@ async def process_turn(
 
     result = await dictation_service.process_turn(
         db=ai_db,
+        tenant_id=auth.tenant_id,
         session_id=req.session_id,
         transcript=req.transcript,
         transcript_confidence=req.transcript_confidence,
@@ -1864,7 +1925,7 @@ async def end_session(
 ):
     require_roles(auth, {"support_worker", "manager", "admin"})
 
-    session = await repo.get_session_by_id(ai_db, req.session_id)
+    session = await repo.get_session_by_id(ai_db, auth.tenant_id, req.session_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     if session.status != "ACTIVE":
@@ -1927,9 +1988,10 @@ async def end_session(
         idempotency_key=build_idempotency_key(str(draft.id), draft.note_version),
     )
 
-    event_id = event_service.publish_case_note_event(event_payload)
-    await repo.mark_outbox_published(ai_db, outbox.id, datetime.now(timezone.utc))
-    await repo.mark_session_completed(ai_db, session.id, req.ended_at)
+    # Outbox-first sequencing: request path writes durable records only.
+    # A background outbox publisher is responsible for SNS publication and marking published_at.
+    event_id = outbox.id
+    await repo.mark_session_completed(ai_db, session.tenant_id, session.id, req.ended_at)
     await ai_db.commit()
 
     await redis_service.release_participant_lock(str(auth.tenant_id), str(session.participant_id))
@@ -1938,7 +2000,7 @@ async def end_session(
         session_id=session.id,
         draft_id=draft.id,
         approval_item_id=approval.id,
-        event_id=UUID(event_id),
+      event_id=event_id,
         status="PENDING_APPROVAL",
         case_note=case_note_json,
     )
@@ -1951,7 +2013,7 @@ async def get_session_status(
     ai_db: AsyncSession = Depends(get_ai_db),
 ):
     require_roles(auth, {"support_worker", "manager", "admin"})
-    session = await repo.get_session_by_id(ai_db, session_id)
+    session = await repo.get_session_by_id(ai_db, auth.tenant_id, session_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     coverage = session.section_coverage or {}
@@ -1977,6 +2039,7 @@ async def approval_decision(
     result = await approval_service.decide(
         ai_db=ai_db,
         shared_db=shared_db,
+        tenant_id=auth.tenant_id,
         approval_item_id=req.approval_item_id,
         decision=req.decision,
         reviewer_id=req.reviewer_id,
@@ -2027,10 +2090,10 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY services/voice/pyproject.toml /app/pyproject.toml
-RUN pip install --no-cache-dir -U pip && pip install --no-cache-dir .
-
 COPY services/voice/src /app/src
 ENV PYTHONPATH=/app/src
+
+RUN pip install --no-cache-dir -U pip && pip install --no-cache-dir .
 
 EXPOSE 8082
 
@@ -2129,7 +2192,6 @@ SENA_AI_PROVIDER_MAX_RETRIES=2
 import os
 import pytest
 from fastapi.testclient import TestClient
-from voice.main import create_app
 
 os.environ.setdefault("SENA_AI_AI_DB_URL", "sqlite+aiosqlite:///./test_ai.db")
 os.environ.setdefault("SENA_AI_SHARED_DB_URL", "sqlite+aiosqlite:///./test_shared.db")
@@ -2138,6 +2200,8 @@ os.environ.setdefault("SENA_AI_LIVEKIT_API_KEY", "devkey")
 os.environ.setdefault("SENA_AI_LIVEKIT_API_SECRET", "devsecret")
 os.environ.setdefault("SENA_AI_LIVEKIT_URL", "wss://livekit.local")
 os.environ.setdefault("SENA_AI_SNS_CASE_NOTE_TOPIC_ARN", "arn:aws:sns:ap-southeast-2:111111111111:case-note-events")
+
+from voice.main import create_app
 
 @pytest.fixture
 def client():
@@ -2175,7 +2239,7 @@ def test_start_session_success(client, dev_headers):
         "metadata": {},
     }
     resp = client.post("/v1/voice/session", json=payload, headers=dev_headers)
-    assert resp.status_code in (201, 503, 500)
+    assert resp.status_code == 201
 
 def test_start_session_missing_auth_headers(client):
     payload = {
