@@ -90,6 +90,55 @@ class SessionStatusResponse(BaseModel):
     missing_topics: list[str]
 
 
+class StartPersonalDetailsRequest(BaseModel):
+    participant_id: UUID
+    staff_id: UUID
+    shift_id: UUID
+    language: str = "en-AU"
+
+
+class StartPersonalDetailsResponse(BaseModel):
+    session_id: UUID
+    status: str
+    objective: str
+    lock_acquired: bool
+    livekit: dict
+
+
+class PersonalDetailsTurnRequest(BaseModel):
+    session_id: UUID
+    transcript: str = Field(min_length=1)
+    transcript_confidence: float = Field(ge=0.0, le=1.0)
+    audio_duration_ms: int = Field(gt=0)
+    sequence_number: int = Field(gt=0)
+    timestamp: datetime
+
+
+class PersonalDetailsTurnResponse(BaseModel):
+    session_id: UUID
+    sequence_number: int
+    agent_reply: str
+    fields: dict
+    missing_fields: list[str]
+    completeness_score: float
+    model: str
+    latency_ms: int
+
+
+class EndPersonalDetailsRequest(BaseModel):
+    session_id: UUID
+    ended_at: datetime
+
+
+class EndPersonalDetailsResponse(BaseModel):
+    session_id: UUID
+    draft_id: UUID
+    fields: dict
+    completeness_score: float
+    missing_fields: list[str]
+    status: str
+
+
 class ErrorResponse(BaseModel):
     error: str
     details: list[str] | None = None

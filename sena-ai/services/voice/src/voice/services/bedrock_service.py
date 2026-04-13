@@ -9,6 +9,10 @@ from fastapi import HTTPException, status
 
 from voice.core.settings import settings
 from voice.prompts.dictation_prompt import SYSTEM_PROMPT, build_user_prompt
+from voice.prompts.personal_details_prompt import (
+    PERSONAL_DETAILS_SYSTEM_PROMPT,
+    build_personal_details_user_prompt,
+)
 
 
 class BedrockService:
@@ -22,12 +26,12 @@ class BedrockService:
             ),
         )
 
-    def _invoke_once(self, user_prompt: str) -> dict:
+    def _invoke_once(self, user_prompt: str, system_prompt: str = SYSTEM_PROMPT) -> dict:
         body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": settings.bedrock_max_tokens,
             "temperature": settings.bedrock_temperature,
-            "system": SYSTEM_PROMPT,
+            "system": system_prompt,
             "messages": [{"role": "user", "content": [{"type": "text", "text": user_prompt}]}],
         }
         response = self.client.invoke_model(
@@ -49,6 +53,39 @@ class BedrockService:
         for _ in range(attempts):
             try:
                 data = self._invoke_once(prompt)
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                return data, latency_ms
+            except (ValueError, KeyError, BotoCoreError, ClientError) as exc:
+                last_error = exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "AI provider unavailable",
+                "fallback_used": False,
+                "retryable": True,
+                "cause": str(last_error),
+            },
+        )
+
+    def run_personal_details_turn(
+        self,
+        transcript: str,
+        current_fields: dict,
+        missing_fields: list[str],
+        history: list[dict],
+    ) -> tuple[dict, int]:
+        prompt = build_personal_details_user_prompt(
+            transcript=transcript,
+            current_fields=current_fields,
+            missing_fields=missing_fields,
+            history=history,
+        )
+        start = time.perf_counter()
+        last_error: Exception | None = None
+        attempts = settings.provider_max_retries + 1
+        for _ in range(attempts):
+            try:
+                data = self._invoke_once(prompt, system_prompt=PERSONAL_DETAILS_SYSTEM_PROMPT)
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 return data, latency_ms
             except (ValueError, KeyError, BotoCoreError, ClientError) as exc:

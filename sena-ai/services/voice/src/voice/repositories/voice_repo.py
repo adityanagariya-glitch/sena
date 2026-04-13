@@ -8,6 +8,7 @@ from voice.models.db import (
     ApprovalQueueItem,
     CaseNoteDraft,
     DictationTurn,
+    PersonalDetailsDraft,
     VoiceSession,
     OutboxEvent,
 )
@@ -230,6 +231,31 @@ class VoiceRepository:
         await db.execute(
             update(CaseNoteDraft).where(CaseNoteDraft.id == draft_id).values(status=status)
         )
+
+    async def create_personal_details_draft(
+        self,
+        db: AsyncSession,
+        tenant_id: UUID,
+        session_id: UUID,
+        participant_id: UUID,
+        staff_id: UUID,
+        fields_json: dict,
+        completeness_score: float,
+        missing_fields: list[str],
+    ) -> PersonalDetailsDraft:
+        row = PersonalDetailsDraft(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            participant_id=participant_id,
+            staff_id=staff_id,
+            fields_json=fields_json,
+            completeness_score=completeness_score,
+            missing_fields=missing_fields,
+            status="DRAFT",
+        )
+        db.add(row)
+        await db.flush()
+        return row
 
     async def mark_draft_delivered(
         self, db: AsyncSession, draft_id: UUID, delivered_at: datetime

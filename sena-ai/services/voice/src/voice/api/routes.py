@@ -9,9 +9,15 @@ from voice.api.deps import get_ai_db, get_shared_db, redis_client
 from voice.models.schemas import (
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
+    EndPersonalDetailsRequest,
+    EndPersonalDetailsResponse,
     EndSessionRequest,
     EndSessionResponse,
+    PersonalDetailsTurnRequest,
+    PersonalDetailsTurnResponse,
     SessionStatusResponse,
+    StartPersonalDetailsRequest,
+    StartPersonalDetailsResponse,
     StartSessionRequest,
     StartSessionResponse,
     TurnRequest,
@@ -24,6 +30,7 @@ from voice.services.bedrock_service import BedrockService
 from voice.services.dictation_service import DictationService
 from voice.services.event_service import EventService
 from voice.services.livekit_service import generate_livekit_access
+from voice.services.personal_details_service import PersonalDetailsService
 from voice.services.redis_service import RedisService
 from voice.services.transcribe_service import TranscribeService
 from voice.core.settings import settings
@@ -32,7 +39,10 @@ from voice.utils.idempotency import build_idempotency_key
 router = APIRouter()
 repo = VoiceRepository()
 redis_service = RedisService(redis_client)
-dictation_service = DictationService(repo, redis_service, BedrockService(), TranscribeService())
+_bedrock = BedrockService()
+_transcribe = TranscribeService()
+dictation_service = DictationService(repo, redis_service, _bedrock, _transcribe)
+personal_details_service = PersonalDetailsService(repo, redis_service, _bedrock, _transcribe)
 approval_service = ApprovalService(repo)
 event_service = EventService()
 
@@ -269,6 +279,115 @@ async def get_session_status(
         turn_count=session.turn_count,
         completeness_score=score,
         missing_topics=session.missing_topics or [],
+    )
+
+
+@router.post("/v1/voice/personal-details/session", status_code=201, response_model=StartPersonalDetailsResponse)
+async def start_personal_details_session(
+    req: StartPersonalDetailsRequest,
+    auth: AuthContext = Depends(auth_context_dependency),
+    ai_db: AsyncSession = Depends(get_ai_db),
+):
+    require_roles(auth, {"support_worker", "manager", "admin"})
+    await redis_service.increment_rate_limit(
+        f"start:{auth.tenant_id}", settings.rate_limit_start_per_minute
+    )
+
+    lock_ok = await redis_service.acquire_participant_lock(
+        str(auth.tenant_id), str(req.participant_id), "pending"
+    )
+    if not lock_ok:
+        existing = await redis_service.get_existing_session(
+            str(auth.tenant_id), str(req.participant_id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "Active session exists", "existing_session_id": existing},
+        )
+
+    session = await personal_details_service.start_session(
+        db=ai_db,
+        tenant_id=auth.tenant_id,
+        participant_id=req.participant_id,
+        staff_id=req.staff_id,
+        shift_id=req.shift_id,
+    )
+    await ai_db.commit()
+
+    await redis_service.release_participant_lock(str(auth.tenant_id), str(req.participant_id))
+    await redis_service.acquire_participant_lock(
+        str(auth.tenant_id), str(req.participant_id), str(session.id)
+    )
+
+    livekit = generate_livekit_access(
+        session_id=str(session.id), participant_name=str(auth.user_id)
+    )
+
+    return StartPersonalDetailsResponse(
+        session_id=session.id,
+        status=session.status,
+        objective=session.objective,
+        lock_acquired=True,
+        livekit=livekit,
+    )
+
+
+@router.post("/v1/voice/personal-details/session/turn", response_model=PersonalDetailsTurnResponse)
+async def process_personal_details_turn(
+    req: PersonalDetailsTurnRequest,
+    auth: AuthContext = Depends(auth_context_dependency),
+    ai_db: AsyncSession = Depends(get_ai_db),
+):
+    require_roles(auth, {"support_worker", "manager", "admin"})
+    await redis_service.increment_rate_limit(
+        f"turn:{auth.tenant_id}:{req.session_id}", settings.rate_limit_turn_per_minute
+    )
+
+    result = await personal_details_service.process_turn(
+        db=ai_db,
+        session_id=req.session_id,
+        transcript=req.transcript,
+        transcript_confidence=req.transcript_confidence,
+        sequence_number=req.sequence_number,
+    )
+    await ai_db.commit()
+
+    return PersonalDetailsTurnResponse(
+        session_id=req.session_id,
+        sequence_number=req.sequence_number,
+        agent_reply=result["agent_reply"],
+        fields=result["fields"],
+        missing_fields=result["missing_fields"],
+        completeness_score=result["completeness_score"],
+        model=settings.bedrock_model_id,
+        latency_ms=result["latency_ms"],
+    )
+
+
+@router.post("/v1/voice/personal-details/session/end", response_model=EndPersonalDetailsResponse)
+async def end_personal_details_session(
+    req: EndPersonalDetailsRequest,
+    auth: AuthContext = Depends(auth_context_dependency),
+    ai_db: AsyncSession = Depends(get_ai_db),
+):
+    require_roles(auth, {"support_worker", "manager", "admin"})
+
+    result = await personal_details_service.end_session(
+        db=ai_db,
+        session_id=req.session_id,
+        ended_at=req.ended_at,
+    )
+    await ai_db.commit()
+
+    await redis_service.release_participant_lock(str(auth.tenant_id), str(req.session_id))
+
+    return EndPersonalDetailsResponse(
+        session_id=req.session_id,
+        draft_id=result["draft_id"],
+        fields=result["fields"],
+        completeness_score=result["completeness_score"],
+        missing_fields=result["missing_fields"],
+        status="DRAFT",
     )
 
 
