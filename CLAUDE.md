@@ -184,6 +184,32 @@ wiki/
 
 The whole SENA repo is an Obsidian vault. Open the root folder in Obsidian to see the wiki graph view.
 
+## Hooks
+
+Automated hooks enforce safety rules and maintain documentation consistency. See `.claude/HOOKS_README.md` for full details.
+
+### Active Hooks
+
+**PreToolUse** (`.claude/hooks/pre-tool-use.sh`):
+- Blocks dangerous commands (`rm -rf` on critical dirs, force push to main)
+- Warns when committing directly to main/master
+- Reminds to check graphify knowledge graph before searching
+- Flags critical file modifications (CLAUDE.md, .env, settings.json)
+
+**PostToolUse** (`.claude/hooks/post-tool-use.sh`):
+- Auto-updates CLAUDE.md timestamp after edits
+- Logs tool usage to `wiki/log.md`
+- Auto-rebuilds graphify knowledge graph when code files change
+- Tracks file modifications and significant commands
+
+### Philosophy
+
+> "If it must **always** happen, use a hook, not a prompt."
+
+Hooks are **deterministic** — they enforce invariants that should never be violated. For conditional guidance, use CLAUDE.md instructions instead.
+
 ## Ignored Folders
 
 **NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.
+
+<!-- Last auto-updated: 2026-04-16 00:23:07 by hook -->

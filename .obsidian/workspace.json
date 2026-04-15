@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "70fd93cace77cfb4",
+        "id": "9a593d757e351f97",
         "type": "tabs",
         "children": [
           {
-            "id": "7a2de935c966e2a7",
+            "id": "70f858a65a4fb0b2",
             "type": "leaf",
             "state": {
               "type": "graph",
@@ -179,8 +179,10 @@
       "bases:Create new base": false
     }
   },
-  "active": "7a2de935c966e2a7",
+  "active": "70f858a65a4fb0b2",
   "lastOpenFiles": [
+    "Exported Documents/Claude Code — Study Notes.md",
+    "Exported Documents",
     "wiki/index.md",
     "wiki/NDIS.md",
     "wiki/overview.md",
