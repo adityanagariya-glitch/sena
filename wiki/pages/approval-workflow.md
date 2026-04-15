@@ -42,5 +42,5 @@ Role gate enforced at `POST /v1/approval/decision`.
 
 ## Connections
 
-- Hub: [[NDIS]]
-- Related: [[case-notes]], [[human-in-the-loop]], [[aws-sns]]
+- Hub: [[NDIS]], [[Architecture]]
+- Related: [[case-notes]], [[human-in-the-loop]], [[aws-sns]], [[sns-events]], [[support-worker]]

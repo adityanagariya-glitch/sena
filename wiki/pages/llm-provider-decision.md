@@ -9,7 +9,10 @@ updated: 2026-04-15
 
 # LLM Provider Decision
 
-**Status:** DECIDED (split stack)
+**Status:** DECIDED (split stack — but see implementation note below)
+
+> [!warning] Implementation vs Plan Divergence
+> The split-stack architecture is the **planned** state from design documents. The **current codebase** uses AWS Bedrock (Claude 3.5 Sonnet) only — for both voice turn processing and case note compilation. Gemini Live integration is not yet implemented. Treat this page as the target architecture, not current reality.
 
 SENA uses **two** LLM providers for different layers:
 

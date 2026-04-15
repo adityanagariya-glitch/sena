@@ -30,7 +30,7 @@ COMPILING → AWAITING_APPROVAL → APPROVED | REJECTED
 
 ## Persistence
 
-State held in [[redis]] (`sena:{tenant_id}:session:{id}:state`) for fast access, mirrored to [[postgres]] on transitions for durability.
+State held in [[redis]] (`sena:{tenant_id}:session:{id}:state`) for fast access, mirrored to [[pgvector|PostgreSQL]] on transitions for durability.
 
 ## Transition rules
 

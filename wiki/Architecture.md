@@ -55,6 +55,14 @@ For code-level dependency analysis, see [graphify-out/GRAPH_REPORT.md](../graphi
 - [[degradation-ladder]] -- 5-level graceful degradation (Gemini Live down to record-only)
 - [[form-filling]] -- 7-screen gated form flow with voice navigation
 - [[voice-validation]] -- readback-confirm pattern for data accuracy
+- [[flow-b-voice-dictation]] -- detailed Flow B dictation workflow (user story, architecture, requirements)
+- [[personal-details-flow]] -- parallel flow for capturing participant personal details via voice
+- [[approval-workflow]] -- case note state machine from draft to approved record
+
+## Users
+
+- [[support-worker]] -- primary end user; field-based support workers who dictate case notes
+- [[ndis-participant]] -- subject of case notes; person receiving NDIS-funded services
 
 ## Planned
 
