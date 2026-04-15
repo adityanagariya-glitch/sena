@@ -26,3 +26,5 @@
 #
 # Intent: Ensure only Python source code is checked in
 # Database data, virtual environments, IDE config not tracked
+archive/
+

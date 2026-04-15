@@ -114,12 +114,6 @@ Two modes controlled by `SENA_AI_AUTH_MODE`:
 - Hybrid search (vector + keyword)
 - Structure-aware chunking for document processing
 
-## Context Documents
-
-- `Extras/CONTEXT_HANDOFF.md` — master context document for new sessions
-- `Extras/TECHNICAL_DECISIONS.md` — architecture decision log
-- `Extras/SPRINT_0_PLAN.md` — current sprint definition
-- Docs in `Extras/docs/architecture/` are intern drafts — rough starting points, not finalized specs
 
 ## graphify
 
@@ -129,3 +123,67 @@ Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
+
+## LLM Wiki
+
+This project has an LLM-maintained wiki at `wiki/`. The wiki is a persistent, interlinked knowledge base covering NDIS domain knowledge, architecture decisions, client requirements, and technical learnings. The LLM writes and maintains all pages; the human curates sources and reviews output.
+
+### Structure
+
+```
+wiki/
+├── index.md               # Master index — read this first for any wiki query
+├── overview.md            # Living synthesis of project state
+├── log.md                 # Append-only chronological record of wiki operations
+├── NDIS.md                # Hub: NDIS domain knowledge (Map of Content)
+├── Architecture.md        # Hub: technical architecture (Map of Content)
+├── Client-Requirements.md # Hub: client team specs (Map of Content)
+├── sources/               # One summary per ingested raw document
+└── pages/                 # All detail pages (entities, concepts, decisions, topics)
+```
+
+### Page conventions
+
+- **Frontmatter required:** title, type (entity|concept|decision|source|topic|hub), tags, sources, created, updated
+- **Wikilinks:** Use `[[page-name]]` for all internal links
+- **Filenames:** kebab-case (e.g., `flow-b-voice-dictation.md`)
+- **Connections section:** Every page ends with explicit cross-references
+- **Source summaries:** Include `raw_path` field and `Pages Updated` section
+
+### Ingest workflow (when adding new sources)
+
+1. Read the raw source document
+2. Create/update source summary in `wiki/sources/`
+3. Create new detail pages in `wiki/pages/` for uncovered entities/concepts
+4. Update existing pages (flag contradictions with `> [!warning] Contradiction` callout — never silently overwrite)
+5. Update relevant hub pages with new links
+6. Update `wiki/index.md` with any new pages
+7. Append to `wiki/log.md`: `## [YYYY-MM-DD] ingest | Source Title`
+
+### Query workflow (when answering questions from wiki)
+
+1. Read `wiki/index.md` to find relevant pages
+2. Read those pages, synthesize an answer
+3. If the answer is worth keeping, offer to file it as a new wiki page
+
+### Lint workflow (periodic maintenance)
+
+1. Orphan pages (no inbound wikilinks)
+2. Stale content (sources updated but pages not)
+3. Mentioned-but-missing pages (broken wikilinks)
+4. Contradictions between pages
+5. Suggest new pages or sources to investigate
+
+### Relationship to other knowledge layers
+
+- **graphify-out/** — code-level structure. Wiki pages on architecture can link to `graphify-out/GRAPH_REPORT.md` but don't duplicate code analysis.
+- **.planning/** — execution state. Wiki captures domain knowledge, not sprint progress.
+- **archive/** — raw sources. Immutable. Wiki was bootstrapped from these.
+
+### Browsing
+
+The whole SENA repo is an Obsidian vault. Open the root folder in Obsidian to see the wiki graph view.
+
+## Ignored Folders
+
+**NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.

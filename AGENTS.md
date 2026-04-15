@@ -1,229 +1,239 @@
 # AGENTS.md
 
-Guidelines for agentic coding agents operating in the SENA AI/ML backend repository.
+Guidance for agentic coding agents working in `C:\Users\Admin\Downloads\SENA`.
 
-## Project Overview
+## Scope
 
-SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service providers. This repo contains the **AI/ML backend layer only** - a Python monorepo with microservices. The active service is `voice` (case note dictation); `ocr` is scaffolded but not implemented.
+- This repository root contains planning/docs plus one Python monorepo in `sena-ai/`.
+- Treat `sena-ai/services/voice/` as the primary active service.
+- Treat `sena-ai/services/ocr/` as scaffolded unless the task explicitly targets it.
+- Prefer repository-local facts over generic FastAPI or Python defaults.
 
-**Hard constraints:**
-- Multi-tenant data isolation (legally mandated via Row-Level Security)
-- Human-in-the-loop approval for all AI outputs
-- Australian data residency (ap-southeast-2)
-- NDIS compliance
+## Planning Source Of Truth
 
-## Build & Run Commands
+- Read `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, and `.planning/STATE.md` before making architectural decisions.
+- These `.planning/` files describe the intended future state more accurately than the current legacy implementation.
+- Current planning status:
+  - Project: `SENA Voice Assistant - LiveKit + Gemini Live Overhaul`
+  - Current focus: Phase 1, `LiveKit Agents + Gemini Live Foundation`
+  - Overall roadmap status: 0/9 phases complete, no phase plan started yet
 
-```bash
-# Setup (from sena-ai/)
-pip install -e ".[dev]"
-cp .env.example .env
+## Strategic Direction From `.planning/`
 
-# Infrastructure
+- Treat this as a brownfield migration, not a greenfield rewrite.
+- The current HTTP turn-based voice flow is legacy and is planned to be replaced by a persistent LiveKit Agent conversation model.
+- FastAPI remains for session lifecycle and approval endpoints, but conversation handling is intended to move to agent processes.
+- Server-mediated audio is non-negotiable: audio must transit SENA infrastructure, never client-direct to Gemini.
+- The roadmap assumes dual voice experiences:
+  - onboarding/personal-details agent
+  - dictation/case-note agent
+- A Level 2 fallback stack is part of the intended production design: Deepgram + Claude Sonnet + ElevenLabs.
+
+## Preserve And Extend
+
+- Prefer extending these files over replacing them:
+  - `sena-ai/services/voice/src/voice/repositories/voice_repo.py`
+  - `sena-ai/services/voice/src/voice/models/db.py`
+  - `sena-ai/services/voice/src/voice/services/redis_service.py`
+  - `sena-ai/services/voice/src/voice/services/approval_service.py`
+  - `sena-ai/services/voice/src/voice/services/event_service.py`
+  - `sena-ai/services/voice/src/voice/services/auth_service.py`
+- If a task touches architecture, check that it still fits the `.planning/ROADMAP.md` phase goals and success criteria.
+
+## Product Context
+
+- SENA is an AI/ML backend for Australian NDIS service providers.
+- This repo covers the AI backend layer, not the full product platform.
+- Critical constraints:
+  - Multi-tenant isolation is mandatory.
+  - Human approval is required before AI output becomes final.
+  - Data residency is Australian (`ap-southeast-2`).
+  - NDIS compliance matters more than speed or convenience.
+
+## Repo Layout
+
+```text
+SENA/
+|- AGENTS.md
+|- CLAUDE.md
+|- sena-ai/
+|  |- .env.example
+|  |- docker-compose.yml
+|  |- pyproject.toml
+|  |- shared/
+|  `- services/
+|     |- voice/
+|     |  |- src/voice/
+|     |  `- tests/
+|     `- ocr/
+```
+
+Key voice directories:
+
+- `sena-ai/services/voice/src/voice/api/`: FastAPI routes and dependencies.
+- `sena-ai/services/voice/src/voice/services/`: business logic and provider integrations.
+- `sena-ai/services/voice/src/voice/repositories/`: SQLAlchemy query layer.
+- `sena-ai/services/voice/src/voice/models/`: ORM models and Pydantic schemas.
+- `sena-ai/services/voice/src/voice/core/`: settings and logging.
+- `sena-ai/services/voice/tests/`: API-oriented tests using `TestClient`.
+
+## Rule Files
+
+- No Cursor rules were found in `.cursor/rules/` or `.cursorrules`.
+- No Copilot instruction file was found at `.github/copilot-instructions.md`.
+- Do not claim extra editor-specific rules exist unless they are added later.
+
+## Environment And Setup
+
+Run commands from `sena-ai/` unless noted otherwise.
+
+```powershell
+cd sena-ai
+python -m pip install -U pip
+pip install -e "services/voice[dev]"
+Copy-Item .env.example .env
 docker-compose up -d
+```
 
-# Run voice service
-cd services/voice
+Notes:
+
+- The old root command `pip install -e ".[dev]"` is stale. The workspace root has no `dev` extra.
+- CI installs `services/voice[dev]` directly; prefer matching CI.
+- If you need shared package work, inspect `sena-ai/shared/pyproject.toml` and install `-e shared` explicitly.
+
+## Run Commands
+
+Start the active service from `sena-ai/services/voice/`:
+
+```powershell
+cd sena-ai/services/voice
 uvicorn src.voice.main:create_app --factory --reload --port 8082
 ```
 
+Useful local files:
+
+- `sena-ai/.env.example`: canonical environment variable list.
+- `sena-ai/services/voice/src/voice/core/settings.py`: runtime settings.
+- `sena-ai/.github/workflows/voice-service-ci-cd.yml`: CI source of truth for lint and test commands.
+- `.planning/ROADMAP.md`: target architecture and phase-by-phase success criteria.
+- `.planning/STATE.md`: current project position and locked decisions.
+
 ## Test Commands
 
-```bash
-# Run all tests (from sena-ai/)
-pytest
+Prefer explicit path-based commands for `voice`.
 
-# Run tests for specific service
-pytest services/voice/tests/
-
-# Run single test file
-pytest services/voice/tests/test_session_start.py
-
-# Run single test by name
-pytest -k "test_start_session_success"
-
-# Run with coverage
-pytest --cov=src/voice --cov-report=term-missing
-
-# Run specific test with verbose output
-pytest services/voice/tests/test_session_start.py::test_start_session_success -v
+```powershell
+cd sena-ai
+pytest -q services/voice/tests
+pytest -q services/voice/tests/test_session_start.py
+pytest -q services/voice/tests/test_session_start.py::test_start_session_success
+pytest -q services/voice/tests -k "start_session_success"
+pytest -vv services/voice/tests/test_session_start.py::test_start_session_success
+pytest --cov=services/voice/src/voice --cov-report=term-missing services/voice/tests
 ```
 
-## Lint & Format Commands
+Important test gotcha:
 
-```bash
-# Lint check (from sena-ai/)
-ruff check src/
+- Root `pyproject.toml` sets `testpaths` to `shared/tests`, `services/ocr/tests`, and `services/rag/tests`.
+- Because `services/voice/tests` is not in `testpaths`, plain `pytest` from `sena-ai/` is not a reliable way to run voice tests.
+- For single-test work, always pass the file path, and use `::test_name` when you want one test only.
 
-# Auto-fix lint issues
-ruff check --fix src/
+## Lint, Format, And Type Check
 
-# Format code
-ruff format src/
+Use the same paths CI uses:
 
-# Type check (strict mode)
-mypy src/voice/
-
-# Run all checks
-ruff check src/ && ruff format --check src/ && mypy src/voice/
+```powershell
+cd sena-ai
+ruff check services/voice/src services/voice/tests
+ruff check --fix services/voice/src services/voice/tests
+ruff format services/voice/src services/voice/tests
+ruff format --check services/voice/src services/voice/tests
+mypy services/voice/src/voice
 ```
+
+CI currently runs:
+
+- `ruff check services/voice/src services/voice/tests`
+- `pytest -q services/voice/tests`
 
 ## Code Style
 
-### Python Version & Formatting
-- Python 3.12+
-- Line length: 100 characters
-- Ruff for linting (E, F, I, N, UP, B, SIM, TCH rules) and formatting
-- mypy strict mode with Pydantic plugin
+### Python, Formatting, And Imports
 
-### Imports
+- Target Python is 3.12.
+- Ruff line length is 100.
+- Enabled Ruff rule families: `E`, `F`, `I`, `N`, `UP`, `B`, `SIM`, `TCH`.
+- Use `from __future__ import annotations` at the top of new source files.
+- Group imports as stdlib, third-party, first-party, separated by blank lines.
+- Prefer absolute imports from the package root:
+  - `from voice.services.dictation_service import DictationService`
+  - `from voice.models.schemas import StartSessionRequest`
+- Within shared code, use `from sena_common...`.
 
-```python
-from __future__ import annotations  # Always first
+### Naming And Types
 
-# Standard library
-from datetime import datetime, timezone
-from uuid import UUID
+- Classes: `PascalCase`.
+- Functions, methods, variables: `snake_case`.
+- Constants: `UPPER_SNAKE`.
+- Use return annotations on functions and methods.
+- Prefer `UUID`, `datetime`, `Literal[...]`, and concrete container types like `list[str]`.
+- Use `Field(...)` for validation constraints and defaults in Pydantic models.
+- Use `field_validator` for cross-field or conditional validation.
 
-# Third-party
-from fastapi import HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+### FastAPI And Async Patterns
 
-# First-party (known-first-party: sena_common, ocr, rag)
-from voice.models.schemas import StartSessionRequest
-from voice.services.bedrock_service import BedrockService
-```
+- API handlers use dependency injection with `Depends(...)`.
+- Database access uses `AsyncSession`.
+- Session factories are created with `async_sessionmaker(..., expire_on_commit=False)`.
+- Repositories perform queries and mutations; they do not commit transactions.
+- Route handlers or orchestration layers commit explicitly with `await ai_db.commit()` or `await shared_db.commit()`.
+- Use timezone-aware timestamps, typically `datetime.now(timezone.utc)`.
 
-- Use absolute imports from package root: `from voice.models.schemas import ...`
-- Group imports: stdlib, third-party, first-party (separated by blank lines)
-- Use `from __future__ import annotations` for all files
+### SQLAlchemy Patterns
 
-### Naming Conventions
-
-| Type | Convention | Example |
-|------|------------|---------|
-| Classes | PascalCase | `DictationService`, `VoiceRepository` |
-| Functions/Methods | snake_case | `process_turn()`, `get_session_by_id()` |
-| Variables | snake_case | `session_id`, `transcript_confidence` |
-| Constants | UPPER_SNAKE | `DEFAULT_SECTIONS`, `MAX_RETRIES` |
-| Private methods | _leading_underscore | `_build_prompt()` |
-| Pydantic models | PascalCase + suffix | `StartSessionRequest`, `TurnResponse` |
-
-### Type Annotations
-
-```python
-# Always use return type annotation
-async def get_session_by_id(self, db: AsyncSession, session_id: UUID) -> VoiceSession | None:
-
-# Use Literal for constrained strings
-decision: Literal["APPROVED", "REJECTED"]
-
-# Use Field for validation
-transcript_confidence: float = Field(ge=0.0, le=1.0)
-
-# Optional with default
-review_notes: str = ""
-shared_case_note_id: UUID | None = None
-```
-
-### Async Patterns
-
-- All DB operations use `AsyncSession`
-- All services are async classes
-- Use `await` for all async operations
-- Commit transactions explicitly: `await ai_db.commit()`
+- ORM models use SQLAlchemy 2 style annotations with `Mapped[...]` and `mapped_column(...)`.
+- UUID primary keys are standard across voice models.
+- JSON columns are used for draft state, section coverage, and event payloads.
+- Favor explicit status fields such as `ACTIVE`, `COMPLETED`, `PENDING_APPROVAL`, `DELIVERED`.
 
 ### Error Handling
 
-```python
-from fastapi import HTTPException, status
+- Use `HTTPException` with explicit `status_code` and concise `detail`.
+- Raise `401` for missing or invalid auth material.
+- Raise `403` for role violations.
+- Raise `404` for missing entities.
+- Raise `409` for invalid lifecycle state, duplicate activity, or already-completed flows.
+- Use `ValueError` inside Pydantic validators, not inside route logic.
 
-# Use HTTPException with appropriate status codes
-if session is None:
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+## Testing Conventions
 
-if session.status != "ACTIVE":
-    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session not active")
+- Voice tests are in `sena-ai/services/voice/tests/`.
+- Tests use `fastapi.testclient.TestClient` via fixtures in `conftest.py`.
+- `conftest.py` seeds default env vars with `os.environ.setdefault(...)`.
+- Dev-mode auth headers used by tests are:
+  - `X-Tenant-ID`
+  - `X-User-ID`
+  - `X-User-Role`
+  - `X-Staff-ID`
+- When adding endpoint tests, mirror existing request shapes and auth fixtures.
 
-# Validation errors in Pydantic
-@field_validator("review_notes")
-@classmethod
-def reject_requires_reason(cls, value: str, info):
-    decision = info.data.get("decision")
-    if decision == "REJECTED" and not value.strip():
-        raise ValueError("review_notes is required when decision is REJECTED")
-    return value
-```
+## Configuration Conventions
 
-### Pydantic Models
+- Settings use `pydantic-settings` with `env_prefix="SENA_AI_"`.
+- Environment variables are mapped with `Field(..., alias="...")`.
+- Auth mode is controlled by `SENA_AI_AUTH_MODE` and supports:
+  - `dev_header`
+  - `jwt`
 
-```python
-from pydantic import BaseModel, Field
+## Agent Guidance
 
-class TurnRequest(BaseModel):
-    session_id: UUID
-    transcript: str = Field(min_length=1)
-    transcript_confidence: float = Field(ge=0.0, le=1.0)
-    audio_duration_ms: int = Field(gt=0)
-    sequence_number: int = Field(gt=0)
-    timestamp: datetime
-```
+- Default to the `voice` service unless the task clearly targets another area.
+- Check whether a file is real executable code or only a comment stub before building on it.
+- Keep tenant isolation, approval gates, and auditability intact when changing flows.
+- Match local commands to CI when possible.
+- For architecture work, align with `.planning/` before aligning with the current HTTP implementation.
+- If you change tests or tooling instructions, update this file if the guidance becomes stale.
 
-### Settings Configuration
+## Ignored Folders
 
-```python
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-class VoiceSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_prefix="SENA_AI_",
-        case_sensitive=False
-    )
-
-    service_name: str = Field(default="sena-voice", alias="SERVICE_NAME")
-    ai_db_url: str = Field(alias="AI_DB_URL")
-```
-
-- All env vars use `SENA_AI_` prefix
-- Use Field with alias for env var mapping
-
-## Architecture
-
-```
-sena-ai/
-├── services/
-│   ├── voice/           # Active service
-│   │   ├── src/voice/
-│   │   │   ├── api/         # FastAPI routes, dependencies
-│   │   │   ├── services/    # Business logic
-│   │   │   ├── repositories/# DB queries
-│   │   │   ├── models/      # SQLAlchemy ORM + Pydantic schemas
-│   │   │   ├── prompts/     # LLM prompt templates
-│   │   │   ├── core/        # Settings, logging
-│   │   │   └── utils/       # Helpers
-│   │   └── tests/
-│   └── ocr/             # Scaffolded, not implemented
-├── shared/              # sena-common library (DB, middleware)
-└── docker-compose.yml   # Redis + 2x PostgreSQL
-```
-
-## Key Files to Reference
-
-- `CLAUDE.md` - Full project documentation
-- `sena-ai/pyproject.toml` - Workspace config, ruff/mypy/pytest settings
-- `sena-ai/.env.example` - All environment variables
-- `sena-ai/services/voice/src/voice/core/settings.py` - Settings class
-
-## Pre-commit
-
-```bash
-pre-commit install
-pre-commit run --all-files
-```
-
-## Authentication
-
-Two modes via `SENA_AI_AUTH_MODE`:
-- `dev_header` (default): reads `X-User-Id`, `X-User-Roles`, `X-Tenant-ID` headers
-- `jwt`: validates JWT bearer tokens
+**NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.

@@ -44,3 +44,11 @@ htmlcov/
 
 # Alembic
 migrations/versions/*.pyc
+
+
+
+archive/
+graphify-out/
+.ruff_cache/
+.claude/
+.gemini/
