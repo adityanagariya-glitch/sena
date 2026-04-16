@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service providers. This repo contains the **AI/ML backend layer only** — the broader platform (HR, payroll, shifts, client management) is built by a separate client team. No API contracts exist yet between the two teams.
+SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service providers. This repo contains the **AI/ML backend layer only** — the broader platform (HR, payroll, shifts, client management) is built by a separate client team. API contracts between the two teams are defined in `api_contracts.py` at the root.
 
 **Domain:** NDIS (National Disability Insurance Scheme) — Australian disability services compliance, case note drafting, voice-based workflows.
 
@@ -14,12 +14,27 @@ SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service pro
 
 Monorepo at `sena-ai/` with Python microservices. Currently one active service (voice), one scaffolded (ocr).
 
+**Root-level files:**
+```
+SENA/
+├── api_contracts.py    # Shared API contracts between AI layer and client platform
+├── AGENTS.md           # Guidance for agentic coding agents in this repo
+├── requirements.txt    # Root-level Python dependencies
+├── sena-ai/            # Monorepo — all AI/ML services
+├── wiki/               # LLM-maintained knowledge base
+└── graphify-out/       # Auto-generated knowledge graph
+```
+
+**`sena-ai/` monorepo:**
 ```
 sena-ai/
 ├── services/
 │   ├── voice/          # Active — Flow B case note dictation
 │   └── ocr/            # Scaffolded, not yet implemented
 ├── shared/             # sena-common shared library (DB, middleware, schemas)
+├── migrations/         # Alembic DB migrations + init SQL + RLS setup scripts
+├── scripts/            # Dev/ops scripts
+├── Makefile            # Common task shortcuts
 ├── docker-compose.yml  # Redis + 2x PostgreSQL (ai-db with pgvector, shared-db)
 ├── .env.example        # All env vars with SENA_AI_ prefix
 └── pyproject.toml      # Workspace root — ruff, mypy, pytest config
