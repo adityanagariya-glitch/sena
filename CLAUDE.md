@@ -208,6 +208,10 @@ Automated hooks enforce safety rules and maintain documentation consistency. See
 
 Hooks are **deterministic** — they enforce invariants that should never be violated. For conditional guidance, use CLAUDE.md instructions instead.
 
+## Setup Rules
+- Always use Context7 (`get-library-docs`) to verify API or setup steps before running automation.
+- For all browser-based tasks, prioritize using the Playwright MCP server to execute the workflow rather than asking me to do it in the browser.
+
 ## Ignored Folders
 
 **NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.
