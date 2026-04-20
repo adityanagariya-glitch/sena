@@ -67,12 +67,20 @@ Layered architecture at `sena-ai/services/voice/src/voice/`:
 
 ### External dependencies
 
-- **AWS Bedrock** (Claude 3.5 Sonnet) — LLM for case note generation
+- **AWS Bedrock** (Claude 3.5 Sonnet) — LLM for case note generation (Flow B dictation)
+- **Google Gemini** (`gemini-2.0-flash`) — LLM for personal details onboarding flow (replaces Bedrock for that flow)
 - **AWS SNS** — event publishing for case note lifecycle
 - **LiveKit** — real-time voice conferencing
 - **Redis** — session state, rate limiting, distributed locks
 - **PostgreSQL + pgvector** (ai-db, port 5433) — voice session/case note data
 - **PostgreSQL** (shared-db, port 5434) — cross-service platform data
+
+### LLM split
+
+| Flow | Provider | Env var |
+|------|----------|---------|
+| Flow B — case note dictation | AWS Bedrock (Claude 3.5 Sonnet) | `SENA_AI_BEDROCK_MODEL_ID` |
+| Personal details onboarding | Google Gemini 2.0 Flash | `SENA_AI_GEMINI_API_KEY` |
 
 ## Build & Run Commands
 
@@ -223,9 +231,42 @@ Automated hooks enforce safety rules and maintain documentation consistency. See
 
 Hooks are **deterministic** — they enforce invariants that should never be violated. For conditional guidance, use CLAUDE.md instructions instead.
 
+## Persistent Task List
+
+The canonical, session-persistent task list lives at `.claude/tasks/TASKS.md`. Read this file at the start of every session — it survives `/compact`, context resets, and session switches. Update it whenever a task's status changes or a new task is added. Keep completed entries around for a few sessions as a trail before pruning to a separate archive.
+
 ## Setup Rules
 - Always use Context7 (`get-library-docs`) to verify API or setup steps before running automation.
 - For all browser-based tasks, prioritize using the Playwright MCP server to execute the workflow rather than asking me to do it in the browser.
+
+## Gemini API Rules (MANDATORY)
+
+For ANY code touching Gemini API or Gemini Live API:
+
+1. **Invoke the skill first** — before writing/editing any Gemini code, run `Skill: gemini-live-api-dev` (Live API) or `Skill: gemini-api-dev` (general). Do NOT rely on training data — it is stale.
+2. **Query the MCP** — use `search_documentation` from `gemini-api-docs-mcp` MCP server for method signatures and configuration details.
+3. **Current models (2026-04):**
+   - Gemini Live (personal details voice flow): `gemini-3.1-flash-live-preview`
+   - Deprecated (do NOT use): `gemini-2.5-flash-native-audio-latest`, `gemini-2.5-flash-native-audio-preview-*`, `gemini-live-2.5-flash-preview`, `gemini-2.0-flash-live-001`
+4. **Current Live API patterns:**
+   - Send audio: `await session.send_realtime_input(audio=types.Blob(data=raw, mime_type="audio/pcm;rate=16000"))`
+   - Send text: `await session.send_realtime_input(text="...")`
+   - Signal end-of-speech: `await session.send_realtime_input(audio_stream_end=True)`
+   - Do NOT use: `session.send(input=..., end_of_turn=True)` (old API, misroutes to `send_client_content`)
+   - Do NOT use: `LiveClientRealtimeInput(media_chunks=[...])` (old wire format)
+5. **Proactive audio NOT supported** on `gemini-3.1-flash-live-preview` — model will NOT speak first without user audio input. Greeting must be triggered by user speaking first (system prompt handles the actual greeting content).
+
+## Demo Stack
+
+Standalone Gemini Live demo (separate from the production voice service):
+- `sena-ai/demo_live_server.py` — FastAPI server bridging browser WebSocket ↔ Gemini Live
+- `sena-ai/demo_client.html` — browser UI with mic capture + audio playback + file upload mode
+- Run: `cd sena-ai && uvicorn demo_live_server:app --reload --port 8082`
+- Env required: `SENA_AI_GEMINI_API_KEY`, `SENA_AI_GEMINI_LIVE_MODEL_ID`
+
+## Cleanup Rule
+
+When removing "dead code", ALWAYS grep the full codebase for the file/symbol name first. Previous audits have produced false positives that would have broken production (e.g., `gemini_service.py` was flagged dead but is actively called by HTTP personal-details turn endpoint).
 
 ## Ignored Folders
 

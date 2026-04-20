@@ -99,6 +99,7 @@ Summaries of ingested raw documents live in `wiki/sources/`.
 | [[auth-mode-decision]] | Authentication mode decision (dev_header vs JWT) |
 | [[llm-provider-decision]] | LLM provider choice (AWS Bedrock / Claude) |
 | [[cloud-provider-decision]] | Cloud provider decision (was blocked on client) |
+| [[gemini-live-multi-turn-config]] | Gemini Live multi-turn config (google-genai SDK rules, VAD, browser playback) |
 
 ### Topics
 
