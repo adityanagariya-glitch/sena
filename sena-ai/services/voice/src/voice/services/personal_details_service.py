@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from voice.services.bedrock_service import BedrockService
+from voice.services.gemini_service import GeminiService
 from voice.services.redis_service import RedisService
 from voice.services.transcribe_service import TranscribeService
 from voice.repositories.voice_repo import VoiceRepository
@@ -63,12 +63,12 @@ class PersonalDetailsService:
         self,
         repo: VoiceRepository,
         redis_service: RedisService,
-        bedrock: BedrockService,
+        gemini: GeminiService,
         transcribe: TranscribeService,
     ) -> None:
         self.repo = repo
         self.redis = redis_service
-        self.bedrock = bedrock
+        self.gemini = gemini
         self.transcribe = transcribe
 
     async def start_session(
@@ -125,7 +125,7 @@ class PersonalDetailsService:
         missing_fields = state.get("missing_fields", list(REQUIRED_FIELDS))
         history = state.get("history", [])[-5:]
 
-        ai_out, latency_ms = self.bedrock.run_personal_details_turn(
+        ai_out, latency_ms = self.gemini.run_personal_details_turn(
             transcript=normalized.text,
             current_fields=current_fields,
             missing_fields=missing_fields,

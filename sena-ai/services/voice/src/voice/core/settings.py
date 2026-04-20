@@ -46,5 +46,9 @@ class VoiceSettings(BaseSettings):
     provider_timeout_seconds: float = Field(default=1.2, alias="PROVIDER_TIMEOUT_SECONDS")
     provider_max_retries: int = Field(default=2, alias="PROVIDER_MAX_RETRIES")
 
+    gemini_api_key: str = Field(alias="GEMINI_API_KEY")
+    gemini_model_id: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL_ID")
+    gemini_live_model_id: str = Field(default="gemini-2.5-flash-native-audio-latest", alias="GEMINI_LIVE_MODEL_ID")
+
 
 settings = VoiceSettings()

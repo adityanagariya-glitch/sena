@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from voice.api.routes import router
+from voice.api.ws_routes import ws_router
 from voice.core.logging import configure_logging
 from voice.core.settings import settings
 from voice.api.deps import ai_engine, shared_engine
@@ -26,4 +27,5 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(router)
+    app.include_router(ws_router)
     return app

@@ -29,6 +29,7 @@ from voice.services.auth_service import AuthContext, auth_context_dependency, re
 from voice.services.bedrock_service import BedrockService
 from voice.services.dictation_service import DictationService
 from voice.services.event_service import EventService
+from voice.services.gemini_service import GeminiService
 from voice.services.livekit_service import generate_livekit_access
 from voice.services.personal_details_service import PersonalDetailsService
 from voice.services.redis_service import RedisService
@@ -40,9 +41,10 @@ router = APIRouter()
 repo = VoiceRepository()
 redis_service = RedisService(redis_client)
 _bedrock = BedrockService()
+_gemini = GeminiService()
 _transcribe = TranscribeService()
 dictation_service = DictationService(repo, redis_service, _bedrock, _transcribe)
-personal_details_service = PersonalDetailsService(repo, redis_service, _bedrock, _transcribe)
+personal_details_service = PersonalDetailsService(repo, redis_service, _gemini, _transcribe)
 approval_service = ApprovalService(repo)
 event_service = EventService()
 
@@ -359,7 +361,7 @@ async def process_personal_details_turn(
         fields=result["fields"],
         missing_fields=result["missing_fields"],
         completeness_score=result["completeness_score"],
-        model=settings.bedrock_model_id,
+        model=settings.gemini_model_id,
         latency_ms=result["latency_ms"],
     )
 
