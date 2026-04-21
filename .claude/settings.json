@@ -49,6 +49,15 @@
             "command": "bash .claude/hooks/architecture-reminder.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/issue-capture-reminder.sh"
+          }
+        ]
       }
     ],
     "Stop": [

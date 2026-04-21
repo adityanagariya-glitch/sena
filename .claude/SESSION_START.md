@@ -15,8 +15,9 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 | 1 | `CLAUDE.md` (project root) | Hard rules, architecture, Gemini API rules, cleanup rule, demo stack |
 | 2 | `.claude/SESSION_START.md` (this file) | Tells you what to read next |
 | 3 | `.claude/tasks/TASKS.md` | Current task state, active/completed/backlog |
-| 4 | `.planning/ONBOARDING_VOICE_API_PLAN.md` | Active build plan — onboarding voice API, phases A–F. Follow this plan exactly. |
-| 5 | `~/.claude/projects/C--Users-Admin-Downloads-SENA/memory/MEMORY.md` | Memory index — points to all user/project/feedback memories |
+| 4 | `.claude/issues-solved/INDEX.md` | Grep-first symptom→fix table. Check BEFORE debugging anything. |
+| 5 | `.planning/ONBOARDING_VOICE_API_PLAN.md` | Active build plan — onboarding voice API, phases A–F. Follow this plan exactly. |
+| 6 | `~/.claude/projects/C--Users-Admin-Downloads-SENA/memory/MEMORY.md` | Memory index — points to all user/project/feedback memories |
 
 ## 2. READ-IF-RELEVANT (task-dependent)
 

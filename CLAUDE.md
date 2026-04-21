@@ -182,6 +182,20 @@ Two modes controlled by `SENA_AI_AUTH_MODE`:
 - Structure-aware chunking for document processing
 
 
+## Issues-Solved Knowledge Base (MANDATORY — CHECK BEFORE DEBUGGING)
+
+Path: `.claude/issues-solved/`
+
+**Rule:** before debugging ANY issue, grep `.claude/issues-solved/INDEX.md` for symptom keywords.
+- If match → read linked detail file → apply fix. Do NOT re-derive.
+- If no match → solve, then append a new entry via `TEMPLATE.md`.
+
+**When to add an entry:** issue took >2 debugging iterations OR >5 min OR required external research. One file per issue, numbered `NNNN-kebab-symptom.md`, row added to `INDEX.md` (newest first).
+
+**Goal:** zero re-solved bugs, zero token-waste on problems already cracked.
+
+See `.claude/issues-solved/README.md` for full protocol.
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.

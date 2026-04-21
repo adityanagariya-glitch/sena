@@ -34,7 +34,8 @@
       "Bash(bash .claude/hooks/session-start.sh)",
       "Bash(bash .claude/hooks/stop.sh)",
       "Bash(echo \"CLAUDE_PROJECT_DIR=$CLAUDE_PROJECT_DIR\")",
-      "Bash(echo \"PWD=$PWD\")"
+      "Bash(echo \"PWD=$PWD\")",
+      "Bash(git:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
