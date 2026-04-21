@@ -3,7 +3,8 @@ title: Persistent Task List
 updated: 2026-04-21
 ---
 
-> Last session end-state (2026-04-20): voice demo WORKING. User paused, will resume in new session.
+> Last session end-state (2026-04-21): Phases A+B+C complete. Harness routes live at /harness + /harness/fixtures/{step_id}. pip install -e . required to run onboarding service.
+> Debug session (2026-04-21): VAD not detecting user voice after turn 6 — root cause = echo from speakers (no headphones + echoCancellation:false). Tried `_agent_speaking` echo gate → REVERTED (breaks VAD after 2-4 turns, documented in CLAUDE.md rule 6 + feedback_gemini_live_patterns.md rule 7+8). Correct fix: stream audio unconditionally, use START_SENSITIVITY_LOW. Firefox no-audio from speakers: separate issue, still unresolved (split AudioContext fix proposed but not applied — user should test beep button first).
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -56,6 +57,9 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
   - A: REST scaffold + Redis state store + webhook ✓ (36/36 tests, 2026-04-20)
   - B: WS endpoint + Gemini Live wiring + system prompt injection (#3) ✓ (2026-04-21)
   - C: Tool calling — `update_field`, `get_session_context`, `advance_step`, `escalate_incident` (#4) ✓ (2026-04-21, 48/48 tests)
+  - F (partial): `test_harness.html` at `/harness` — phases A/B/C testable in browser ✓ (2026-04-21)
+    - `GET /harness` + `GET /harness/fixtures/{step_id}` routes added to `main.py` ✓ (2026-04-21)
+    - **Run requirement:** `pip install -e .` from `sena-ai/services/onboarding/` before uvicorn (src-layout needs editable install)
   - D: Camera + screen frame ingress via `send_realtime_input(video=Blob)` (#5 + #6) ← next
   - E: Session resumption + Google Search grounding (#7 + #8)
   - F: OpenAPI docs + WS protocol doc + Postman collection + dev harness update

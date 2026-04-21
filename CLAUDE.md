@@ -310,6 +310,7 @@ For ANY code touching Gemini API or Gemini Live API:
    - Do NOT use: `session.send(input=..., end_of_turn=True)` (old API, misroutes to `send_client_content`)
    - Do NOT use: `LiveClientRealtimeInput(media_chunks=[...])` (old wire format)
 5. **Proactive audio NOT supported** on `gemini-3.1-flash-live-preview` — model will NOT speak first without user audio input. Greeting must be triggered by user speaking first (system prompt handles the actual greeting content).
+6. **NEVER gate mic audio on an `_agent_speaking` flag.** Doing so causes VAD to silently stop after 2-4 turns (model sends audio for next turn before user speaks, gate mutes mic, VAD never fires). Always stream audio unconditionally; rely on `activity_handling=START_OF_ACTIVITY_INTERRUPTS` for barge-in. Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise between turns.
 
 ## Demo Stack
 

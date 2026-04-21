@@ -511,11 +511,18 @@ Each phase ends with a demoable acceptance criterion.
 
 ### Phase F — Integration surface
 
+**Partial delivery (2026-04-21) — browser test harness shipped early:**
+- `test_harness.html` — Phase A/B/C panels (session create, voice, live form render + completion bar) ✓
+- `GET /harness` + `GET /harness/fixtures/{step_id}` routes in `main.py` ✓ (path-traversal guarded)
+- Access: `http://localhost:8083/harness` (requires `pip install -e .` before uvicorn)
+- Phases D/E panels are placeholder stubs — will be wired as those phases ship
+
+**Remaining F work:**
 - OpenAPI auto-docs at `/docs` (FastAPI default).
 - Hand-written `docs/WS_PROTOCOL.md` covering every frame type and error.
 - `docs/INTEGRATION.md` — happy-path recipe for mobile team.
 - Postman collection at `docs/postman/onboarding.postman_collection.json`.
-- Update `sena-ai/demo_client.html` → new protocol (dev-only test harness; not shipped).
+- Update `test_harness.html` with Phase D (camera/screen) + Phase E (resumption) panels.
 
 **Acceptance:** Mobile engineer can integrate by reading docs alone. Postman runs the happy path end-to-end against the mock webhook.
 

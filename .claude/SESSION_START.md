@@ -60,6 +60,18 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
   - `escalate_incident` — appends `EscalationRecord`, emits `escalated`, session continues
   - `gemini_live.py` — `tools=[Tool(function_declarations=...)]` + `msg.tool_call` branch + `send_tool_response`
   - `g2b.add_done_callback` cancels `b2g` when step completes (unblocks WS)
+- **Onboarding service Phase F (partial)** — browser test harness (2026-04-21)
+  - `sena-ai/services/onboarding/test_harness.html` — Phase A/B/C panels, transcript, live form render, completion bar
+  - `main.py` — `GET /harness` + `GET /harness/fixtures/{step_id}` routes added (path-traversal guarded)
+  - **IMPORTANT:** service uses src-layout → must `pip install -e .` from `sena-ai/services/onboarding/` before uvicorn
+
+**How to run onboarding service:**
+```bash
+cd sena-ai/services/onboarding
+pip install -e .          # required once — src-layout editable install
+uvicorn src.onboarding.main:create_app --factory --reload --port 8083
+# Test harness: http://localhost:8083/harness
+```
 
 **What's next:**
 Phase D — Vision ingress (camera + screen frames)
@@ -127,3 +139,5 @@ From memory (`feedback_gemini_live_patterns.md`):
 - Use `await b2g`, not `asyncio.wait(FIRST_COMPLETED)`
 - Single AudioContext on browser for mic+playback
 - Manual 24kHz→native upsample before `createBuffer`
+- **NEVER gate mic audio on `_agent_speaking` flag** — causes VAD to die after 2-4 turns. Send audio unconditionally; Gemini's native VAD + `START_OF_ACTIVITY_INTERRUPTS` handles barge-in.
+- Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise and exhausts VAD budget
