@@ -1,0 +1,84 @@
+{
+  "version": "v1",
+  "step_id": "medical_information",
+  "step_label": "Medical Information",
+  "progress_percent": 100,
+  "sections": [
+    {
+      "id": "medical_overview",
+      "label": "Medical overview",
+      "fields": [
+        {"id": "primary_diagnosis", "type": "text", "label": "Primary Diagnosis", "required": true},
+        {"id": "secondary_diagnosis", "type": "text", "label": "Secondary Diagnosis (if applicable)", "required": false},
+        {
+          "id": "blood_type",
+          "type": "enum",
+          "label": "Blood Type",
+          "required": false,
+          "options": [
+            "A Positive", "A Negative",
+            "B Positive", "B Negative",
+            "AB Positive", "AB Negative",
+            "O Positive", "O Negative",
+            "Unknown"
+          ]
+        },
+        {"id": "primary_doctor", "type": "text", "label": "Primary Doctor", "required": true},
+        {"id": "doctor_phone", "type": "phone", "label": "Doctor Phone", "format": "+61", "required": false},
+        {"id": "last_medical_checkup", "type": "date", "label": "Last Medical Checkup", "required": false}
+      ]
+    },
+    {
+      "id": "allergies",
+      "label": "Allergies and sensitivities",
+      "repeatable": {"min": 0, "max": 20},
+      "item_fields": [
+        {"id": "title", "type": "text", "label": "Allergy / Sensitivity", "required": true},
+        {"id": "description", "type": "text", "label": "Description", "required": true}
+      ]
+    },
+    {
+      "id": "medications",
+      "label": "Current medications",
+      "repeatable": {"min": 0, "max": 20},
+      "item_fields": [
+        {"id": "medication", "type": "text", "label": "Medication name", "required": true},
+        {"id": "dosage", "type": "text", "label": "Dosage", "required": true},
+        {"id": "frequency", "type": "text", "label": "Frequency", "required": true},
+        {"id": "purpose", "type": "text", "label": "Purpose", "required": true},
+        {"id": "notes", "type": "text", "label": "Notes", "required": false}
+      ]
+    },
+    {
+      "id": "medical_history",
+      "label": "Medical history",
+      "repeatable": {"min": 0, "max": 20},
+      "item_fields": [
+        {"id": "title", "type": "text", "label": "Condition / Event", "required": true},
+        {"id": "year", "type": "text", "label": "Year", "required": false},
+        {"id": "description", "type": "text", "label": "Description", "required": false}
+      ]
+    },
+    {
+      "id": "mobility",
+      "label": "Mobility and support",
+      "fields": [
+        {
+          "id": "mobility_status",
+          "type": "enum",
+          "label": "Mobility Status",
+          "required": true,
+          "options": [
+            "Independent",
+            "Uses walking aid",
+            "Uses wheelchair (manual)",
+            "Uses wheelchair (powered)",
+            "Requires full assistance",
+            "Other"
+          ]
+        },
+        {"id": "support_requirements", "type": "textarea", "label": "Support Requirements", "required": true}
+      ]
+    }
+  ]
+}

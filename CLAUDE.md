@@ -30,6 +30,7 @@ SENA/
 sena-ai/
 ├── services/
 │   ├── voice/          # Active — Flow B case note dictation
+│   ├── onboarding/     # Active — Voice onboarding API (Gemini Live, port 8083)
 │   └── ocr/            # Scaffolded, not yet implemented
 ├── shared/             # sena-common shared library (DB, middleware, schemas)
 ├── migrations/         # Alembic DB migrations + init SQL + RLS setup scripts
@@ -39,6 +40,45 @@ sena-ai/
 ├── .env.example        # All env vars with SENA_AI_ prefix
 └── pyproject.toml      # Workspace root — ruff, mypy, pytest config
 ```
+
+### Onboarding Service — voice-driven participant onboarding
+
+API-first service at `sena-ai/services/onboarding/src/onboarding/`. Mobile app integrates; no frontend shipped.
+
+| Layer | Path | Purpose |
+|-------|------|---------|
+| API | `api/routes.py` | REST: session lifecycle, state, webhook fire |
+| API | `api/ws_routes.py` | WebSocket: start handshake, WS lock, Gemini bridge, error close codes (Phase B ✓) |
+| Services | `services/gemini_live.py` | Gemini Live bridge: b2g/g2b tasks, transcript events, WS↔Gemini audio (Phase B ✓) |
+| Services | `services/prompt_builder.py` | System prompt renderer: injects schema + FormState via `__PLACEHOLDER__` replacements (Phase B ✓) |
+| Services | `services/tools.py` | Tool dispatcher: update_field, get_session_context, advance_step, escalate_incident (Phase C ✓) |
+| Services | `services/webhook.py` | Outbound webhook to app backend, 3-retry exp backoff |
+| Repositories | `repositories/state_repo.py` | Redis only — no Postgres. FormState, transcript, WS lock, resumption handles |
+| Models | `models/schema_spec.py` | StepSchema, SectionSpec, FieldSpec (incl. visible_if, repeatable) |
+| Models | `models/form_state.py` | FormState, FieldValue, CompletionStats |
+| Fixtures | `fixtures/schema_*.json` | 5 step schemas from real app screens |
+
+**Key routes:**
+- `POST /v1/onboarding/session` — create session (app sends schema inline)
+- `GET/PUT /v1/onboarding/session/{id}/state` — read/write FormState (PUT blocked when WS active)
+- `POST /v1/onboarding/session/{id}/complete` — finalize + fire webhook
+- `WSS /ws/onboarding/{session_id}` — voice stream (Phase B)
+
+**Design decisions:**
+- One WS session = one onboarding step (clean resumption semantics)
+- App backend owns schema + final DB; we own ephemeral Redis state
+- Voice holds write lock during WS; app PUTs only when WS closed
+- No Postgres — Redis TTL only; app backend is DB of record
+
+**Run:**
+```bash
+cd sena-ai/services/onboarding
+uvicorn src.onboarding.main:create_app --factory --reload --port 8083
+```
+
+**Env vars (prefix `SENA_AI_`):** `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL_ID`, `ONBOARDING_PORT`, `APP_WEBHOOK_URL`, `APP_WEBHOOK_SECRET`, `REDIS_URL`
+
+---
 
 ### Voice Service (Flow B) — the primary active service
 
@@ -77,10 +117,10 @@ Layered architecture at `sena-ai/services/voice/src/voice/`:
 
 ### LLM split
 
-| Flow | Provider | Env var |
-|------|----------|---------|
-| Flow B — case note dictation | AWS Bedrock (Claude 3.5 Sonnet) | `SENA_AI_BEDROCK_MODEL_ID` |
-| Personal details onboarding | Google Gemini 2.0 Flash | `SENA_AI_GEMINI_API_KEY` |
+| Flow | Provider | Model | Env var |
+|------|----------|-------|---------|
+| Flow B — case note dictation | AWS Bedrock | Claude 3.5 Sonnet | `SENA_AI_BEDROCK_MODEL_ID` |
+| Onboarding voice (Live API) | Google Gemini Live | `gemini-3.1-flash-live-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_LIVE_MODEL_ID` |
 
 ## Build & Run Commands
 
@@ -96,6 +136,10 @@ docker-compose up -d                       # Redis + both Postgres DBs
 # Run voice service
 cd services/voice
 uvicorn src.voice.main:create_app --factory --reload --port 8082
+
+# Run onboarding service
+cd services/onboarding
+uvicorn src.onboarding.main:create_app --factory --reload --port 8083
 
 # Tests
 pytest                                     # all tests (from sena-ai/)
@@ -213,23 +257,34 @@ Automated hooks enforce safety rules and maintain documentation consistency. See
 
 ### Active Hooks
 
+**SessionStart** (`.claude/hooks/session-start.sh`):
+- Injects SESSION_START.md read-order as additionalContext on every new session
+- Ensures Claude lands in the same state every time regardless of what's "remembered"
+
 **PreToolUse** (`.claude/hooks/pre-tool-use.sh`):
 - Blocks dangerous commands (`rm -rf` on critical dirs, force push to main)
 - Warns when committing directly to main/master
 - Reminds to check graphify knowledge graph before searching
 - Flags critical file modifications (CLAUDE.md, .env, settings.json)
 
-**PostToolUse** (`.claude/hooks/post-tool-use.sh`):
-- Auto-updates CLAUDE.md timestamp after edits
+**PostToolUse** (`.claude/hooks/post-tool-use.sh` + `.claude/hooks/bump-updated.sh`):
+- Maintains per-service `requirements.txt` via pipreqs on Python file edits
+- Auto-bumps `updated: YYYY-MM-DD` frontmatter on SESSION_START.md, TASKS.md, MEMORY.md, CLAUDE.md whenever Claude edits them
 - Logs tool usage to `wiki/log.md`
 - Auto-rebuilds graphify knowledge graph when code files change
-- Tracks file modifications and significant commands
+
+**Stop** (`.claude/hooks/stop.sh`):
+- Emits reminder at every session boundary (stop, /clear, /compact, resume) to verify `.claude/tasks/TASKS.md` is current
 
 ### Philosophy
 
 > "If it must **always** happen, use a hook, not a prompt."
 
 Hooks are **deterministic** — they enforce invariants that should never be violated. For conditional guidance, use CLAUDE.md instructions instead.
+
+## Session Start (READ FIRST in any new session)
+
+The authoritative read-order guide is `.claude/SESSION_START.md`. Read it BEFORE doing anything else in a new session. It tells you which files to read next based on the task, the current project state, and verification steps to confirm nothing broke between sessions.
 
 ## Persistent Task List
 

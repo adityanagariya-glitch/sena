@@ -1,0 +1,95 @@
+{
+  "version": "v1",
+  "step_id": "ndis_plan_details",
+  "step_label": "NDIS Plan Details",
+  "progress_percent": 60,
+  "sections": [
+    {
+      "id": "plan_info",
+      "label": "Plan information",
+      "fields": [
+        {"id": "ndis_number", "type": "text", "label": "NDIS Number", "required": true},
+        {"id": "plan_start", "type": "date", "label": "Plan Start Date", "required": true},
+        {"id": "plan_end", "type": "date", "label": "Plan End Date", "required": true},
+        {
+          "id": "plan_management",
+          "type": "enum",
+          "label": "Plan Management",
+          "required": true,
+          "options": ["Plan Managed", "Self Managed", "Agency Managed"],
+          "default": "Plan Managed"
+        },
+        {"id": "plan_manager", "type": "text", "label": "Plan Manager Name", "required": true},
+        {"id": "contact_email", "type": "email", "label": "Plan Manager Contact Email", "required": true},
+        {"id": "billing_email", "type": "email", "label": "Billing Email", "required": true}
+      ]
+    },
+    {
+      "id": "ndis_goals",
+      "label": "NDIS Goals",
+      "repeatable": {"min": 1, "max": 10},
+      "item_fields": [
+        {"id": "goal", "type": "textarea", "label": "Goal description", "required": true}
+      ]
+    },
+    {
+      "id": "support_coordinator",
+      "label": "Support Coordinator",
+      "fields": [
+        {"id": "coordinator_name", "type": "text", "label": "Support Coordinator Name", "required": false},
+        {"id": "coordinator_email", "type": "email", "label": "Support Coordinator Email", "required": false}
+      ]
+    },
+    {
+      "id": "allocated_funding",
+      "label": "Allocated funding for this provider",
+      "fields": [
+        {"id": "daily_living", "type": "currency", "label": "Daily Living ($)", "required": false},
+        {"id": "social_community", "type": "currency", "label": "Social & Community ($)", "required": false},
+        {"id": "support_coordination", "type": "currency", "label": "Support Coordination ($)", "required": false},
+        {"id": "improved_daily_living", "type": "currency", "label": "Improved Daily Living ($)", "required": false}
+      ]
+    },
+    {
+      "id": "schedule_of_supports",
+      "label": "Schedule of Supports",
+      "repeatable": {"min": 1, "max": 20},
+      "item_fields": [
+        {"id": "support_name", "type": "text", "label": "Support Name", "required": true},
+        {
+          "id": "support_category",
+          "type": "enum",
+          "label": "Support Category",
+          "required": true,
+          "options": [
+            "Personal Care",
+            "Core Supports",
+            "Capacity Building",
+            "Social & Community",
+            "Support Coordination",
+            "Improved Living Arrangements",
+            "Other"
+          ]
+        },
+        {"id": "description", "type": "textarea", "label": "Description", "required": false},
+        {
+          "id": "frequency",
+          "type": "enum",
+          "label": "Frequency",
+          "required": true,
+          "options": ["As Required", "Daily", "Weekly", "Fortnightly", "Monthly"]
+        },
+        {"id": "duration_hours", "type": "number", "label": "Duration (hours)", "required": false},
+        {
+          "id": "days",
+          "type": "multi_enum",
+          "label": "Days",
+          "required": true,
+          "options": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        },
+        {"id": "start_time", "type": "time", "label": "Start time", "required": false},
+        {"id": "end_time", "type": "time", "label": "End time", "required": false}
+      ]
+    }
+  ]
+}

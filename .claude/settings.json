@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/Admin/Downloads/SENA/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "*",
@@ -18,6 +29,35 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/post-tool-use.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/bump-updated.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/architecture-reminder.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /c/Users/Admin/Downloads/SENA/.claude/hooks/stop.sh"
           }
         ]
       }

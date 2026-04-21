@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SENA Onboarding — Test Harness</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --accent: #2563eb;
+    --accent-d: #1d4ed8;
+    --green: #059669;
+    --red: #dc2626;
+    --yellow: #d97706;
+    --chip: #e0f2fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    max-width: 1100px; margin: 24px auto; padding: 0 16px;
+    background: var(--bg); color: var(--ink);
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: .85rem; margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .card h3 {
+    margin: 0 0 10px; font-size: .75rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .phase-tag {
+    display: inline-block; background: var(--chip); color: var(--accent-d);
+    padding: 1px 8px; border-radius: 10px; font-size: .65rem; font-weight: 700;
+    margin-left: 6px; letter-spacing: .03em;
+  }
+  .phase-tag.todo { background: #fee2e2; color: var(--red); }
+  label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: #fff; color: var(--ink);
+  }
+  textarea { font-family: ui-monospace, Consolas, monospace; font-size: .75rem; min-height: 80px; }
+  button {
+    padding: 8px 14px; border: none; border-radius: 6px; font-weight: 600;
+    cursor: pointer; margin-right: 6px; font-size: .85rem;
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-start   { background: var(--green);  color: #fff; }
+  .btn-stop    { background: var(--red);    color: #fff; }
+  .btn-ghost   { background: #f1f5f9; color: var(--ink); }
+
+  .status {
+    padding: 10px 12px; border-radius: 6px; font-size: .85rem; font-weight: 500;
+    margin: 8px 0;
+  }
+  .status.idle  { background: #f1f5f9; color: #475569; }
+  .status.live  { background: #dcfce7; color: #166534; }
+  .status.speak { background: #dbeafe; color: #1e3a8a; }
+  .status.error { background: #fee2e2; color: #991b1b; }
+
+  .mic-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    background: #9ca3af; margin-right: 6px; vertical-align: middle;
+  }
+  .mic-dot.live { background: var(--green); box-shadow: 0 0 0 3px rgba(5,150,105,.25); }
+
+  .kv { display: flex; justify-content: space-between; font-size: .8rem; padding: 3px 0; }
+  .kv code { font-family: ui-monospace, Consolas, monospace; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; }
+
+  .section { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 10px; }
+  .section:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+  .section h4 { margin: 0 0 8px; font-size: .85rem; color: var(--ink); }
+  .field {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    padding: 4px 0; border-bottom: 1px solid #f1f5f9; font-size: .82rem;
+  }
+  .field-label { color: var(--muted); }
+  .field-label .req { color: var(--red); margin-left: 2px; }
+  .field-value { font-weight: 600; color: var(--ink); }
+  .field-value.empty { color: #cbd5e1; font-weight: 400; font-style: italic; }
+  .field.updated { background: #fef9c3; animation: flash 1.4s ease; }
+  @keyframes flash { from { background: #fde047; } to { background: transparent; } }
+
+  .completion-bar {
+    height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; margin-top: 6px;
+  }
+  .completion-bar > span { display: block; height: 100%; background: var(--green); transition: width .3s; }
+
+  .transcript { max-height: 220px; overflow-y: auto; font-size: .82rem; }
+  .turn { margin: 6px 0; padding: 6px 10px; border-radius: 6px; }
+  .turn.user { background: #eff6ff; color: #1e40af; }
+  .turn.agent { background: #f0fdf4; color: #166534; }
+  .turn .who { font-weight: 700; font-size: .7rem; text-transform: uppercase; margin-right: 6px; }
+
+  #log {
+    font-family: ui-monospace, Consolas, monospace; font-size: .7rem; color: #475569;
+    max-height: 180px; overflow-y: auto; background: #fff;
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px;
+  }
+  .log-tool { color: var(--accent-d); }
+  .log-err  { color: var(--red); }
+  .log-ok   { color: var(--green); }
+
+  .placeholder {
+    padding: 14px; background: repeating-linear-gradient(45deg, #fafafa, #fafafa 10px, #f4f4f5 10px, #f4f4f5 20px);
+    border: 1px dashed var(--border); border-radius: 6px;
+    color: var(--muted); text-align: center; font-size: .85rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>SENA Onboarding — Voice API Test Harness</h1>
+<p class="sub">Standalone browser client for verifying each phase as it ships. Served at <code>/harness</code>.</p>
+
+<div class="card">
+  <h3>Phase A — REST session <span class="phase-tag">shipped</span></h3>
+  <div class="grid">
+    <div>
+      <label>Step schema</label>
+      <select id="schemaSelect">
+        <option value="personal_information">Personal Information</option>
+        <option value="participant_requirements">Participant Requirements</option>
+        <option value="ndis_plan_details">NDIS Plan Details</option>
+        <option value="documents">Documents</option>
+        <option value="medical_information">Medical Information</option>
+      </select>
+    </div>
+    <div>
+      <label>Participant ID</label>
+      <input type="text" id="participantId" value="p-harness-001" />
+    </div>
+  </div>
+  <div style="margin-top: 10px;">
+    <button id="createBtn" class="btn-primary">Create Session</button>
+    <button id="getStateBtn" class="btn-ghost" disabled>GET /state</button>
+    <button id="completeBtn" class="btn-ghost" disabled>POST /complete (fire webhook)</button>
+  </div>
+  <div class="status idle" id="sessionStatus">No session.</div>
+  <div class="kv"><span>session_id</span><code id="sidDisplay">—</code></div>
+  <div class="kv"><span>ws_url</span><code id="wsUrlDisplay">—</code></div>
+</div>
+
+<div class="card">
+  <h3>Phase B — WebSocket + Gemini Live <span class="phase-tag">shipped</span></h3>
+  <div>
+    <button id="startBtn" class="btn-start" disabled>Start Voice Session</button>
+    <button id="stopBtn"  class="btn-stop"  disabled>Stop</button>
+    <button id="beepBtn"  class="btn-ghost" disabled>Test Speaker Beep</button>
+  </div>
+  <div class="status idle" id="wsStatus"><span class="mic-dot" id="micDot"></span><span id="wsStatusText">Voice idle.</span></div>
+  <div class="transcript" id="transcript"></div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h3>Phase C — Tool-driven form <span class="phase-tag">shipped</span></h3>
+    <div id="completionSummary" class="sub">Create a session to render the form.</div>
+    <div class="completion-bar"><span id="completionFill" style="width:0%"></span></div>
+    <div id="formRender" style="margin-top: 10px;"></div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h3>Phase D — Vision ingress <span class="phase-tag todo">todo</span></h3>
+      <div class="placeholder">Camera + screen frame capture buttons will land here.</div>
+    </div>
+    <div class="card">
+      <h3>Phase E — Resumption + grounding <span class="phase-tag todo">todo</span></h3>
+      <div class="placeholder">Resumption handle display + Google Search toggle.</div>
+    </div>
+    <div class="card">
+      <h3>Event log</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   State
+   ═══════════════════════════════════════════════════════════════════════════ */
+let sessionId = null;
+let schema = null;
+let formState = null;
+let ws = null;
+let playCtx = null, micCtx = null;
+let mediaStream = null, micSource = null, processor = null, silentGain = null;
+let playHead = 0;
+let streaming = false;
+let pendingResume = null;
+let audioBytesThisTurn = 0;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Helpers — all DOM writes use textContent (XSS-safe)
+   ═══════════════════════════════════════════════════════════════════════════ */
+function $(id) { return document.getElementById(id); }
+
+function log(msg, cls) {
+  const el = $('log');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = new Date().toLocaleTimeString() + '  ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function setSessionStatus(text, cls) {
+  const el = $('sessionStatus');
+  el.textContent = text;
+  el.className = 'status ' + cls;
+}
+function setWsStatus(text, cls, micLive) {
+  $('wsStatus').className = 'status ' + cls;
+  $('micDot').className = 'mic-dot' + (micLive ? ' live' : '');
+  $('wsStatusText').textContent = text;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase A — REST session lifecycle
+   ═══════════════════════════════════════════════════════════════════════════ */
+$('createBtn').addEventListener('click', async () => {
+  const stepId = $('schemaSelect').value;
+  const participantId = $('participantId').value.trim() || 'p-harness-001';
+
+  setSessionStatus('Loading fixture…', 'idle');
+  try {
+    const fres = await fetch('/harness/fixtures/' + stepId);
+    if (!fres.ok) throw new Error('Fixture load failed: ' + fres.status);
+    schema = await fres.json();
+  } catch (e) {
+    setSessionStatus('Fixture error: ' + e.message, 'error');
+    return;
+  }
+
+  setSessionStatus('Creating session…', 'idle');
+  try {
+    const res = await fetch('/v1/onboarding/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        participant_id: participantId,
+        step: stepId,
+        schema: schema,
+        locale: 'en-AU',
+      }),
+    });
+    if (!res.ok) throw new Error('POST /session → ' + res.status);
+    const data = await res.json();
+    sessionId = data.session_id;
+    $('sidDisplay').textContent = sessionId;
+    $('wsUrlDisplay').textContent = data.ws_url;
+    setSessionStatus('Session created. Ready to start voice.', 'live');
+    log('Session created: ' + sessionId, 'log-ok');
+    $('startBtn').disabled = false;
+    $('beepBtn').disabled  = false;
+    $('getStateBtn').disabled = false;
+    $('completeBtn').disabled = false;
+    await refreshState();
+    renderForm();
+  } catch (e) {
+    setSessionStatus('Create failed: ' + e.message, 'error');
+    log('Create failed: ' + e.message, 'log-err');
+  }
+});
+
+$('getStateBtn').addEventListener('click', refreshState);
+
+async function refreshState() {
+  if (!sessionId) return;
+  try {
+    const res = await fetch('/v1/onboarding/session/' + sessionId + '/state');
+    if (!res.ok) throw new Error('GET /state → ' + res.status);
+    formState = await res.json();
+    renderForm();
+  } catch (e) {
+    log('GET /state failed: ' + e.message, 'log-err');
+  }
+}
+
+$('completeBtn').addEventListener('click', async () => {
+  if (!sessionId) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    log('Close WS before POST /complete (or use advance_step tool).', 'log-err');
+    return;
+  }
+  try {
+    const res = await fetch('/v1/onboarding/session/' + sessionId + '/complete', { method: 'POST' });
+    const data = await res.json();
+    log('POST /complete → webhook_delivered=' + data.webhook_delivered, data.webhook_delivered ? 'log-ok' : 'log-err');
+  } catch (e) {
+    log('POST /complete failed: ' + e.message, 'log-err');
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase C — live form rendering (all textContent, no innerHTML)
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderForm(highlight) {
+  if (!schema) return;
+  const container = $('formRender');
+  container.textContent = '';
+
+  for (const section of schema.sections) {
+    const secDiv = document.createElement('div');
+    secDiv.className = 'section';
+    const h = document.createElement('h4');
+    h.textContent = section.label || section.id;
+    secDiv.appendChild(h);
+
+    const fields = section.fields || section.item_fields || [];
+    const sectionValues = (formState && formState.values && formState.values[section.id]) || null;
+
+    if (section.repeatable && Array.isArray(sectionValues)) {
+      sectionValues.forEach((row, idx) => {
+        for (const f of fields) secDiv.appendChild(renderField(section.id, f, row[f.id], highlight, idx));
+      });
+    } else {
+      for (const f of fields) {
+        const val = sectionValues ? sectionValues[f.id] : null;
+        secDiv.appendChild(renderField(section.id, f, val, highlight, null));
+      }
+    }
+    container.appendChild(secDiv);
+  }
+
+  if (formState && formState.completion) {
+    const c = formState.completion;
+    const pct = c.required_total > 0 ? Math.round(c.required_filled / c.required_total * 100) : 0;
+    $('completionSummary').textContent =
+      'Required: ' + c.required_filled + '/' + c.required_total +
+      '  ·  Optional: ' + c.optional_filled + '/' + c.optional_total +
+      '  ·  ' + pct + '% complete' + (c.complete ? '  ✓' : '');
+    $('completionFill').style.width = pct + '%';
+  }
+}
+
+function renderField(sectionId, fieldSpec, fieldVal, highlight, idx) {
+  const row = document.createElement('div');
+  row.className = 'field';
+  const targetKey = sectionId + '.' + fieldSpec.id + (idx !== null ? '[' + idx + ']' : '');
+  if (highlight === targetKey) row.classList.add('updated');
+
+  const label = document.createElement('div');
+  label.className = 'field-label';
+  label.textContent = fieldSpec.label || fieldSpec.id;
+  if (fieldSpec.required) {
+    const r = document.createElement('span');
+    r.className = 'req';
+    r.textContent = '*';
+    label.appendChild(r);
+  }
+
+  const valDiv = document.createElement('div');
+  valDiv.className = 'field-value';
+  let display = null;
+  if (fieldVal && typeof fieldVal === 'object' && 'value' in fieldVal) display = fieldVal.value;
+  if (display === null || display === undefined || display === '') {
+    valDiv.classList.add('empty');
+    valDiv.textContent = '—';
+  } else {
+    valDiv.textContent = String(display);
+    if (fieldVal && fieldVal.source) {
+      const tag = document.createElement('span');
+      tag.style.cssText = 'font-size:.65rem;color:var(--muted);margin-left:6px;font-weight:400';
+      tag.textContent = '(' + fieldVal.source +
+        (fieldVal.confidence ? ' ' + fieldVal.confidence.toFixed(2) : '') + ')';
+      valDiv.appendChild(tag);
+    }
+  }
+
+  row.appendChild(label);
+  row.appendChild(valDiv);
+  return row;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase B — WS + audio (ported from demo_client.html — same Windows-safe pattern)
+   ═══════════════════════════════════════════════════════════════════════════ */
+function floatTo16BitPCM(f32) {
+  const buf = new ArrayBuffer(f32.length * 2);
+  const view = new DataView(buf);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return buf;
+}
+function downsampleTo16k(f32, fromRate) {
+  if (fromRate === 16000) return f32;
+  const ratio = fromRate / 16000;
+  const out = new Float32Array(Math.floor(f32.length / ratio));
+  for (let i = 0; i < out.length; i++) out[i] = f32[Math.floor(i * ratio)];
+  return out;
+}
+function upsampleTo(ctxRate, f32src) {
+  if (ctxRate === 24000) return f32src;
+  const ratio = 24000 / ctxRate;
+  const outLen = Math.floor(f32src.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const srcIdx = i * ratio;
+    const i0 = Math.floor(srcIdx);
+    const i1 = Math.min(i0 + 1, f32src.length - 1);
+    const frac = srcIdx - i0;
+    out[i] = f32src[i0] * (1 - frac) + f32src[i1] * frac;
+  }
+  return out;
+}
+function ensurePlayCtxRunning() {
+  if (!playCtx) return Promise.resolve();
+  if (playCtx.state === 'running') return Promise.resolve();
+  if (!pendingResume) pendingResume = playCtx.resume().finally(() => { pendingResume = null; });
+  return pendingResume;
+}
+async function playPCM16(arrayBuffer) {
+  if (!playCtx) return;
+  await ensurePlayCtxRunning();
+  const int16 = new Int16Array(arrayBuffer);
+  const f32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768.0;
+  const rate = playCtx.sampleRate;
+  const upsampled = upsampleTo(rate, f32);
+  const buf = playCtx.createBuffer(1, upsampled.length, rate);
+  buf.getChannelData(0).set(upsampled);
+  const src = playCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(playCtx.destination);
+  const LOOKAHEAD = 0.08;
+  const earliest = playCtx.currentTime + LOOKAHEAD;
+  const startAt = Math.max(earliest, playHead);
+  src.start(startAt);
+  playHead = startAt + buf.duration;
+  audioBytesThisTurn += arrayBuffer.byteLength;
+}
+$('beepBtn').addEventListener('click', () => {
+  if (!playCtx) {
+    playCtx = new AudioContext();
+    playHead = playCtx.currentTime;
+  }
+  const osc = playCtx.createOscillator();
+  const gain = playCtx.createGain();
+  osc.frequency.value = 440;
+  gain.gain.value = 0.15;
+  osc.connect(gain); gain.connect(playCtx.destination);
+  osc.start(); osc.stop(playCtx.currentTime + 0.3);
+  log('Test beep (440 Hz, 300 ms) — if silent, speaker muted.');
+});
+
+function startMicStreaming() {
+  micCtx = playCtx;
+  const rate = micCtx.sampleRate;
+  micSource = micCtx.createMediaStreamSource(mediaStream);
+  processor = micCtx.createScriptProcessor(2048, 1, 1);
+  streaming = true;
+  processor.onaudioprocess = (ev) => {
+    if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+    const down = downsampleTo16k(ev.inputBuffer.getChannelData(0), rate);
+    ws.send(floatTo16BitPCM(down));
+  };
+  silentGain = micCtx.createGain();
+  silentGain.gain.value = 0;
+  micSource.connect(processor);
+  processor.connect(silentGain);
+  silentGain.connect(micCtx.destination);
+  log('Mic streaming at ' + rate + ' Hz → 16 kHz PCM');
+}
+function cleanupMic() {
+  streaming = false;
+  try { processor && processor.disconnect(); } catch {}
+  try { micSource && micSource.disconnect(); } catch {}
+  try { silentGain && silentGain.disconnect(); } catch {}
+  try { mediaStream && mediaStream.getTracks().forEach(t => t.stop()); } catch {}
+  processor = micSource = silentGain = micCtx = mediaStream = null;
+}
+
+$('startBtn').addEventListener('click', async () => {
+  if (!sessionId) return;
+  $('startBtn').disabled = true;
+  setWsStatus('Connecting…', 'idle', false);
+
+  if (!playCtx) { playCtx = new AudioContext(); playHead = playCtx.currentTime; }
+  try { await playCtx.resume(); } catch {}
+  // Warmup beep: keeps AudioContext "hot" so Chrome doesn't auto-suspend it
+  // between now and when Gemini's first audio chunk arrives. Without this,
+  // ensurePlayCtxRunning()'s .resume() inside ws.onmessage silently fails
+  // (not a user gesture) → Gemini audio arrives but plays silently.
+  try {
+    const o = playCtx.createOscillator(), g = playCtx.createGain();
+    o.frequency.value = 440; g.gain.value = 0.08;
+    o.connect(g); g.connect(playCtx.destination);
+    o.start(); o.stop(playCtx.currentTime + 0.12);
+    log('warmup beep (ctx=' + playCtx.state + ' rate=' + playCtx.sampleRate + ')');
+  } catch {}
+
+  try {
+    // Firefox + shared AudioContext: echoCancellation=true causes Firefox's
+    // AEC to treat Gemini's 24 kHz playback as "echo" and cancel it from the
+    // speaker output — the system audio becomes SILENT while the mic still
+    // picks up speech. Disable AEC/NS/AGC. User must wear headphones to
+    // prevent mic feedback loops.
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    setWsStatus('Mic denied: ' + e.message, 'error', false);
+    $('startBtn').disabled = false;
+    return;
+  }
+
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(scheme + '://' + location.host + '/ws/onboarding/' + sessionId);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    log('WS open — sending {type:start}', 'log-ok');
+    ws.send(JSON.stringify({ type: 'start' }));
+  };
+
+  ws.onmessage = async (ev) => {
+    if (ev.data instanceof ArrayBuffer) {
+      await playPCM16(ev.data);
+      return;
+    }
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { log('non-json text received'); return; }
+    handleServerMessage(msg);
+  };
+
+  ws.onerror = () => { log('WS error', 'log-err'); };
+  ws.onclose = (ev) => {
+    setWsStatus('WS closed (code=' + ev.code + ')', 'idle', false);
+    log('WS closed code=' + ev.code + ' reason=' + (ev.reason || ''));
+    cleanupMic();
+    $('startBtn').disabled = !sessionId;
+    $('stopBtn').disabled  = true;
+  };
+});
+
+$('stopBtn').addEventListener('click', () => {
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'stop' }));
+      ws.close();
+    }
+  } catch {}
+});
+
+function handleServerMessage(msg) {
+  switch (msg.type) {
+    case 'ready':
+      formState = msg.state;
+      setWsStatus('Voice live — speak your first message.', 'live', true);
+      $('stopBtn').disabled = false;
+      log('ready — ' + (formState.completion.required_filled) + '/' + formState.completion.required_total + ' required filled');
+      startMicStreaming();
+      renderForm();
+      break;
+
+    case 'user_said':
+      appendTurn('user', msg.text);
+      break;
+    case 'agent_said':
+      appendTurn('agent', msg.text);
+      break;
+
+    case 'turn_start':
+      audioBytesThisTurn = 0;
+      // Reset stale playHead — if no audio played for a while, playHead is in
+      // the past and src.start(startAt) schedules chunks behind currentTime.
+      if (playCtx && playHead < playCtx.currentTime) playHead = playCtx.currentTime;
+      setWsStatus('Agent speaking…', 'speak', true);
+      log('▶ agent reply starting (ctx=' + (playCtx && playCtx.state) + ')');
+      break;
+    case 'turn_complete':
+      setWsStatus('Voice live — listening.', 'live', true);
+      log('✓ agent reply done (' + audioBytesThisTurn + ' bytes)');
+      break;
+    case 'interrupted':
+      log('interrupted');
+      break;
+
+    case 'field_updated': {
+      const key = msg.section + '.' + msg.field +
+        (msg.repeatable_index !== null && msg.repeatable_index !== undefined ? '[' + msg.repeatable_index + ']' : '');
+      log('field_updated: ' + key + ' = ' + JSON.stringify(msg.value) +
+          ' (conf=' + (msg.confidence || '—') + ')', 'log-tool');
+      renderForm(key);
+      break;
+    }
+    case 'state':
+      formState = msg.state;
+      renderForm();
+      break;
+
+    case 'step_completed':
+      formState = msg.state;
+      renderForm();
+      setWsStatus('Step complete — webhook fired.', 'live', false);
+      log('step_completed', 'log-ok');
+      break;
+
+    case 'escalated':
+      log('ESCALATED: ' + msg.reason + ' — ' + (msg.transcript_excerpt || ''), 'log-err');
+      break;
+
+    case 'error':
+      log('error ' + msg.code + ': ' + msg.message, 'log-err');
+      setWsStatus('Error: ' + msg.code, 'error', false);
+      break;
+
+    default:
+      log('unknown msg: ' + msg.type);
+  }
+}
+
+function appendTurn(who, text) {
+  const t = $('transcript');
+  const div = document.createElement('div');
+  div.className = 'turn ' + who;
+
+  const whoSpan = document.createElement('span');
+  whoSpan.className = 'who';
+  whoSpan.textContent = who;
+  div.appendChild(whoSpan);
+
+  const textSpan = document.createElement('span');
+  textSpan.textContent = text;
+  div.appendChild(textSpan);
+
+  t.appendChild(div);
+  t.scrollTop = t.scrollHeight;
+}
+
+log('Harness ready. Create a session, then Start Voice.');
+</script>
+
+</body>
+</html>

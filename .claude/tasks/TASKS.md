@@ -1,10 +1,10 @@
 ---
 title: Persistent Task List
-updated: 2026-04-17
+updated: 2026-04-21
 ---
 
-> Last session end-state (2026-04-17 PM): continuous-streaming voice demo WORKING.
-> Turn-by-turn conversation confirmed via USER_SAID / GEMINI_SAID logs. See task #1.
+> Last session end-state (2026-04-20): voice demo WORKING. User paused, will resume in new session.
+> **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
 
@@ -17,51 +17,72 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ## Active
 
 ### #1 — Voice assistant: conversational streaming (Siri/Assistant-style)
-- **Status:** completed (2026-04-17, WORKING end-to-end after 4 iteration cycles)
-- **Priority:** P0 (primary blocker)
-- **Final solution summary:**
-  - **Pattern**: continuous mic streaming + Gemini-native VAD (no push-to-talk, no `audio_stream_end`, no keepalive nudge)
-  - **Client (`sena-ai/demo_client.html`)**:
-    - Single shared `AudioContext` for mic + playback (dual contexts silently fail on Windows WASAPI)
-    - Manual upsample 24kHz→native rate before `createBuffer` (bypasses buggy browser resampler)
-    - 80ms lookahead + awaited `resume()` before scheduling (avoids frozen-clock silent playback)
-    - Test beep on Start (diagnoses speaker chain independent of Gemini)
-  - **Server (`sena-ai/demo_live_server.py`)**:
-    - `realtime_input_config` with explicit `automatic_activity_detection` — REQUIRED for multi-turn on `gemini-3.1-flash-live-preview`
-    - `session_resumption`, `input_audio_transcription`, `output_audio_transcription` enabled
-    - **CRITICAL**: `session.receive()` returns after each turn batch. Must wrap in `while True: async for msg in session.receive(): ... continue` — a `return` after the iterator ends kills the conversation
-    - `await b2g` lifecycle (NOT `asyncio.wait(FIRST_COMPLETED)` — that tears down session when g2b exits after turn 1)
-    - Transcription logs `USER_SAID` / `GEMINI_SAID` for debugging
-- **Verified working:** multi-turn conversation with turn_start/turn_complete cycling, transcription proves pipeline end-to-end.
-
-### #2 — Update wiki pages for Gemini Live changes
 - **Status:** completed (2026-04-17)
-- **Done:**
-  - `wiki/log.md` — 2026-04-17 entry appended
-  - `wiki/pages/personal-details-flow.md` — added WebSocket Live mode, SDK API surface notes
-  - `wiki/pages/llm-provider-decision.md` — split REST vs Live rows, model history, MCP/Skills rule
+- **Priority:** P0 (primary blocker, now cleared)
+- **Final solution:** see `wiki/pages/gemini-live-multi-turn-config.md` + `memory/feedback_gemini_live_patterns.md`
+- **Files:** `sena-ai/demo_live_server.py`, `sena-ai/demo_client.html`
+- **Verified:** multi-turn confirmed via USER_SAID/GEMINI_SAID logs
 
-### #3 — Update CLAUDE.md with session-learned rules
-- **Status:** completed (2026-04-17)
-- **Done:** Added "Gemini API Rules (MANDATORY)", "Demo Stack", "Cleanup Rule" sections to project `CLAUDE.md`.
-
-### #4 — Session context snapshot for next session resume
-- **Status:** in_progress
-- **Done:**
-  - Persistent task file at `.claude/tasks/TASKS.md` (this file)
-  - Memory at `~/.claude/projects/.../memory/feedback_mcp_skills.md`
-  - CLAUDE.md Gemini rules section
-- **Remaining:** None. Next session reads this file + CLAUDE.md + memory index.
+### #2 — Wiki + memory + planning docs for session resume
+- **Status:** completed (2026-04-20)
+- **Artifacts written:**
+  - `.claude/SESSION_START.md` — read-order guide for new sessions (NEW)
+  - `.planning/FEATURES_LEFT.md` — full roadmap across 13 categories
+  - `.planning/GEMINI_LIVE_NATIVE_SCOPE.md` — voice-only, Gemini-native scope
+  - `wiki/pages/gemini-live-multi-turn-config.md` — authoritative Live API config
+  - `memory/feedback_gemini_live_patterns.md` — hard-won multi-turn rules
+  - `memory/project_voice_demo_working.md` — demo working-state memory
 
 ---
 
-## Backlog (deferred)
+## Next up (picked by user when resuming)
 
-- Audio transcription display in demo UI (show what Gemini hears + says)
-- Wire `GeminiLiveService` into production voice service (currently demo-only)
-- AU data residency sign-off for Gemini Live (blocker before production Live mode)
-- Session resumption + context window compression (Gemini Live has 10-min connection lifetime)
-- Ephemeral token auth for client-side (so browser doesn't hold API key)
+### #9 — Onboarding Voice API (consolidates #3–#8)
+- **Status:** in_progress (Phase C complete 2026-04-21)
+- **Priority:** P1
+- **Scope:** Tasks #3, #4, #5, #6, #7, #8 rolled into a single API-first delivery
+- **Why consolidated:** mobile app already exists (screens in `SENA SCREENS ONBORDING/`); we build the backend only — all six tasks naturally share the same session model, WS protocol, and state store
+- **Plan:** `.planning/ONBOARDING_VOICE_API_PLAN.md` (full architecture, API contract, 6 build phases)
+- **Decisions locked (from user, 2026-04-20):**
+  - Webhook to mock URL on step completion
+  - Auth skipped MVP (pluggable seam for later)
+  - One voice session == one onboarding step (clean resume semantics)
+  - App backend owns schema, passes inline in session-create payload
+  - FormState writer = voice only during WS; app PUTs only when WS closed
+  - Document/photo capture via voice skipped (app handles)
+  - Locale = Australian English (`en-AU`)
+- **Source of form structure:** 17 screens in `C:\Users\Admin\Downloads\SENA\SENA SCREENS ONBORDING\` (analyzed 2026-04-20) — 5 steps + 6-section consent flow
+- **Phases:**
+  - A: REST scaffold + Redis state store + webhook ✓ (36/36 tests, 2026-04-20)
+  - B: WS endpoint + Gemini Live wiring + system prompt injection (#3) ✓ (2026-04-21)
+  - C: Tool calling — `update_field`, `get_session_context`, `advance_step`, `escalate_incident` (#4) ✓ (2026-04-21, 48/48 tests)
+  - D: Camera + screen frame ingress via `send_realtime_input(video=Blob)` (#5 + #6) ← next
+  - E: Session resumption + Google Search grounding (#7 + #8)
+  - F: OpenAPI docs + WS protocol doc + Postman collection + dev harness update
+- **Acceptance:** mobile engineer can integrate from docs alone; webhook fires with final FormState; resumption works across reconnect; grounded NDIS answers
+
+### Individual tasks (folded into #9)
+- #3 Form-aware system prompt — Phase B
+- #4 Tool calling scaffold — Phase C
+- #5 Camera frames — Phase D
+- #6 Screen state frames — Phase D
+- #7 Session resumption — Phase E
+- #8 Google Search grounding — Phase E
+
+---
+
+## Backlog (deferred, blocked, or later milestone)
+
+- Production voice service migration: `gemini_live_service.py` uses OLD API → migrate to `send_realtime_input` pattern from demo
+- ~~Wiring `ws_routes.py` with demo's VAD config + receive-loop pattern~~ — done in Phase B
+- Audio transcription display in demo UI
+- RAG over NDIS documents (pgvector + structure-aware chunking) — BLOCKED on client sample docs
+- OCR service implementation — BLOCKED on client document samples
+- JWT auth + RLS policies — BLOCKED on client JWT claims structure
+- Context window compression for >15 min sessions
+- Ephemeral token auth for browser-side
+- Flow B (case note dictation) LiveKit Agent pattern
+- AU data residency sign-off for Gemini Live (production blocker)
 
 ---
 
