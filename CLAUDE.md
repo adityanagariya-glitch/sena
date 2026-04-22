@@ -342,4 +342,10 @@ When removing "dead code", ALWAYS grep the full codebase for the file/symbol nam
 
 **NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.
 
+## Paused Features
+
+| Feature | Status | Snapshot |
+|---------|--------|----------|
+| Phase D — Camera + Screen Ingress | PAUSED - BLOCKED (office dep) | [.planning/paused_state_phase_d_camera_screen_ingress.md](.planning/paused_state_phase_d_camera_screen_ingress.md) |
+
 <!-- Last auto-updated: 2026-04-16 00:23:07 by hook -->

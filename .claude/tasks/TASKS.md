@@ -1,6 +1,6 @@
 ---
 title: Persistent Task List
-updated: 2026-04-21
+updated: 2026-04-22
 ---
 
 > Last session end-state (2026-04-21): Phases A+B+C complete. Harness routes live at /harness + /harness/fixtures/{step_id}. pip install -e . required to run onboarding service.
@@ -39,7 +39,9 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ## Next up (picked by user when resuming)
 
 ### #9 — Onboarding Voice API (consolidates #3–#8)
-- **Status:** in_progress (Phase C complete 2026-04-21)
+- **Status:** PAUSED - BLOCKED (2026-04-22, office dep) — Phase C complete, Phase D not started
+- **Resume via:** `.planning/paused_state_phase_d_camera_screen_ingress.md`
+- **Prior status:** in_progress (Phase C complete 2026-04-21)
 - **Priority:** P1
 - **Scope:** Tasks #3, #4, #5, #6, #7, #8 rolled into a single API-first delivery
 - **Why consolidated:** mobile app already exists (screens in `SENA SCREENS ONBORDING/`); we build the backend only — all six tasks naturally share the same session model, WS protocol, and state store
