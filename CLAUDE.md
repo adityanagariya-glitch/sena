@@ -12,7 +12,7 @@ SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service pro
 
 ## Architecture
 
-Monorepo at `sena-ai/` with Python microservices. Currently one active service (voice), one scaffolded (ocr).
+Monorepo at `sena-ai/` with Python microservices. Active services: voice (8082), onboarding (8083), case_review (8084). OCR scaffolded.
 
 **Root-level files:**
 ```
@@ -21,16 +21,37 @@ SENA/
 ├── AGENTS.md           # Guidance for agentic coding agents in this repo
 ├── requirements.txt    # Root-level Python dependencies
 ├── sena-ai/            # Monorepo — all AI/ML services
-├── wiki/               # LLM-maintained knowledge base
+├── wiki/               # LLM-maintained knowledge base (synthesis layer)
+├── ndis_wiki/          # NDIS regulatory source documents (raw evidence layer)
 └── graphify-out/       # Auto-generated knowledge graph
 ```
+
+### Knowledge Layers
+
+Two distinct knowledge stores — do NOT confuse them:
+
+| Directory | Purpose | Contents | Mutability |
+|-----------|---------|----------|------------|
+| `wiki/` | LLM synthesis layer — architecture, domain knowledge, client requirements | Pages written/maintained by Claude | Mutable — Claude writes/updates |
+| `ndis_wiki/` | Regulatory source layer — official NDIS Commission PDFs converted to markdown | `sources/` (raw), `pages/summaries/`, `pages/entities/`, `pages/concepts/`, `index.md`, `GEMINI.md` | Sources immutable; pages updated on ingest |
+
+**`ndis_wiki/` schema** (see `ndis_wiki/GEMINI.md` for full protocol):
+- `sources/` — raw markdown from official NDIS PDFs. **Immutable.**
+- `pages/summaries/` — one summary per source doc
+- `pages/entities/` — organizations, roles (NDIS Commission, Provider, Worker, Participant…)
+- `pages/concepts/` — policies, frameworks (Code of Conduct, Compliance, Restrictive Practices…)
+- `index.md` — master catalog
+- `log.md` — append-only operation log
+
+**When to use `ndis_wiki/`:** NDIS compliance questions, regulatory references, RAG pipeline source docs, grounding NDIS answers in the onboarding voice flow.
 
 **`sena-ai/` monorepo:**
 ```
 sena-ai/
 ├── services/
-│   ├── voice/          # Active — Flow B case note dictation
+│   ├── voice/          # Active — Flow B case note dictation (port 8082)
 │   ├── onboarding/     # Active — Voice onboarding API (Gemini Live, port 8083)
+│   ├── case_review/    # Active — Case note review + intelligence layer (port 8084)
 │   └── ocr/            # Scaffolded, not yet implemented
 ├── shared/             # sena-common shared library (DB, middleware, schemas)
 ├── migrations/         # Alembic DB migrations + init SQL + RLS setup scripts
@@ -108,12 +129,13 @@ Layered architecture at `sena-ai/services/voice/src/voice/`:
 ### External dependencies
 
 - **AWS Bedrock** (Claude 3.5 Sonnet) — LLM for case note generation (Flow B dictation)
-- **Google Gemini** (`gemini-2.0-flash`) — LLM for personal details onboarding flow (replaces Bedrock for that flow)
+- **Google Gemini** (`gemini-2.0-flash`) — LLM for personal details onboarding flow + case review (summarise, classify, review)
 - **AWS SNS** — event publishing for case note lifecycle
 - **LiveKit** — real-time voice conferencing
 - **Redis** — session state, rate limiting, distributed locks
-- **PostgreSQL + pgvector** (ai-db, port 5433) — voice session/case note data
+- **PostgreSQL + pgvector** (ai-db, port 5433) — voice session/case note data + case review tables
 - **PostgreSQL** (shared-db, port 5434) — cross-service platform data
+- **Other engineer's drafting service** (port 8085, stub in Phase A) — source of past case notes for context
 
 ### LLM split
 
@@ -121,6 +143,47 @@ Layered architecture at `sena-ai/services/voice/src/voice/`:
 |------|----------|-------|---------|
 | Flow B — case note dictation | AWS Bedrock | Claude 3.5 Sonnet | `SENA_AI_BEDROCK_MODEL_ID` |
 | Onboarding voice (Live API) | Google Gemini Live | `gemini-3.1-flash-live-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_LIVE_MODEL_ID` |
+| Case review (summarise/classify/review) | Google Gemini | `gemini-2.0-flash` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_MODEL_ID` |
+
+### Case Review Service — AI intelligence layer around case notes
+
+At `sena-ai/services/case_review/src/case_review/`. Port 8084, ai-db (pgvector).
+
+| Layer | Path | Purpose |
+|-------|------|---------|
+| API | `api/routes.py` | 6 REST endpoints (context, classify, review, incident/*, submit) + health |
+| API | `api/deps.py` | DI: AsyncSession, ReviewRepo, CaseNoteClient, AuthContext (dev_header) |
+| Models | `models/db.py` | 4 ORM tables: RollingSummary, ReviewSession, IncidentDraft, ReviewAuditLog |
+| Models | `models/schemas.py` | Pydantic DTOs for all endpoints |
+| Repositories | `repositories/review_repo.py` | CRUD + upsert (rolling summary) + audit append |
+| Clients | `clients/case_note_client.py` | Stub (fixtures) + real HTTP client (future) |
+| Fixtures | `fixtures/sample_notes.json` | 3 fake case notes for stub client |
+| Migrations | `migrations/versions/0001_*.py` | Creates 4 tables + RLS policies on tenant_id |
+
+**Key routes (all 501 in Phase A — implemented progressively):**
+- `POST /v1/case-review/context` — fetch + rolling summary (Phase B)
+- `POST /v1/case-review/classify` — paragraph → fields + reask prompts (Phase C)
+- `POST /v1/case-review/review` — risk/restrictive-practice/anomaly flags (Phase D)
+- `POST /v1/case-review/incident/detect` + `/draft` + `PATCH .../confirm` (Phase E)
+- `POST /v1/case-review/submit` — final gate (Phase F, BLOCKED)
+
+**Non-negotiables:**
+- `tenant_id` on every DB row + RLS enforced (legal mandate)
+- Staff must acknowledge every AI flag — no auto-submit
+- Audit log entry for every AI action + staff decision
+- `GEMINI_REGION=australia-southeast1` (data residency)
+
+**Run:**
+```bash
+cd sena-ai/services/case_review
+pip install -e .
+uvicorn src.case_review.main:create_app --factory --reload --port 8084
+# Alembic: alembic upgrade head  (requires ai-db running)
+```
+
+**Env vars (prefix `SENA_AI_`):** `CASE_REVIEW_PORT`, `AI_DB_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL_ID`, `GEMINI_REGION`, `DRAFTING_SERVICE_URL`, `DRAFTING_SERVICE_API_KEY`, `CASE_NOTE_FETCH_LIMIT`
+
+---
 
 ## Build & Run Commands
 
@@ -140,6 +203,11 @@ uvicorn src.voice.main:create_app --factory --reload --port 8082
 # Run onboarding service
 cd services/onboarding
 uvicorn src.onboarding.main:create_app --factory --reload --port 8083
+
+# Run case review service
+cd services/case_review
+pip install -e .
+uvicorn src.case_review.main:create_app --factory --reload --port 8084
 
 # Tests
 pytest                                     # all tests (from sena-ai/)
@@ -340,7 +408,23 @@ When removing "dead code", ALWAYS grep the full codebase for the file/symbol nam
 
 ## Ignored Folders
 
-**NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.
+**NEVER** try to read or analyze anything inside the `/archive`, `.venv`, `.vscode`, or `ndis_markdown_docs/` folders. They are a massive token consumption disaster. Pretend they do not exist unless explicitly instructed.
+
+**`ndis_markdown_docs/` exception:** raw NDIS source PDFs converted to markdown. If an NDIS compliance question isn't answered by `ndis_wiki/` pages, you MAY suggest reading a **specific file** from this folder — never the whole folder, never speculatively.
+
+## Adding New Project Components (MANDATORY PROTOCOL)
+
+When the user says **"I am adding X"** (a new directory, service, file, or external resource), you MUST update ALL of the following before doing anything else:
+
+| File | What to update |
+|------|---------------|
+| `CLAUDE.md` (this file) | Add to root-level file tree + add a dedicated section describing the component |
+| `.claude/SESSION_START.md` | Add to the READ-IF-RELEVANT table under the appropriate task area |
+| `.claude/tasks/TASKS.md` | Update any blocked tasks that are now unblocked by the new component |
+| `~/.claude/projects/.../memory/MEMORY.md` | Add an index entry pointing to a new memory file |
+| Create `memory/project_<name>.md` | Describe what the component is and how to use it |
+
+**Rule:** Do NOT start any other work until this update sweep is complete. The sweep ensures future sessions land in the correct state.
 
 ## Paused Features
 

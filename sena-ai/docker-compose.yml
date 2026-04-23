@@ -31,6 +31,18 @@ services:
     ports:
       - "5433:5432"
 
+  sena-case-review:
+    build:
+      context: .
+      dockerfile: services/case_review/Dockerfile
+    container_name: sena-case-review
+    env_file:
+      - .env
+    ports:
+      - "8084:8084"
+    depends_on:
+      - ai-db
+
   shared-db:
     image: postgres:16-alpine
     container_name: sena-shared-db
