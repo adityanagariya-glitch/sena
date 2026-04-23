@@ -166,11 +166,11 @@ Each phase = atomic commit-ready unit. Do NOT cross phase boundaries in one PR.
 **Goal:** `/context` fetches notes, compresses to rolling summary, returns brief.
 **Subagent:** use Skill `gemini-api-dev` before writing any LLM call.
 
-- [ ] B1. `services/llm/summarizer.py` — Gemini-based compressor. Input: `(past_summary, new_notes[])`. Output: `{summary_text, metadata}`
-- [ ] B2. `prompts/summarize.md` — prompt template with `{past_summary}` + `{new_notes}` placeholders
-- [ ] B3. `services/context_service.py` — orchestrates: fetch via `CaseNoteClient` → diff against `processed_note_ids` → summarize → upsert
-- [ ] B4. Wire `POST /v1/case-review/context` → returns `{ summary_text, metadata, notes_included: N }`
-- [ ] B5. Tests: cold-start (no prior summary), incremental update, replay-guard (same note twice → no-op)
+- [x] B1. `services/llm/summarizer.py` — Gemini-based compressor. Input: `(past_summary, new_notes[])`. Output: `{summary_text, metadata}`
+- [x] B2. `prompts/summarize.md` — prompt template with `{past_summary}` + `{new_notes}` placeholders
+- [x] B3. `services/context_service.py` — orchestrates: fetch via `CaseNoteClient` → diff against `processed_note_ids` → summarize → upsert
+- [x] B4. Wire `POST /v1/case-review/context` → returns `{ summary_text, metadata, notes_included: N }`
+- [x] B5. Tests: cold-start (no prior summary), incremental update, replay-guard (same note twice → no-op)
 - [ ] B6. Fixture: add 5 more fake notes spanning 3 months for realistic compression test
 
 **Acceptance:** calling `/context` twice in a row returns same summary (idempotent). Adding new note updates summary + metadata.

@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-04-21
+updated: 2026-04-23
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -25,14 +25,16 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 |-----------|------|
 | Voice demo / Gemini Live bugs | `wiki/pages/gemini-live-multi-turn-config.md`, `memory/feedback_gemini_live_patterns.md`, `memory/project_voice_demo_working.md` |
 | What's left to build (voice) | `.planning/GEMINI_LIVE_NATIVE_SCOPE.md` (Gemini-native only) + `.planning/FEATURES_LEFT.md` (full scope) |
+| Case Note Review service (task #10) | `.planning/CASE_NOTE_REVIEW_PLAN.md` — phases A–G, subagent policy, blockers |
 | Architecture / domain | `wiki/index.md` → follow wikilinks |
 | Code-level structure | `graphify-out/GRAPH_REPORT.md` |
-| NDIS domain | `wiki/NDIS.md` |
+| NDIS domain | `wiki/NDIS.md` (synthesis) + `ndis_wiki/index.md` (regulatory sources) |
 | Client spec gaps | `wiki/pages/open-questions.md` |
 
 ## 3. DO-NOT-READ
 
 - `/archive/`, `.venv/`, `.vscode/` — token waste, ignored per CLAUDE.md
+- `ndis_markdown_docs/` — raw NDIS source docs, massive token cost. Use `ndis_wiki/` pages instead. Only read this if `ndis_wiki/` genuinely doesn't answer the question — and only the specific file, never the whole folder.
 - Raw source docs — wiki pages already synthesize these
 
 ---

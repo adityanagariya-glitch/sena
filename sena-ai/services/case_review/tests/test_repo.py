@@ -146,7 +146,11 @@ async def test_append_audit_creates_row() -> None:
 async def test_list_audit_returns_ordered() -> None:
     repo, session = _make_repo()
     mock_entries = [MagicMock(spec=ReviewAuditLog) for _ in range(3)]
-    session.execute.return_value.scalars.return_value.all = MagicMock(return_value=mock_entries)
+    # session.execute is AsyncMock → awaiting it returns return_value.
+    # Must be a plain MagicMock so .scalars().all() doesn't return a coroutine.
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = mock_entries
+    session.execute.return_value = mock_result
 
     result = await repo.list_audit(uuid.uuid4())
 

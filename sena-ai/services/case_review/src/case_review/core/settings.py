@@ -41,7 +41,7 @@ class CaseReviewSettings(BaseSettings):
     # SENA_AI_GEMINI_API_KEY
     gemini_api_key: str = ""
     # SENA_AI_GEMINI_MODEL_ID — standard (non-live) model for summarise/classify/review
-    gemini_model_id: str = "gemini-2.0-flash"
+    gemini_model_id: str = "gemini-2.5-flash"
     # SENA_AI_GEMINI_REGION — Australian data residency requirement
     gemini_region: str = "australia-southeast1"
 

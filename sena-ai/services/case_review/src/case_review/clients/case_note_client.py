@@ -18,7 +18,7 @@ from pathlib import Path
 
 from case_review.models.schemas import CaseNoteDTO
 
-_FIXTURES_PATH = Path(__file__).resolve().parents[4] / "fixtures" / "sample_notes.json"
+_FIXTURES_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "sample_notes.json"
 
 _fixture_cache: list[CaseNoteDTO] | None = None
 

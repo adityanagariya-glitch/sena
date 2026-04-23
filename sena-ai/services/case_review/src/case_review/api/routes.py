@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from case_review.api.deps import get_auth_context, get_case_note_client, get_db, get_repo
 from case_review.clients.case_note_client import CaseNoteClient
+from case_review.services.context_service import get_context as svc_get_context
 from case_review.models.schemas import (
     AuthContext,
     ClassifyRequest,
@@ -54,13 +55,18 @@ async def get_context(
     client: CaseNoteClient = Depends(get_case_note_client),
 ) -> ContextResponse:
     """
-    Fetch the last N case notes for a staff-client pair and return a
-    rolling summary. Idempotent — re-calling with same notes returns same summary.
-    Implemented in Phase B.
+    Fetch the last N case notes for a staff-client pair and return a rolling summary.
+    Idempotent — re-calling with same notes returns cached summary (no LLM call).
+    Adding new notes updates and compresses the rolling summary.
     """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Phase B — context endpoint not yet implemented",
+    repo = get_repo(db)
+    return await svc_get_context(
+        repo=repo,
+        client=client,
+        tenant_id=auth.tenant_id,
+        staff_id=req.staff_id,
+        client_id=req.client_id,
+        limit=req.limit,
     )
 
 

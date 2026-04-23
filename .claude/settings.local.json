@@ -35,7 +35,9 @@
       "Bash(bash .claude/hooks/stop.sh)",
       "Bash(echo \"CLAUDE_PROJECT_DIR=$CLAUDE_PROJECT_DIR\")",
       "Bash(echo \"PWD=$PWD\")",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(find /c/Users/Admin/Downloads/SENA/sena-ai -path *migrations/versions* -type f)",
+      "Bash(pytest tests/ -v)"
     ]
   },
   "enableAllProjectMcpServers": true,

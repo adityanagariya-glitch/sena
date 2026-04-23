@@ -4,17 +4,24 @@
     "type": "split",
     "children": [
       {
-        "id": "9a593d757e351f97",
+        "id": "92156127c709fe02",
         "type": "tabs",
         "children": [
           {
-            "id": "70f858a65a4fb0b2",
+            "id": "fc5bf4b64f23e916",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "canvas",
+              "state": {
+                "file": "ndis_wiki/Untitled.canvas",
+                "viewState": {
+                  "x": 0,
+                  "y": 0,
+                  "zoom": 0
+                }
+              },
+              "icon": "lucide-layout-dashboard",
+              "title": "Untitled"
             }
           }
         ]
@@ -179,8 +186,10 @@
       "bases:Create new base": false
     }
   },
-  "active": "70f858a65a4fb0b2",
+  "active": "fc5bf4b64f23e916",
   "lastOpenFiles": [
+    "ndis_wiki/Untitled.md",
+    "ndis_wiki/Untitled.canvas",
     "CLIENT_GEMINI_ACCESS_GUIDE.md.tmp.4632.1776335082929",
     "CLIENT_GEMINI_ACCESS_GUIDE.md",
     "CLIENT_GEMINI_ACCESS_GUIDE.md.tmp.4632.1776334941092",
@@ -192,7 +201,6 @@
     "sena-ai/services/voice/src/voice/core/settings.py.tmp.4632.1776331968445",
     "sena-ai/services/voice/pyproject.toml.tmp.4632.1776331965267",
     "sena-ai/services/voice/src/voice/services/gemini_service.py",
-    "CLAUDE.md.tmp.4632.1776322638929",
     "CLAUDE.md",
     "Building Real-Time Conversational AI wit.md",
     "Exported Documents/Claude Code — Study Notes.md",
