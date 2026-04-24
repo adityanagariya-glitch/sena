@@ -30,8 +30,8 @@ class CaseNoteDTO(BaseModel):
 # ── POST /v1/case-review/context ──────────────────────────────────────────────
 
 class ContextRequest(BaseModel):
-    staff_id: uuid.UUID
-    client_id: uuid.UUID
+    staff_id: uuid.UUID = uuid.UUID("cccccccc-0000-0000-0000-000000000003")
+    client_id: uuid.UUID = uuid.UUID("dddddddd-0000-0000-0000-000000000004")
     limit: int = Field(default=10, ge=1, le=50)
 
 

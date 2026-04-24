@@ -129,7 +129,7 @@ Layered architecture at `sena-ai/services/voice/src/voice/`:
 ### External dependencies
 
 - **AWS Bedrock** (Claude 3.5 Sonnet) — LLM for case note generation (Flow B dictation)
-- **Google Gemini** (`gemini-2.0-flash`) — LLM for personal details onboarding flow + case review (summarise, classify, review)
+- **Google Gemini** (`gemini-3-flash-preview`) — LLM for case review (summarise, classify, review); Live API (`gemini-3.1-flash-live-preview`) for onboarding voice stream
 - **AWS SNS** — event publishing for case note lifecycle
 - **LiveKit** — real-time voice conferencing
 - **Redis** — session state, rate limiting, distributed locks
@@ -143,7 +143,7 @@ Layered architecture at `sena-ai/services/voice/src/voice/`:
 |------|----------|-------|---------|
 | Flow B — case note dictation | AWS Bedrock | Claude 3.5 Sonnet | `SENA_AI_BEDROCK_MODEL_ID` |
 | Onboarding voice (Live API) | Google Gemini Live | `gemini-3.1-flash-live-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_LIVE_MODEL_ID` |
-| Case review (summarise/classify/review) | Google Gemini | `gemini-2.0-flash` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_MODEL_ID` |
+| Case review (summarise/classify/review) | Google Gemini | `gemini-3-flash-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_MODEL_ID` |
 
 ### Case Review Service — AI intelligence layer around case notes
 

@@ -43,7 +43,7 @@ class ReviewRepo:
         """Insert or update rolling summary for a staff-client pair."""
         now = datetime.now(timezone.utc)
         stmt = (
-            pg_insert(RollingSummary)
+            pg_insert(RollingSummary.__table__)
             .values(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
@@ -64,11 +64,10 @@ class ReviewRepo:
                     "updated_at": now,
                 },
             )
-            .returning(RollingSummary)
         )
-        result = await self._s.execute(stmt)
+        await self._s.execute(stmt)
         await self._s.commit()
-        return result.scalar_one()
+        return await self.get_rolling_summary(tenant_id, staff_id, client_id)
 
     # ── ReviewSession ─────────────────────────────────────────────────────────
 

@@ -27,7 +27,7 @@ class CaseReviewSettings(BaseSettings):
 
     # ── Database (ai-db, pgvector, port 5433) ─────────────────────────────────
     # SENA_AI_AI_DB_URL — asyncpg driver
-    ai_db_url: str = "postgresql+asyncpg://sena_app:sena_pass@localhost:5433/sena_ai"
+    ai_db_url: str = "postgresql+asyncpg://sena_ai:sena_ai@localhost:5433/sena_ai"
 
     # ── External: other engineer's drafting service ───────────────────────────
     # SENA_AI_DRAFTING_SERVICE_URL
@@ -40,8 +40,10 @@ class CaseReviewSettings(BaseSettings):
     # ── Gemini ────────────────────────────────────────────────────────────────
     # SENA_AI_GEMINI_API_KEY
     gemini_api_key: str = ""
-    # SENA_AI_GEMINI_MODEL_ID — standard (non-live) model for summarise/classify/review
-    gemini_model_id: str = "gemini-2.5-flash"
+    # SENA_AI_GEMINI_MODEL_ID — standard generate_content model (NOT Live API)
+    # gemini-3-flash-preview is the current standard model; gemini-3.1-flash-live-preview
+    # is Live API only (BidiGenerateContent WebSocket) and cannot be used here.
+    gemini_model_id: str = "gemini-3-flash-preview"
     # SENA_AI_GEMINI_REGION — Australian data residency requirement
     gemini_region: str = "australia-southeast1"
 

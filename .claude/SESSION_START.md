@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-04-23
+updated: 2026-04-24
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -39,7 +39,7 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 
 ---
 
-## Current state snapshot (2026-04-21)
+## Current state snapshot (2026-04-24)
 
 **What works:**
 - Voice demo (`sena-ai/demo_live_server.py` + `demo_client.html`) — multi-turn conversation end-to-end
@@ -67,6 +67,26 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
   - `sena-ai/services/onboarding/test_harness.html` — Phase A/B/C panels, transcript, live form render, completion bar
   - `main.py` — `GET /harness` + `GET /harness/fixtures/{step_id}` routes added (path-traversal guarded)
   - **IMPORTANT:** service uses src-layout → must `pip install -e .` from `sena-ai/services/onboarding/` before uvicorn
+- **Case Review service Phase A** (`sena-ai/services/case_review/`) — scaffold complete (2026-04-24)
+  - 4 DB tables: `rolling_summary`, `review_session`, `incident_draft`, `review_audit_log`
+  - RLS policies on `tenant_id` (legal mandate)
+  - Stub `CaseNoteClient` returning fixture notes from `fixtures/sample_notes.json`
+  - All 6 endpoints stubbed (501), health routes live
+  - 22/22 tests passing
+- **Case Review service Phase B** — `/context` rolling summary (2026-04-24) ✓
+  - `services/llm/summarizer.py` — Gemini `gemini-3-flash-preview` structured output
+  - `services/context_service.py` — fetch → diff `processed_note_ids` → LLM → upsert (idempotent)
+  - `POST /v1/case-review/context` returns real Gemini-processed summary
+  - Dev defaults prefilled: empty `{}` body works, no headers required
+  - DB creds: `sena_ai:sena_ai@localhost:5433/sena_ai`
+
+**How to run case review service:**
+```bash
+cd sena-ai/services/case_review
+pip install -e .          # required once — src-layout editable install
+uvicorn src.case_review.main:create_app --factory --reload --port 8084
+# Test: curl -s -X POST http://localhost:8084/v1/case-review/context -H "Content-Type: application/json" -d '{}'
+```
 
 **How to run onboarding service:**
 ```bash
@@ -76,14 +96,19 @@ uvicorn src.onboarding.main:create_app --factory --reload --port 8083
 # Test harness: http://localhost:8083/harness
 ```
 
-**What's next:**
-Phase D — Vision ingress (camera + screen frames)
-- WS JSON messages: `camera_frame`, `screen_frame` (base64 JPEG)
-- Decode → `session.send_realtime_input(video=Blob(data, "image/jpeg"))`
-- Rate limit: 2 fps per frame type (Redis token bucket)
-- Prompt addendum referencing visible images
+**What's next (Case Review):**
+Phase C — `/classify` paragraph → structured fields + reask prompts
+- `services/llm/classifier.py` — Gemini structured output → `{classified_fields, missing_required, confidence}`
+- `prompts/classify.md` — system prompt with field schema injected
+- `services/classify_service.py` — persists to `review_session`, logs to `review_audit_log`
+- Re-ask: if `missing_required` non-empty, response includes `reask_prompts`
+
+**What's next (Onboarding — PAUSED):**
+Phase D — Vision ingress (camera + screen frames) — BLOCKED (office dep)
+- Resume via `.planning/paused_state_phase_d_camera_screen_ingress.md`
 
 **Blocked:**
+- Case Review Phase F (submit gate) — waiting on other engineer's register schema
 - RAG (NDIS docs) — waiting client sample docs
 - Multi-tenant auth / RLS — waiting client JWT claims structure
 - OCR service — waiting document samples

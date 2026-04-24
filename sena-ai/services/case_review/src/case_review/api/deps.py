@@ -39,8 +39,8 @@ def get_case_note_client() -> CaseNoteClient:
 # ── Auth (dev_header mode — pluggable seam for JWT later) ─────────────────────
 
 async def get_auth_context(
-    x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_id: str = Header(..., alias="X-User-Id"),
+    x_tenant_id: str = Header(default="aaaaaaaa-0000-0000-0000-000000000001", alias="X-Tenant-Id"),
+    x_user_id: str = Header(default="bbbbbbbb-0000-0000-0000-000000000002", alias="X-User-Id"),
     x_user_roles: str = Header(default="worker", alias="X-User-Roles"),
 ) -> AuthContext:
     """

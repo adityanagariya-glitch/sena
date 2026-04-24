@@ -1,6 +1,6 @@
 ---
 title: Persistent Task List
-updated: 2026-04-23
+updated: 2026-04-24
 ---
 
 > Last session end-state (2026-04-21): Phases A+B+C complete. Harness routes live at /harness + /harness/fixtures/{step_id}. pip install -e . required to run onboarding service.
@@ -18,14 +18,14 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ## Active
 
 ### #10 — Case Note Review service (pair-programming split)
-- **Status:** in_progress — Phase A complete (2026-04-23)
+- **Status:** in_progress — Phase B complete (2026-04-24)
 - **Priority:** P1
 - **Plan:** `.planning/CASE_NOTE_REVIEW_PLAN.md` (authoritative — read this to resume)
 - **Scope:** AI intelligence layer around case notes (context, classify, review, incident). Other engineer owns drafting + storage.
 - **Service path:** `sena-ai/services/case_review/` (port 8084, ai-db)
 - **Phases:**
-  - A — Scaffold + DB (4 tables) + stub client ← next
-  - B — `/context` rolling summary
+  - A — Scaffold + DB (4 tables) + stub client ✓
+  - B — `/context` rolling summary ✓ (real Gemini call verified end-to-end)
   - C — `/classify` paragraph → fields + reask
   - D — `/review` risks + restrictive practices + anomalies
   - E — `/incident/*` detect + autofill

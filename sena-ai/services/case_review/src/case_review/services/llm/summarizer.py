@@ -7,7 +7,7 @@ Input:  past_summary (str), new_notes (list[CaseNoteDTO])
 Output: SummaryResult with summary_text + metadata
 
 Uses response_schema for reliable JSON extraction — no manual parsing.
-Model: SENA_AI_GEMINI_MODEL_ID (default: gemini-2.5-flash)
+Model: SENA_AI_GEMINI_MODEL_ID (default: gemini-3-flash-preview, standard generate_content — NOT Live API)
 """
 
 from pathlib import Path

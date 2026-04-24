@@ -162,9 +162,9 @@ Each phase = atomic commit-ready unit. Do NOT cross phase boundaries in one PR.
 
 ---
 
-### Phase B — Context endpoint (rolling summary)
+### Phase B — Context endpoint (rolling summary) ✓ COMPLETE (2026-04-24)
 **Goal:** `/context` fetches notes, compresses to rolling summary, returns brief.
-**Subagent:** use Skill `gemini-api-dev` before writing any LLM call.
+**Verified:** real Gemini API call end-to-end with fixture data. Dev defaults prefilled in deps + schemas (empty body `{}` works).
 
 - [x] B1. `services/llm/summarizer.py` — Gemini-based compressor. Input: `(past_summary, new_notes[])`. Output: `{summary_text, metadata}`
 - [x] B2. `prompts/summarize.md` — prompt template with `{past_summary}` + `{new_notes}` placeholders
