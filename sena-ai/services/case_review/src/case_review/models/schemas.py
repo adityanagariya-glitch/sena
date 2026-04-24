@@ -49,7 +49,7 @@ class ClassifyRequest(BaseModel):
     client_id: uuid.UUID
     raw_paragraph: str
     drafted_case_note_id: str | None = None
-    review_session_id: uuid.UUID | None = None  # pass to update existing session
+    review_session_id: uuid.UUID | None = Field(default=None, description="Pass to re-classify an existing session. Omit to create a new one.")
 
 
 class ReaskPrompt(BaseModel):

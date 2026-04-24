@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from case_review.api.deps import get_auth_context, get_case_note_client, get_db, get_repo
 from case_review.clients.case_note_client import CaseNoteClient
+from case_review.services.classify_service import classify_paragraph as svc_classify_paragraph
 from case_review.services.context_service import get_context as svc_get_context
 from case_review.models.schemas import (
     AuthContext,
@@ -81,12 +82,17 @@ async def classify_paragraph(
     """
     Classify a free-text paragraph into structured case note fields.
     Returns missing required fields and re-ask prompts if paragraph is thin.
-    Implemented in Phase C.
     """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Phase C — classify endpoint not yet implemented",
-    )
+    repo = get_repo(db)
+    try:
+        return await svc_classify_paragraph(
+            repo=repo,
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            req=req,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 # ── Review (Phase D) ──────────────────────────────────────────────────────────
