@@ -1,10 +1,9 @@
 ---
 title: Persistent Task List
-updated: 2026-04-24
+updated: 2026-04-28
 ---
 
-> Last session end-state (2026-04-21): Phases A+B+C complete. Harness routes live at /harness + /harness/fixtures/{step_id}. pip install -e . required to run onboarding service.
-> Debug session (2026-04-21): VAD not detecting user voice after turn 6 — root cause = echo from speakers (no headphones + echoCancellation:false). Tried `_agent_speaking` echo gate → REVERTED (breaks VAD after 2-4 turns, documented in CLAUDE.md rule 6 + feedback_gemini_live_patterns.md rule 7+8). Correct fix: stream audio unconditionally, use START_SENSITIVITY_LOW. Firefox no-audio from speakers: separate issue, still unresolved (split AudioContext fix proposed but not applied — user should test beep button first).
+> Last session end-state (2026-04-27): Case Note Review Phase C complete (classifier, classify_service, route wired, test_classify.py). Phase D next. Onboarding #9 still PAUSED-BLOCKED (Phase D camera/screen ingress, office dep).
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -18,7 +17,7 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ## Active
 
 ### #10 — Case Note Review service (pair-programming split)
-- **Status:** in_progress — Phase B complete (2026-04-24)
+- **Status:** in_progress — Phase C complete (2026-04-27), Phase D next
 - **Priority:** P1
 - **Plan:** `.planning/CASE_NOTE_REVIEW_PLAN.md` (authoritative — read this to resume)
 - **Scope:** AI intelligence layer around case notes (context, classify, review, incident). Other engineer owns drafting + storage.
@@ -26,8 +25,8 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 - **Phases:**
   - A — Scaffold + DB (4 tables) + stub client ✓
   - B — `/context` rolling summary ✓ (real Gemini call verified end-to-end)
-  - C — `/classify` paragraph → fields + reask
-  - D — `/review` risks + restrictive practices + anomalies
+  - C — `/classify` paragraph → fields + reask ✓ (classifier, classify_service, route, tests)
+  - D — `/review` risks + restrictive practices + anomalies ← next
   - E — `/incident/*` detect + autofill
   - F — `/submit` gate + routing (BLOCKED: register ownership TBD)
   - G — Hardening + docs
@@ -78,7 +77,7 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
   - F (partial): `test_harness.html` at `/harness` — phases A/B/C testable in browser ✓ (2026-04-21)
     - `GET /harness` + `GET /harness/fixtures/{step_id}` routes added to `main.py` ✓ (2026-04-21)
     - **Run requirement:** `pip install -e .` from `sena-ai/services/onboarding/` before uvicorn (src-layout needs editable install)
-  - D: Camera + screen frame ingress via `send_realtime_input(video=Blob)` (#5 + #6) ← next
+  - D: ~~Camera/screen frame ingress~~ **PLAN CHANGED** → live JSON screen state via WS `{"type":"screen_state","data":{...}}` — Flutter sends current screen snapshot, backend injects as Gemini context. Schema TBD with Flutter dev. ← next (unblocked)
   - E: Session resumption + Google Search grounding (#7 + #8)
   - F: OpenAPI docs + WS protocol doc + Postman collection + dev harness update
 - **Acceptance:** mobile engineer can integrate from docs alone; webhook fires with final FormState; resumption works across reconnect; grounded NDIS answers

@@ -37,7 +37,10 @@
       "Bash(echo \"PWD=$PWD\")",
       "Bash(git:*)",
       "Bash(find /c/Users/Admin/Downloads/SENA/sena-ai -path *migrations/versions* -type f)",
-      "Bash(pytest tests/ -v)"
+      "Bash(pytest tests/ -v)",
+      "Bash(ngrok version *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(winget install *)"
     ]
   },
   "enableAllProjectMcpServers": true,

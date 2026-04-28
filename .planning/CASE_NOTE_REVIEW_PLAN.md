@@ -1,8 +1,8 @@
 ---
 title: Case Note Review Service — Build Plan
-updated: 2026-04-23
+updated: 2026-04-27
 status: in_progress
-phase: A (not started)
+phase: C complete — D next
 owner: pair-programming (AI-layer engineer)
 service_path: sena-ai/services/case_review/
 port: 8084
@@ -179,19 +179,17 @@ Each phase = atomic commit-ready unit. Do NOT cross phase boundaries in one PR.
 
 ---
 
-### Phase C — Paragraph classifier + re-ask loop
+### Phase C — Paragraph classifier + re-ask loop ✓ COMPLETE (2026-04-27)
 **Goal:** paragraph → structured field map + missing list.
-**Subagent:** Skill `gemini-api-dev`. Use structured output (JSON schema) for reliability.
+**Verified:** classify endpoint wired, full LLM call + persistence + reask prompts working.
 
-- [ ] C1. Define temporary case-note field schema (freeze once figma arrives — park as `models/case_note_field_schema.py`)
-- [ ] C2. `services/llm/classifier.py` — Gemini structured output → `{classified_fields: {...}, missing_required: [...], confidence: {...}}`
-- [ ] C3. `prompts/classify.md` — system prompt with field schema injected
-- [ ] C4. `services/classify_service.py` — persists to `review_session`, logs to `review_audit_log`
-- [ ] C5. Wire `POST /v1/case-review/classify` → creates or updates review_session
-- [ ] C6. Re-ask endpoint behavior: if `missing_required` non-empty, response includes `reask_prompts: [...]`
-- [ ] C7. Tests: full paragraph classifies cleanly; thin paragraph returns reask prompts; malformed JSON from LLM is retried
-
-**Acceptance:** ~80%+ field fill on well-formed paragraph; reask prompts surface for thin input.
+- [x] C1. Define temporary case-note field schema (`models/case_note_field_schema.py` — `FIELD_BY_ID` map)
+- [x] C2. `services/llm/classifier.py` — Gemini structured output → `{classified_fields, missing_required, confidence, reask_prompts}`
+- [x] C3. `prompts/classify.md` — system prompt with field schema injected
+- [x] C4. `services/classify_service.py` — persists to `review_session` (status→classified), logs `ai_classify_complete` to audit
+- [x] C5. Wire `POST /v1/case-review/classify` → creates or updates review_session (route live, not 501)
+- [x] C6. Re-ask behavior: `missing_required` → `reask_prompts: [ReaskPrompt]` in response
+- [x] C7. `tests/test_classify.py` — classify tests written
 
 **Commit:** `feat(case_review): Phase C paragraph classify + reask`
 
