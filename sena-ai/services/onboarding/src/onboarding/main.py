@@ -42,7 +42,11 @@ def create_app() -> FastAPI:
         p = HARNESS_DIR / "test_harness.html"
         if not p.exists():
             raise HTTPException(404, "test_harness.html not found")
-        return FileResponse(p, media_type="text/html")
+        return FileResponse(
+            p,
+            media_type="text/html",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
 
     @app.get("/harness/fixtures/{step_id}", include_in_schema=False)
     async def serve_fixture(step_id: str) -> FileResponse:

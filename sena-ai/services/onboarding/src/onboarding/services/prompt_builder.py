@@ -16,6 +16,17 @@ from onboarding.models.schema_spec import StepSchema
 _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
 
 
+def _voice_coverage_section(voice_coverage: list[str]) -> str:
+    if not voice_coverage:
+        return ""
+    paths = ", ".join(voice_coverage)
+    return (
+        "\nVOICE COVERAGE\n"
+        f"You may ONLY call update_field for these fields: {paths}. "
+        "Do not attempt to fill any field not in this list via voice."
+    )
+
+
 def build_system_prompt(
     schema: StepSchema,
     state: FormState,
@@ -60,6 +71,8 @@ def build_system_prompt(
         else ""
     )
 
+    voice_coverage_section = _voice_coverage_section(schema.voice_coverage)
+
     result = (
         template
         .replace("__STEP_LABEL__", schema.step_label)
@@ -67,6 +80,7 @@ def build_system_prompt(
         .replace("__SCHEMA_JSON__", schema_json)
         .replace("__STATE_JSON__", state_json)
         .replace("__GROUNDING_SECTION__", grounding_section)
+        .replace("__VOICE_COVERAGE_SECTION__", voice_coverage_section)
     )
 
     if resume_context_text:

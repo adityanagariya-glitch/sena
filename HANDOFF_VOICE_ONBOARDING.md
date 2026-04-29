@@ -2,6 +2,8 @@
 
 > **For the parent session (Flutter app):** Read this file first. It tells you exactly what the backend does, what's built, what changed, and what you need to wire up on the Flutter side.
 
+> ✅ **2026-04-29 — v2 implemented.** Backend is now aligned to the real Flutter codebase. Key changes: `screen_state_v2` message type, `field_apply` envelope, `add_repeatable_row` tool, `voice_coverage` enforcement, `about_me` field rename. The WS server still accepts v1 `screen_state` via adapter. See §v2 changes below.
+
 ---
 
 ## What this service is
@@ -60,8 +62,14 @@ First message Flutter sends after connect:
 ```
 Server replies:
 ```json
-{"type": "ready", "state": { ...FormState... }, "prompt_version": "v1"}
+{
+  "type": "ready",
+  "state": { "...FormState..." },
+  "prompt_version": "v2",
+  "coverage": ["basics.full_name", "basics.date_of_birth", "basics.phone", "basics.email", "basics.about_me"]
+}
 ```
+`coverage` — list of dotted `section_id.field_id` paths that the voice agent is allowed to fill. Flutter should use this to show/hide the mic affordance per field.
 
 ### Audio streaming
 - Flutter → server: **binary frames** — raw PCM16, 16kHz, mono
@@ -86,14 +94,39 @@ Server replies:
 ### Server → Flutter events (already implemented)
 | `type` | When |
 |--------|------|
-| `ready` | Handshake complete |
+| `ready` | Handshake complete — includes `prompt_version` and `coverage` array |
 | `user_said` | Transcription of user speech |
 | `agent_said` | Transcription of AI reply |
-| `field_updated` | AI captured a field (`section`, `field`, `value`, `confidence`) |
+| `field_updated` | AI captured a field (`section`, `field`, `value`, `confidence`) — legacy |
+| `field_apply` | **v2** — drive GetX controller directly: `{type, section_id, field_id, row_index, value, source:"voice", confidence}` |
 | `state` | Full FormState after any mutation |
+| `row_added` | Repeatable row added: `{type, section_id, new_index}` |
 | `step_completed` | All required fields done, webhook fired, WS closes |
 | `escalated` | Safety flag — session continues, do NOT close |
+| `screen_state_ack` | Debug only — echoed when `screen_state` or `screen_state_v2` accepted |
 | `error` | Error with `code` + `message` |
+
+### New Flutter → Server messages (v2)
+```json
+{
+  "type": "screen_state_v2",
+  "data": {
+    "step_id": "personal_information",
+    "focused_section": "basics",
+    "focused_field": "phone",
+    "field_status": {
+      "basics.full_name": "filled",
+      "basics.date_of_birth": "filled",
+      "basics.phone": "empty",
+      "basics.email": "empty",
+      "basics.about_me": "empty"
+    },
+    "repeatable_rows": {},
+    "ui_flags": {}
+  }
+}
+```
+> v1 `screen_state` is still accepted via an adapter — no Flutter migration required yet.
 
 ### WS close codes
 | Code | Meaning |

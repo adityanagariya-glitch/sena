@@ -85,6 +85,8 @@ class StepSchema(BaseModel):
     step_label: str
     progress_percent: int = Field(ge=0, le=100)
     sections: list[SectionSpec]
+    voice_coverage: list[str] = Field(default_factory=list)
+    voice_repeatable_sections: list[str] = Field(default_factory=list)
 
     def required_field_count(self) -> int:
         total = 0

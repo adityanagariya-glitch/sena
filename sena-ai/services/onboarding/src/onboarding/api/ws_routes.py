@@ -115,7 +115,8 @@ async def onboarding_ws(
         await websocket.send_text(json.dumps({
             "type": "ready",
             "state": json.loads(state.model_dump_json()),
-            "prompt_version": "v1",
+            "prompt_version": "v2",
+            "coverage": schema.voice_coverage,
         }))
 
         # ── 6. Build system prompt + tool dispatcher + run Gemini bridge ──────

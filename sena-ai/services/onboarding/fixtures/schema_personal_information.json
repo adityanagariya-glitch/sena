@@ -3,6 +3,8 @@
   "step_id": "personal_information",
   "step_label": "Personal Information",
   "progress_percent": 20,
+  "voice_coverage": ["basics.full_name", "basics.date_of_birth", "basics.phone", "basics.email", "basics.about_me"],
+  "voice_repeatable_sections": [],
   "sections": [
     {
       "id": "basics",
@@ -19,7 +21,7 @@
           "required": true,
           "options": ["Male", "Female", "Non-binary", "Prefer not to say", "Other"]
         },
-        {"id": "bio", "type": "textarea", "label": "A bit about me", "required": true},
+        {"id": "about_me", "type": "textarea", "label": "About Me", "required": false},
         {"id": "preferred_language", "type": "text", "label": "Preferred Language", "required": true},
         {"id": "interpreter_required", "type": "boolean", "label": "Interpreter Required", "required": true, "default": false},
         {

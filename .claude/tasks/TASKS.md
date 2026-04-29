@@ -1,9 +1,9 @@
 ---
 title: Persistent Task List
-updated: 2026-04-28
+updated: 2026-04-29
 ---
 
-> Last session end-state (2026-04-27): Case Note Review Phase C complete (classifier, classify_service, route wired, test_classify.py). Phase D next. Onboarding #9 still PAUSED-BLOCKED (Phase D camera/screen ingress, office dep).
+> Last session end-state (2026-04-29): Onboarding #9 v2 implementation COMPLETE. 14 files edited/created. Case Note Review #10 Phase D still next.
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -54,7 +54,23 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ## Next up (picked by user when resuming)
 
 ### #9 — Onboarding Voice API (consolidates #3–#8)
-- **Status:** DONE — Phases A–F shipped (2026-04-28)
+- **Status:** VERIFIED 95% — v2 implemented (2026-04-29); one gap: close code **4011** (`policy_block`) not yet in `gemini_live.py`
+- **v2 files implemented (2026-04-29):**
+  - `models/schema_spec.py` — added `voice_coverage`, `voice_repeatable_sections` to `StepSchema`
+  - `models/form_state.py` — added `repeatable_rows`, `increment_repeatable_row()`
+  - `core/settings.py` — added `voice_coverage_enforced`, `field_apply_log_level`
+  - `services/coverage.py` — NEW pure module: `is_eligible`, `is_repeatable_eligible`, `coverage_paths`
+  - `services/field_apply.py` — NEW pure module: `build_envelope` (field_apply WS event)
+  - `services/screen_context.py` — REWRITTEN: `ScreenStateV2`, `ScreenStateV2Message`, `from_v1()` adapter, v2 `render_injection_text`
+  - `services/tools.py` — added `add_repeatable_row` tool + dispatch, `field_apply` emit in `_update_field`
+  - `services/prompt_builder.py` — added `_voice_coverage_section()`, `__VOICE_COVERAGE_SECTION__` substitution
+  - `services/gemini_live.py` — `screen_state_v2` branch, v2 handler, v1 adapter path
+  - `api/ws_routes.py` — `prompt_version:"v2"`, `coverage` in ready envelope
+  - `prompts/onboarding_system.md` — updated [SCREEN] rule for v2, added `__VOICE_COVERAGE_SECTION__`
+  - `fixtures/schema_personal_information.json` — `bio`→`about_me`, `required:false`, `voice_coverage` added
+  - `fixtures/schema_ndis_plan_details.json` — `voice_coverage` + `voice_repeatable_sections` added
+  - `HANDOFF_VOICE_ONBOARDING.md`, `FLUTTER_VOICE_INTEGRATION.md` — updated for v2
+- **v1 status (frozen):** DONE — Phases A–F shipped (2026-04-28)
 - **Resume via:** `.planning/paused_state_phase_d_camera_screen_ingress.md`
 - **Prior status:** in_progress (Phase C complete 2026-04-21)
 - **Priority:** P1

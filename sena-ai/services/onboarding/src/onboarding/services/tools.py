@@ -38,6 +38,8 @@ from onboarding.models.form_state import (
 )
 from onboarding.models.schema_spec import FieldSpec, SectionSpec, StepSchema
 from onboarding.repositories.state_repo import FormStateRepo
+from onboarding.services import field_apply as _fa
+from onboarding.services.coverage import is_repeatable_eligible
 from onboarding.services.webhook import fire_webhook
 
 log = logging.getLogger(__name__)
@@ -128,7 +130,50 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
             "required": ["reason"],
         },
     },
+    {
+        "name": "add_repeatable_row",
+        "description": (
+            "Add a new empty row to a repeatable section so the user can provide "
+            "another entry (e.g. a new NDIS goal). Only call for voice-eligible "
+            "repeatable sections."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "Repeatable section id (e.g. 'ndis_goals').",
+                },
+            },
+            "required": ["section_id"],
+        },
+    },
 ]
+
+# ── Policy block tool (grounding-off fallback) ───────────────────────────────
+# Included only when grounding is DISABLED. Gives Gemini an explicit escape
+# hatch instead of hallucinating answers to NDIS policy questions it can't
+# search. Calling it raises PolicyBlockSignal → WS close 4011.
+
+POLICY_BLOCK_DECL: dict[str, Any] = {
+    "name": "policy_block",
+    "description": (
+        "Call this ONLY when the user asks a specific current NDIS policy, funding rule, "
+        "or legislative question that requires up-to-date search data you do not have. "
+        "Do NOT call for general NDIS knowledge you can answer from training. "
+        "Calling this ends the session."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "question": {
+                "type": "string",
+                "description": "The exact policy question the user asked.",
+            },
+        },
+        "required": ["question"],
+    },
+}
 
 
 # ── Value coercion ───────────────────────────────────────────────────────────
@@ -160,6 +205,18 @@ def _coerce_value(raw: Any, field: FieldSpec) -> Any:
     except (ValueError, TypeError):
         return raw
     return s
+
+
+# ── Policy block signal ──────────────────────────────────────────────────────
+
+class PolicyBlockSignal(BaseException):
+    """Derives from BaseException so it escapes the except-Exception catch in
+    dispatch() and propagates to _handle_tool_call in gemini_live.py, which
+    closes the WS with code 4011 before send_tool_response fires."""
+
+    def __init__(self, question: str = "") -> None:
+        self.question = question
+        super().__init__(question)
 
 
 # ── Dispatcher ───────────────────────────────────────────────────────────────
@@ -216,6 +273,8 @@ class ToolDispatcher:
             "get_session_context": self._get_session_context,
             "advance_step": self._advance_step,
             "escalate_incident": self._escalate_incident,
+            "add_repeatable_row": self._add_repeatable_row,
+            "policy_block": self._policy_block,
         }.get(name)
 
         if handler is None:
@@ -295,6 +354,18 @@ class ToolDispatcher:
             "turn_id": self._turn_id,
         })
         await self._emit({"type": "state", "state": state.model_dump(mode="json")})
+
+        envelope = _fa.build_envelope(
+            section_id,
+            field_id,
+            typed_value,
+            row_index=repeatable_index if section.is_repeatable else None,
+            confidence=confidence,
+            schema=self._schema,
+            enforced=settings.voice_coverage_enforced,
+        )
+        if envelope is not None:
+            await self._emit(envelope)
 
         completion = state.completion
         return {
@@ -441,6 +512,47 @@ class ToolDispatcher:
         })
 
         return {"ok": True, "logged": True}
+
+    # ── Handler: add_repeatable_row ──────────────────────────────────────────
+
+    async def _add_repeatable_row(self, args: dict[str, Any]) -> dict[str, Any]:
+        section_id = args.get("section_id", "").strip()
+        if not section_id:
+            return {"ok": False, "error": "section_id required"}
+
+        section = self._schema.get_section(section_id)
+        if section is None:
+            return {"ok": False, "error": f"unknown section: {section_id}"}
+        if not section.is_repeatable:
+            return {"ok": False, "error": f"not repeatable: {section_id}"}
+        if not is_repeatable_eligible(section_id, self._schema):
+            return {"ok": False, "error": f"section not voice-eligible: {section_id}"}
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return {"ok": False, "error": "session state not found"}
+
+        if section.repeatable and len(state.values.get(section_id) or []) >= section.repeatable.max:
+            return {
+                "ok": False,
+                "error": f"max rows ({section.repeatable.max}) reached for {section_id}",
+            }
+
+        new_index = state.increment_repeatable_row(section_id)
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        await self._emit({
+            "type": "row_added",
+            "section_id": section_id,
+            "new_index": new_index,
+        })
+
+        return {"ok": True, "section_id": section_id, "new_index": new_index}
+
+    # ── Handler: policy_block ────────────────────────────────────────────────
+
+    async def _policy_block(self, args: dict[str, Any]) -> dict[str, Any]:
+        raise PolicyBlockSignal(args.get("question", ""))
 
     # ── Default emit: send over WS ───────────────────────────────────────────
 

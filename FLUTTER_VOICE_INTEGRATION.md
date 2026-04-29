@@ -2,8 +2,8 @@
 ## Voice Onboarding via Gemini Live (Phases A + B + C)
 
 **Service:** Onboarding (port 8083)  
-**Implemented & tested:** Phase A (REST), Phase B (WebSocket + Gemini Live), Phase C (Tool events)  
-**Date:** 2026-04-27
+**Implemented & tested:** Phase A–F + v2 alignment (2026-04-29)  
+**v2 key changes:** `screen_state_v2`, `field_apply` envelope, `add_repeatable_row` tool, `voice_coverage` enforcement, `about_me` field (was `bio`), `prompt_version:"v2"`, `coverage` array in ready message.
 
 ---
 

@@ -62,6 +62,10 @@ class OnboardingSettings(BaseSettings):
     onboarding_grounding_enabled: bool = False
     # SENA_AI_ONBOARDING_FRAME_FPS_LIMIT
     onboarding_frame_fps_limit: int = 2
+    # SENA_AI_VOICE_COVERAGE_ENFORCED — reject field_apply for out-of-coverage fields
+    voice_coverage_enforced: bool = True
+    # SENA_AI_FIELD_APPLY_LOG_LEVEL
+    field_apply_log_level: str = "DEBUG"
 
     # ── Screen state injection (Phase D-replacement) ──────────────────────────
     # SENA_AI_SCREEN_STATE_MAX_BYTES — hard cap on screen_state payload size

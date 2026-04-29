@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-04-24
+updated: 2026-04-29
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -36,6 +36,162 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 - `/archive/`, `.venv/`, `.vscode/` — token waste, ignored per CLAUDE.md
 - `ndis_markdown_docs/` — raw NDIS source docs, massive token cost. Use `ndis_wiki/` pages instead. Only read this if `ndis_wiki/` genuinely doesn't answer the question — and only the specific file, never the whole folder.
 - Raw source docs — wiki pages already synthesize these
+
+---
+
+## ✅ DONE: onboarding v2 implemented (2026-04-29)
+
+All 14 files complete. See TASKS.md #9 for full file list. **Next task: Case Note Review #10 Phase D** (`/review` endpoint — risks + restrictive practices + anomalies). Read `.planning/CASE_NOTE_REVIEW_PLAN.md` to resume.
+
+### v2 summary (for reference)
+- `screen_state_v2` WS message + `ScreenStateV2` model + `from_v1()` adapter
+- `field_apply` envelope drives Flutter GetX controllers directly
+- `add_repeatable_row` Gemini tool for growing repeatable sections
+- `coverage.py` + `field_apply.py` — pure enforcement modules
+- `voice_coverage` / `voice_repeatable_sections` on `StepSchema` (fixtures updated)
+- `bio` → `about_me` in `schema_personal_information.json`
+- `prompt_version:"v2"` + `coverage` array in ready envelope
+
+### REMOVED: 14-step implementation recipe
+
+**STEP 1 — models/schema_spec.py** (`sena-ai/services/onboarding/src/onboarding/models/schema_spec.py`)
+After `sections: list[SectionSpec]` add:
+```python
+    voice_coverage: list[str] = Field(default_factory=list)
+    voice_repeatable_sections: list[str] = Field(default_factory=list)
+```
+
+**STEP 2 — models/form_state.py**
+After `completed_at: datetime | None = None` add:
+```python
+    repeatable_rows: dict[str, int] = Field(default_factory=dict)
+```
+After `def touch(self)` body add new method:
+```python
+    def increment_repeatable_row(self, section_id: str) -> int:
+        current = self.repeatable_rows.get(section_id, 0)
+        self.repeatable_rows[section_id] = current + 1
+        self.touch()
+        return current
+```
+
+**STEP 3 — core/settings.py**
+After `onboarding_frame_fps_limit: int = 2` add:
+```python
+    voice_coverage_enforced: bool = True
+    field_apply_log_level: str = "DEBUG"
+```
+
+**STEP 4 — services/coverage.py** (NEW file — Write tool):
+```python
+"""Voice coverage check — pure module (no IO)."""
+from __future__ import annotations
+from onboarding.models.schema_spec import StepSchema
+
+def is_eligible(section_id: str, field_id: str, schema: StepSchema) -> bool:
+    if not schema.voice_coverage:
+        return False
+    return f"{section_id}.{field_id}" in schema.voice_coverage
+
+def is_repeatable_eligible(section_id: str, schema: StepSchema) -> bool:
+    return section_id in schema.voice_repeatable_sections
+
+def coverage_paths(schema: StepSchema) -> list[str]:
+    return list(schema.voice_coverage)
+```
+
+**STEP 5 — services/field_apply.py** (NEW file — Write tool):
+```python
+"""field_apply envelope builder — pure module (no IO)."""
+from __future__ import annotations
+import logging
+from onboarding.models.schema_spec import StepSchema
+from onboarding.services.coverage import is_eligible
+
+log = logging.getLogger(__name__)
+
+def build_envelope(section_id: str, field_id: str, value: object, *, row_index: int | None = None, confidence: float = 1.0, schema: StepSchema, enforced: bool = True) -> dict | None:
+    confidence = max(0.0, min(1.0, float(confidence)))
+    if enforced and not is_eligible(section_id, field_id, schema):
+        log.debug("field_apply_blocked section=%s field=%s", section_id, field_id)
+        return None
+    return {"type": "field_apply", "section_id": section_id, "field_id": field_id, "row_index": row_index, "value": value, "source": "voice", "confidence": confidence}
+```
+
+**STEP 6 — services/screen_context.py** (FULL REWRITE — Write tool, overwrite entire file):
+See PRD §screen_state_v2 contract. Key items:
+- `ScreenStateV2(BaseModel)`: step_id, focused_section, focused_field, field_status (dict[str, Literal["filled","empty","invalid"]]), repeatable_rows (dict[str,int]), ui_flags (dict[str,Any])
+- `ScreenStateV2Message(BaseModel)`: type, data: ScreenStateV2
+- Keep `ScreenData` + `ScreenStateMessage` (v1) for adapter
+- `from_v1(msg, *, session_step_id) -> ScreenStateV2`: maps current_screen→focused_section, prefilled keys→filled in field_status
+- `render_injection_text(state: ScreenStateV2) -> str`: produces multi-line `[SCREEN]\nStep: ...\nFocus: ...\nFilled: ...\nEmpty: ...\nInvalid (re-ask): ...\nRows: ...\nFlags: ...`
+- Keep `payload_hash(data: dict) -> str` unchanged
+
+**STEP 7 — services/tools.py** (Edit — 3 changes):
+1. Add imports at top: `from onboarding.services.coverage import is_repeatable_eligible` and `from onboarding.services import field_apply as _fa`
+2. Add 5th entry to `FUNCTION_DECLS`: `{"name":"add_repeatable_row","description":"Add a new row to a repeatable section. Only for voice-eligible repeatable sections.","parameters":{"type":"object","properties":{"section_id":{"type":"string","description":"Repeatable section id (e.g. ndis_goals)"}},"required":["section_id"]}}`
+3. In `dispatch()` handler dict, add: `"add_repeatable_row": self._add_repeatable_row`
+4. In `_update_field()`, after the existing two `self._emit(...)` calls, add:
+```python
+        envelope = _fa.build_envelope(section_id, field_id, typed_value, row_index=repeatable_index if section.is_repeatable else None, confidence=confidence, schema=self._schema, enforced=settings.voice_coverage_enforced)
+        if envelope is not None:
+            await self._emit(envelope)
+```
+5. Add new `_add_repeatable_row` handler method:
+```python
+    async def _add_repeatable_row(self, args: dict) -> dict:
+        section_id = args.get("section_id", "").strip()
+        if not section_id: return {"ok": False, "error": "section_id required"}
+        section = self._schema.get_section(section_id)
+        if section is None: return {"ok": False, "error": f"unknown section: {section_id}"}
+        if not section.is_repeatable: return {"ok": False, "error": f"not repeatable: {section_id}"}
+        if not is_repeatable_eligible(section_id, self._schema): return {"ok": False, "error": f"section not voice-eligible: {section_id}"}
+        state = await self._repo.get_state(self._session_id)
+        if state is None: return {"ok": False, "error": "session state not found"}
+        new_row_index = state.increment_repeatable_row(section_id)
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+        await self._emit({"type": "row_added", "section_id": section_id, "new_row_index": new_row_index})
+        return {"ok": True, "new_row_index": new_row_index}
+```
+
+**STEP 8 — services/prompt_builder.py** (Edit):
+Add helper before `build_system_prompt`:
+```python
+def _voice_coverage_section(voice_coverage: list[str]) -> str:
+    if not voice_coverage:
+        return ""
+    return "\nVOICE COVERAGE\nOnly collect values for these fields — do NOT ask about any others:\n" + "\n".join(f"  - {p}" for p in voice_coverage)
+```
+In `build_system_prompt`, add to replacements: `.replace("__VOICE_COVERAGE_SECTION__", _voice_coverage_section(schema.voice_coverage))`
+
+**STEP 9 — services/gemini_live.py** (Edit — 3 changes):
+1. Update import block to add: `ScreenStateV2Message, from_v1,` to the screen_context import
+2. In `_handle_control`, add after the `screen_state` block:
+```python
+        elif msg_type == "screen_state_v2":
+            await self._handle_screen_state(session, data, version=2)
+```
+3. Update `_handle_screen_state` signature to `(self, session, data, *, version: int = 1)` and body: for v2 parse `ScreenStateV2Message`, for v1 parse `ScreenStateMessage` then call `from_v1()`. Both pass a `ScreenStateV2` to `render_injection_text`.
+
+**STEP 10 — api/ws_routes.py** (Edit — 2 changes):
+1. Change `"prompt_version": "v1"` → `"prompt_version": "v2"`
+2. Add `"coverage": schema.voice_coverage,` to the `ready` envelope dict
+
+**STEP 11 — prompts/onboarding_system.md** (Edit):
+1. Update the `[SCREEN]` rule in CRITICAL RULES to say: "When you receive a block starting with [SCREEN], use it to understand focus. Filled: = skip. Invalid (re-ask): = revisit. Focus: = prioritise next. Flags: = toggle states."
+2. After `__GROUNDING_SECTION__` add `__VOICE_COVERAGE_SECTION__` on a new line
+3. Update the `update_field` rule to add: "Never call update_field for a field not listed in VOICE COVERAGE."
+
+**STEP 12 — 5 fixture files** (Edit each):
+- `fixtures/schema_personal_information.json`: (a) rename `"id": "bio"` → `"id": "about_me"`, `"label": "A bit about me"` → `"label": "About Me"`, `"required": true` → `"required": false`. (b) After `"progress_percent": 20,` add: `"voice_coverage": ["basics.full_name","basics.date_of_birth","basics.phone","basics.email","basics.about_me"], "voice_repeatable_sections": [],`
+- `fixtures/schema_ndis_plan_details.json`: After `"progress_percent": 60,` add: `"voice_coverage": ["plan_info.ndis_number","plan_info.plan_start","plan_info.plan_end","plan_info.plan_management"], "voice_repeatable_sections": ["ndis_goals"],`
+- `fixtures/schema_participant_requirements.json`: After `"progress_percent": 40,` add: `"voice_coverage": [], "voice_repeatable_sections": [],`
+- `fixtures/schema_documents.json`: After `"progress_percent": 80,` add: `"voice_coverage": [], "voice_repeatable_sections": [],`
+- `fixtures/schema_medical_information.json`: After `"progress_percent": 100,` add: `"voice_coverage": [], "voice_repeatable_sections": [],`
+
+**STEP 13 — HANDOFF_VOICE_ONBOARDING.md** (Write — full rewrite): Document v2 protocol: screen_state_v2 shape, field_apply envelope, row_added envelope, ready envelope with coverage list, voice coverage matrix per step, v1 adapter window note. Keep REST endpoints table. Update WS events table to include field_apply + row_added.
+
+**STEP 14 — post-tool-use.sh** (Edit): After the pipreqs block, add a doc-update trigger: when the tool touches any file in `services/onboarding/src/onboarding/` (services/, models/, api/, fixtures/), regenerate `HANDOFF_VOICE_ONBOARDING.md` and `services/onboarding/docs/FLUTTER_VOICE_INTEGRATION.md` by appending a note: "⚠ Run: update HANDOFF and FLUTTER_VOICE_INTEGRATION.md after this session's changes."
 
 ---
 

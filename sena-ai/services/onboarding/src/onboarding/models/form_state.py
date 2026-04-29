@@ -79,9 +79,16 @@ class FormState(BaseModel):
     # Set True when advance_step fires
     completed: bool = False
     completed_at: datetime | None = None
+    repeatable_rows: dict[str, int] = Field(default_factory=dict)
 
     def touch(self) -> None:
         self.updated_at = _utcnow()
+
+    def increment_repeatable_row(self, section_id: str) -> int:
+        current = self.repeatable_rows.get(section_id, 0)
+        self.repeatable_rows[section_id] = current + 1
+        self.touch()
+        return current
 
     def recompute_completion(self, schema: StepSchema) -> None:
         req_total = req_filled = opt_total = opt_filled = 0

@@ -34,10 +34,12 @@ from onboarding.core.settings import settings
 from onboarding.services.grounding import build_live_tools
 from onboarding.services.screen_context import (
     ScreenStateMessage,
+    ScreenStateV2Message,
+    from_v1,
     payload_hash,
     render_injection_text,
 )
-from onboarding.services.tools import FUNCTION_DECLS
+from onboarding.services.tools import FUNCTION_DECLS, POLICY_BLOCK_DECL, PolicyBlockSignal
 
 if TYPE_CHECKING:
     from onboarding.repositories.state_repo import FormStateRepo
@@ -101,7 +103,8 @@ class GeminiLiveSession:
             # Phase C/E — tool list built by grounding module; includes Google Search
             # when SENA_AI_ONBOARDING_GROUNDING_ENABLED=true (default off).
             tools=build_live_tools(
-                FUNCTION_DECLS,
+                FUNCTION_DECLS if settings.onboarding_grounding_enabled
+                else [*FUNCTION_DECLS, POLICY_BLOCK_DECL],
                 grounding_enabled=settings.onboarding_grounding_enabled,
             ) if self._tools else None,
             # Multi-turn REQUIRES explicit realtime_input_config with VAD.
@@ -202,7 +205,10 @@ class GeminiLiveSession:
             await session.send_realtime_input(audio_stream_end=True)
 
         elif msg_type == "screen_state":
-            await self._handle_screen_state(session, data)
+            await self._handle_screen_state(session, data, version=1)
+
+        elif msg_type == "screen_state_v2":
+            await self._handle_screen_state(session, data, version=2)
 
         elif msg_type == "stop":
             log.info("client_stop session=%s", self._session_id)
@@ -212,11 +218,11 @@ class GeminiLiveSession:
         return False
 
     async def _handle_screen_state(
-        self, session: "genai.live.AsyncSession", data: dict
+        self, session: "genai.live.AsyncSession", data: dict, *, version: int = 1
     ) -> None:
         """
-        Validate, deduplicate, and inject a screen_state message as a Gemini text turn.
-        Identical consecutive payloads are dropped (idempotent).
+        Validate, deduplicate, and inject a screen_state (v1 or v2) message as a
+        Gemini text turn. Identical consecutive payloads are dropped (idempotent).
         Payload logged at debug only — PII compliance.
         """
         from pydantic import ValidationError
@@ -224,13 +230,19 @@ class GeminiLiveSession:
         raw_data = data.get("data", {})
         h = payload_hash(raw_data)
         if h == self._last_screen_hash:
-            log.debug("screen_state_duplicate_dropped session=%s", self._session_id)
+            log.debug("screen_state_duplicate_dropped session=%s version=%d", self._session_id, version)
             return
 
         try:
-            msg = ScreenStateMessage(type="screen_state", data=raw_data)
+            if version == 2:
+                v2_msg = ScreenStateV2Message(type="screen_state_v2", data=raw_data)
+                state_v2 = v2_msg.data
+            else:
+                v1_msg = ScreenStateMessage(type="screen_state", data=raw_data)
+                state_v2 = from_v1(v1_msg, session_step_id=None)
         except ValidationError as exc:
-            log.warning("screen_state_invalid session=%s error=%s", self._session_id, exc)
+            log.warning("screen_state_invalid session=%s version=%d error=%s",
+                        self._session_id, version, exc)
             await self._ws.send_text(
                 json.dumps({"type": "error", "code": "screen_state_invalid",
                             "message": str(exc)})
@@ -238,12 +250,12 @@ class GeminiLiveSession:
             return
 
         self._last_screen_hash = h
-        injection = render_injection_text(msg)
-        log.debug("screen_state_inject session=%s", self._session_id)
+        injection = render_injection_text(state_v2)
+        log.debug("screen_state_inject session=%s version=%d", self._session_id, version)
         await session.send_realtime_input(text=injection)
 
         if settings.debug:
-            await self._ws.send_text(json.dumps({"type": "screen_state_ack", "accepted": True}))
+            await self._ws.send_text(json.dumps({"type": "screen_state_ack", "accepted": True, "version": version}))
 
     # ── Private: Gemini → client ──────────────────────────────────────────────
 
@@ -362,7 +374,20 @@ class GeminiLiveSession:
         responses: list[types.FunctionResponse] = []
         for call in function_calls:
             args_dict = dict(call.args) if call.args else {}
-            result = await self._tools.dispatch(call.name, args_dict)
+            try:
+                result = await self._tools.dispatch(call.name, args_dict)
+            except PolicyBlockSignal as exc:
+                log.info("policy_block_signal question=%r session=%s", exc.question, self._session_id)
+                await self._ws.send_text(json.dumps({
+                    "type": "error",
+                    "code": "policy_block",
+                    "message": (
+                        "This question requires current NDIS policy data. "
+                        "Please re-ask with Google Search grounding enabled."
+                    ),
+                }))
+                await self._ws.close(4011)
+                return
             responses.append(
                 types.FunctionResponse(
                     id=call.id,
