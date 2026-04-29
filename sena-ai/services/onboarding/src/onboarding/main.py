@@ -25,8 +25,12 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="SENA Onboarding Voice API",
         version=settings.service_version,
-        docs_url="/docs" if settings.debug else None,
-        redoc_url="/redoc" if settings.debug else None,
+        description=(
+            "AI voice agent for NDIS participant onboarding. "
+            "WebSocket protocol documented in docs/WS_PROTOCOL.md."
+        ),
+        docs_url="/docs",
+        redoc_url="/redoc",
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )

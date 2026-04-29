@@ -36,6 +36,7 @@ from onboarding.core.settings import settings
 from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.services.gemini_live import GeminiLiveSession
 from onboarding.services.prompt_builder import build_system_prompt
+from onboarding.services.resumption import build_replay_context, issue_handle, redeem_handle
 from onboarding.services.tools import ToolDispatcher
 
 log = logging.getLogger(__name__)
@@ -47,10 +48,11 @@ ws_router = APIRouter()
 async def onboarding_ws(
     websocket: WebSocket,
     session_id: str,
+    resume: str | None = None,
     repo: FormStateRepo = Depends(get_repo),
 ) -> None:
     await websocket.accept()
-    log.info("ws_connect session=%s", session_id)
+    log.info("ws_connect session=%s resume=%s", session_id, bool(resume))
 
     # ── 1. Load state + schema from Redis ─────────────────────────────────────
     state = await repo.get_state(session_id)
@@ -71,10 +73,29 @@ async def onboarding_ws(
                                 "Another voice connection is already active for this session", 4009)
         return
 
+    # ── 3. Validate resumption handle / plain reconnect (Phase E) ────────────
+    replay_context: str = ""
+    if resume:
+        valid = await redeem_handle(repo, resume, session_id)
+        if not valid:
+            await repo.release_ws_lock(session_id)
+            await _close_with_error(websocket, "resume_invalid",
+                                    "Resumption handle invalid, expired, or already used", 4010)
+            return
+        transcript = await repo.get_transcript(session_id)
+        replay_context = build_replay_context(transcript, settings.resumption_replay_turns)
+        log.info("ws_resuming session=%s replay_turns=%d", session_id, len(transcript))
+    else:
+        # Plain session-id reconnect (no handle) — still inject transcript so
+        # Gemini continues naturally rather than restarting cold.
+        transcript = await repo.get_transcript(session_id)
+        if transcript:
+            replay_context = build_replay_context(transcript, settings.resumption_replay_turns)
+            log.info("ws_reconnect_with_context session=%s replay_turns=%d",
+                     session_id, len(transcript))
+
     try:
-        # ── 3. Wait for the "start" handshake ─────────────────────────────────
-        # The client must send {"type":"start"} before streaming any audio.
-        # This allows it to optionally include a resumption_handle (Phase E).
+        # ── 4. Wait for the "start" handshake ─────────────────────────────────
         try:
             raw = await websocket.receive_text()
             start_msg = json.loads(raw)
@@ -90,15 +111,19 @@ async def onboarding_ws(
                                     'Expected {"type":"start"} as first message', 4008)
             return
 
-        # ── 4. Send "ready" with current form state ────────────────────────────
+        # ── 5. Send "ready" with current form state ────────────────────────────
         await websocket.send_text(json.dumps({
             "type": "ready",
             "state": json.loads(state.model_dump_json()),
             "prompt_version": "v1",
         }))
 
-        # ── 5. Build system prompt + tool dispatcher + run Gemini bridge ─────
-        system_instruction = build_system_prompt(schema, state)
+        # ── 6. Build system prompt + tool dispatcher + run Gemini bridge ──────
+        system_instruction = build_system_prompt(
+            schema,
+            state,
+            grounding_enabled=settings.onboarding_grounding_enabled,
+        )
 
         tool_dispatcher = ToolDispatcher(
             websocket=websocket,
@@ -113,6 +138,7 @@ async def onboarding_ws(
             system_instruction=system_instruction,
             repo=repo,
             tool_dispatcher=tool_dispatcher,
+            replay_context=replay_context or None,
         )
         await live_session.run()
 
@@ -129,7 +155,20 @@ async def onboarding_ws(
         except Exception:
             pass
     finally:
-        # Always release the WS lock so the session can be resumed
+        # ── Issue resumable handle on non-terminal close (Phase E) ────────────
+        try:
+            state_after = await repo.get_state(session_id)
+            if state_after and not state_after.completed:
+                handle = await issue_handle(repo, session_id, settings.resumption_handle_ttl_sec)
+                await websocket.send_text(json.dumps({
+                    "type": "resumable",
+                    "handle": handle,
+                    "ttl_sec": settings.resumption_handle_ttl_sec,
+                }))
+                log.debug("resumable_envelope_sent session=%s handle=%.8s…", session_id, handle)
+        except Exception:
+            pass  # best-effort — WS may already be closed
+
         await repo.release_ws_lock(session_id)
         log.info("ws_lock_released session=%s", session_id)
         try:

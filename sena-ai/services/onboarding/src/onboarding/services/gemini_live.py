@@ -31,6 +31,12 @@ from google import genai
 from google.genai import types
 
 from onboarding.core.settings import settings
+from onboarding.services.grounding import build_live_tools
+from onboarding.services.screen_context import (
+    ScreenStateMessage,
+    payload_hash,
+    render_injection_text,
+)
 from onboarding.services.tools import FUNCTION_DECLS
 
 if TYPE_CHECKING:
@@ -60,13 +66,16 @@ class GeminiLiveSession:
         system_instruction: str,
         repo: "FormStateRepo",
         tool_dispatcher: "ToolDispatcher | None" = None,
+        replay_context: str | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
         self._system_instruction = system_instruction
         self._repo = repo
         self._tools = tool_dispatcher
+        self._replay_context = replay_context
         self._turn_id = 0
+        self._last_screen_hash: str | None = None
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -79,15 +88,22 @@ class GeminiLiveSession:
             system_instruction=types.Content(
                 parts=[types.Part(text=self._system_instruction)],
             ),
-            # Lock the conversation to English. Without this, native-audio models
-            # auto-detect language from the first utterance — ambiguous/quiet
-            # audio was being transcribed as Japanese ("はい").
-            # BCP-47 code. "en-AU" is not a supported TTS voice on the 3.1
-            # Live preview; "en-US" renders an Aussie-readable English voice.
-            speech_config=types.SpeechConfig(language_code="en-US"),
-            # Phase C — tool calling. FUNCTION_DECLS are plain dicts; the SDK
-            # accepts them via types.Tool(function_declarations=[...]).
-            tools=[types.Tool(function_declarations=FUNCTION_DECLS)] if self._tools else None,
+            # Lock TTS to English via a named prebuilt voice. Without this,
+            # native-audio models auto-detect language from the first utterance —
+            # ambiguous/quiet audio was being transcribed as Japanese ("はい").
+            # SpeechConfig.language_code is absent in this SDK version (Pydantic
+            # model forbids extra fields); voice selection is the supported path.
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Aoede")
+                )
+            ),
+            # Phase C/E — tool list built by grounding module; includes Google Search
+            # when SENA_AI_ONBOARDING_GROUNDING_ENABLED=true (default off).
+            tools=build_live_tools(
+                FUNCTION_DECLS,
+                grounding_enabled=settings.onboarding_grounding_enabled,
+            ) if self._tools else None,
             # Multi-turn REQUIRES explicit realtime_input_config with VAD.
             # Without it the receive() iterator exits after the first turn and
             # the session silently stops processing audio.
@@ -111,6 +127,10 @@ class GeminiLiveSession:
             model=settings.gemini_live_model_id, config=config
         ) as session:
             log.info("gemini_connected session=%s model=%s", self._session_id, settings.gemini_live_model_id)
+            # Phase E — inject replay context so model continues without reintroducing
+            if self._replay_context:
+                await session.send_realtime_input(text=self._replay_context)
+                log.debug("replay_context_injected session=%s", self._session_id)
             b2g = asyncio.create_task(self._browser_to_gemini(session))
             g2b = asyncio.create_task(self._gemini_to_browser(session))
             # If g2b exits first (e.g. advance_step closes the step), unblock b2g
@@ -181,12 +201,49 @@ class GeminiLiveSession:
             # Signal end-of-utterance so Gemini flushes its audio buffer
             await session.send_realtime_input(audio_stream_end=True)
 
+        elif msg_type == "screen_state":
+            await self._handle_screen_state(session, data)
+
         elif msg_type == "stop":
             log.info("client_stop session=%s", self._session_id)
             return True
 
         # "start" arrives before run() — safe to ignore here if it slips through
         return False
+
+    async def _handle_screen_state(
+        self, session: "genai.live.AsyncSession", data: dict
+    ) -> None:
+        """
+        Validate, deduplicate, and inject a screen_state message as a Gemini text turn.
+        Identical consecutive payloads are dropped (idempotent).
+        Payload logged at debug only — PII compliance.
+        """
+        from pydantic import ValidationError
+
+        raw_data = data.get("data", {})
+        h = payload_hash(raw_data)
+        if h == self._last_screen_hash:
+            log.debug("screen_state_duplicate_dropped session=%s", self._session_id)
+            return
+
+        try:
+            msg = ScreenStateMessage(type="screen_state", data=raw_data)
+        except ValidationError as exc:
+            log.warning("screen_state_invalid session=%s error=%s", self._session_id, exc)
+            await self._ws.send_text(
+                json.dumps({"type": "error", "code": "screen_state_invalid",
+                            "message": str(exc)})
+            )
+            return
+
+        self._last_screen_hash = h
+        injection = render_injection_text(msg)
+        log.debug("screen_state_inject session=%s", self._session_id)
+        await session.send_realtime_input(text=injection)
+
+        if settings.debug:
+            await self._ws.send_text(json.dumps({"type": "screen_state_ack", "accepted": True}))
 
     # ── Private: Gemini → client ──────────────────────────────────────────────
 

@@ -119,6 +119,10 @@ class FormStateRepo:
     async def delete_resumption_handle(self, handle: str) -> None:
         await self._r.delete(_KEY_RESUMPTION.format(handle=handle))
 
+    async def redeem_resumption_handle(self, handle: str) -> str | None:
+        """Atomically get and delete the resumption handle (GETDEL — single-use)."""
+        return await self._r.getdel(_KEY_RESUMPTION.format(handle=handle))
+
     # ── Camera / screen frames (latest only, for debug / Phase D) ─────────────
 
     async def save_frame(self, session_id: str, frame_type: str, data: bytes) -> None:

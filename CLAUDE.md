@@ -70,9 +70,12 @@ API-first service at `sena-ai/services/onboarding/src/onboarding/`. Mobile app i
 |-------|------|---------|
 | API | `api/routes.py` | REST: session lifecycle, state, webhook fire |
 | API | `api/ws_routes.py` | WebSocket: start handshake, WS lock, Gemini bridge, error close codes (Phase B ✓) |
-| Services | `services/gemini_live.py` | Gemini Live bridge: b2g/g2b tasks, transcript events, WS↔Gemini audio (Phase B ✓) |
-| Services | `services/prompt_builder.py` | System prompt renderer: injects schema + FormState via `__PLACEHOLDER__` replacements (Phase B ✓) |
-| Services | `services/tools.py` | Tool dispatcher: update_field, get_session_context, advance_step, escalate_incident (Phase C ✓) |
+| Services | `services/gemini_live.py` | Gemini Live bridge: b2g/g2b tasks, transcript events, WS↔Gemini audio, screen_state inject (Phase B/D ✓) |
+| Services | `services/prompt_builder.py` | System prompt renderer: injects schema + FormState + grounding/resume context (Phase B/E ✓) |
+| Services | `services/tools.py` | Tool dispatcher: update_field, get_session_context, advance_step (idempotent), escalate_incident (Phase C ✓) |
+| Services | `services/screen_context.py` | Pure: ScreenStateMessage validation + render_injection_text + payload_hash (Phase D ✓) |
+| Services | `services/grounding.py` | Pure: build_live_tools — assembles function_declarations + optional GoogleSearch tool (Phase E ✓) |
+| Services | `services/resumption.py` | Redis-backed: issue_handle, redeem_handle (GETDEL single-use), build_replay_context (Phase E ✓) |
 | Services | `services/webhook.py` | Outbound webhook to app backend, 3-retry exp backoff |
 | Repositories | `repositories/state_repo.py` | Redis only — no Postgres. FormState, transcript, WS lock, resumption handles |
 | Models | `models/schema_spec.py` | StepSchema, SectionSpec, FieldSpec (incl. visible_if, repeatable) |
@@ -97,7 +100,7 @@ cd sena-ai/services/onboarding
 uvicorn src.onboarding.main:create_app --factory --reload --port 8083
 ```
 
-**Env vars (prefix `SENA_AI_`):** `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL_ID`, `ONBOARDING_PORT`, `APP_WEBHOOK_URL`, `APP_WEBHOOK_SECRET`, `REDIS_URL`
+**Env vars (prefix `SENA_AI_`):** `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL_ID`, `ONBOARDING_PORT`, `APP_WEBHOOK_URL`, `APP_WEBHOOK_SECRET`, `REDIS_URL`, `ONBOARDING_GROUNDING_ENABLED` (default false), `SCREEN_STATE_MAX_BYTES` (default 8192), `RESUMPTION_HANDLE_TTL_SEC` (default 600), `RESUMPTION_REPLAY_TURNS` (default 4)
 
 ---
 

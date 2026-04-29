@@ -54,7 +54,7 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ## Next up (picked by user when resuming)
 
 ### #9 — Onboarding Voice API (consolidates #3–#8)
-- **Status:** PAUSED - BLOCKED (2026-04-22, office dep) — Phase C complete, Phase D not started
+- **Status:** DONE — Phases A–F shipped (2026-04-28)
 - **Resume via:** `.planning/paused_state_phase_d_camera_screen_ingress.md`
 - **Prior status:** in_progress (Phase C complete 2026-04-21)
 - **Priority:** P1
@@ -77,9 +77,9 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
   - F (partial): `test_harness.html` at `/harness` — phases A/B/C testable in browser ✓ (2026-04-21)
     - `GET /harness` + `GET /harness/fixtures/{step_id}` routes added to `main.py` ✓ (2026-04-21)
     - **Run requirement:** `pip install -e .` from `sena-ai/services/onboarding/` before uvicorn (src-layout needs editable install)
-  - D: ~~Camera/screen frame ingress~~ **PLAN CHANGED** → live JSON screen state via WS `{"type":"screen_state","data":{...}}` — Flutter sends current screen snapshot, backend injects as Gemini context. Schema TBD with Flutter dev. ← next (unblocked)
-  - E: Session resumption + Google Search grounding (#7 + #8)
-  - F: OpenAPI docs + WS protocol doc + Postman collection + dev harness update
+  - D: ~~Camera/screen frame ingress~~ → screen_state JSON WS message, screen_context.py pure module, Gemini inject ✓ (2026-04-28)
+  - E: Session resumption (resumption.py, redeem GETDEL, resumable envelope, close 4010) + grounding (grounding.py, build_live_tools, flag off by default) ✓ (2026-04-28)
+  - F: OpenAPI unconditional /docs, WS_PROTOCOL.md, postman_collection.json ✓ (2026-04-28)
 - **Acceptance:** mobile engineer can integrate from docs alone; webhook fires with final FormState; resumption works across reconnect; grounded NDIS answers
 
 ### Individual tasks (folded into #9)

@@ -58,10 +58,20 @@ class OnboardingSettings(BaseSettings):
     onboarding_webhook_max_retries: int = 3
 
     # ── Feature flags ─────────────────────────────────────────────────────────
-    # SENA_AI_ONBOARDING_GROUNDING_ENABLED
-    onboarding_grounding_enabled: bool = True
+    # SENA_AI_ONBOARDING_GROUNDING_ENABLED — default off until compliance sign-off
+    onboarding_grounding_enabled: bool = False
     # SENA_AI_ONBOARDING_FRAME_FPS_LIMIT
     onboarding_frame_fps_limit: int = 2
+
+    # ── Screen state injection (Phase D-replacement) ──────────────────────────
+    # SENA_AI_SCREEN_STATE_MAX_BYTES — hard cap on screen_state payload size
+    screen_state_max_bytes: int = 8192
+
+    # ── Session resumption (Phase E) ──────────────────────────────────────────
+    # SENA_AI_RESUMPTION_HANDLE_TTL_SEC — handle expiry (default 10 min)
+    resumption_handle_ttl_sec: int = 600
+    # SENA_AI_RESUMPTION_REPLAY_TURNS — transcript turns replayed on resume
+    resumption_replay_turns: int = 4
 
     # ── Derived (seconds) ─────────────────────────────────────────────────────
     @property

@@ -56,6 +56,7 @@
   .btn-start   { background: var(--green);  color: #fff; }
   .btn-stop    { background: var(--red);    color: #fff; }
   .btn-ghost   { background: #f1f5f9; color: var(--ink); }
+  .btn-warn    { background: #fef3c7; color: #92400e; }
 
   .status {
     padding: 10px 12px; border-radius: 6px; font-size: .85rem; font-weight: 500;
@@ -108,19 +109,46 @@
   .log-tool { color: var(--accent-d); }
   .log-err  { color: var(--red); }
   .log-ok   { color: var(--green); }
+  .log-warn { color: var(--yellow); }
 
-  .placeholder {
-    padding: 14px; background: repeating-linear-gradient(45deg, #fafafa, #fafafa 10px, #f4f4f5 10px, #f4f4f5 20px);
-    border: 1px dashed var(--border); border-radius: 6px;
-    color: var(--muted); text-align: center; font-size: .85rem;
+  .handle-box {
+    background: #fef9c3; border: 1px solid #fde047; border-radius: 6px;
+    padding: 8px 12px; font-size: .78rem; margin: 8px 0;
   }
+  .handle-box code {
+    font-family: ui-monospace, monospace; font-size: .72rem;
+    word-break: break-all; display: block; margin: 4px 0;
+    color: #92400e;
+  }
+  .handle-box.empty { background: #f8fafc; border-color: var(--border); color: var(--muted); }
+
+  .toggle-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: .82rem; padding: 6px 0;
+  }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 8px;
+    font-size: .7rem; font-weight: 700;
+  }
+  .badge.on  { background: #dcfce7; color: #166534; }
+  .badge.off { background: #fee2e2; color: #991b1b; }
+
+  .docs-links { display: flex; gap: 12px; flex-wrap: wrap; }
+  .docs-links a {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 12px; border-radius: 6px; font-size: .82rem; font-weight: 600;
+    background: #eff6ff; color: var(--accent-d); text-decoration: none;
+    border: 1px solid #bfdbfe;
+  }
+  .docs-links a:hover { background: #dbeafe; }
 </style>
 </head>
 <body>
 
 <h1>SENA Onboarding — Voice API Test Harness</h1>
-<p class="sub">Standalone browser client for verifying each phase as it ships. Served at <code>/harness</code>.</p>
+<p class="sub">Standalone browser client for verifying each phase. Served at <code>/harness</code>. Phases A–F shipped.</p>
 
+<!-- ── Phase A ─────────────────────────────────────────────────────────── -->
 <div class="card">
   <h3>Phase A — REST session <span class="phase-tag">shipped</span></h3>
   <div class="grid">
@@ -144,11 +172,19 @@
     <button id="getStateBtn" class="btn-ghost" disabled>GET /state</button>
     <button id="completeBtn" class="btn-ghost" disabled>POST /complete (fire webhook)</button>
   </div>
+  <div style="margin-top:10px; display:flex; gap:8px; align-items:flex-end;">
+    <div style="flex:1;">
+      <label>Resume existing session by ID</label>
+      <input type="text" id="resumeSessionInput" placeholder="Paste session_id here…" />
+    </div>
+    <button id="resumeSessionBtn" class="btn-warn" style="white-space:nowrap;">Resume Session</button>
+  </div>
   <div class="status idle" id="sessionStatus">No session.</div>
   <div class="kv"><span>session_id</span><code id="sidDisplay">—</code></div>
   <div class="kv"><span>ws_url</span><code id="wsUrlDisplay">—</code></div>
 </div>
 
+<!-- ── Phase B ─────────────────────────────────────────────────────────── -->
 <div class="card">
   <h3>Phase B — WebSocket + Gemini Live <span class="phase-tag">shipped</span></h3>
   <div>
@@ -161,6 +197,8 @@
 </div>
 
 <div class="grid">
+
+  <!-- ── Phase C ──────────────────────────────────────────────────────── -->
   <div class="card">
     <h3>Phase C — Tool-driven form <span class="phase-tag">shipped</span></h3>
     <div id="completionSummary" class="sub">Create a session to render the form.</div>
@@ -169,18 +207,69 @@
   </div>
 
   <div>
+
+    <!-- ── Phase D ────────────────────────────────────────────────────── -->
     <div class="card">
-      <h3>Phase D — Vision ingress <span class="phase-tag todo">todo</span></h3>
-      <div class="placeholder">Camera + screen frame capture buttons will land here.</div>
+      <h3>Phase D — Screen state injection <span class="phase-tag">shipped</span></h3>
+      <label>screen_state payload (JSON) — send over active WS</label>
+      <textarea id="screenStateJson">{
+  "current_screen": "personal_information",
+  "visible_fields": ["full_name", "date_of_birth", "phone"],
+  "prefilled": { "full_name": "John Smith" },
+  "app_context": "user is on step 1 of 5"
+}</textarea>
+      <div style="margin-top:8px;">
+        <button id="sendScreenStateBtn" class="btn-primary" disabled>Send Screen State</button>
+        <button id="clearScreenStateBtn" class="btn-ghost">Clear</button>
+      </div>
+      <div id="screenStateStatus" style="font-size:.78rem; color:var(--muted); margin-top:6px;">
+        WS must be active to send. Identical consecutive payloads are dropped server-side (idempotent).
+      </div>
     </div>
+
+    <!-- ── Phase E ────────────────────────────────────────────────────── -->
     <div class="card">
-      <h3>Phase E — Resumption + grounding <span class="phase-tag todo">todo</span></h3>
-      <div class="placeholder">Resumption handle display + Google Search toggle.</div>
+      <h3>Phase E — Resumption + grounding <span class="phase-tag">shipped</span></h3>
+
+      <label style="margin-bottom:4px;">Resumption handle (issued on non-terminal WS close)</label>
+      <div class="handle-box empty" id="handleBox">
+        <span id="handleLabel">No handle yet — close an in-progress session to receive one.</span>
+        <code id="handleDisplay" style="display:none;"></code>
+        <span id="handleTtl" style="font-size:.7rem; color:var(--muted);"></span>
+      </div>
+      <div style="margin-top:8px; margin-bottom:12px;">
+        <button id="reconnectBtn" class="btn-warn" disabled>Reconnect with Handle</button>
+        <button id="clearHandleBtn" class="btn-ghost" disabled>Clear Handle</button>
+      </div>
+
+      <div class="toggle-row">
+        <span>Google Search grounding:</span>
+        <span class="badge off" id="groundingBadge">OFF</span>
+        <span style="color:var(--muted); font-size:.75rem;">
+          Controlled by <code>SENA_AI_ONBOARDING_GROUNDING_ENABLED</code> env var (default off).
+          Flip on server — no client change needed.
+        </span>
+      </div>
     </div>
+
+    <!-- ── Event log ──────────────────────────────────────────────────── -->
     <div class="card">
       <h3>Event log</h3>
       <div id="log"></div>
     </div>
+
+  </div>
+</div>
+
+<!-- ── Phase F — Docs ──────────────────────────────────────────────────── -->
+<div class="card">
+  <h3>Phase F — Protocol docs <span class="phase-tag">shipped</span></h3>
+  <div class="docs-links">
+    <a href="/docs" target="_blank">OpenAPI /docs</a>
+    <a href="/redoc" target="_blank">ReDoc /redoc</a>
+    <a href="/openapi.json" target="_blank">openapi.json</a>
+    <a href="/static/WS_PROTOCOL.md" target="_blank">WS_PROTOCOL.md</a>
+    <a href="/static/postman_collection.json" target="_blank" download>Postman collection</a>
   </div>
 </div>
 
@@ -198,6 +287,10 @@ let playHead = 0;
 let streaming = false;
 let pendingResume = null;
 let audioBytesThisTurn = 0;
+
+// Phase E
+let resumeHandle = null;
+let resumeTtlSec = null;
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Helpers — all DOM writes use textContent (XSS-safe)
@@ -222,6 +315,33 @@ function setWsStatus(text, cls, micLive) {
   $('micDot').className = 'mic-dot' + (micLive ? ' live' : '');
   $('wsStatusText').textContent = text;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase A — Resume existing session by ID
+   ═══════════════════════════════════════════════════════════════════════════ */
+$('resumeSessionBtn').addEventListener('click', async () => {
+  const id = $('resumeSessionInput').value.trim();
+  if (!id) { setSessionStatus('Paste a session_id first.', 'error'); return; }
+  setSessionStatus('Loading state for ' + id + '…', 'idle');
+  try {
+    const res = await fetch('/v1/onboarding/session/' + id + '/state');
+    if (!res.ok) throw new Error('GET /state → ' + res.status);
+    formState = await res.json();
+    sessionId = id;
+    $('sidDisplay').textContent = sessionId;
+    $('wsUrlDisplay').textContent = 'ws://' + location.host + '/ws/onboarding/' + sessionId;
+    $('startBtn').disabled = false;
+    $('beepBtn').disabled = false;
+    $('getStateBtn').disabled = false;
+    $('completeBtn').disabled = false;
+    setSessionStatus('Session resumed. Click Start Voice Session to reconnect.', 'live');
+    log('Session resumed: ' + sessionId, 'log-ok');
+    renderForm();
+  } catch (e) {
+    setSessionStatus('Resume failed: ' + e.message, 'error');
+    log('Resume failed: ' + e.message, 'log-err');
+  }
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Phase A — REST session lifecycle
@@ -382,6 +502,69 @@ function renderField(sectionId, fieldSpec, fieldVal, highlight, idx) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Phase D — screen state injection
+   ═══════════════════════════════════════════════════════════════════════════ */
+$('sendScreenStateBtn').addEventListener('click', () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    $('screenStateStatus').textContent = 'WS not open — start a voice session first.';
+    return;
+  }
+  let data;
+  try {
+    data = JSON.parse($('screenStateJson').value);
+  } catch (e) {
+    $('screenStateStatus').textContent = 'Invalid JSON: ' + e.message;
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'screen_state', data }));
+  $('screenStateStatus').textContent = 'Sent at ' + new Date().toLocaleTimeString() + '. Server will inject into Gemini context.';
+  log('screen_state sent → ' + (data.current_screen || '?'), 'log-tool');
+});
+
+$('clearScreenStateBtn').addEventListener('click', () => {
+  $('screenStateJson').value = '{}';
+  $('screenStateStatus').textContent = 'Cleared.';
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase E — resumption handle UI
+   ═══════════════════════════════════════════════════════════════════════════ */
+function setResumeHandle(handle, ttlSec) {
+  resumeHandle = handle;
+  resumeTtlSec = ttlSec;
+  const box = $('handleBox');
+  if (handle) {
+    box.className = 'handle-box';
+    $('handleLabel').textContent = 'Resumption handle (single-use, TTL ' + ttlSec + 's):';
+    const disp = $('handleDisplay');
+    disp.style.display = 'block';
+    disp.textContent = handle;
+    $('handleTtl').textContent = 'Expires in ' + ttlSec + 's — reconnect before it does.';
+    $('reconnectBtn').disabled = !sessionId;
+    $('clearHandleBtn').disabled = false;
+  } else {
+    box.className = 'handle-box empty';
+    $('handleLabel').textContent = 'No handle yet — close an in-progress session to receive one.';
+    $('handleDisplay').style.display = 'none';
+    $('handleDisplay').textContent = '';
+    $('handleTtl').textContent = '';
+    $('reconnectBtn').disabled = true;
+    $('clearHandleBtn').disabled = true;
+  }
+}
+
+$('clearHandleBtn').addEventListener('click', () => setResumeHandle(null, null));
+
+$('reconnectBtn').addEventListener('click', async () => {
+  if (!sessionId || !resumeHandle) return;
+  log('Reconnecting with handle ' + resumeHandle.slice(0, 8) + '…', 'log-warn');
+  // Consume the handle (single-use) — clear UI immediately
+  const handle = resumeHandle;
+  setResumeHandle(null, null);
+  await connectWs(handle);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Phase B — WS + audio (ported from demo_client.html — same Windows-safe pattern)
    ═══════════════════════════════════════════════════════════════════════════ */
 function floatTo16BitPCM(f32) {
@@ -483,15 +666,15 @@ function cleanupMic() {
 
 $('startBtn').addEventListener('click', async () => {
   if (!sessionId) return;
+  await connectWs(null);
+});
+
+async function connectWs(resumeHandleParam) {
   $('startBtn').disabled = true;
   setWsStatus('Connecting…', 'idle', false);
 
   if (!playCtx) { playCtx = new AudioContext(); playHead = playCtx.currentTime; }
   try { await playCtx.resume(); } catch {}
-  // Warmup beep: keeps AudioContext "hot" so Chrome doesn't auto-suspend it
-  // between now and when Gemini's first audio chunk arrives. Without this,
-  // ensurePlayCtxRunning()'s .resume() inside ws.onmessage silently fails
-  // (not a user gesture) → Gemini audio arrives but plays silently.
   try {
     const o = playCtx.createOscillator(), g = playCtx.createGain();
     o.frequency.value = 440; g.gain.value = 0.08;
@@ -501,11 +684,6 @@ $('startBtn').addEventListener('click', async () => {
   } catch {}
 
   try {
-    // Firefox + shared AudioContext: echoCancellation=true causes Firefox's
-    // AEC to treat Gemini's 24 kHz playback as "echo" and cancel it from the
-    // speaker output — the system audio becomes SILENT while the mic still
-    // picks up speech. Disable AEC/NS/AGC. User must wear headphones to
-    // prevent mic feedback loops.
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
     });
@@ -516,11 +694,15 @@ $('startBtn').addEventListener('click', async () => {
   }
 
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(scheme + '://' + location.host + '/ws/onboarding/' + sessionId);
+  let wsUrl = scheme + '://' + location.host + '/ws/onboarding/' + sessionId;
+  if (resumeHandleParam) wsUrl += '?resume=' + encodeURIComponent(resumeHandleParam);
+
+  ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
+  $('sendScreenStateBtn').disabled = false;
 
   ws.onopen = () => {
-    log('WS open — sending {type:start}', 'log-ok');
+    log('WS open' + (resumeHandleParam ? ' (resuming)' : '') + ' — sending {type:start}', 'log-ok');
     ws.send(JSON.stringify({ type: 'start' }));
   };
 
@@ -536,13 +718,20 @@ $('startBtn').addEventListener('click', async () => {
 
   ws.onerror = () => { log('WS error', 'log-err'); };
   ws.onclose = (ev) => {
-    setWsStatus('WS closed (code=' + ev.code + ')', 'idle', false);
-    log('WS closed code=' + ev.code + ' reason=' + (ev.reason || ''));
+    const codeLabel = ev.code === 4010 ? ' (resume_invalid)' : '';
+    setWsStatus('WS closed (code=' + ev.code + codeLabel + ')', 'idle', false);
+    log('WS closed code=' + ev.code + codeLabel + ' reason=' + (ev.reason || ''),
+        ev.code === 4010 ? 'log-err' : '');
     cleanupMic();
     $('startBtn').disabled = !sessionId;
     $('stopBtn').disabled  = true;
+    $('sendScreenStateBtn').disabled = true;
+    if (ev.code === 4010) {
+      setResumeHandle(null, null);
+      log('Handle expired or mismatched — start a fresh session or create a new one.', 'log-err');
+    }
   };
-});
+}
 
 $('stopBtn').addEventListener('click', () => {
   try {
@@ -573,8 +762,6 @@ function handleServerMessage(msg) {
 
     case 'turn_start':
       audioBytesThisTurn = 0;
-      // Reset stale playHead — if no audio played for a while, playHead is in
-      // the past and src.start(startAt) schedules chunks behind currentTime.
       if (playCtx && playHead < playCtx.currentTime) playHead = playCtx.currentTime;
       setWsStatus('Agent speaking…', 'speak', true);
       log('▶ agent reply starting (ctx=' + (playCtx && playCtx.state) + ')');
@@ -605,15 +792,31 @@ function handleServerMessage(msg) {
       renderForm();
       setWsStatus('Step complete — webhook fired.', 'live', false);
       log('step_completed', 'log-ok');
+      // Terminal state — no resumption handle on step_completed close
       break;
 
     case 'escalated':
       log('ESCALATED: ' + msg.reason + ' — ' + (msg.transcript_excerpt || ''), 'log-err');
       break;
 
+    // Phase D
+    case 'screen_state_ack':
+      log('screen_state_ack: accepted=' + msg.accepted, 'log-tool');
+      $('screenStateStatus').textContent = 'Acknowledged by server at ' + new Date().toLocaleTimeString();
+      break;
+
+    // Phase E
+    case 'resumable':
+      setResumeHandle(msg.handle, msg.ttl_sec);
+      log('resumable handle issued (TTL ' + msg.ttl_sec + 's) — use "Reconnect with Handle" before it expires.', 'log-warn');
+      break;
+
     case 'error':
       log('error ' + msg.code + ': ' + msg.message, 'log-err');
       setWsStatus('Error: ' + msg.code, 'error', false);
+      if (msg.code === 'screen_state_invalid' || msg.code === 'screen_state_too_large') {
+        $('screenStateStatus').textContent = 'Server rejected: ' + msg.code + ' — ' + msg.message;
+      }
       break;
 
     default:
@@ -639,7 +842,7 @@ function appendTurn(who, text) {
   t.scrollTop = t.scrollHeight;
 }
 
-log('Harness ready. Create a session, then Start Voice.');
+log('Harness ready — Phases A–F. Create a session, then Start Voice.');
 </script>
 
 </body>

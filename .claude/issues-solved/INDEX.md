@@ -8,6 +8,10 @@ purpose: Grep-first symptom lookup. Read this BEFORE debugging.
 
 **How to use:** `grep` this file for symptom keywords. If no hit, problem is new — solve it, then append a row. If hit, read linked file, apply fix.
 
+| # | Symptoms | File |
+|---|----------|------|
+| 0004 | SpeechConfig language_code extra_forbidden, RealtimeInputConfig AttributeError, google-genai 1.4.0 missing types | [0004-google-genai-sdk-version-mismatch.md](0004-google-genai-sdk-version-mismatch.md) |
+
 **Conventions:** newest at top. Symptom column uses user's language (what you'd type when debugging). Tags are single-word, lowercase.
 
 ---

@@ -360,6 +360,10 @@ class ToolDispatcher:
         if state is None:
             return {"ok": False, "error": "session state not found"}
 
+        # Idempotency guard — prevent double webhook fire across resume-then-advance
+        if state.completed:
+            return {"ok": True, "webhook_delivered": False, "already_completed": True}
+
         # Re-validate completion before firing webhook — model may be optimistic
         state.recompute_completion(self._schema)
         if state.completion and not state.completion.complete:
