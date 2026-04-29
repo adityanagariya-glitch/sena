@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "vector-databases",
+  "owner": "rnavarych",
+  "repo": "alpha-engineer",
+  "path": "plugins/roles/role-database/skills/vector-databases",
+  "branch": "main",
+  "sha": "b7ebb2be2770be3d44aedfe83ee32558d224336f",
+  "source": "manual"
+}

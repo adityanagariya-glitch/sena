@@ -1,0 +1,54 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/test_triage.py)",
+      "Bash(python scripts/test_rag.py)",
+      "Bash(python scripts/test_evaluator.py)",
+      "Bash(python scripts/test_cross_check.py)",
+      "Bash(python scripts/test_pipeline.py)",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+      "Bash(docker model skills *)",
+      "Bash(python scripts/test_sarah_note.py)",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" scripts/test_sarah_note.py)",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "axon"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/session-start.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/post-tool-use.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/stop.py"
+          }
+        ]
+      }
+    ]
+  }
+}
