@@ -1,6 +1,6 @@
 ---
 title: Restrictive Practices Detection — Session Start Guide
-updated: 2026-04-28
+updated: 2026-04-30
 ---
 
 ## Read This First Every Session

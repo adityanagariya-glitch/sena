@@ -12,7 +12,13 @@
       "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" scripts/test_sarah_note.py)",
       "mcp__plugin_context-mode_context-mode__ctx_search",
       "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
-      "mcp__plugin_context-mode_context-mode__ctx_execute_file"
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "Bash(/c/Users/Admin/anaconda3/envs/sena_env/python.exe *)",
+      "Bash(/c/Users/Admin/anaconda3/envs/sena_env/Scripts/uvicorn.exe main:app *)",
+      "Bash(curl -sf http://127.0.0.1:8084/v1/restrictive-practices/health)",
+      "Bash(curl *)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:docs.cloud.google.com)"
     ]
   },
   "enableAllProjectMcpServers": true,
