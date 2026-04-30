@@ -67,6 +67,19 @@ API-first service at `sena-ai/services/onboarding/src/onboarding/`. Mobile app i
 - `POST /v1/onboarding/session/{id}/complete` — finalize + fire webhook
 - `WSS /ws/onboarding/{session_id}` — voice stream (Phase B)
 
+**WS server→client events (Flutter must handle all):**
+| Event | Payload | Action required |
+|-------|---------|----------------|
+| `ready` | `{state, prompt_version, coverage}` | Session live, start mic |
+| `turn_start` | — | Gemini began speaking, start playback |
+| `turn_complete` | — | Gemini finished turn |
+| `interrupted` | — | User barged in, clear audio queue |
+| `user_said` | `{text}` | Input transcript |
+| `agent_said` | `{text}` | Output transcript |
+| `go_away` | `{time_left_ms}` | **Gemini session closing in N ms — call resume endpoint before expiry to avoid silent drop** |
+| `resumable` | `{handle, ttl_sec}` | App-level resume handle issued on close |
+| `error` | `{code, message}` | Handle or close |
+
 **Design decisions:**
 - One WS session = one onboarding step (clean resumption semantics)
 - App backend owns schema + final DB; we own ephemeral Redis state
@@ -269,6 +282,7 @@ Automated hooks enforce safety rules and maintain documentation consistency. See
 - Warns when committing directly to main/master
 - Reminds to check graphify knowledge graph before searching
 - Flags critical file modifications (CLAUDE.md, .env, settings.json)
+- **Rule 3 — Gemini Live Config Gate (STRICT):** any Write/Edit to a `gemini*` or `demo_live*` file is blocked until BOTH `skills-gemini.flag` (Skill: gemini-live-api-dev invoked) AND `ctx7-gemini.flag` (Context7 queried for google-genai/gemini this session) are present. Either missing → block with specific remediation steps.
 
 **PostToolUse** (`.claude/hooks/post-tool-use.sh` + `.claude/hooks/bump-updated.sh`):
 - Maintains per-service `requirements.txt` via pipreqs on Python file edits
@@ -313,7 +327,8 @@ For ANY code touching Gemini API or Gemini Live API:
    - Do NOT use: `session.send(input=..., end_of_turn=True)` (old API, misroutes to `send_client_content`)
    - Do NOT use: `LiveClientRealtimeInput(media_chunks=[...])` (old wire format)
 5. **Proactive audio NOT supported** on `gemini-3.1-flash-live-preview` — model will NOT speak first without user audio input. Greeting must be triggered by user speaking first (system prompt handles the actual greeting content).
-6. **NEVER gate mic audio on an `_agent_speaking` flag.** Doing so causes VAD to silently stop after 2-4 turns (model sends audio for next turn before user speaks, gate mutes mic, VAD never fires). Always stream audio unconditionally; rely on `activity_handling=START_OF_ACTIVITY_INTERRUPTS` for barge-in. Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise between turns.
+6. **NEVER gate mic audio in server Python (`_browser_to_gemini`).** A server-side `_agent_speaking` flag causes VAD to silently stop after 2-4 turns: model audio for turn N+1 arrives before `turn_complete` of turn N fires, keeping the gate closed when the user tries to speak. Always forward audio unconditionally in `_browser_to_gemini`; rely on `activity_handling=START_OF_ACTIVITY_INTERRUPTS` for barge-in. Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise.
+   **Flutter client MUST mute mic during agent speech (echo fix):** set `_agentSpeaking=true` on `turn_start`, `false` on `turn_complete`/`interrupted`. Gate in the mic stream listener (`if (!_agentSpeaking) _sendAudio(chunk)`), not in the recorder itself. Server also calls `send_realtime_input(audio_stream_end=True)` on `turn_start` to flush Gemini's VAD buffer of any echo frames already in flight.
 
 ## Demo Stack
 

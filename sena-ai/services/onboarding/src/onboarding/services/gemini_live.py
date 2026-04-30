@@ -324,6 +324,18 @@ class GeminiLiveSession:
                                         await self._ws.send_text(json.dumps({"type": "turn_start"}))
                                         turn_started = True
                                         self._gemini_is_speaking = True
+                                        # Signal end-of-user-speech so Gemini's VAD
+                                        # discards any mic echo buffered before the
+                                        # Flutter client mutes its mic on turn_start.
+                                        try:
+                                            await session.send_realtime_input(
+                                                audio_stream_end=True
+                                            )
+                                        except Exception:
+                                            log.debug(
+                                                "stream_end_on_turn_start_failed session=%s",
+                                                self._session_id,
+                                            )
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 

@@ -24,9 +24,26 @@ set -uo pipefail
 EVENT=$(cat 2>/dev/null || true)
 [[ -z "$EVENT" ]] && exit 0
 
-TOOL=$(printf '%s' "$EVENT" | python -c "import sys,json; print(json.loads(sys.stdin.read()).get('tool_name',''))" 2>/dev/null || true)
-FILE=$(printf '%s' "$EVENT" | python -c "import sys,json; d=json.loads(sys.stdin.read()); print((d.get('tool_input') or {}).get('file_path',''))" 2>/dev/null || true)
-CMD=$(printf '%s' "$EVENT" | python -c "import sys,json; d=json.loads(sys.stdin.read()); print((d.get('tool_input') or {}).get('command',''))" 2>/dev/null || true)
+# Resolve Python: venv python.exe (Windows) → python3 → python.
+# Bare 'python' is absent from PATH in most Windows Git Bash setups, which
+# silently empties FILE and causes Rule 1 to pass everything. Always prefer
+# the venv interpreter set by SENA_AI_VENV_SCRIPTS in settings.json.
+_VENV_PY="${SENA_AI_VENV_SCRIPTS:-}/python.exe"
+if [[ -x "$_VENV_PY" ]]; then
+    PY="$_VENV_PY"
+elif command -v python3 &>/dev/null; then
+    PY="python3"
+elif command -v python &>/dev/null; then
+    PY="python"
+else
+    # No Python found — fail hard so the missing interpreter is visible.
+    printf '{"decision":"block","reason":"HOOK ERROR: Python not found. Install Python or activate the venv at SENA_AI/.venv before editing files."}\n'
+    exit 2
+fi
+
+TOOL=$(printf '%s' "$EVENT" | "$PY" -c "import sys,json; print(json.loads(sys.stdin.read()).get('tool_name',''))" 2>/dev/null || true)
+FILE=$(printf '%s' "$EVENT" | "$PY" -c "import sys,json; d=json.loads(sys.stdin.read()); print((d.get('tool_input') or {}).get('file_path',''))" 2>/dev/null || true)
+CMD=$(printf '%s' "$EVENT" | "$PY" -c "import sys,json; d=json.loads(sys.stdin.read()); print((d.get('tool_input') or {}).get('command',''))" 2>/dev/null || true)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOKS_STATE="$SCRIPT_DIR/../hooks-state"
@@ -87,24 +104,47 @@ print(json.dumps({
     fi
 fi
 
-# ─── RULE 3: GEMINI SKILL GATE ───────────────────────────────────────────────
-# Gemini/demo_live file edits require gemini-live-api-dev skill invoked first.
+# ─── RULE 3: GEMINI SKILL + CONTEXT7 GATE ────────────────────────────────────
+# Gemini/demo_live file edits require BOTH:
+#   a) gemini-live-api-dev skill invoked this session  (skills-gemini.flag)
+#   b) Context7 queried for google-genai/gemini docs   (ctx7-gemini.flag)
+# Both flags must exist. Either missing → block with specific instruction.
 if [[ "$TOOL" == "Write" || "$TOOL" == "Edit" ]]; then
     FNAME_LOWER=$(printf '%s' "$FILE" | tr '[:upper:]' '[:lower:]')
     if printf '%s' "$FNAME_LOWER" | grep -qE 'gemini|demo_live'; then
         SKILL_FLAG="$HOOKS_STATE/skills-gemini.flag"
-        if [[ ! -f "$SKILL_FLAG" ]]; then
+        CTX7_GEMINI_FLAG="$HOOKS_STATE/ctx7-gemini.flag"
+        MISSING=""
+        [[ ! -f "$SKILL_FLAG" ]]       && MISSING="${MISSING}SKILL "
+        [[ ! -f "$CTX7_GEMINI_FLAG" ]] && MISSING="${MISSING}CTX7_GEMINI "
+        if [[ -n "$MISSING" ]]; then
             python -c "
-import json
+import json, os
+missing = '${MISSING}'.strip().split()
+steps = []
+if 'SKILL' in missing:
+    steps.append(
+        '1) Invoke Skill: gemini-live-api-dev via the Skill tool '
+        '(loads current model names, deprecated patterns, API rules).'
+    )
+if 'CTX7_GEMINI' in missing:
+    steps.append(
+        '2) Call mcp__plugin_context7_context7__resolve-library-id with libraryName=\"google-genai\" '
+        'then mcp__plugin_context7_context7__query-docs on the returned library ID '
+        '(fetches live SDK docs for LiveConnectConfig, send_realtime_input, VAD, session resumption). '
+        'The ctx7-gemini.flag sets automatically on any google-genai/gemini context7 query.'
+    )
+steps_str = ' '.join(steps)
 print(json.dumps({
     'decision': 'block',
     'reason': (
-        'GEMINI SKILL GATE — Rule 3 (hook-enforced): '
-        'Editing a gemini/demo_live file requires Skill: gemini-live-api-dev invoked FIRST this session. '
-        'Model: gemini-3.1-flash-live-preview. '
-        'Correct API: send_realtime_input(audio=types.Blob(data=raw, mime_type=\"audio/pcm;rate=16000\")). '
-        'NEVER use legacy LiveClientRealtimeInput. '
-        'Invoke the skill via the Skill tool, then retry this edit.'
+        'GEMINI LIVE CONFIG GATE — Rule 3 (hook-enforced, STRICT): '
+        'Editing a gemini/demo_live file requires BOTH the Gemini skill AND a live '
+        'google-genai Context7 doc fetch this session. Missing: ' + str(missing) + '. '
+        'Required steps: ' + steps_str + ' '
+        'Rationale: gemini-3.1-flash-live-preview has breaking changes from 2.x; '
+        'stale training data causes silent mis-configuration (wrong VAD, deprecated '
+        'send paths, unsupported proactive audio). Both gates must pass before editing.'
     )
 }))
 "

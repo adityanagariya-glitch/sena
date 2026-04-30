@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-04-30)
 
 ## Corpus Check
-- 129 files · ~418,502 words
+- 129 files · ~420,217 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -128,8 +128,8 @@
 ## Surprising Connections (you probably didn't know these)
 - `SENA Platform Overview` --semantically_similar_to--> `Extras Claude.md Project Context`  [INFERRED] [semantically similar]
   CLAUDE.md → Extras/Claude.md
-- `Voice coverage check — pure module (no IO).` --uses--> `StepSchema`  [INFERRED]
-  sena-ai\services\onboarding\src\onboarding\services\coverage.py → sena-ai\services\onboarding\src\onboarding\models\schema_spec.py
+- `StepSchema` --uses--> `Voice coverage check — pure module (no IO).`  [INFERRED]
+  sena-ai\services\onboarding\src\onboarding\models\schema_spec.py → sena-ai\services\onboarding\src\onboarding\services\coverage.py
 - `Sliding Window Context Manager` --semantically_similar_to--> `Token Budget Guard with Fallback Summarization`  [INFERRED] [semantically similar]
   VOICE_ONBOARDING_TIMELINE.md → plan-hybridVoiceFormContext.prompt.md
 - `Circuit Breaker Pattern` --semantically_similar_to--> `Circuit Breaker Configuration Table`  [INFERRED] [semantically similar]
