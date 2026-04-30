@@ -19,6 +19,10 @@ Protocol summary:
     {"type":"interrupted"}            — user interrupted agent
     {"type":"user_said","text":"..."}  — input transcription
     {"type":"agent_said","text":"..."} — output transcription
+    {"type":"go_away","time_left_ms":N} — Gemini session closing in N ms;
+                                          client MUST call resume endpoint before
+                                          time_left_ms elapses to avoid a hard drop
+    {"type":"resumable","handle":"...","ttl_sec":N} — app-level resume handle on close
     {"type":"error","code":"...","message":"..."} — errors
 
 WS lock semantics: exactly one active WS per session_id at a time.

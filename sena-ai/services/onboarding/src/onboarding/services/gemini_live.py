@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -46,6 +47,8 @@ if TYPE_CHECKING:
     from onboarding.services.tools import ToolDispatcher
 
 log = logging.getLogger(__name__)
+
+_SILENCE_POLL_SEC = 2.0  # silence monitor check interval
 
 
 class GeminiLiveSession:
@@ -78,6 +81,8 @@ class GeminiLiveSession:
         self._replay_context = replay_context
         self._turn_id = 0
         self._last_screen_hash: str | None = None
+        self._last_audio_at: float = 0.0
+        self._gemini_is_speaking: bool = False
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -90,15 +95,15 @@ class GeminiLiveSession:
             system_instruction=types.Content(
                 parts=[types.Part(text=self._system_instruction)],
             ),
-            # Lock TTS to English via a named prebuilt voice. Without this,
-            # native-audio models auto-detect language from the first utterance —
-            # ambiguous/quiet audio was being transcribed as Japanese ("はい").
-            # SpeechConfig.language_code is absent in this SDK version (Pydantic
-            # model forbids extra fields); voice selection is the supported path.
+            # language_code="en-AU" sets TTS accent to Australian English (SDK >= 1.10).
+            # voice_name="Aoede" pins ASR to English so the native-audio model does not
+            # auto-detect language from quiet/ambiguous first audio (was transcribing as
+            # Japanese "はい" without this pin).
             speech_config=types.SpeechConfig(
+                language_code="en-AU",
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Aoede")
-                )
+                ),
             ),
             # Phase C/E — tool list built by grounding module; includes Google Search
             # when SENA_AI_ONBOARDING_GROUNDING_ENABLED=true (default off).
@@ -114,9 +119,9 @@ class GeminiLiveSession:
                 automatic_activity_detection=types.AutomaticActivityDetection(
                     disabled=False,
                     start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
-                    end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
+                    end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_HIGH,
                     prefix_padding_ms=200,
-                    silence_duration_ms=800,
+                    silence_duration_ms=500,
                 ),
                 activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
                 turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
@@ -134,8 +139,10 @@ class GeminiLiveSession:
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
                 log.debug("replay_context_injected session=%s", self._session_id)
+            self._last_audio_at = time.monotonic()
             b2g = asyncio.create_task(self._browser_to_gemini(session))
             g2b = asyncio.create_task(self._gemini_to_browser(session))
+            silence = asyncio.create_task(self._silence_monitor(session))
             # If g2b exits first (e.g. advance_step closes the step), unblock b2g
             g2b.add_done_callback(lambda _t: b2g.cancel())
             try:
@@ -144,7 +151,8 @@ class GeminiLiveSession:
                 pass
             finally:
                 g2b.cancel()
-                await asyncio.gather(g2b, return_exceptions=True)
+                silence.cancel()
+                await asyncio.gather(g2b, silence, return_exceptions=True)
         log.info("gemini_disconnected session=%s", self._session_id)
 
     # ── Private: client → Gemini ──────────────────────────────────────────────
@@ -162,6 +170,7 @@ class GeminiLiveSession:
                 raw_text = msg.get("text")
 
                 if raw_bytes:
+                    self._last_audio_at = time.monotonic()
                     # Send all audio unconditionally — Gemini's VAD + START_OF_ACTIVITY_INTERRUPTS
                     # handles barge-in natively. The old _agent_speaking echo gate blocked user
                     # audio after turn N+1 model audio arrived, causing VAD to stop firing.
@@ -314,6 +323,7 @@ class GeminiLiveSession:
                                     if not turn_started:
                                         await self._ws.send_text(json.dumps({"type": "turn_start"}))
                                         turn_started = True
+                                        self._gemini_is_speaking = True
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 
@@ -322,6 +332,7 @@ class GeminiLiveSession:
                             await self._ws.send_text(json.dumps({"type": "interrupted"}))
                             turn_started = False
                             chunk_count = 0
+                            self._gemini_is_speaking = False
 
                         # ── Turn complete ──────────────────────────────────────
                         if sc.turn_complete:
@@ -331,6 +342,7 @@ class GeminiLiveSession:
                             self._turn_id += 1
                             chunk_count = 0
                             turn_started = False
+                            self._gemini_is_speaking = False
                             if self._tools:
                                 self._tools.set_turn_id(self._turn_id)
                             # Phase C — advance_step closed the step; end loop
@@ -338,10 +350,42 @@ class GeminiLiveSession:
                             if self._tools and self._tools.step_completed:
                                 return
 
+                    # ── Session resumption handle (Gemini-level, ~every 60 s) ──
+                    # The server sends updated handles so the connection can be
+                    # resumed at the Gemini level after a drop.  We log the arrival
+                    # here; a future phase can forward this to Redis via the repo
+                    # to enable Gemini-native reconnect (faster than app-level replay).
+                    resumption_update = getattr(msg, "session_resumption_update", None)
+                    if resumption_update:
+                        gemini_handle = getattr(resumption_update, "resumable_session_handle", None)
+                        if gemini_handle:
+                            log.debug(
+                                "gemini_session_handle_updated session=%s handle=%.12s…",
+                                self._session_id, gemini_handle,
+                            )
+
                     # ── GoAway — Gemini about to close the connection ──────────
+                    # Forward to the client so the Flutter app can proactively
+                    # call the resume endpoint before the drop becomes a hard
+                    # disconnect.  Without this the client sees a silent audio
+                    # gap with no indication a reconnect is needed.
                     if msg.go_away:
+                        time_left = msg.go_away.time_left
                         log.warning("go_away time_left=%s session=%s",
-                                    msg.go_away.time_left, self._session_id)
+                                    time_left, self._session_id)
+                        try:
+                            ms: int = 0
+                            if time_left is not None:
+                                try:
+                                    ms = int(time_left.total_seconds() * 1000)
+                                except Exception:
+                                    pass
+                            await self._ws.send_text(json.dumps({
+                                "type": "go_away",
+                                "time_left_ms": ms,
+                            }))
+                        except Exception:
+                            pass
 
                 # receive() iterator exhausted — re-enter for next turn
                 log.debug("g2b_recv_iter_end loop=%d session=%s", loop_iter, self._session_id)
@@ -352,6 +396,40 @@ class GeminiLiveSession:
             pass
         except Exception:
             log.exception("g2b_error session=%s", self._session_id)
+
+    # ── Private: silence monitor ──────────────────────────────────────────────
+
+    async def _silence_monitor(self, session: genai.live.AsyncSession) -> None:
+        """
+        Checks every _SILENCE_POLL_SEC seconds. If the user has been silent for
+        >= settings.onboarding_silence_timeout_sec seconds AND Gemini is not
+        currently speaking, injects a text cue prompting Gemini to check in with
+        the user in Australian English. Resets the timer after each injection.
+        Set SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC=0 to disable.
+        """
+        if settings.onboarding_silence_timeout_sec <= 0:
+            return
+        try:
+            while True:
+                await asyncio.sleep(_SILENCE_POLL_SEC)
+                elapsed = time.monotonic() - self._last_audio_at
+                if elapsed >= settings.onboarding_silence_timeout_sec and not self._gemini_is_speaking:
+                    log.info("silence_checkin elapsed=%.1fs session=%s", elapsed, self._session_id)
+                    try:
+                        await session.send_realtime_input(
+                            text=(
+                                "[SILENCE TIMEOUT] The participant has been silent. "
+                                "Check in warmly in Australian English, e.g. "
+                                "'Hey, just checking — are you still there? No rush at all, take your time.'"
+                            )
+                        )
+                    except Exception:
+                        pass
+                    self._last_audio_at = time.monotonic()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.exception("silence_monitor_error session=%s", self._session_id)
 
     # ── Private: tool_call handling (Phase C) ────────────────────────────────
 
