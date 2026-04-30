@@ -1,9 +1,10 @@
 # SENA Onboarding Service — Flutter Integration Guide
-## Voice Onboarding via Gemini Live (Phases A + B + C)
+## Voice Onboarding via Gemini Live (Phases A–F + v2)
 
-**Service:** Onboarding (port 8083)  
-**Implemented & tested:** Phase A–F + v2 alignment (2026-04-29)  
-**v2 key changes:** `screen_state_v2`, `field_apply` envelope, `add_repeatable_row` tool, `voice_coverage` enforcement, `about_me` field (was `bio`), `prompt_version:"v2"`, `coverage` array in ready message.
+**Service:** Onboarding (port 8083)
+**Implemented & verified:** Phase A–F + v2 alignment (2026-04-29, audit 15/16 ✓)
+**v2 key changes:** `screen_state_v2` typed message, `field_apply` server→client envelope (drives `VoiceFieldSink` directly), `add_repeatable_row` tool + `row_added` event, `voice_coverage` enforcement, `about_me` field (was `bio`), `prompt_version:"v2"`, `coverage` array in ready message, v1 `screen_state` still accepted via adapter.
+**Known gap:** WS close code **4011** (`policy_block`) not yet implemented.
 
 ---
 
@@ -180,19 +181,25 @@ ws.listen((dynamic frame) {
 
 | `type` | When | Key fields |
 |--------|------|-----------|
-| `ready` | After `start` handshake — session is live | `state` (full FormState), `prompt_version` |
+| `ready` | After `start` handshake — session is live | `state` (full FormState), `prompt_version`, **`coverage`** (v2: list of dotted `section.field` paths the agent may fill) |
 | `turn_start` | Gemini began speaking | — |
 | `turn_complete` | Gemini finished a turn of speech | — |
 | `interrupted` | User spoke over the agent | — |
 | `user_said` | Transcription of what user said | `text` |
 | `agent_said` | Transcription of AI reply | `text` |
-| `field_updated` | AI captured a field value | `section`, `field`, `value`, `confidence`, `turn_id`, `repeatable_index` |
+| `field_updated` | (legacy) AI captured a field value — kept for transcript/badge UI | `section`, `field`, `value`, `confidence`, `turn_id`, `repeatable_index` |
+| **`field_apply`** | **(v2) Deterministic write to `VoiceFieldSink`** — call `controller.applyVoiceField(...)` | `section_id`, `field_id`, `row_index` (nullable), `value`, `source:"voice"`, `confidence` |
+| **`row_added`** | (v2) `add_repeatable_row` tool grew a section — append empty row in UI | `section_id`, `new_index` |
 | `state` | Full form state after any mutation | `state` (FormState object) |
+| `screen_state_ack` | Debug — server accepted `screen_state` or `screen_state_v2` | `accepted:true`, `version` |
+| `resumable` | (Phase E) Server is offering a resumption handle before close | `handle`, `expires_in_sec` |
 | `step_completed` | All required fields filled, webhook fired, WS will close | `state`, `webhook_delivered` |
 | `escalated` | Safety/abuse flag detected, session continues | `reason`, `transcript_excerpt` |
 | `error` | Any error | `code`, `message` |
 
-**`ready` example:**
+> **Wiring tip:** treat `field_apply` as the source of truth for GetX form state — don't re-derive from `field_updated`. `field_updated` is for transcript/log UI only.
+
+**`ready` example (v2):**
 ```json
 {
   "type": "ready",
@@ -203,8 +210,35 @@ ws.listen((dynamic frame) {
     "values": { "basics": { "full_name": {"value": null, "source": null} } },
     "completion": { "required_filled": 0, "required_total": 3, "complete": false }
   },
-  "prompt_version": "v1"
+  "prompt_version": "v2",
+  "coverage": [
+    "basics.full_name",
+    "basics.date_of_birth",
+    "basics.phone",
+    "basics.email",
+    "basics.about_me"
+  ]
 }
+```
+Use `coverage` to gate the mic affordance per field — only show mic on fields whose dotted path is in the list.
+
+**`field_apply` example (v2 — write path):**
+```json
+{
+  "type": "field_apply",
+  "section_id": "basics",
+  "field_id": "full_name",
+  "row_index": null,
+  "value": "John Smith",
+  "source": "voice",
+  "confidence": 0.95
+}
+```
+Route to `ClientStep1VoiceSink.applyVoiceField(...)` → updates the GetX controller's Rx field.
+
+**`row_added` example (v2 — repeatable section grew):**
+```json
+{ "type": "row_added", "section_id": "ndis_plan_goals", "new_index": 1 }
 ```
 
 **`field_updated` example:**
@@ -279,6 +313,37 @@ micCapture.start(sampleRate: 16000, channels: 1, bitsPerSample: 16);
 ```
 
 **Audio to play back:** binary frames from server are PCM16 at 24 000 Hz mono — play immediately.
+
+---
+
+## Step 6b — Send `screen_state_v2` (v2, recommended)
+
+Send a typed snapshot whenever the user focuses a field, fills/invalidates a field, or toggles a UI flag. Backend deduplicates by payload hash; spamming on every keystroke is fine but unnecessary.
+
+```dart
+ws.add(jsonEncode({
+  'type': 'screen_state_v2',
+  'data': {
+    'step_id': 'personal_information',
+    'focused_section': 'basics',
+    'focused_field': 'phone',         // or null
+    'field_status': {
+      'basics.full_name':     'filled',
+      'basics.date_of_birth': 'filled',
+      'basics.phone':         'invalid',
+      'basics.email':         'empty',
+      'basics.about_me':      'empty',
+    },
+    'repeatable_rows': { 'ndis_plan_goals': 0 },
+    'ui_flags': {
+      'interpreter_required': true,
+      'plan_management': 'PLAN_MANAGED',
+    },
+  },
+}));
+```
+
+Field status enum: `filled` | `empty` | `invalid`. Max payload size 8 KB. v1 `screen_state` (`current_screen`, `visible_fields`, `prefilled`, `app_context`) is still accepted via the `from_v1()` adapter — migrate at your own pace.
 
 ---
 
@@ -377,16 +442,32 @@ Use `completion.required_filled / completion.required_total` to drive a progress
 
 ## Flutter Implementation Checklist
 
+### Transport + audio
 - [ ] `permission_handler` — request mic before calling `POST /session`
-- [ ] `record` or `flutter_sound` — capture PCM16 16kHz mono
-- [ ] `dart:io WebSocket` — connect, no auth headers needed
-- [ ] Send `{"type":"start"}` as first message
+- [ ] `record` ^6.2.0 — capture PCM16 16kHz mono
+- [ ] `flutter_pcm_sound` ^3.3.3 — playback PCM16 24kHz mono
+- [ ] `web_socket_channel` ^3.0.3 — connect, no auth headers needed
+- [ ] Send `{"type":"start"}` as first message; if resuming, include `"resume":"<handle>"`
 - [ ] Wait for `{"type":"ready"}` before streaming audio
 - [ ] Send binary PCM16 chunks (~3200 bytes / 100ms)
 - [ ] Play binary responses at 24kHz via speaker
+
+### v2 wiring (preferred)
+- [ ] On `ready` — read `coverage[]` and gate the mic affordance per field
+- [ ] On focus / blur / validate / row-add — emit `screen_state_v2` (typed shape, not v1)
+- [ ] Route `field_apply` → `VoiceFieldSink.applyVoiceField(section_id, field_id, row_index, value)` (deterministic write to GetX Rx fields)
+- [ ] Route `row_added` → append empty row in repeatable section UI
+- [ ] Treat `field_updated` as a transcript-only event (do **not** mutate form state from it)
+
+### Lifecycle + safety
 - [ ] Show `user_said` / `agent_said` as transcript bubbles
-- [ ] Update form fields on every `field_updated` event
 - [ ] Drive progress bar from `state.completion`
 - [ ] On `step_completed`: mark step done, don't treat WS close as error
 - [ ] On `escalated`: surface alert UI, keep session open
-- [ ] Handle close codes 4004 / 4008 / 4009 with user-visible errors
+- [ ] On `resumable`: persist `handle` (in-memory or secure storage); on next connect pass it in `start.resume`
+- [ ] Handle close codes:
+  - `4004` session not found / schema missing
+  - `4008` protocol error (start handshake missing)
+  - `4009` session locked (another WS already open)
+  - `4010` resumption error (handle invalid/expired)
+  - `4011` policy_block (planned — grounding-required NDIS question; currently never sent)

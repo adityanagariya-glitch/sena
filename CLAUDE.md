@@ -21,29 +21,8 @@ SENA/
 ├── AGENTS.md           # Guidance for agentic coding agents in this repo
 ├── requirements.txt    # Root-level Python dependencies
 ├── sena-ai/            # Monorepo — all AI/ML services
-├── wiki/               # LLM-maintained knowledge base (synthesis layer)
-├── ndis_wiki/          # NDIS regulatory source documents (raw evidence layer)
 └── graphify-out/       # Auto-generated knowledge graph
 ```
-
-### Knowledge Layers
-
-Two distinct knowledge stores — do NOT confuse them:
-
-| Directory | Purpose | Contents | Mutability |
-|-----------|---------|----------|------------|
-| `wiki/` | LLM synthesis layer — architecture, domain knowledge, client requirements | Pages written/maintained by Claude | Mutable — Claude writes/updates |
-| `ndis_wiki/` | Regulatory source layer — official NDIS Commission PDFs converted to markdown | `sources/` (raw), `pages/summaries/`, `pages/entities/`, `pages/concepts/`, `index.md`, `GEMINI.md` | Sources immutable; pages updated on ingest |
-
-**`ndis_wiki/` schema** (see `ndis_wiki/GEMINI.md` for full protocol):
-- `sources/` — raw markdown from official NDIS PDFs. **Immutable.**
-- `pages/summaries/` — one summary per source doc
-- `pages/entities/` — organizations, roles (NDIS Commission, Provider, Worker, Participant…)
-- `pages/concepts/` — policies, frameworks (Code of Conduct, Compliance, Restrictive Practices…)
-- `index.md` — master catalog
-- `log.md` — append-only operation log
-
-**When to use `ndis_wiki/`:** NDIS compliance questions, regulatory references, RAG pipeline source docs, grounding NDIS answers in the onboarding voice flow.
 
 **`sena-ai/` monorepo:**
 ```
@@ -273,68 +252,7 @@ This project has a graphify knowledge graph at graphify-out/.
 
 Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
-
-## LLM Wiki
-
-This project has an LLM-maintained wiki at `wiki/`. The wiki is a persistent, interlinked knowledge base covering NDIS domain knowledge, architecture decisions, client requirements, and technical learnings. The LLM writes and maintains all pages; the human curates sources and reviews output.
-
-### Structure
-
-```
-wiki/
-├── index.md               # Master index — read this first for any wiki query
-├── overview.md            # Living synthesis of project state
-├── log.md                 # Append-only chronological record of wiki operations
-├── NDIS.md                # Hub: NDIS domain knowledge (Map of Content)
-├── Architecture.md        # Hub: technical architecture (Map of Content)
-├── Client-Requirements.md # Hub: client team specs (Map of Content)
-├── sources/               # One summary per ingested raw document
-└── pages/                 # All detail pages (entities, concepts, decisions, topics)
-```
-
-### Page conventions
-
-- **Frontmatter required:** title, type (entity|concept|decision|source|topic|hub), tags, sources, created, updated
-- **Wikilinks:** Use `[[page-name]]` for all internal links
-- **Filenames:** kebab-case (e.g., `flow-b-voice-dictation.md`)
-- **Connections section:** Every page ends with explicit cross-references
-- **Source summaries:** Include `raw_path` field and `Pages Updated` section
-
-### Ingest workflow (when adding new sources)
-
-1. Read the raw source document
-2. Create/update source summary in `wiki/sources/`
-3. Create new detail pages in `wiki/pages/` for uncovered entities/concepts
-4. Update existing pages (flag contradictions with `> [!warning] Contradiction` callout — never silently overwrite)
-5. Update relevant hub pages with new links
-6. Update `wiki/index.md` with any new pages
-7. Append to `wiki/log.md`: `## [YYYY-MM-DD] ingest | Source Title`
-
-### Query workflow (when answering questions from wiki)
-
-1. Read `wiki/index.md` to find relevant pages
-2. Read those pages, synthesize an answer
-3. If the answer is worth keeping, offer to file it as a new wiki page
-
-### Lint workflow (periodic maintenance)
-
-1. Orphan pages (no inbound wikilinks)
-2. Stale content (sources updated but pages not)
-3. Mentioned-but-missing pages (broken wikilinks)
-4. Contradictions between pages
-5. Suggest new pages or sources to investigate
-
-### Relationship to other knowledge layers
-
-- **graphify-out/** — code-level structure. Wiki pages on architecture can link to `graphify-out/GRAPH_REPORT.md` but don't duplicate code analysis.
-- **.planning/** — execution state. Wiki captures domain knowledge, not sprint progress.
-- **archive/** — raw sources. Immutable. Wiki was bootstrapped from these.
-
-### Browsing
-
-The whole SENA repo is an Obsidian vault. Open the root folder in Obsidian to see the wiki graph view.
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current. The Stop hook also rebuilds the graph at every session boundary.
 
 ## Hooks
 
@@ -355,11 +273,11 @@ Automated hooks enforce safety rules and maintain documentation consistency. See
 **PostToolUse** (`.claude/hooks/post-tool-use.sh` + `.claude/hooks/bump-updated.sh`):
 - Maintains per-service `requirements.txt` via pipreqs on Python file edits
 - Auto-bumps `updated: YYYY-MM-DD` frontmatter on SESSION_START.md, TASKS.md, MEMORY.md, CLAUDE.md whenever Claude edits them
-- Logs tool usage to `wiki/log.md`
 - Auto-rebuilds graphify knowledge graph when code files change
 
 **Stop** (`.claude/hooks/stop.sh`):
-- Emits reminder at every session boundary (stop, /clear, /compact, resume) to verify `.claude/tasks/TASKS.md` is current
+- Rebuilds graphify knowledge graph at every session boundary (stop, /clear, /compact, resume)
+- Emits reminder to verify `.claude/tasks/TASKS.md` is current
 
 ### Philosophy
 
@@ -413,7 +331,7 @@ When removing "dead code", ALWAYS grep the full codebase for the file/symbol nam
 
 **NEVER** try to read or analyze anything inside the `/archive`, `.venv`, `.vscode`, or `ndis_markdown_docs/` folders. They are a massive token consumption disaster. Pretend they do not exist unless explicitly instructed.
 
-**`ndis_markdown_docs/` exception:** raw NDIS source PDFs converted to markdown. If an NDIS compliance question isn't answered by `ndis_wiki/` pages, you MAY suggest reading a **specific file** from this folder — never the whole folder, never speculatively.
+**`ndis_markdown_docs/` exception:** raw NDIS source PDFs converted to markdown. For NDIS compliance questions you MAY suggest reading a **specific file** from this folder — never the whole folder, never speculatively.
 
 ## Adding New Project Components (MANDATORY PROTOCOL)
 

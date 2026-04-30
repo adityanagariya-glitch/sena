@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-04-29
+updated: 2026-04-30
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -23,19 +23,16 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 
 | Task area | Read |
 |-----------|------|
-| Voice demo / Gemini Live bugs | `wiki/pages/gemini-live-multi-turn-config.md`, `memory/feedback_gemini_live_patterns.md`, `memory/project_voice_demo_working.md` |
+| Voice demo / Gemini Live bugs | `memory/feedback_gemini_live_patterns.md`, `memory/project_voice_demo_working.md` |
 | What's left to build (voice) | `.planning/GEMINI_LIVE_NATIVE_SCOPE.md` (Gemini-native only) + `.planning/FEATURES_LEFT.md` (full scope) |
 | Case Note Review service (task #10) | `.planning/CASE_NOTE_REVIEW_PLAN.md` — phases A–G, subagent policy, blockers |
-| Architecture / domain | `wiki/index.md` → follow wikilinks |
-| Code-level structure | `graphify-out/GRAPH_REPORT.md` |
-| NDIS domain | `wiki/NDIS.md` (synthesis) + `ndis_wiki/index.md` (regulatory sources) |
-| Client spec gaps | `wiki/pages/open-questions.md` |
+| Architecture / code structure | `graphify-out/GRAPH_REPORT.md` |
+| NDIS domain / compliance | specific files in `ndis_markdown_docs/` (never the whole folder) |
 
 ## 3. DO-NOT-READ
 
 - `/archive/`, `.venv/`, `.vscode/` — token waste, ignored per CLAUDE.md
-- `ndis_markdown_docs/` — raw NDIS source docs, massive token cost. Use `ndis_wiki/` pages instead. Only read this if `ndis_wiki/` genuinely doesn't answer the question — and only the specific file, never the whole folder.
-- Raw source docs — wiki pages already synthesize these
+- `ndis_markdown_docs/` (whole folder) — massive token cost. Read only a specific file when an NDIS compliance question requires it.
 
 ---
 
@@ -299,7 +296,7 @@ Three hooks in `.claude/settings.json` keep this system deterministic:
 | Hook | Script | What it does |
 |------|--------|--------------|
 | `SessionStart` | `.claude/hooks/session-start.sh` | Injects this read-order as additionalContext on every new session — Claude sees the protocol before the first prompt |
-| `Stop` | `.claude/hooks/stop.sh` | Emits reminder to verify `TASKS.md` is current at every session boundary (including /clear, /compact, resume) |
+| `Stop` | `.claude/hooks/stop.sh` | Rebuilds graphify graph + emits reminder to verify `TASKS.md` at every session boundary (including /clear, /compact, resume) |
 | `PostToolUse` (Write\|Edit) | `.claude/hooks/bump-updated.sh` | Auto-bumps `updated: YYYY-MM-DD` frontmatter on SESSION_START.md, TASKS.md, MEMORY.md, CLAUDE.md whenever Claude edits them |
 
 **You never need to manually update `updated:` fields.** The hook does it. If a file lacks frontmatter (e.g., CLAUDE.md), the hook no-ops safely.

@@ -2,7 +2,7 @@
 
 > **For the parent session (Flutter app):** Read this file first. It tells you exactly what the backend does, what's built, what changed, and what you need to wire up on the Flutter side.
 
-> ✅ **2026-04-29 — v2 implemented.** Backend is now aligned to the real Flutter codebase. Key changes: `screen_state_v2` message type, `field_apply` envelope, `add_repeatable_row` tool, `voice_coverage` enforcement, `about_me` field rename. The WS server still accepts v1 `screen_state` via adapter. See §v2 changes below.
+> ✅ **2026-04-29 — v2 verified 15/16.** Backend aligned to the real Flutter codebase. All v2 modules verified live: `screen_state_v2` message type, `field_apply` envelope, `add_repeatable_row` tool + `row_added` emit, `voice_coverage` enforcement, `about_me` field rename, `coverage` array in ready envelope. v1 `screen_state` still accepted via `from_v1()` adapter — no Flutter migration required to start. **One known gap:** WS close code **4011** (`policy_block`) for grounding-required policy questions when grounding is off — not yet implemented.
 
 ---
 
@@ -22,8 +22,12 @@ An AI voice agent that interviews a participant during NDIS onboarding. The Flut
 |-------|------|--------|
 | A | REST: session create/read/write/complete + Redis FormState | ✓ 36/36 tests |
 | B | WebSocket + Gemini Live audio bridge + form-aware system prompt | ✓ |
-| C | Tool calling: `update_field`, `get_session_context`, `advance_step`, `escalate_incident` | ✓ 48/48 tests |
-| F (partial) | Browser test harness at `GET /harness` | ✓ |
+| C | Tool calling: `update_field`, `get_session_context`, `advance_step`, `escalate_incident`, **`add_repeatable_row`** (v2) | ✓ 48/48 tests |
+| D | `screen_state` JSON ingest → `screen_context.py` → Gemini text injection | ✓ |
+| E | Session resumption (`resumable` envelope, GETDEL handle, close 4010) + Google Search grounding (flag-gated) | ✓ |
+| F | OpenAPI `/docs` + `WS_PROTOCOL.md` + `postman_collection.json` + browser harness at `/harness` | ✓ |
+| v2 | `screen_state_v2` typed contract, `field_apply` envelope, `voice_coverage` enforcement, `coverage` in ready, `prompt_version:"v2"`, `about_me` field rename | ✓ verified 2026-04-29 |
+| — | Close code **4011** (`policy_block`) | ❌ pending |
 
 **Run backend:**
 ```bash
@@ -34,19 +38,16 @@ uvicorn src.onboarding.main:create_app --factory --reload --port 8083
 
 ---
 
-## Plan change — Screen ingress scrapped
+## Plan change — Screen ingress scrapped (DONE)
 
-**Original Phase D** was going to send camera/screen frames as binary blobs over WS.  
-**New approach:** The Flutter app maintains a **live JSON object** representing the current screen state (what's visible, what step, what fields are pre-filled from the app side). This JSON is sent to the backend so Gemini has context about what the user sees — no frame capture, no image processing.
+**Original Phase D** was going to send camera/screen frames as binary blobs over WS.
+**Shipped approach:** Flutter sends a **live JSON snapshot** of the current screen state. Backend deduplicates by payload hash, validates, and injects into Gemini as a text turn (`render_injection_text`).
 
-**What this means for backend:** A new WS message type (e.g. `{"type": "screen_state", "data": {...}}`) needs to be handled. Backend injects the screen JSON into Gemini's context as a text turn or tool response.
+Two shapes are accepted:
+- **v1** `screen_state` — generic `{current_screen, visible_fields, prefilled, app_context}`. Routed through `from_v1()` adapter — keep working until you migrate.
+- **v2** `screen_state_v2` — typed, GetX-shaped: `{step_id, focused_section, focused_field, field_status, repeatable_rows, ui_flags}`. **Preferred.**
 
-**What this means for Flutter:** The app needs to:
-1. Maintain the current screen state as a JSON snapshot
-2. Send it over the open WS when it changes (or on demand)
-3. The backend will handle the rest
-
-**This replaces Phase D entirely.** Phase D is no longer blocked.
+Per-message size cap: `SCREEN_STATE_MAX_BYTES` (default 8192).
 
 ---
 
@@ -129,11 +130,28 @@ Server replies:
 > v1 `screen_state` is still accepted via an adapter — no Flutter migration required yet.
 
 ### WS close codes
-| Code | Meaning |
-|------|---------|
-| 4004 | Session not found / schema missing |
-| 4008 | Protocol error (first msg wasn't `start`) |
-| 4009 | Session locked (another WS already open) |
+| Code | Meaning | Status |
+|------|---------|--------|
+| 4004 | Session not found / schema missing | ✓ |
+| 4008 | Protocol error (first msg wasn't `start`) | ✓ |
+| 4009 | Session locked (another WS already open) | ✓ |
+| 4010 | Resumption error (handle invalid/expired) | ✓ |
+| 4011 | `policy_block` — grounding-required NDIS policy question while grounding is off | ❌ planned |
+
+### Resumption (Phase E)
+
+Server may emit a one-shot `resumable` envelope before close, containing a single-use handle. To resume:
+
+```json
+// Reconnect with handle in start payload
+{"type": "start", "resume": "<handle>"}
+```
+
+The server redeems via Redis GETDEL (single-use), replays last N turns, and continues. Handle TTL is `RESUMPTION_HANDLE_TTL_SEC` (default 600s). Replay window is `RESUMPTION_REPLAY_TURNS` (default 4).
+
+### Grounding (Phase E, flag-gated)
+
+`SENA_AI_ONBOARDING_GROUNDING_ENABLED` (default `false`). When on, `build_live_tools` adds the `GoogleSearch` tool so the agent can answer NDIS policy questions citing live sources. When off, the model must defer with a graceful "I can't answer policy questions right now" — and (once 4011 lands) the server will close with code 4011 if the user pushes for a policy answer.
 
 ---
 
@@ -185,9 +203,11 @@ Schemas for all 5 steps are at `SENA/sena-ai/services/onboarding/fixtures/schema
 
 ## What needs to happen next (backend side)
 
-1. **Handle `screen_state` WS message** — parse `data`, relay to Gemini as a context injection (text turn or inline tool response). Agree on exact `data` schema with Flutter dev first.
-2. **Phase E** — session resumption (reconnect with handle, agent recalls prior turn) + Google Search grounding for NDIS policy questions.
-3. **Phase F** — OpenAPI docs + Postman collection for mobile team.
+Phases A–F + v2 contract are done. Remaining gap:
+
+1. **Implement WS close code 4011 (`policy_block`)** in `services/gemini_live.py` — fires when grounding is disabled and the user asks a grounding-required NDIS policy question (model defers, server closes).
+
+After that: production hardening (data residency sign-off for Gemini Live AU, ephemeral browser-side tokens, JWT auth seam activation) — see `.planning/PRD_REMAINING_PHASES.md`.
 
 ---
 
