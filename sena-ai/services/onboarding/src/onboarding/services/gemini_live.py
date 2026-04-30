@@ -279,6 +279,7 @@ class GeminiLiveSession:
         chunk_count = 0
         turn_started = False
         loop_iter = 0
+        agent_transcript_buf: list[str] = []
 
         try:
             while True:
@@ -306,15 +307,10 @@ class GeminiLiveSession:
                             )
 
                         # ── Output transcription (Gemini speech → text) ────────
+                        # Gemini streams transcription word-by-word aligned with TTS audio.
+                        # Accumulate chunks; emit one consolidated agent_said per turn.
                         if sc.output_transcription and sc.output_transcription.text:
-                            txt = sc.output_transcription.text
-                            log.info("AGENT_SAID %r session=%s", txt, self._session_id)
-                            await self._ws.send_text(json.dumps({"type": "agent_said", "text": txt}))
-                            await self._repo.append_transcript(
-                                self._session_id,
-                                {"speaker": "agent", "text": txt, "turn_id": self._turn_id},
-                                ttl_sec=settings.session_max_sec,
-                            )
+                            agent_transcript_buf.append(sc.output_transcription.text)
 
                         # ── Audio output (PCM16 24 kHz chunks) ────────────────
                         if sc.model_turn:
@@ -341,6 +337,16 @@ class GeminiLiveSession:
 
                         # ── Interruption (user spoke over the agent) ───────────
                         if sc.interrupted:
+                            if agent_transcript_buf:
+                                full_text = "".join(agent_transcript_buf)
+                                log.info("AGENT_SAID %r session=%s", full_text, self._session_id)
+                                await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
+                                await self._repo.append_transcript(
+                                    self._session_id,
+                                    {"speaker": "agent", "text": full_text, "turn_id": self._turn_id},
+                                    ttl_sec=settings.session_max_sec,
+                                )
+                                agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "interrupted"}))
                             turn_started = False
                             chunk_count = 0
@@ -348,6 +354,16 @@ class GeminiLiveSession:
 
                         # ── Turn complete ──────────────────────────────────────
                         if sc.turn_complete:
+                            if agent_transcript_buf:
+                                full_text = "".join(agent_transcript_buf)
+                                log.info("AGENT_SAID %r session=%s", full_text, self._session_id)
+                                await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
+                                await self._repo.append_transcript(
+                                    self._session_id,
+                                    {"speaker": "agent", "text": full_text, "turn_id": self._turn_id},
+                                    ttl_sec=settings.session_max_sec,
+                                )
+                                agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "turn_complete"}))
                             log.info("turn_complete chunks=%d turn=%d session=%s",
                                      chunk_count, self._turn_id, self._session_id)
