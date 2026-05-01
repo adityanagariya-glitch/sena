@@ -491,6 +491,12 @@ let playCtx = null, micCtx = null;
 let mediaStream = null, micSource = null, processor = null, silentGain = null;
 let playHead = 0, streaming = false, pendingResume = null, audioBytesThisTurn = 0;
 let resumeHandle = null, resumeTtlSec = null;
+// True while Gemini is speaking — mic chunks are suppressed so the agent's
+// playback audio doesn't loop back through the speaker as user input.
+let agentSpeaking = false;
+// All currently-scheduled AudioBufferSourceNodes for agent playback.
+// On `interrupted`, every entry is .stop()'d to cut stale audio immediately.
+let pendingAudioSources = [];
 
 function $(id) { return document.getElementById(id); }
 
@@ -820,6 +826,29 @@ async function playPCM16(arrayBuffer) {
   const startAt = Math.max(playCtx.currentTime + LOOKAHEAD, playHead);
   src.start(startAt); playHead = startAt + buf.duration;
   audioBytesThisTurn += arrayBuffer.byteLength;
+  // Track this source so we can cancel it on `interrupted`. Web Audio API
+  // schedules each chunk at a future time; once .start() is called, the
+  // chunk WILL play unless we explicitly .stop() it.
+  pendingAudioSources.push(src);
+  src.onended = () => {
+    const i = pendingAudioSources.indexOf(src);
+    if (i >= 0) pendingAudioSources.splice(i, 1);
+  };
+}
+
+// Cancel every scheduled agent-audio source and reset playHead. Called when
+// Gemini sends `interrupted` (user spoke over the agent) — without this,
+// up to several seconds of stale audio queued in Web Audio API's scheduler
+// would continue to play after Gemini already cancelled generation.
+function stopAllAgentPlayback(reason) {
+  let cancelled = 0;
+  for (const src of pendingAudioSources) {
+    try { src.stop(); cancelled++; } catch {}
+    try { src.disconnect(); } catch {}
+  }
+  pendingAudioSources = [];
+  if (playCtx) playHead = playCtx.currentTime;
+  if (cancelled > 0) log('🛑 cancelled ' + cancelled + ' pending audio chunks (' + reason + ')', 'log-warn');
 }
 $('beepBtn').addEventListener('click', () => {
   if (!playCtx) { playCtx = new AudioContext(); playHead = playCtx.currentTime; }
@@ -836,6 +865,9 @@ function startMicStreaming() {
   streaming = true;
   processor.onaudioprocess = (ev) => {
     if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+    // Drop mic frames while the agent is speaking — prevents speaker echo
+    // (the agent's own playback audio) from being re-sent as user input.
+    if (agentSpeaking) return;
     ws.send(floatTo16BitPCM(downsampleTo16k(ev.inputBuffer.getChannelData(0), rate)));
   };
   silentGain = micCtx.createGain(); silentGain.gain.value = 0;
@@ -863,7 +895,7 @@ async function connectWs(resumeHandleParam) {
   } catch {}
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
   } catch (e) {
     setWsStatus('Mic denied: ' + e.message, 'error', false);
@@ -919,15 +951,22 @@ function handleServerMessage(msg) {
     case 'agent_said': appendTurn('agent', msg.text); break;
     case 'turn_start':
       audioBytesThisTurn = 0;
+      agentSpeaking = true;
       if (playCtx && playHead < playCtx.currentTime) playHead = playCtx.currentTime;
-      setWsStatus('Sena is speaking…', 'speak', true);
-      log('▶ agent turn start (ctx=' + (playCtx && playCtx.state) + ')');
+      setWsStatus('Sena is speaking…', 'speak', false);
+      log('▶ agent turn start (ctx=' + (playCtx && playCtx.state) + ') — mic muted');
       break;
     case 'turn_complete':
+      agentSpeaking = false;
       setWsStatus('Voice live — listening.', 'live', true);
-      log('✓ agent turn done (' + audioBytesThisTurn + ' bytes)');
+      log('✓ agent turn done (' + audioBytesThisTurn + ' bytes) — mic live');
       break;
-    case 'interrupted': log('interrupted', 'log-warn'); break;
+    case 'interrupted':
+      agentSpeaking = false;
+      stopAllAgentPlayback('interrupted by user');
+      setWsStatus('Voice live — listening.', 'live', true);
+      log('interrupted — mic live, playback cancelled', 'log-warn');
+      break;
     case 'field_updated': {
       const key = msg.section + '.' + msg.field +
         (msg.repeatable_index !== null && msg.repeatable_index !== undefined ? '[' + msg.repeatable_index + ']' : '');

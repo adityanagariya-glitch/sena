@@ -3,8 +3,8 @@
   "step_id": "personal_information",
   "step_label": "Personal Information",
   "progress_percent": 20,
-  "voice_coverage": ["basics.full_name", "basics.date_of_birth", "basics.phone", "basics.email", "basics.about_me"],
-  "voice_repeatable_sections": [],
+  "voice_coverage": [],
+  "voice_repeatable_sections": ["emergency_contacts"],
   "sections": [
     {
       "id": "basics",

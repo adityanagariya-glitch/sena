@@ -301,12 +301,29 @@ class ToolDispatcher:
         # Validate against schema
         section: SectionSpec | None = self._schema.get_section(section_id)
         if section is None:
+            log.warning(
+                "update_field REJECTED — unknown section '%s' (schema sections: %s) "
+                "session=%s. Likely cause: client schema does not declare this section.",
+                section_id,
+                [s.id for s in self._schema.sections],
+                self._session_id,
+            )
             return {"ok": False, "error": f"unknown section: {section_id}"}
 
         field: FieldSpec | None = next(
             (f for f in section.all_fields() if f.id == field_id), None
         )
         if field is None:
+            log.warning(
+                "update_field REJECTED — field '%s' not in section '%s' "
+                "(declared fields: %s) session=%s. "
+                "Likely cause: client schema is missing this field — "
+                "see FLUTTER_VOICE_INTEGRATION_FIXES.md Issue 3.",
+                field_id,
+                section_id,
+                [f.id for f in section.all_fields()],
+                self._session_id,
+            )
             return {
                 "ok": False,
                 "error": f"field '{field_id}' not in section '{section_id}'",

@@ -3,7 +3,7 @@
   "step_id": "ndis_plan_details",
   "step_label": "NDIS Plan Details",
   "progress_percent": 60,
-  "voice_coverage": ["plan_info.ndis_number", "plan_info.plan_start", "plan_info.plan_end", "plan_info.plan_management"],
+  "voice_coverage": [],
   "voice_repeatable_sections": ["ndis_goals"],
   "sections": [
     {

@@ -90,13 +90,10 @@ async def onboarding_ws(
         replay_context = build_replay_context(transcript, settings.resumption_replay_turns)
         log.info("ws_resuming session=%s replay_turns=%d", session_id, len(transcript))
     else:
-        # Plain session-id reconnect (no handle) — still inject transcript so
-        # Gemini continues naturally rather than restarting cold.
-        transcript = await repo.get_transcript(session_id)
-        if transcript:
-            replay_context = build_replay_context(transcript, settings.resumption_replay_turns)
-            log.info("ws_reconnect_with_context session=%s replay_turns=%d",
-                     session_id, len(transcript))
+        # No resume handle — fresh session start. Do NOT inject old transcript.
+        # Injecting it causes Gemini to treat prior answers as already collected
+        # and skip asking those fields. Proper resume uses ?resume=<handle>.
+        pass
 
     try:
         # ── 4. Wait for the "start" handshake ─────────────────────────────────

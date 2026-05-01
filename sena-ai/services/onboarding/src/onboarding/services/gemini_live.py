@@ -118,10 +118,14 @@ class GeminiLiveSession:
             realtime_input_config=types.RealtimeInputConfig(
                 automatic_activity_detection=types.AutomaticActivityDetection(
                     disabled=False,
+                    # LOW for both = patient listening. NDIS participants with
+                    # cognitive/communication support needs pause mid-answer;
+                    # HIGH end-sensitivity + short silence cuts them off and
+                    # makes Gemini call update_field with partial answers.
                     start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
-                    end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_HIGH,
+                    end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
                     prefix_padding_ms=200,
-                    silence_duration_ms=500,
+                    silence_duration_ms=1000,
                 ),
                 activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
                 turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
@@ -320,26 +324,24 @@ class GeminiLiveSession:
                                         await self._ws.send_text(json.dumps({"type": "turn_start"}))
                                         turn_started = True
                                         self._gemini_is_speaking = True
-                                        # Signal end-of-user-speech so Gemini's VAD
-                                        # discards any mic echo buffered before the
-                                        # Flutter client mutes its mic on turn_start.
-                                        try:
-                                            await session.send_realtime_input(
-                                                audio_stream_end=True
-                                            )
-                                        except Exception:
-                                            log.debug(
-                                                "stream_end_on_turn_start_failed session=%s",
-                                                self._session_id,
-                                            )
+                                        # NOTE: Do NOT send audio_stream_end=True here.
+                                        # Per Gemini Live API: audio_stream_end means
+                                        # "microphone turned off / stream closed" — it
+                                        # signals session-level end-of-input, not a
+                                        # mid-conversation flush. Sending it on every
+                                        # turn corrupts VAD state and causes Gemini to
+                                        # mis-handle subsequent user audio. Echo must
+                                        # be solved on the client (Flutter mic mute).
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 
                         # ── Interruption (user spoke over the agent) ───────────
                         if sc.interrupted:
+                            log.info("interrupted turn=%d chunks_before=%d session=%s",
+                                     self._turn_id, chunk_count, self._session_id)
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
-                                log.info("AGENT_SAID %r session=%s", full_text, self._session_id)
+                                log.info("AGENT_SAID(interrupted) %r session=%s", full_text, self._session_id)
                                 await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
                                 await self._repo.append_transcript(
                                     self._session_id,
