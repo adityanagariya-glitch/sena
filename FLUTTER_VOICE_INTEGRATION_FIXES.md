@@ -640,9 +640,68 @@ Future<void> sendScreenState({
 }
 ```
 
-You'll need to add `sendScreenStateV2` to the `StreamVoiceSessionUsecase`
-and the underlying datasource — it sends a JSON text frame on the active
-WS, the same way `audio_end` is sent today.
+### Exact JSON wire format (what gets sent over the WebSocket)
+
+The WS frame is a **text** frame (not binary). The backend validates against
+`ScreenStateV2Message` in `screen_context.py`.
+
+```json
+{
+  "type": "screen_state_v2",
+  "data": {
+    "step_id": "personal_information",
+    "focused_section": "basics",
+    "focused_field": "full_name",
+    "field_status": {
+      "basics.full_name":            "filled",
+      "basics.email":                "empty",
+      "basics.phone":                "empty",
+      "basics.date_of_birth":        "empty",
+      "basics.gender":               "empty",
+      "basics.about_me":             "empty",
+      "basics.preferred_languages":  "empty",
+      "basics.interpreter_required": "empty",
+      "home_address.address":        "empty",
+      "home_address.state":          "empty",
+      "home_address.city":           "empty",
+      "home_address.zip_code":       "empty",
+      "service_address.address":     "empty",
+      "service_address.state":       "empty",
+      "service_address.city":        "empty",
+      "service_address.zip_code":    "empty"
+    },
+    "repeatable_rows": {
+      "emergency_contacts": 0
+    },
+    "ui_flags": {}
+  }
+}
+```
+
+**Key rules for `field_status`:**
+- Keys use dotted path `section_id.field_id` — exactly as declared in the schema
+- Values are exactly one of: `"filled"` | `"empty"` | `"invalid"`
+- A field is `"filled"` if it has a non-empty, non-null value that passes validation
+- A field is `"invalid"` if it has a value but fails validation (wrong format, etc.)
+- Always send ALL fields — not just the focused one. Backend renders the full picture to Gemini.
+- `repeatable_rows` maps section id → current row count (0 if none added yet)
+
+### Datasource implementation
+
+Add `sendScreenStateV2` to your voice WS datasource:
+
+```dart
+/// Sends a screen_state_v2 JSON text frame on the active WebSocket.
+Future<void> sendScreenStateV2(Map<String, dynamic> payload) async {
+  final frame = jsonEncode({
+    'type': 'screen_state_v2',
+    'data': payload,
+  });
+  _channel.sink.add(frame); // same sink used for audio_end, stop, etc.
+}
+```
+
+Wire it up through the usecase to the controller's `sendScreenState` method.
 
 ### Fix — wire `FocusNode`s in the form
 
