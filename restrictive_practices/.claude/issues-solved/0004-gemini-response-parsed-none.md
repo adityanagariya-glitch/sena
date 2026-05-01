@@ -11,12 +11,12 @@ files_affected: pipeline/triage.py, pipeline/evaluator.py
 result = response.parsed   # returns None
 # → AttributeError: 'NoneType' object has no attribute 'flagged'
 ```
-Only affects `gemini-2.5-flash` and `gemini-2.5-pro`. Works on `gemini-1.5` series.
+Affects all `gemini-2.x` and `gemini-3.x` models. Do not use `response.parsed` — ever.
 
 ## Root Cause
 `response.parsed` is populated by the older `response_schema=` automatic parsing path.
-`gemini-2.5-x` models return thinking tokens + JSON text — the SDK's auto-parser
-fails silently and returns None instead of raising.
+`gemini-2.5-x` and `gemini-3.x` models return thinking tokens + JSON text — the SDK's
+auto-parser fails silently and returns None instead of raising.
 
 ## Fix
 Always use `json.loads(response.text)` and parse manually:

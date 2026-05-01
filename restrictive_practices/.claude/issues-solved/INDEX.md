@@ -4,6 +4,9 @@
 
 | # | File | Symptom Keywords | Date |
 |---|------|-----------------|------|
+| 0014 | [0014-dotenv-inline-comment-parsed-as-value.md](0014-dotenv-inline-comment-parsed-as-value.md) | dotenv inline comment value truthy gcp_project vertex ai mode wrong url fragment 404 | 2026-05-01 |
+| 0013 | [0013-gemini3-preview-not-available-on-vertex.md](0013-gemini3-preview-not-available-on-vertex.md) | gemini-3 flash preview pro 404 vertex ai not found provisioned preview model | 2026-05-01 |
+| 0012 | [0012-gemini-model-deprecation-upgrade.md](0012-gemini-model-deprecation-upgrade.md) | deprecated model gemini 2.5 flash pro upgrade 3 3.1 preview triage evaluator | 2026-05-01 |
 | 0011 | [0011-settings-extra-ignore-shared-env.md](0011-settings-extra-ignore-shared-env.md) | pydantic settings extra fields env SENA_AI unexpected validation | 2026-05-01 |
 | 0010 | [0010-swagger-422-literal-newlines-in-json.md](0010-swagger-422-literal-newlines-in-json.md) | 422 unprocessable entity swagger json newline transcript invalid | 2026-05-01 |
 | 0009 | [0009-embedding-model-name-by-provider.md](0009-embedding-model-name-by-provider.md) | embedding model 404 gemini-embedding-2 gemini-embedding-001 ai studio vertex | 2026-05-01 |

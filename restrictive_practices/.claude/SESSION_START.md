@@ -20,9 +20,9 @@ Full demo-ready NDIS restrictive practice detection pipeline — implemented, in
 |------|---------|--------|
 | 1 | `models/db.py`, `db/session.py` | Done — `HALFVEC(3072)` column + HNSW index + `document_type` column |
 | 2 | `ingestion/chunker.py`, `embedder.py`, `scripts/ingest_docs.py` | Done — Gemini embedding (3072 dims), configurable chunk size |
-| 3 | `pipeline/triage.py` | Done — `gemini-2.5-flash` YES/NO gate, `thinking_budget=0` |
+| 3 | `pipeline/triage.py` | Done — `gemini-3-flash-preview` YES/NO gate, `thinking_budget=0` |
 | 4 | `pipeline/rag.py` | Done — pgvector cosine similarity, top-K, `document_type` in results |
-| 5 | `pipeline/evaluator.py` | Done — `gemini-2.5-flash` (fallback from Pro) structured verdict + reporting obligations |
+| 5 | `pipeline/evaluator.py` | Done — `gemini-3.1-pro-preview` structured verdict + reporting obligations |
 | 6 | `pipeline/cross_check.py` | Done — SQL BSP authorisation lookup |
 | 7 | `pipeline/graph.py`, `api/routes.py` | Done — LangGraph + FastAPI `/evaluate` + privacy headers |
 | 8 | `pipeline/webhook.py` | Done — HMAC-signed alert POST on `alert_required=True` |
@@ -57,7 +57,7 @@ POST /v1/restrictive-practices/evaluate
 | `HalfVector(3072)` in mapped_column | Use `HALFVEC(3072)` — uppercase = DDL type | 0005 |
 | HNSW index operator class | `halfvec_cosine_ops` not `vector_cosine_ops` | 0005 |
 | `response.parsed` is None | Use `json.loads(response.text)` for gemini-2.5-x | 0004 |
-| Models deprecated | `gemini-2.0-flash`, `gemini-1.5-pro` gone — use `gemini-2.5-flash`/`gemini-2.5-pro` | — |
+| Models deprecated | `gemini-2.5-x`, `gemini-2.0-x`, `gemini-1.5-x` all deprecated — use `gemini-3-flash-preview` / `gemini-3.1-pro-preview` | — |
 | LangGraph node name conflicts | Node names must NOT match `TypedDict` keys — append `_step` | 0006 |
 | `.env` not loaded from scripts | `config.py` uses `Path(__file__).parent / ".env"` (absolute) | — |
 | Evaluator truncated JSON | `max_output_tokens=4096` minimum for evaluator | — |
@@ -65,7 +65,7 @@ POST /v1/restrictive-practices/evaluate
 | ReadTimeout on NDIS PDFs | Check URL path — government sites restructure URLs; use local pdfs/ fallback | 0002 |
 | PDF filename mismatch in pdfs/ | Check both `local_filename` AND URL basename as candidates | 0003 |
 | 422 from Swagger UI | Literal newlines in JSON string — use `\n` escape or single line | 0010 |
-| `gemini-2.5-pro` 404 Vertex AU | Use Flash fallback: `SENA_AI_EVALUATOR_MODEL=gemini-2.5-flash` | 0008 |
+| Evaluator 404 on Vertex AI | Flash fallback: `SENA_AI_EVALUATOR_MODEL=gemini-3-flash-preview`; AI Studio always has both | 0008 |
 | Embedding model 404 | AI Studio: `gemini-embedding-2`; Vertex: `gemini-embedding-001` | 0009 |
 | Extra `.env` keys crash startup | `SettingsConfigDict(extra="ignore")` — shared `.env` has other module keys | 0011 |
 | SDK missing `thinking_budget` | `google-genai>=1.74.0` required | 0007 |
@@ -80,8 +80,8 @@ docker exec -it sena-ai-db psql -U sena_ai -d sena_ai \
   -c "SELECT case_note_id, triage_flagged, authorisation_status, alert_required, processing_time_ms FROM rp_case_note_runs ORDER BY created_at DESC LIMIT 5;"
 ```
 
-2. **Request gemini-2.5-pro** enablement in australia-southeast1 for project `mobileappdev-2c1bd`
-   — currently running Flash as evaluator fallback (lower compliance verdict quality)
+2. **Verify gemini-3.1-pro-preview** is accessible on the active provider (AI Studio or Vertex AI australia-southeast1)
+   — if 404, use `SENA_AI_EVALUATOR_MODEL=gemini-3-flash-preview` as fallback
 
 3. **Unit tests** — pytest + pytest-asyncio for each pipeline step
 

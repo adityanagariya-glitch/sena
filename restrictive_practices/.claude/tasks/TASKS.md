@@ -26,7 +26,7 @@ updated: 2026-05-01
 
 ## Backlog
 - [ ] Verify `rp_case_note_runs` audit rows written during demo runs (check DB)
-- [ ] Request `gemini-2.5-pro` enablement on project `mobileappdev-2c1bd` in `australia-southeast1` — evaluator currently on Flash fallback (lower reasoning quality)
+- [ ] Verify `gemini-3.1-pro-preview` accessibility on active provider — if 404, fallback to `gemini-3-flash-preview`
 - [ ] Auth middleware — wire `X-User-Id` / JWT header into FastAPI routes
 - [ ] Unit tests for each pipeline step (pytest + pytest-asyncio)
 - [ ] Alembic migrations — replace `create_tables()` for production DB management
@@ -35,6 +35,11 @@ updated: 2026-05-01
 - [ ] Ingest 5th NDIS doc (Regulated Restrictive Practices Guide) — currently falling back to download, may need manual URL refresh
 
 ## Session Fixes Log
+### 2026-05-01 (model upgrade)
+- Upgraded triage model: `gemini-2.5-flash` → `gemini-3-flash-preview`
+- Upgraded evaluator model: `gemini-2.5-flash` (fallback) → `gemini-3.1-pro-preview`
+- Updated `.env`, `config.py` defaults, CLAUDE.md, SESSION_START.md, hooks, issues-solved 0012
+
 ### 2026-05-01
 - SSL/ReadTimeout/filename issues with NDIS PDF download → documented in issues-solved 0001–0003
 - `json.loads()` not `response.parsed` for gemini-2.5-x → issues-solved 0004

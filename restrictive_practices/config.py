@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     chunk_overlap: int = 120
 
     # LLM models (Gemini)
-    triage_model: str = "gemini-2.5-flash"
-    evaluator_model: str = "gemini-2.5-pro"
+    triage_model: str = "gemini-3-flash-preview"
+    evaluator_model: str = "gemini-3.1-pro-preview"
 
     # RAG
     rag_top_k: int = 5

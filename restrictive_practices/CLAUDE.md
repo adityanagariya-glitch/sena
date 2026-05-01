@@ -93,8 +93,8 @@ All use `SENA_AI_` prefix in `.env` at the module root.
 | `SENA_AI_GCP_LOCATION` | `australia-southeast1` | Vertex AI region — AU data residency (APP 8) |
 | `SENA_AI_RP_DATABASE_URL` | `postgresql+asyncpg://...@localhost:5433/sena_ai` | |
 | `SENA_AI_EMBEDDING_MODEL` | `text-embedding-004` | AI Studio: `gemini-embedding-2`; Vertex AI: `gemini-embedding-001` — must match at ingest AND query time |
-| `SENA_AI_TRIAGE_MODEL` | `gemini-2.5-flash` | |
-| `SENA_AI_EVALUATOR_MODEL` | `gemini-2.5-pro` | May 404 in some GCP regions (see Critical Rules) |
+| `SENA_AI_TRIAGE_MODEL` | `gemini-3-flash-preview` | Fast YES/NO gate, `thinking_budget=0` |
+| `SENA_AI_EVALUATOR_MODEL` | `gemini-3.1-pro-preview` | Complex reasoning for compliance verdicts |
 
 ## Run Commands
 
@@ -141,16 +141,16 @@ make audit-chunks
 ## Critical Rules
 
 - `HALFVEC(3072)` (uppercase, DDL type) in `mapped_column()` — `HalfVector` is the runtime value class, wrong here
-- `json.loads(response.text)` — `response.parsed` returns `None` on `gemini-2.5-x`
+- `json.loads(response.text)` — `response.parsed` returns `None` on gemini-2.5-x and gemini-3.x; never use `response.parsed`
 - `temperature=0.0` on every LLM call — compliance decisions must be deterministic
 - LangGraph node names must NOT collide with `TypedDict` state keys (`_step` suffix convention)
 - Triage uses `thinking_budget=0` and no `response_schema` — both cut latency on the hot path
 - Evaluator needs `max_output_tokens=4096` minimum — lower truncates the JSON verdict
-- Models: `gemini-2.5-flash` (triage), `gemini-2.5-pro` (evaluator); 2.0/1.5 deprecated
+- Models: `gemini-3-flash-preview` (triage), `gemini-3.1-pro-preview` (evaluator); 2.5/2.0/1.5 deprecated
 - Embedding model is whatever `config.embedding_model` says — treat `config.py` as source of truth, not SESSION_START.md
 - **`google-genai >= 1.74.0` required** — older SDK lacks `ThinkingConfig.thinking_budget`; triage will fail at runtime on anything older
 - **Embedding model name differs by provider**: AI Studio uses `gemini-embedding-2`; Vertex AI uses `gemini-embedding-001`. Using the wrong name returns a 404. Chunks must be re-ingested if the model changes — query-time and ingest-time models must match.
-- **`gemini-2.5-pro` may 404 on Vertex AI in `australia-southeast1`** for projects where only Flash is provisioned. If evaluator 404s, set `SENA_AI_EVALUATOR_MODEL=gemini-2.5-flash` as fallback (lower reasoning quality for compliance verdicts).
+- **If evaluator 404s on Vertex AI** — model availability varies by region/project. Flash fallback: `SENA_AI_EVALUATOR_MODEL=gemini-3-flash-preview`. AI Studio always has both models available.
 - `SettingsConfigDict(extra="ignore")` is intentional — the shared `.env` contains keys for other SENA modules; without it, startup raises a validation error
 - All Gemini SDK calls are synchronous and offloaded via `asyncio.to_thread` — do not call them directly in async functions
 - **Swagger UI 422 errors**: usually caused by literal newlines in JSON string values — press Enter inside a string creates invalid JSON. Use `\n` escape or keep transcript on one line. See issues-solved 0010.

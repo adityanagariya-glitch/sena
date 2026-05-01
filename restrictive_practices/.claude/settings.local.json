@@ -27,7 +27,15 @@
       "PowerShell(docker info *)",
       "WebFetch(domain:www.ndiscommission.gov.au)",
       "WebFetch(domain:www.oaic.gov.au)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(conda run *)",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" scripts/_debug_pipeline.py)",
+      "Bash('C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe' -c ' *)",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" -c \"import fastapi, starlette, pydantic; print\\('fastapi', fastapi.__version__\\); print\\('starlette', starlette.__version__\\); print\\('pydantic', pydantic.__version__\\)\")",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" -c \"import main; print\\('main.py import OK'\\)\")",
+      "Bash(pkill -f \"uvicorn main:app\")",
+      "Bash(taskkill /F /IM python.exe /FI \"WINDOWTITLE eq uvicorn*\")",
+      "PowerShell(Get-NetTCPConnection *)"
     ]
   },
   "enableAllProjectMcpServers": true,
