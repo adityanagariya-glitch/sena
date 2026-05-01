@@ -78,7 +78,10 @@ def _run_triage(transcript: str) -> TriageResult:
     if not response.text:
         raise ValueError(f"Empty triage response. finish_reason={response.candidates[0].finish_reason if response.candidates else 'NONE'}")
 
-    data = json.loads(response.text)
+    try:
+        data = json.loads(response.text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Triage response not valid JSON: {exc}. Raw: {response.text[:200]}") from exc
     parsed = _TriageResponse(**data)
     return TriageResult(
         flagged=parsed.flagged,

@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. `.claude/SESSION_START.md` — last session summary, gotchas, next steps
 2. `.claude/tasks/TASKS.md` — live task list
+3. `.claude/issues-solved/INDEX.md` — grep before debugging anything
+
+## Issues-Solved Knowledge Base (MANDATORY — CHECK BEFORE DEBUGGING)
+
+Path: `.claude/issues-solved/`
+
+**Rule:** before debugging ANY issue, grep `.claude/issues-solved/INDEX.md` for symptom keywords.
+- If match → read linked detail file → apply fix. Do NOT re-derive.
+- If no match → solve, then append a new entry via `TEMPLATE.md`.
+
+**When to add an entry:** issue took >2 debugging iterations OR >5 min OR required external research. One file per issue, numbered `NNNN-kebab-symptom.md`, row added to `INDEX.md` (newest first).
+
+**Goal:** zero re-solved bugs, zero token-waste on problems already cracked.
 
 ## Module Overview
 
@@ -42,11 +55,12 @@ START → triage_step (Flash, thinking_budget=0)
 | `ingestion/embedder.py` | Gemini embed (3072-dim) + upsert via `ON CONFLICT DO UPDATE` |
 | `scripts/ingest_docs.py` | CLI: `--sample` or `--pdf <path> --category <c> --source <s>` |
 | `scripts/test_*.py` | Standalone smoke runners (not pytest); per-step verification |
+| `scripts/test_sarah_note.py` | Realistic end-to-end fixture — complex multi-practice shift note (physical + chemical + seclusion); good regression canary |
 
 ### DB conventions
 
 - Tables prefixed `rp_` for module isolation: `rp_ndis_policy_chunks`, `rp_case_note_runs`. (`behaviour_support_plans` is unprefixed — shared with the wider platform.)
-- Lives in the SENA `sena-ai-db` instance, port **5433** (started via `docker-compose up -d` from `sena-ai/`).
+- Lives in the SENA `sena-ai-db` instance, port **5433** (started via `docker-compose up -d` from `restrictive_practices/`).
 - HNSW index uses `halfvec_cosine_ops` (matches the `HALFVEC` column type).
 - `create_tables()` runs on FastAPI startup — replace with Alembic before production.
 
@@ -68,24 +82,46 @@ BSP match is case-insensitive on `practice_type`; `valid_from/until = NULL` mean
 
 Embedder client is module-level — no per-call construction.
 
+## Environment Variables (key overrides)
+
+All use `SENA_AI_` prefix in `.env` at the module root.
+
+| Var | Default | Notes |
+|-----|---------|-------|
+| `SENA_AI_GEMINI_API_KEY` | — | AI Studio key; leave blank if using Vertex AI |
+| `SENA_AI_GCP_PROJECT` | `""` | Set to enable Vertex AI mode |
+| `SENA_AI_GCP_LOCATION` | `australia-southeast1` | Vertex AI region — AU data residency (APP 8) |
+| `SENA_AI_RP_DATABASE_URL` | `postgresql+asyncpg://...@localhost:5433/sena_ai` | |
+| `SENA_AI_EMBEDDING_MODEL` | `text-embedding-004` | AI Studio: `gemini-embedding-2`; Vertex AI: `gemini-embedding-001` — must match at ingest AND query time |
+| `SENA_AI_TRIAGE_MODEL` | `gemini-2.5-flash` | |
+| `SENA_AI_EVALUATOR_MODEL` | `gemini-2.5-pro` | May 404 in some GCP regions (see Critical Rules) |
+
 ## Run Commands
 
 ```bash
-# Infrastructure (Postgres + pgvector + Redis)
-cd C:\Users\Admin\Documents\SENA\sena-ai && docker-compose up -d
+# Activate env first
+conda activate sena_env
 
-# Ingest sample NDIS policies (no PDF required)
-cd C:\Users\Admin\Documents\SENA\restrictive_practices
-python scripts/ingest_docs.py --sample
+# Full demo setup (one command)
+make demo-setup      # docker-compose up + ingest real PDFs + seed BSPs
 
-# Ingest a real PDF
-python scripts/ingest_docs.py --pdf path/to/guide.pdf \
-    --category "Chemical Restraint" \
-    --source "NDIS Regulated Restrictive Practices Guide 2023" \
-    --risk "High Risk"
+# Or step by step:
+docker-compose up -d                        # Postgres + pgvector on port 5433
+python scripts/ingest_ndis_policies.py      # ingest 5 official NDIS PDFs (place in pdfs/ if download blocked)
+python scripts/seed_demo.py                 # seed demo BSPs
 
 # API server
 uvicorn main:app --reload --port 8084
+# → Swagger UI at http://localhost:8084/docs
+
+# Ingest sample NDIS policies (no PDF required — for quick testing)
+python scripts/ingest_docs.py --sample
+
+# Ingest a real PDF manually
+python scripts/ingest_docs.py --pdf path/to/guide.pdf \
+    --category "Chemical Restraint" \
+    --source "NDIS Regulated Restrictive Practices Guide 2023" \
+    --risk "High Risk" --document-type "Regulatory"
 
 # Smoke-test individual pipeline steps
 python scripts/test_triage.py
@@ -93,6 +129,13 @@ python scripts/test_rag.py
 python scripts/test_evaluator.py
 python scripts/test_cross_check.py
 python scripts/test_pipeline.py    # end-to-end
+python scripts/test_sarah_note.py  # realistic complex fixture (physical + chemical + seclusion)
+
+# Verify audit rows written to DB
+make audit
+
+# Verify chunk counts by document type
+make audit-chunks
 ```
 
 ## Critical Rules
@@ -104,4 +147,11 @@ python scripts/test_pipeline.py    # end-to-end
 - Triage uses `thinking_budget=0` and no `response_schema` — both cut latency on the hot path
 - Evaluator needs `max_output_tokens=4096` minimum — lower truncates the JSON verdict
 - Models: `gemini-2.5-flash` (triage), `gemini-2.5-pro` (evaluator); 2.0/1.5 deprecated
-- Embedding model is whatever `config.embedding_model` says (`text-embedding-004` at time of writing) — `SESSION_START.md` may drift; treat `config.py` as source of truth
+- Embedding model is whatever `config.embedding_model` says — treat `config.py` as source of truth, not SESSION_START.md
+- **`google-genai >= 1.74.0` required** — older SDK lacks `ThinkingConfig.thinking_budget`; triage will fail at runtime on anything older
+- **Embedding model name differs by provider**: AI Studio uses `gemini-embedding-2`; Vertex AI uses `gemini-embedding-001`. Using the wrong name returns a 404. Chunks must be re-ingested if the model changes — query-time and ingest-time models must match.
+- **`gemini-2.5-pro` may 404 on Vertex AI in `australia-southeast1`** for projects where only Flash is provisioned. If evaluator 404s, set `SENA_AI_EVALUATOR_MODEL=gemini-2.5-flash` as fallback (lower reasoning quality for compliance verdicts).
+- `SettingsConfigDict(extra="ignore")` is intentional — the shared `.env` contains keys for other SENA modules; without it, startup raises a validation error
+- All Gemini SDK calls are synchronous and offloaded via `asyncio.to_thread` — do not call them directly in async functions
+- **Swagger UI 422 errors**: usually caused by literal newlines in JSON string values — press Enter inside a string creates invalid JSON. Use `\n` escape or keep transcript on one line. See issues-solved 0010.
+- **Before debugging**: grep `.claude/issues-solved/INDEX.md` — 11 issues documented, saves hours of re-debugging

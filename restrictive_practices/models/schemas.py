@@ -41,6 +41,7 @@ class PolicyChunk(BaseModel):
     category: str
     document_source: str
     risk_level: str
+    document_type: str = "Regulatory"
 
 
 # ── Evaluator ─────────────────────────────────────────────────────────────────
@@ -51,6 +52,8 @@ class EvaluatorOutput(BaseModel):
     action_summary: str
     policy_violation_risk: PolicyViolationRisk
     reasoning: str
+    reporting_required: bool = False
+    notification_timeframe: str | None = None  # "5 business days" | "24 hours" | None
 
 
 # ── Cross-check ───────────────────────────────────────────────────────────────
@@ -71,3 +74,7 @@ class PipelineResult(BaseModel):
     evaluator: EvaluatorOutput | None = None
     cross_check: CrossCheckResult | None = None
     alert_required: bool = False
+    privacy_notice: str = (
+        "Processed under APP 3 (Privacy Act 1988) as sensitive health information. "
+        "Used solely for NDIS compliance monitoring. No personal data retained beyond this response."
+    )

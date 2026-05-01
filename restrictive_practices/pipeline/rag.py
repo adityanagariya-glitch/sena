@@ -53,6 +53,7 @@ async def retrieve_policy_chunks(
             category=row.category,
             document_source=row.document_source,
             risk_level=row.risk_level,
+            document_type=row.document_type,
         )
         for row in rows
     ]

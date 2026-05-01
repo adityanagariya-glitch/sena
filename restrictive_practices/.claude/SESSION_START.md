@@ -1,83 +1,100 @@
 ---
 title: Restrictive Practices Detection — Session Start Guide
-updated: 2026-04-30
+updated: 2026-05-01
 ---
 
 ## Read This First Every Session
 
 1. This file — what was built, what's next
 2. `.claude/tasks/TASKS.md` — live task status
-3. `CLAUDE.md` (project root) — coding rules, architecture, hooks
+3. `.claude/issues-solved/INDEX.md` — grep before debugging anything
+4. `CLAUDE.md` (project root) — coding rules, architecture, hooks
 
 ---
 
-## What Was Built (Last Session: 2026-04-28)
+## What Was Built (Last Session: 2026-05-01)
 
-Full 7-step NDIS restrictive practice detection pipeline — implemented and end-to-end verified.
+Full demo-ready NDIS restrictive practice detection pipeline — implemented, ingested with real NDIS PDFs, and verified end-to-end via Swagger UI and curl.
 
 | Step | File(s) | Status |
 |------|---------|--------|
-| 1 | `models/db.py`, `db/session.py` | Done — `HALFVEC(3072)` column + HNSW index |
-| 2 | `ingestion/chunker.py`, `embedder.py`, `scripts/ingest_docs.py` | Done — Gemini `gemini-embedding-2` (3072 dims) |
-| 3 | `pipeline/triage.py` | Done — `gemini-2.5-flash` YES/NO gate |
-| 4 | `pipeline/rag.py` | Done — pgvector cosine similarity, top-K |
-| 5 | `pipeline/evaluator.py` | Done — `gemini-2.5-pro` structured verdict |
+| 1 | `models/db.py`, `db/session.py` | Done — `HALFVEC(3072)` column + HNSW index + `document_type` column |
+| 2 | `ingestion/chunker.py`, `embedder.py`, `scripts/ingest_docs.py` | Done — Gemini embedding (3072 dims), configurable chunk size |
+| 3 | `pipeline/triage.py` | Done — `gemini-2.5-flash` YES/NO gate, `thinking_budget=0` |
+| 4 | `pipeline/rag.py` | Done — pgvector cosine similarity, top-K, `document_type` in results |
+| 5 | `pipeline/evaluator.py` | Done — `gemini-2.5-flash` (fallback from Pro) structured verdict + reporting obligations |
 | 6 | `pipeline/cross_check.py` | Done — SQL BSP authorisation lookup |
-| 7 | `pipeline/graph.py`, `api/routes.py` | Done — LangGraph + FastAPI `/evaluate` |
+| 7 | `pipeline/graph.py`, `api/routes.py` | Done — LangGraph + FastAPI `/evaluate` + privacy headers |
+| 8 | `pipeline/webhook.py` | Done — HMAC-signed alert POST on `alert_required=True` |
+| 9 | `scripts/ingest_ndis_policies.py` | Done — 5 official NDIS PDFs ingested (~400+ chunks) |
+| 10 | `scripts/seed_demo.py` | Done — BSPs seeded for all 3 auth paths |
+| 11 | `DEMO.md` | Done — 5 curl scenarios + privacy compliance guide |
 
 ### Pipeline flow
 ```
 POST /v1/restrictive-practices/evaluate
-  → triage_step  (Flash: YES/NO)
-      → [CLEAN]  END — no LLM cost
-      → [FLAGGED] rag_step → evaluator_step → cross_check_step → END
-  → CaseNoteRun audit row written to DB
+  → triage_step  (Flash: YES/NO, thinking_budget=0)
+      → [CLEAN]   END — no further LLM cost (≈70% of notes)
+      → [FLAGGED] rag_step → evaluator_step → cross_check_step → webhook → END
+  → CaseNoteRun audit row written regardless of outcome
 ```
+
+### Demo BSPs seeded
+| client_id | practice_type | Path |
+|-----------|--------------|------|
+| `client-demo-auth` | Physical Restraint | AUTHORISED_REVIEW |
+| `client-demo-chem` | Chemical Restraint | AUTHORISED_REVIEW |
+| `client-demo-mech` | Mechanical Restraint | AUTHORISED_REVIEW |
+| `liam-001` | Physical Restraint, Chemical Restraint, Environmental Restraint | AUTHORISED_REVIEW |
+| `client-demo-unauth` | (no BSP) | UNAUTHORISED + alert |
 
 ---
 
 ## Critical Gotchas (Do NOT Re-Derive)
 
-| Problem | Fix |
-|---------|-----|
-| `HalfVector(3072)` in mapped_column | Use `HALFVEC(3072)` — uppercase = DDL type |
-| HNSW index operator class | `halfvec_cosine_ops` not `vector_cosine_ops` |
-| `response.parsed` is None | Use `json.loads(response.text)` for gemini-2.5-x |
-| Models deprecated | `gemini-2.0-flash`, `gemini-1.5-pro` gone — use `gemini-2.5-flash`/`gemini-2.5-pro` |
-| LangGraph node name conflicts | Node names must NOT match `TypedDict` keys — append `_step` |
-| `.env` not loaded from scripts | `config.py` uses `Path(__file__).parent / ".env"` (absolute) |
-| Evaluator truncated JSON | `max_output_tokens=4096` minimum for evaluator |
+| Problem | Fix | Issue # |
+|---------|-----|---------|
+| `HalfVector(3072)` in mapped_column | Use `HALFVEC(3072)` — uppercase = DDL type | 0005 |
+| HNSW index operator class | `halfvec_cosine_ops` not `vector_cosine_ops` | 0005 |
+| `response.parsed` is None | Use `json.loads(response.text)` for gemini-2.5-x | 0004 |
+| Models deprecated | `gemini-2.0-flash`, `gemini-1.5-pro` gone — use `gemini-2.5-flash`/`gemini-2.5-pro` | — |
+| LangGraph node name conflicts | Node names must NOT match `TypedDict` keys — append `_step` | 0006 |
+| `.env` not loaded from scripts | `config.py` uses `Path(__file__).parent / ".env"` (absolute) | — |
+| Evaluator truncated JSON | `max_output_tokens=4096` minimum for evaluator | — |
+| SSL error on NDIS PDF download | `verify=False` + browser User-Agent in httpx client | 0001 |
+| ReadTimeout on NDIS PDFs | Check URL path — government sites restructure URLs; use local pdfs/ fallback | 0002 |
+| PDF filename mismatch in pdfs/ | Check both `local_filename` AND URL basename as candidates | 0003 |
+| 422 from Swagger UI | Literal newlines in JSON string — use `\n` escape or single line | 0010 |
+| `gemini-2.5-pro` 404 Vertex AU | Use Flash fallback: `SENA_AI_EVALUATOR_MODEL=gemini-2.5-flash` | 0008 |
+| Embedding model 404 | AI Studio: `gemini-embedding-2`; Vertex: `gemini-embedding-001` | 0009 |
+| Extra `.env` keys crash startup | `SettingsConfigDict(extra="ignore")` — shared `.env` has other module keys | 0011 |
+| SDK missing `thinking_budget` | `google-genai>=1.74.0` required | 0007 |
 
 ---
 
 ## What To Do Next Session
 
-1. **HTTP smoke test** — verify the live API endpoint:
+1. **Verify DB audit rows** after live demo run:
 ```bash
-cd C:\Users\Admin\Documents\SENA\sena-ai && docker-compose up -d
-cd C:\Users\Admin\Documents\SENA\restrictive_practices
-uvicorn main:app --reload --port 8084
-```
-Then POST:
-```bash
-curl -s -X POST http://localhost:8084/v1/restrictive-practices/evaluate \
-  -H "Content-Type: application/json" \
-  -d "{\"case_note_id\":\"$(python -c 'import uuid; print(uuid.uuid4())')\",\"client_id\":\"client-001\",\"worker_id\":\"worker-001\",\"transcript\":\"I gave him 5mg of diazepam to calm him down before the activity.\"}"
-```
-Check DB audit row:
-```bash
-docker exec -it sena-ai-db psql -U sena_ai -d sena_ai -c "SELECT case_note_id, triage_flagged, authorisation_status, alert_required, processing_time_ms FROM rp_case_note_runs ORDER BY created_at DESC LIMIT 5;"
+docker exec -it sena-ai-db psql -U sena_ai -d sena_ai \
+  -c "SELECT case_note_id, triage_flagged, authorisation_status, alert_required, processing_time_ms FROM rp_case_note_runs ORDER BY created_at DESC LIMIT 5;"
 ```
 
-2. **Real NDIS PDFs** — `python scripts/ingest_docs.py --pdf <path/to/ndis_policy.pdf>`
-3. **Webhook** — implement alert POST to `SENA_AI_RP_WEBHOOK_URL`
-4. **Auth** — wire `X-User-Id` header into FastAPI routes
+2. **Request gemini-2.5-pro** enablement in australia-southeast1 for project `mobileappdev-2c1bd`
+   — currently running Flash as evaluator fallback (lower compliance verdict quality)
+
+3. **Unit tests** — pytest + pytest-asyncio for each pipeline step
+
+4. **Alembic migrations** — replace `create_tables()` for production DB management
+
+5. **Auth middleware** — wire `X-User-Id` / JWT header into FastAPI routes
 
 ---
 
 ## Environment
 
 - Python env: `conda activate sena_env`
-- DB: Docker `sena-ai-db` on port 5433 (start with `docker-compose up -d` from `sena-ai/`)
+- DB: Docker `sena-ai-db` on port 5433 (start with `docker-compose up -d` from `restrictive_practices/`)
 - API: `uvicorn main:app --reload --port 8084` from `restrictive_practices/`
 - Gemini: AI Studio key in `.env` (`SENA_AI_GEMINI_API_KEY`)
+- Quick setup: `make demo-setup && make server`

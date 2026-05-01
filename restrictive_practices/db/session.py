@@ -48,3 +48,8 @@ async def create_tables() -> None:
             "CREATE INDEX IF NOT EXISTS idx_rp_chunks_embedding "
             "ON rp_ndis_policy_chunks USING hnsw (embedding halfvec_cosine_ops)"
         ))
+        # Add document_type column to existing tables without data loss
+        await conn.execute(text(
+            "ALTER TABLE rp_ndis_policy_chunks "
+            "ADD COLUMN IF NOT EXISTS document_type VARCHAR(100) DEFAULT 'Regulatory'"
+        ))

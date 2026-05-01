@@ -29,6 +29,7 @@ You are a senior NDIS compliance officer reviewing a support worker case note.
 
 ## Relevant NDIS Policy Extracts
 The following excerpts are from official NDIS regulated restrictive practices documentation.
+Each extract is tagged with its document type (Regulatory Rule, Practice Standard, etc.).
 Use them as your authoritative reference when making your determination.
 
 {policy_context}
@@ -46,6 +47,7 @@ Analyse the case note against the NDIS policy extracts above and determine:
 2. Which of the five categories applies (Chemical, Physical, Mechanical, Environmental, or Seclusion)
 3. The risk level of the violation
 4. A clear, evidence-based reasoning citing specific phrases from the case note
+5. Whether mandatory reporting to the NDIS Commission is triggered
 
 The five regulated restrictive practices under the NDIS are:
 - Chemical Restraint: medication used to control behaviour (not for a diagnosed medical condition)
@@ -60,6 +62,20 @@ Risk levels:
 - High: clear restrictive practice with no evident authorisation
 - Critical: severe or repeated practice, immediate escalation required
 
+## Reporting Obligations (NDIS Rules 2018)
+Under the NDIS (Restrictive Practices and Behaviour Support) Rules 2018:
+- Use of a regulated restrictive practice WITHOUT current authorisation in a Behaviour Support Plan
+  is a REPORTABLE INCIDENT. Providers must notify the NDIS Commission within 5 business days.
+- If the incident also involves serious injury or death of a person with disability,
+  notification to the NDIS Commission is required within 24 hours.
+- If no incident is detected, or the practice appears authorised, reporting is not required at this stage.
+
+Determine:
+- "reporting_required": true if incident_detected=true AND the practice appears to be used without
+  authorisation (no mention of a behaviour support plan or approved protocol in the case note)
+- "notification_timeframe": "5 business days" for unauthorised restrictive practice use;
+  "24 hours" if serious injury or death is also described; null if no reporting required
+
 Be precise and evidence-based. Quote specific phrases from the case note in your reasoning.
 """
 
@@ -70,6 +86,8 @@ class _EvaluatorResponse(BaseModel):
     action_summary: str
     policy_violation_risk: str
     reasoning: str
+    reporting_required: bool = False
+    notification_timeframe: str | None = None
 
 
 def _make_client() -> genai.Client:
@@ -86,7 +104,7 @@ def _format_policy_context(chunks: list[PolicyChunk]) -> str:
     parts = []
     for i, chunk in enumerate(chunks, 1):
         parts.append(
-            f"[{i}] Category: {chunk.category} | Risk: {chunk.risk_level}\n"
+            f"[{i}] [{chunk.document_type}] Category: {chunk.category} | Risk: {chunk.risk_level}\n"
             f"    Source: {chunk.document_source}\n"
             f"    {chunk.text.strip()}"
         )
@@ -124,7 +142,10 @@ def _run_evaluator(
             f"{response.candidates[0].finish_reason if response.candidates else 'NO_CANDIDATES'}"
         )
 
-    data = json.loads(response.text)
+    try:
+        data = json.loads(response.text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Evaluator response not valid JSON: {exc}. Raw: {response.text[:200]}") from exc
     parsed = _EvaluatorResponse(**data)
 
     try:
@@ -138,6 +159,8 @@ def _run_evaluator(
         action_summary=parsed.action_summary,
         policy_violation_risk=risk,
         reasoning=parsed.reasoning,
+        reporting_required=parsed.reporting_required,
+        notification_timeframe=parsed.notification_timeframe,
     )
 
 

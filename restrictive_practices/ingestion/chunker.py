@@ -1,11 +1,13 @@
 """PDF text extraction and semantic chunking for NDIS policy documents."""
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import fitz  # PyMuPDF
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from config import settings
 
 
 @dataclass
@@ -15,6 +17,7 @@ class DocumentChunk:
     category: str
     document_source: str
     risk_level: str
+    document_type: str = field(default="Regulatory")
 
 
 def extract_text_from_pdf(pdf_path: str | Path) -> str:
@@ -28,13 +31,13 @@ def chunk_document(
     document_source: str,
     category: str,
     risk_level: str,
-    chunk_size: int = 500,
-    chunk_overlap: int = 50,
+    document_type: str = "Regulatory",
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
 ) -> list[DocumentChunk]:
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        # Prefer splitting on paragraph → sentence → word boundaries
+        chunk_size=chunk_size or settings.chunk_size,
+        chunk_overlap=chunk_overlap or settings.chunk_overlap,
         separators=["\n\n", "\n", ". ", " ", ""],
     )
     texts = splitter.split_text(text)
@@ -43,7 +46,6 @@ def chunk_document(
         text_clean = raw.strip()
         if not text_clean:
             continue
-        # Deterministic ID so re-ingesting the same doc is idempotent
         chunk_id = hashlib.sha256(f"{document_source}::{i}".encode()).hexdigest()[:24]
         chunks.append(DocumentChunk(
             chunk_id=chunk_id,
@@ -51,6 +53,7 @@ def chunk_document(
             category=category,
             document_source=document_source,
             risk_level=risk_level,
+            document_type=document_type,
         ))
     return chunks
 
@@ -60,6 +63,7 @@ def chunk_text(
     document_source: str,
     category: str,
     risk_level: str,
+    document_type: str = "Regulatory",
 ) -> list[DocumentChunk]:
     """Convenience wrapper for plain text (no PDF extraction needed)."""
-    return chunk_document(text, document_source, category, risk_level)
+    return chunk_document(text, document_source, category, risk_level, document_type)

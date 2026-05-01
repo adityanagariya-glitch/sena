@@ -18,7 +18,16 @@
       "Bash(curl -sf http://127.0.0.1:8084/v1/restrictive-practices/health)",
       "Bash(curl *)",
       "WebFetch(domain:ai.google.dev)",
-      "WebFetch(domain:docs.cloud.google.com)"
+      "WebFetch(domain:docs.cloud.google.com)",
+      "Bash(grep -r \"^from\\\\|^import\" \"C:\\\\Users\\\\Admin\\\\Documents\\\\SENA\\\\restrictive_practices\" --include=\"*.py\" -not -path \"*/.claude/*\" -not -path \"*/__pycache__/*\")",
+      "Bash(grep -rn \"^\\\\s*pass\\\\s*$\" \"C:\\\\Users\\\\Admin\\\\Documents\\\\SENA\\\\restrictive_practices\" --include=\"*.py\")",
+      "Bash(grep -rn \"note\\\\\\\\.case_note_id\\\\|note\\\\\\\\.client_id\\\\|note\\\\\\\\.worker_id\\\\|note\\\\\\\\.transcript\" \"C:\\\\Users\\\\Admin\\\\Documents\\\\SENA\\\\restrictive_practices\" --include=\"*.py\")",
+      "Bash(docker exec sena-ai-db *)",
+      "PowerShell(docker exec sena-ai-db *)",
+      "PowerShell(docker info *)",
+      "WebFetch(domain:www.ndiscommission.gov.au)",
+      "WebFetch(domain:www.oaic.gov.au)",
+      "WebSearch"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -17,14 +17,17 @@ class Settings(BaseSettings):
     # Google Cloud — required for Vertex AI mode
     gemini_api_key: str = ""          # AI Studio key (AIzaSy...) — leave blank if using Vertex AI
     gcp_project: str = ""             # GCP project ID — required for Vertex AI
-    gcp_location: str = "us-central1" # Vertex AI region
+    gcp_location: str = "australia-southeast1"  # NDIS APP 8 — AU data residency mandate
 
     # Database
     rp_database_url: str = "postgresql+asyncpg://sena_ai:sena_ai@localhost:5433/sena_ai"
 
     # Embedding model
     embedding_model: str = "text-embedding-004"
-    embedding_dim: int = 3072
+
+    # Chunking
+    chunk_size: int = 1200
+    chunk_overlap: int = 120
 
     # LLM models (Gemini)
     triage_model: str = "gemini-2.5-flash"
@@ -35,6 +38,7 @@ class Settings(BaseSettings):
 
     # Webhook
     rp_webhook_url: str = ""
+    rp_webhook_secret: str = ""  # HMAC-SHA256 signing key; leave blank to skip signing
 
     @property
     def use_vertex_ai(self) -> bool:

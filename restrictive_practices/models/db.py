@@ -24,6 +24,7 @@ class NDISPolicyChunk(Base):
     category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     document_source: Mapped[str] = mapped_column(String(200), nullable=False)
     risk_level: Mapped[str] = mapped_column(String(50), nullable=False)
+    document_type: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Regulatory")
     embedding: Mapped[list[float]] = mapped_column(HALFVEC(3072), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

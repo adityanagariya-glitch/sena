@@ -30,6 +30,7 @@ from pipeline.cross_check import run_cross_check
 from pipeline.evaluator import run_evaluator
 from pipeline.rag import retrieve_policy_chunks
 from pipeline.triage import run_triage
+from pipeline.webhook import fire_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,18 @@ async def run_pipeline(note: CaseNoteInput, db: AsyncSession) -> PipelineResult:
     db.add(run)
     await db.commit()
 
+    pipeline_result = PipelineResult(
+        case_note_id=note.case_note_id,
+        client_id=note.client_id,
+        triage=triage,
+        evaluator=evaluator,
+        cross_check=cross_check,
+        alert_required=alert_required,
+    )
+
+    if alert_required:
+        await fire_webhook(pipeline_result)
+
     logger.info(
         "pipeline done case_note_id=%s flagged=%s alert=%s elapsed_ms=%d",
         note.case_note_id,
@@ -152,11 +165,4 @@ async def run_pipeline(note: CaseNoteInput, db: AsyncSession) -> PipelineResult:
         elapsed_ms,
     )
 
-    return PipelineResult(
-        case_note_id=note.case_note_id,
-        client_id=note.client_id,
-        triage=triage,
-        evaluator=evaluator,
-        cross_check=cross_check,
-        alert_required=alert_required,
-    )
+    return pipeline_result

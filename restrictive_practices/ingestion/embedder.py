@@ -25,11 +25,18 @@ def _make_client() -> genai.Client:
     return genai.Client(api_key=settings.gemini_api_key)
 
 
-_client = _make_client()
+_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = _make_client()
+    return _client
 
 
 def _embed_sync(text: str) -> list[float]:
-    result = _client.models.embed_content(
+    result = _get_client().models.embed_content(
         model=settings.embedding_model,
         contents=text,
     )
@@ -61,11 +68,12 @@ async def upsert_chunks(chunks: list[DocumentChunk], db: AsyncSession) -> int:
                 category=chunk.category,
                 document_source=chunk.document_source,
                 risk_level=chunk.risk_level,
+                document_type=chunk.document_type,
                 embedding=embedding,
             )
             .on_conflict_do_update(
                 index_elements=["chunk_id"],
-                set_={"text": chunk.text, "embedding": embedding},
+                set_={"text": chunk.text, "document_type": chunk.document_type, "embedding": embedding},
             )
         )
         await db.execute(stmt)

@@ -5,7 +5,13 @@ Usage:
     python scripts/ingest_docs.py --pdf path/to/guide.pdf \
         --category "Chemical Restraint" \
         --source "NDIS Regulated Restrictive Practices Guide 2023" \
-        --risk "High Risk"
+        --risk "High Risk" --document-type "Regulatory"
+
+    # Ingest PDF directly from URL
+    python scripts/ingest_docs.py --url https://example.com/guide.pdf \
+        --category "Chemical Restraint" \
+        --source "NDIS Guide 2024" \
+        --risk "High Risk" --document-type "Regulatory"
 
     # Ingest built-in sample data (no PDF needed — good for testing Step 2)
     python scripts/ingest_docs.py --sample
@@ -14,7 +20,10 @@ Usage:
 import argparse
 import asyncio
 import sys
+import tempfile
 from pathlib import Path
+
+import httpx
 
 # Allow running from the project root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -131,24 +140,56 @@ async def ingest_sample() -> None:
     print("Sample ingestion complete.")
 
 
-async def ingest_pdf(pdf_path: str, category: str, source: str, risk: str) -> None:
+async def ingest_pdf(
+    pdf_path: str, category: str, source: str, risk: str, document_type: str = "Regulatory"
+) -> None:
+    path = Path(pdf_path)
+    if not path.exists() or not path.is_file():
+        print(f"Error: PDF not found: {pdf_path}", file=sys.stderr)
+        sys.exit(1)
     print(f"Extracting text from {pdf_path}...")
     await create_tables()
     text = extract_text_from_pdf(pdf_path)
-    chunks = chunk_document(text, source, category, risk)
+    chunks = chunk_document(text, source, category, risk, document_type=document_type)
     print(f"Produced {len(chunks)} chunks. Embedding and storing...")
     async with AsyncSessionLocal() as db:
         count = await upsert_chunks(chunks, db)
     print(f"Done — {count} chunks stored from {pdf_path}.")
 
 
+async def ingest_url(
+    url: str, category: str, source: str, risk: str, document_type: str = "Regulatory"
+) -> None:
+    print(f"Downloading {url}...")
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True, verify=False) as client:
+            resp = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "application/pdf,*/*",
+            })
+            resp.raise_for_status()
+            tmp_path.write_bytes(resp.content)
+        print(f"Downloaded {len(resp.content):,} bytes → {tmp_path}")
+        await ingest_pdf(str(tmp_path), category, source, risk, document_type)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest NDIS policy documents into pgvector.")
     parser.add_argument("--sample", action="store_true", help="Ingest built-in sample policies")
     parser.add_argument("--pdf", help="Path to a PDF file to ingest")
+    parser.add_argument("--url", help="URL to download PDF from and ingest")
     parser.add_argument("--category", help="Practice category (e.g. 'Chemical Restraint')")
     parser.add_argument("--source", help="Document source label")
     parser.add_argument("--risk", default="High Risk", help="Risk level (default: High Risk)")
+    parser.add_argument(
+        "--document-type",
+        default="Regulatory",
+        help="Document type tag: Regulatory | Practice Standard | Code of Conduct | Incident Management | Behaviour Support",
+    )
     args = parser.parse_args()
 
     if args.sample:
@@ -156,6 +197,10 @@ if __name__ == "__main__":
     elif args.pdf:
         if not args.category or not args.source:
             parser.error("--category and --source are required with --pdf")
-        asyncio.run(ingest_pdf(args.pdf, args.category, args.source, args.risk))
+        asyncio.run(ingest_pdf(args.pdf, args.category, args.source, args.risk, args.document_type))
+    elif args.url:
+        if not args.category or not args.source:
+            parser.error("--category and --source are required with --url")
+        asyncio.run(ingest_url(args.url, args.category, args.source, args.risk, args.document_type))
     else:
         parser.print_help()
