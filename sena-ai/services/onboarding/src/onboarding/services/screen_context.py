@@ -59,6 +59,11 @@ class ScreenStateV2(BaseModel):
     focused_field: str | None = None
     # dotted_path → "filled" | "empty" | "invalid"
     field_status: dict[str, Literal["filled", "empty", "invalid"]] = Field(default_factory=dict)
+    # Rule 7 — when Flutter rejects a value as invalid, the human-readable
+    # reason goes here keyed by the same dotted path. The render layer surfaces
+    # this in parentheses on the "Invalid (re-ask)" line so Gemini can
+    # paraphrase the reason as a hint to the user.
+    field_errors: dict[str, str] = Field(default_factory=dict)
     # section_id → current row count for repeatable sections
     repeatable_rows: dict[str, int] = Field(default_factory=dict)
     ui_flags: dict[str, Any] = Field(default_factory=dict)
@@ -143,7 +148,17 @@ def render_injection_text(state: ScreenStateV2) -> str:
     if empty:
         lines.append("Empty: " + ", ".join(sorted(empty)))
     if invalid:
-        lines.append("Invalid (re-ask): " + ", ".join(sorted(invalid)))
+        # Rule 7 — surface frontend-validation reasons inline so the agent can
+        # paraphrase them as a hint when re-asking. "phone (Must be 10 digits)"
+        # rather than just "phone".
+        parts: list[str] = []
+        for path in sorted(invalid):
+            reason = state.field_errors.get(path)
+            if reason:
+                parts.append(f"{path} ({reason})")
+            else:
+                parts.append(path)
+        lines.append("Invalid (re-ask): " + ", ".join(parts))
 
     if state.repeatable_rows:
         rows_str = ", ".join(f"{k}={v}" for k, v in state.repeatable_rows.items())

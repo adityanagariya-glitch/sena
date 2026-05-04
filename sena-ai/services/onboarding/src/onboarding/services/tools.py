@@ -37,6 +37,7 @@ from onboarding.models.form_state import (
     FormState,
 )
 from onboarding.models.schema_spec import FieldSpec, SectionSpec, StepSchema
+from onboarding.models.session_bootstrap import SessionBootstrap
 from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.services import field_apply as _fa
 from onboarding.services.coverage import is_repeatable_eligible
@@ -53,7 +54,11 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
         "description": (
             "Record a value the user provided for a specific field. "
             "Call this every time you capture a field value. "
-            "Use confidence < 0.6 when the user was ambiguous or you had to guess."
+            "Use confidence < 0.6 when the user was ambiguous or you had to guess. "
+            "For multi-value fields (e.g. preferred_languages, "
+            "communication_preferences) use the 'values' array parameter and "
+            "include EVERY item the user mentioned in a SINGLE call — never "
+            "split a multi-value answer across multiple update_field calls."
         ),
         "parameters": {
             "type": "object",
@@ -68,7 +73,23 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
                 },
                 "value": {
                     "type": "string",
-                    "description": "The captured value as a string; booleans use 'true'/'false'.",
+                    "description": (
+                        "Scalar captured value. Use for text/email/phone/date/"
+                        "single-choice fields. Booleans use 'true'/'false'. "
+                        "For multi-value fields use the 'values' array instead."
+                    ),
+                },
+                "values": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Multi-value array. Use this for multi_enum fields "
+                        "when the user mentions multiple items in a single "
+                        "answer (e.g. 'verbal and phone' → "
+                        "values=['verbal','phone']). Include EVERY item the "
+                        "user said. Do not also provide 'value' for these "
+                        "fields — the array supersedes it."
+                    ),
                 },
                 "repeatable_index": {
                     "type": "integer",
@@ -82,7 +103,7 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
                     "description": "Model confidence in the captured value, 0.0 to 1.0.",
                 },
             },
-            "required": ["section", "field", "value"],
+            "required": ["section", "field"],
         },
     },
     {
@@ -240,6 +261,7 @@ class ToolDispatcher:
         repo: FormStateRepo,
         schema: StepSchema,
         emit: EmitFn | None = None,
+        bootstrap: SessionBootstrap | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -251,6 +273,12 @@ class ToolDispatcher:
         # Set True once advance_step fires successfully — the WS loop checks
         # this to close the connection cleanly
         self.step_completed: bool = False
+        # Rule 3 — readonly enforcement. Paths in this set are rejected by
+        # _update_field with a structured error so Gemini relays the rejection
+        # to the user and stops trying to edit them.
+        self._readonly_paths: set[str] = set(
+            (bootstrap.readonly_paths if bootstrap else []) or []
+        )
 
     def set_turn_id(self, turn_id: int) -> None:
         """Called by the gemini_live bridge before dispatching so that
@@ -291,12 +319,55 @@ class ToolDispatcher:
     async def _update_field(self, args: dict[str, Any]) -> dict[str, Any]:
         section_id = args.get("section")
         field_id = args.get("field")
-        raw_value = args.get("value")
+        # Rule 4 — multi-value capture. 'values' (array) takes precedence over
+        # 'value' (scalar) so a single tool call can record an answer like
+        # "verbal and phone" without splitting into two calls.
+        raw_values = args.get("values")
+        raw_value: Any
+        if isinstance(raw_values, list) and raw_values:
+            raw_value = list(raw_values)
+            log.info(
+                "multi_value applied field=%s.%s count=%d session=%s",
+                section_id,
+                field_id,
+                len(raw_values),
+                self._session_id,
+            )
+        else:
+            raw_value = args.get("value")
         repeatable_index = args.get("repeatable_index")
         confidence = float(args.get("confidence", 1.0))
 
         if not section_id or not field_id:
             return {"ok": False, "error": "section and field are required"}
+        if raw_value is None:
+            return {
+                "ok": False,
+                "error": "either 'value' (scalar) or 'values' (array) is required",
+            }
+
+        # Rule 3 — readonly enforcement. Reject before schema lookup so paths
+        # like 'basics.email' that may be legal schema fields still get blocked
+        # when the bootstrap declared them read-only.
+        path = f"{section_id}.{field_id}"
+        if path in self._readonly_paths:
+            log.warning(
+                "update_field REJECTED readonly path=%s session=%s "
+                "(declared readonly_paths: %s). Rule 3 — agent should not have "
+                "tried to edit this; reinforce the read-only response in the "
+                "next turn.",
+                path,
+                self._session_id,
+                sorted(self._readonly_paths),
+            )
+            return {
+                "ok": False,
+                "error": (
+                    f"field '{path}' is read-only — tell the user it can only "
+                    "be changed in account settings, then move on"
+                ),
+                "readonly": True,
+            }
 
         # Validate against schema
         section: SectionSpec | None = self._schema.get_section(section_id)

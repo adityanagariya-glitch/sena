@@ -83,6 +83,14 @@ class GeminiLiveSession:
         self._last_screen_hash: str | None = None
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
+        # Voice protocol — preserve the words Gemini was saying when interrupted
+        # so the next turn can address the interruption AND the unfinished thought.
+        # Injected as a hidden [INTERRUPTED] text turn right after the cut-off.
+        self._last_interrupted_intent: str | None = None
+        # Silence watchdog — two-step protocol. _silence_warned flips True after
+        # the first "still there?" check-in; the second timeout then summarises
+        # pending fields. Reset to False on any new user audio.
+        self._silence_warned: bool = False
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -90,11 +98,31 @@ class GeminiLiveSession:
         """Open Gemini connection and bridge until the client disconnects."""
         client = genai.Client(api_key=settings.gemini_api_key)
 
+        # Long-session compression — official Gemini Live mechanism for sessions
+        # that would otherwise exceed the model's native window. Sliding window
+        # automatically drops the oldest turns when the context approaches the
+        # limit, so a 20-minute onboarding doesn't drop with a token error.
+        # Verified against /googleapis/js-genai (Context7) — first-class
+        # LiveConnectConfig property.
+        compression_cfg = None
+        try:
+            compression_cfg = types.ContextWindowCompressionConfig(
+                sliding_window=types.SlidingWindow()
+            )
+        except (AttributeError, TypeError):
+            # SDK older than the compression types — keep going without it.
+            log.warning(
+                "context_window_compression unavailable in this SDK version "
+                "session=%s — long sessions may hit token limits",
+                self._session_id,
+            )
+
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             system_instruction=types.Content(
                 parts=[types.Part(text=self._system_instruction)],
             ),
+            **({"context_window_compression": compression_cfg} if compression_cfg else {}),
             # language_code="en-AU" sets TTS accent to Australian English (SDK >= 1.10).
             # voice_name="Aoede" pins ASR to English so the native-audio model does not
             # auto-detect language from quiet/ambiguous first audio (was transcribing as
@@ -175,6 +203,10 @@ class GeminiLiveSession:
 
                 if raw_bytes:
                     self._last_audio_at = time.monotonic()
+                    # User is talking — clear the silence watchdog state so a
+                    # later silence triggers the FIRST-step warn again, not the
+                    # SECOND-step summary.
+                    self._silence_warned = False
                     # Send all audio unconditionally — Gemini's VAD + START_OF_ACTIVITY_INTERRUPTS
                     # handles barge-in natively. The old _agent_speaking echo gate blocked user
                     # audio after turn N+1 model audio arrived, causing VAD to stop firing.
@@ -339,8 +371,10 @@ class GeminiLiveSession:
                         if sc.interrupted:
                             log.info("interrupted turn=%d chunks_before=%d session=%s",
                                      self._turn_id, chunk_count, self._session_id)
+                            interrupted_intent: str | None = None
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
+                                interrupted_intent = full_text.strip() or None
                                 log.info("AGENT_SAID(interrupted) %r session=%s", full_text, self._session_id)
                                 await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
                                 await self._repo.append_transcript(
@@ -353,6 +387,35 @@ class GeminiLiveSession:
                             turn_started = False
                             chunk_count = 0
                             self._gemini_is_speaking = False
+
+                            # Voice protocol — preserve the interrupted thought
+                            # so the next agent turn can address the user's
+                            # interruption AND the unfinished idea. Inject as a
+                            # hidden text turn the model treats as fresh
+                            # context (system prompt teaches it to expect this
+                            # exact prefix).
+                            if interrupted_intent:
+                                self._last_interrupted_intent = interrupted_intent
+                                try:
+                                    await session.send_realtime_input(
+                                        text=(
+                                            "[INTERRUPTED] You were saying: "
+                                            f"\"{interrupted_intent}\". "
+                                            "Address what the user just said first, "
+                                            "then return to that thought only if it "
+                                            "is still relevant."
+                                        )
+                                    )
+                                    log.info(
+                                        "interrupt_intent preserved chars=%d session=%s",
+                                        len(interrupted_intent),
+                                        self._session_id,
+                                    )
+                                except Exception:
+                                    log.exception(
+                                        "interrupt_intent_inject_failed session=%s",
+                                        self._session_id,
+                                    )
 
                         # ── Turn complete ──────────────────────────────────────
                         if sc.turn_complete:
@@ -431,11 +494,22 @@ class GeminiLiveSession:
 
     async def _silence_monitor(self, session: genai.live.AsyncSession) -> None:
         """
-        Checks every _SILENCE_POLL_SEC seconds. If the user has been silent for
-        >= settings.onboarding_silence_timeout_sec seconds AND Gemini is not
-        currently speaking, injects a text cue prompting Gemini to check in with
-        the user in Australian English. Resets the timer after each injection.
-        Set SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC=0 to disable.
+        Two-step silence watchdog (per voice protocol).
+
+        Polls every _SILENCE_POLL_SEC seconds. If the user has been silent for
+        >= settings.onboarding_silence_timeout_sec AND Gemini is not currently
+        speaking:
+
+        - **First fire** (self._silence_warned == False): inject a gentle
+          check-in cue ("Are you still there?").
+        - **Second fire** (self._silence_warned == True): inject a pending-
+          fields summary cue listing missing-required field labels so the
+          agent can recap what's left.
+
+        self._silence_warned resets to False whenever new user audio arrives
+        (in _browser_to_gemini), so a quick reply restarts the cycle.
+
+        Set SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC=0 to disable entirely.
         """
         if settings.onboarding_silence_timeout_sec <= 0:
             return
@@ -443,23 +517,88 @@ class GeminiLiveSession:
             while True:
                 await asyncio.sleep(_SILENCE_POLL_SEC)
                 elapsed = time.monotonic() - self._last_audio_at
-                if elapsed >= settings.onboarding_silence_timeout_sec and not self._gemini_is_speaking:
-                    log.info("silence_checkin elapsed=%.1fs session=%s", elapsed, self._session_id)
-                    try:
-                        await session.send_realtime_input(
-                            text=(
-                                "[SILENCE TIMEOUT] The participant has been silent. "
-                                "Check in warmly in Australian English, e.g. "
-                                "'Hey, just checking — are you still there? No rush at all, take your time.'"
-                            )
+                if elapsed < settings.onboarding_silence_timeout_sec or self._gemini_is_speaking:
+                    continue
+
+                if not self._silence_warned:
+                    # First fire — gentle "are you still there?" cue.
+                    log.info(
+                        "silence_watchdog fired threshold=%.0fs step=warn session=%s",
+                        elapsed, self._session_id,
+                    )
+                    cue = (
+                        "[SILENCE TIMEOUT] The participant has been silent. "
+                        "Check in warmly in Australian English, e.g. "
+                        "'Hey, just checking — are you still there? No rush at all, "
+                        "take your time.'"
+                    )
+                    self._silence_warned = True
+                else:
+                    # Second fire — recap pending fields. Pull the live state
+                    # so the cue mentions only what's still missing.
+                    pending_labels = await self._collect_pending_required_labels()
+                    log.info(
+                        "silence_watchdog fired threshold=%.0fs step=summary "
+                        "pending=%d session=%s",
+                        elapsed, len(pending_labels), self._session_id,
+                    )
+                    if pending_labels:
+                        joined = ", ".join(pending_labels[:6])
+                        cue = (
+                            "[SILENCE TIMEOUT — SUMMARY] The participant is still "
+                            "silent. Gently summarise what's left, then offer to "
+                            "continue. For example: 'When you're ready, we still "
+                            f"need: {joined}. No rush — just let me know when you "
+                            "want to keep going.'"
                         )
-                    except Exception:
-                        pass
-                    self._last_audio_at = time.monotonic()
+                    else:
+                        cue = (
+                            "[SILENCE TIMEOUT — SUMMARY] The participant is still "
+                            "silent. Reassure them you're here whenever they're "
+                            "ready, in Australian English."
+                        )
+                try:
+                    await session.send_realtime_input(text=cue)
+                except Exception:
+                    pass
+                # Reset the audio-at timestamp so the watchdog doesn't fire
+                # again immediately. _silence_warned stays True until a real
+                # user utterance arrives in _browser_to_gemini.
+                self._last_audio_at = time.monotonic()
         except asyncio.CancelledError:
             pass
         except Exception:
             log.exception("silence_monitor_error session=%s", self._session_id)
+
+    async def _collect_pending_required_labels(self) -> list[str]:
+        """Best-effort: read the live FormState + schema and return the labels
+        of required fields that are still empty. Used by the silence summary."""
+        try:
+            state = await self._repo.get_state(self._session_id)
+            schema = await self._repo.get_schema(self._session_id)
+            if state is None or schema is None:
+                return []
+            pending: list[str] = []
+            for section in schema.sections:
+                section_values = state.values.get(section.id) or ({} if not section.is_repeatable else [])
+                for f in section.all_fields():
+                    if not f.required or f.visible_if is not None:
+                        continue
+                    label = f.label or f.id
+                    if section.is_repeatable:
+                        rows = section_values if isinstance(section_values, list) else []
+                        if not rows:
+                            pending.append(label)
+                    else:
+                        row = section_values if isinstance(section_values, dict) else {}
+                        fv = row.get(f.id)
+                        v = fv.get("value") if isinstance(fv, dict) else None
+                        if v in (None, "", []):
+                            pending.append(label)
+            return pending
+        except Exception:
+            log.exception("collect_pending_labels_failed session=%s", self._session_id)
+            return []
 
     # ── Private: tool_call handling (Phase C) ────────────────────────────────
 

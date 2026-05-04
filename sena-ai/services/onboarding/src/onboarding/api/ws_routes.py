@@ -70,6 +70,10 @@ async def onboarding_ws(
                                 "Session schema missing — recreate the session", 4004)
         return
 
+    # Load Rule 1 / Rule 2 bootstrap envelope (None for legacy sessions —
+    # build_system_prompt accepts None and falls back to mode='new_user').
+    bootstrap = await repo.get_bootstrap(session_id)
+
     # ── 2. Acquire single-writer WS lock ──────────────────────────────────────
     acquired = await repo.acquire_ws_lock(session_id, ttl_sec=settings.session_max_sec)
     if not acquired:
@@ -125,6 +129,7 @@ async def onboarding_ws(
             schema,
             state,
             grounding_enabled=settings.onboarding_grounding_enabled,
+            bootstrap=bootstrap,
         )
 
         tool_dispatcher = ToolDispatcher(
@@ -132,6 +137,7 @@ async def onboarding_ws(
             session_id=session_id,
             repo=repo,
             schema=schema,
+            bootstrap=bootstrap,
         )
 
         live_session = GeminiLiveSession(

@@ -1,4 +1,8 @@
-"""Tests for services/screen_context.py — pure module, no mocks needed."""
+"""Tests for services/screen_context.py — pure module, no mocks needed.
+
+render_injection_text accepts ScreenStateV2. v1 ScreenStateMessage payloads
+must be normalised through from_v1() before rendering.
+"""
 from __future__ import annotations
 
 import pytest
@@ -7,54 +11,88 @@ from pydantic import ValidationError
 from onboarding.services.screen_context import (
     ScreenData,
     ScreenStateMessage,
+    ScreenStateV2,
+    from_v1,
     payload_hash,
     render_injection_text,
 )
 
 
-# ── render_injection_text ─────────────────────────────────────────────────────
+# ── render_injection_text (v2 native) ────────────────────────────────────────
 
 def test_render_all_fields():
-    msg = ScreenStateMessage(
-        type="screen_state",
-        data=ScreenData(
-            current_screen="personal_information",
-            visible_fields=["full_name", "date_of_birth"],
-            prefilled={"full_name": "John Smith"},
-            app_context="user is on step 1 of 5",
-        ),
+    state = ScreenStateV2(
+        step_id="personal_information",
+        focused_section="basics",
+        focused_field="full_name",
+        field_status={
+            "basics.full_name": "filled",
+            "basics.date_of_birth": "empty",
+        },
+        repeatable_rows={"emergency_contacts": 2},
     )
-    text = render_injection_text(msg)
+    text = render_injection_text(state)
     assert text.startswith("[SCREEN]")
-    assert "section=personal_information" in text
-    assert "visible=full_name,date_of_birth" in text
-    assert "prefilled={full_name=John Smith}" in text
-    assert 'note="user is on step 1 of 5"' in text
+    assert "Step: personal_information" in text
+    assert "Focus: basics / full_name" in text
+    assert "Filled: basics.full_name" in text
+    assert "Empty: basics.date_of_birth" in text
+    assert "Rows: emergency_contacts=2" in text
 
 
 def test_render_minimal_no_optional_fields():
-    msg = ScreenStateMessage(type="screen_state", data=ScreenData())
-    text = render_injection_text(msg)
-    assert text == "[SCREEN] ."
+    state = ScreenStateV2()
+    text = render_injection_text(state)
+    assert text == "[SCREEN]"
 
 
-def test_render_only_screen():
-    msg = ScreenStateMessage(
-        type="screen_state",
-        data=ScreenData(current_screen="medical_information"),
-    )
-    text = render_injection_text(msg)
-    assert "section=medical_information" in text
-    assert "visible=" not in text
+def test_render_only_step():
+    state = ScreenStateV2(step_id="medical_information")
+    text = render_injection_text(state)
+    assert "Step: medical_information" in text
+    assert "Focus:" not in text
 
 
-def test_render_prefilled_only():
+def test_render_v1_via_adapter():
     msg = ScreenStateMessage(
         type="screen_state",
         data=ScreenData(prefilled={"dob": "1990-01-15"}),
     )
-    text = render_injection_text(msg)
-    assert "prefilled={dob=1990-01-15}" in text
+    state = from_v1(msg)
+    text = render_injection_text(state)
+    assert "Filled: dob" in text
+
+
+# ── Rule 7 — field_errors render with hint ───────────────────────────────────
+
+def test_render_invalid_with_field_errors_hint():
+    state = ScreenStateV2(
+        focused_section="basics",
+        focused_field="phone",
+        field_status={
+            "basics.phone": "invalid",
+            "basics.email": "invalid",
+        },
+        field_errors={
+            "basics.phone": "Must be 10 digits with no spaces",
+        },
+    )
+    text = render_injection_text(state)
+    # Phone has a reason (rendered in parens); email is invalid but reason-less.
+    invalid_line = next(line for line in text.splitlines() if line.startswith("Invalid"))
+    assert "basics.phone (Must be 10 digits with no spaces)" in invalid_line
+    # email appears bare (sorted alphabetically before phone, no reason)
+    assert "basics.email," in invalid_line or invalid_line.endswith("basics.email")
+
+
+def test_render_invalid_without_field_errors_is_bare():
+    state = ScreenStateV2(
+        field_status={"basics.phone": "invalid"},
+    )
+    text = render_injection_text(state)
+    invalid_line = next(line for line in text.splitlines() if line.startswith("Invalid"))
+    # Bare path — no parenthesised reason after the path itself.
+    assert invalid_line == "Invalid (re-ask): basics.phone"
 
 
 # ── Unknown keys ignored ───────────────────────────────────────────────────────

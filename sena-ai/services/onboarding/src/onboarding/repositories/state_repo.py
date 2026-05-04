@@ -7,6 +7,7 @@ import structlog
 
 from onboarding.models.form_state import FormState
 from onboarding.models.schema_spec import StepSchema
+from onboarding.models.session_bootstrap import SessionBootstrap
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -16,6 +17,7 @@ log = structlog.get_logger(__name__)
 # Redis key templates
 _KEY_STATE = "sena:onboarding:session:{sid}"
 _KEY_SCHEMA = "sena:onboarding:session:{sid}:schema"
+_KEY_BOOTSTRAP = "sena:onboarding:session:{sid}:bootstrap"
 _KEY_TRANSCRIPT = "sena:onboarding:session:{sid}:transcript"
 _KEY_WS_LOCK = "sena:onboarding:ws_lock:{sid}"
 _KEY_RESUMPTION = "sena:onboarding:resumption:{handle}"
@@ -34,13 +36,45 @@ class FormStateRepo:
         state: FormState,
         schema: StepSchema,
         ttl_sec: int,
+        bootstrap: SessionBootstrap | None = None,
     ) -> None:
         sid = state.session_id
         async with self._r.pipeline() as pipe:
             pipe.set(_KEY_STATE.format(sid=sid), state.model_dump_json(), ex=ttl_sec)
             pipe.set(_KEY_SCHEMA.format(sid=sid), schema.model_dump_json(), ex=ttl_sec)
+            if bootstrap is not None:
+                pipe.set(
+                    _KEY_BOOTSTRAP.format(sid=sid),
+                    bootstrap.model_dump_json(),
+                    ex=ttl_sec,
+                )
             await pipe.execute()
-        log.info("session_created", session_id=sid, step=state.step_id)
+        log.info(
+            "session_created",
+            session_id=sid,
+            step=state.step_id,
+            bootstrap_mode=(bootstrap.mode if bootstrap else None),
+        )
+
+    # ── Bootstrap envelope (Rule 1 / Rule 2 hygiene contract) ─────────────────
+
+    async def get_bootstrap(self, session_id: str) -> SessionBootstrap | None:
+        raw = await self._r.get(_KEY_BOOTSTRAP.format(sid=session_id))
+        if raw is None:
+            return None
+        return SessionBootstrap.model_validate_json(raw)
+
+    async def save_bootstrap(
+        self,
+        session_id: str,
+        bootstrap: SessionBootstrap,
+        ttl_sec: int,
+    ) -> None:
+        await self._r.set(
+            _KEY_BOOTSTRAP.format(sid=session_id),
+            bootstrap.model_dump_json(),
+            ex=ttl_sec,
+        )
 
     # ── State ─────────────────────────────────────────────────────────────────
 
@@ -140,6 +174,7 @@ class FormStateRepo:
         keys = [
             _KEY_STATE.format(sid=session_id),
             _KEY_SCHEMA.format(sid=session_id),
+            _KEY_BOOTSTRAP.format(sid=session_id),
             _KEY_TRANSCRIPT.format(sid=session_id),
             _KEY_WS_LOCK.format(sid=session_id),
             _KEY_FRAME_CAMERA.format(sid=session_id),

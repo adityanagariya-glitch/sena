@@ -69,13 +69,14 @@ async def dispatcher(seeded_repo, personal_schema, emitted):
 # ── FUNCTION_DECLS shape ─────────────────────────────────────────────────────
 
 
-def test_function_decls_cover_all_four_handlers() -> None:
+def test_function_decls_cover_all_handlers() -> None:
     names = {d["name"] for d in FUNCTION_DECLS}
     assert names == {
         "update_field",
         "get_session_context",
         "advance_step",
         "escalate_incident",
+        "add_repeatable_row",
     }
     for decl in FUNCTION_DECLS:
         assert decl["parameters"]["type"] == "object"

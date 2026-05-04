@@ -10,6 +10,7 @@ from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
 from onboarding.models.form_state import FieldSource, FieldValue, FormState
 from onboarding.models.schema_spec import StepSchema
+from onboarding.models.session_bootstrap import SessionBootstrap
 from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.services.webhook import fire_webhook
 
@@ -23,6 +24,11 @@ class CreateSessionRequest(BaseModel):
     step: str
     schema: StepSchema
     initial_state: dict | None = None
+    # Rule 1 / Rule 2 hygiene contract. When provided, it is the authoritative
+    # source for what state the agent inherits and which fields are read-only.
+    # When omitted, a backwards-compatible bootstrap is synthesised from
+    # initial_state (mode=returning_same_page if non-empty, else new_user).
+    bootstrap: SessionBootstrap | None = None
     locale: str = "en-AU"
     tenant_id: str | None = None
 
@@ -78,17 +84,28 @@ async def create_session(
     session_id = str(uuid.uuid4())
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.onboarding_session_max_min)
 
+    # Resolve bootstrap envelope. Explicit takes precedence; legacy initial_state
+    # is wrapped into a synthesised bootstrap so older clients keep working.
+    bootstrap = req.bootstrap or SessionBootstrap.from_initial_state(req.initial_state)
+
+    # Seed FormState.values from whichever side provided pre-fill data. Explicit
+    # initial_state still wins (it is shape-stable {section: {field: v}});
+    # otherwise current_page_values from bootstrap is used.
+    seed_values = req.initial_state if req.initial_state else bootstrap.current_page_values
+
     state = FormState(
         session_id=session_id,
         step_id=req.step,
         participant_id=req.participant_id,
         tenant_id=req.tenant_id,
         locale=req.locale,
-        values=_build_initial_values(req.initial_state),
+        values=_build_initial_values(seed_values),
     )
     state.recompute_completion(req.schema)
 
-    await repo.create_session(state, req.schema, ttl_sec=settings.session_max_sec)
+    await repo.create_session(
+        state, req.schema, ttl_sec=settings.session_max_sec, bootstrap=bootstrap,
+    )
 
     ws_url = f"ws://localhost:{settings.onboarding_port}/ws/onboarding/{session_id}"
 
