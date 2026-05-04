@@ -8,7 +8,9 @@ SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service pro
 
 **Domain:** NDIS (National Disability Insurance Scheme) — Australian disability services compliance, case note drafting, voice-based workflows.
 
+<hard_constraints priority="MANDATORY" type="legal-compliance">
 **Hard constraints:** Multi-tenant data isolation (legally mandated), human-in-the-loop approval for all AI outputs, Australian data residency, NDIS compliance.
+</hard_constraints>
 
 ## Architecture
 
@@ -59,6 +61,7 @@ API-first service at `sena-ai/services/onboarding/src/onboarding/`. Mobile app i
 | Repositories | `repositories/state_repo.py` | Redis only — no Postgres. FormState, transcript, WS lock, resumption handles |
 | Models | `models/schema_spec.py` | StepSchema, SectionSpec, FieldSpec (incl. visible_if, repeatable) |
 | Models | `models/form_state.py` | FormState, FieldValue, CompletionStats |
+| Models | `models/session_bootstrap.py` | SessionBootstrap envelope (Rule 1+2 hygiene contract — mode, current_page_values, readonly_paths, prior_pages); rendered into prompt as `[LIVE_STATE_JSON]` |
 | Fixtures | `fixtures/schema_*.json` | 5 step schemas from real app screens |
 
 **Key routes:**
@@ -162,11 +165,13 @@ At `sena-ai/services/case_review/src/case_review/`. Port 8084, ai-db (pgvector).
 - `POST /v1/case-review/incident/detect` + `/draft` + `PATCH .../confirm` (Phase E)
 - `POST /v1/case-review/submit` — final gate (Phase F, BLOCKED)
 
+<non_negotiables service="case_review" priority="MANDATORY" type="legal-compliance">
 **Non-negotiables:**
 - `tenant_id` on every DB row + RLS enforced (legal mandate)
 - Staff must acknowledge every AI flag — no auto-submit
 - Audit log entry for every AI action + staff decision
 - `GEMINI_REGION=australia-southeast1` (data residency)
+</non_negotiables>
 
 **Run:**
 ```bash
@@ -245,19 +250,27 @@ Two modes controlled by `SENA_AI_AUTH_MODE`:
 - Structure-aware chunking for document processing
 
 
+<issues_solved_protocol priority="MANDATORY" trigger="before-any-debugging">
 ## Issues-Solved Knowledge Base (MANDATORY — CHECK BEFORE DEBUGGING)
 
-Path: `.claude/issues-solved/`
+<path>Path: `.claude/issues-solved/`</path>
 
+<lookup_rule>
 **Rule:** before debugging ANY issue, grep `.claude/issues-solved/INDEX.md` for symptom keywords.
 - If match → read linked detail file → apply fix. Do NOT re-derive.
 - If no match → solve, then append a new entry via `TEMPLATE.md`.
+</lookup_rule>
 
+<entry_threshold>
 **When to add an entry:** issue took >2 debugging iterations OR >5 min OR required external research. One file per issue, numbered `NNNN-kebab-symptom.md`, row added to `INDEX.md` (newest first).
+</entry_threshold>
 
+<goal>
 **Goal:** zero re-solved bugs, zero token-waste on problems already cracked.
+</goal>
 
 See `.claude/issues-solved/README.md` for full protocol.
+</issues_solved_protocol>
 
 ## graphify
 
@@ -307,28 +320,46 @@ The authoritative read-order guide is `.claude/SESSION_START.md`. Read it BEFORE
 
 The canonical, session-persistent task list lives at `.claude/tasks/TASKS.md`. Read this file at the start of every session — it survives `/compact`, context resets, and session switches. Update it whenever a task's status changes or a new task is added. Keep completed entries around for a few sessions as a trail before pruning to a separate archive.
 
+<setup_rules priority="MANDATORY">
 ## Setup Rules
 - Always use Context7 (`get-library-docs`) to verify API or setup steps before running automation.
 - For all browser-based tasks, prioritize using the Playwright MCP server to execute the workflow rather than asking me to do it in the browser.
+</setup_rules>
 
 ## Gemini API Rules (MANDATORY)
 
+<gemini_rules priority="MANDATORY" scope="any-gemini-code">
+<applies_to>
 For ANY code touching Gemini API or Gemini Live API:
+</applies_to>
 
+<rule id="1" type="prerequisite">
 1. **Invoke the skill first** — before writing/editing any Gemini code, run `Skill: gemini-live-api-dev` (Live API) or `Skill: gemini-api-dev` (general). Do NOT rely on training data — it is stale.
+</rule>
+<rule id="2" type="prerequisite">
 2. **Query the MCP** — use `search_documentation` from `gemini-api-docs-mcp` MCP server for method signatures and configuration details.
+</rule>
+<rule id="3" type="model-selection">
 3. **Current models (2026-04):**
    - Gemini Live (personal details voice flow): `gemini-3.1-flash-live-preview`
    - Deprecated (do NOT use): `gemini-2.5-flash-native-audio-latest`, `gemini-2.5-flash-native-audio-preview-*`, `gemini-live-2.5-flash-preview`, `gemini-2.0-flash-live-001`
+</rule>
+<rule id="4" type="api-pattern">
 4. **Current Live API patterns:**
    - Send audio: `await session.send_realtime_input(audio=types.Blob(data=raw, mime_type="audio/pcm;rate=16000"))`
    - Send text: `await session.send_realtime_input(text="...")`
    - Signal end-of-speech: `await session.send_realtime_input(audio_stream_end=True)`
    - Do NOT use: `session.send(input=..., end_of_turn=True)` (old API, misroutes to `send_client_content`)
    - Do NOT use: `LiveClientRealtimeInput(media_chunks=[...])` (old wire format)
+</rule>
+<rule id="5" type="capability-limit">
 5. **Proactive audio NOT supported** on `gemini-3.1-flash-live-preview` — model will NOT speak first without user audio input. Greeting must be triggered by user speaking first (system prompt handles the actual greeting content).
+</rule>
+<rule id="6" type="forbidden-pattern" severity="critical">
 6. **NEVER gate mic audio in server Python (`_browser_to_gemini`).** A server-side `_agent_speaking` flag causes VAD to silently stop after 2-4 turns: model audio for turn N+1 arrives before `turn_complete` of turn N fires, keeping the gate closed when the user tries to speak. Always forward audio unconditionally in `_browser_to_gemini`; rely on `activity_handling=START_OF_ACTIVITY_INTERRUPTS` for barge-in. Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise.
    **Flutter client MUST mute mic during agent speech (echo fix):** set `_agentSpeaking=true` on `turn_start`, `false` on `turn_complete`/`interrupted`. Gate in the mic stream listener (`if (!_agentSpeaking) _sendAudio(chunk)`), not in the recorder itself. Server also calls `send_realtime_input(audio_stream_end=True)` on `turn_start` to flush Gemini's VAD buffer of any echo frames already in flight.
+</rule>
+</gemini_rules>
 
 ## Demo Stack
 
@@ -338,20 +369,32 @@ Standalone Gemini Live demo (separate from the production voice service):
 - Run: `cd sena-ai && uvicorn demo_live_server:app --reload --port 8082`
 - Env required: `SENA_AI_GEMINI_API_KEY`, `SENA_AI_GEMINI_LIVE_MODEL_ID`
 
+<cleanup_rule priority="MANDATORY" trigger="dead-code-removal">
 ## Cleanup Rule
 
 When removing "dead code", ALWAYS grep the full codebase for the file/symbol name first. Previous audits have produced false positives that would have broken production (e.g., `gemini_service.py` was flagged dead but is actively called by HTTP personal-details turn endpoint).
+</cleanup_rule>
 
+<ignored_folders priority="MANDATORY" type="forbidden-paths">
 ## Ignored Folders
 
+<never_read>
 **NEVER** try to read or analyze anything inside the `/archive`, `.venv`, `.vscode`, or `ndis_markdown_docs/` folders. They are a massive token consumption disaster. Pretend they do not exist unless explicitly instructed.
+</never_read>
 
+<exception target="ndis_markdown_docs">
 **`ndis_markdown_docs/` exception:** raw NDIS source PDFs converted to markdown. For NDIS compliance questions you MAY suggest reading a **specific file** from this folder — never the whole folder, never speculatively.
+</exception>
+</ignored_folders>
 
+<add_component_protocol priority="MANDATORY" trigger="user-says-I-am-adding-X">
 ## Adding New Project Components (MANDATORY PROTOCOL)
 
+<trigger_phrase>
 When the user says **"I am adding X"** (a new directory, service, file, or external resource), you MUST update ALL of the following before doing anything else:
+</trigger_phrase>
 
+<update_sweep>
 | File | What to update |
 |------|---------------|
 | `CLAUDE.md` (this file) | Add to root-level file tree + add a dedicated section describing the component |
@@ -359,8 +402,12 @@ When the user says **"I am adding X"** (a new directory, service, file, or exter
 | `.claude/tasks/TASKS.md` | Update any blocked tasks that are now unblocked by the new component |
 | `~/.claude/projects/.../memory/MEMORY.md` | Add an index entry pointing to a new memory file |
 | Create `memory/project_<name>.md` | Describe what the component is and how to use it |
+</update_sweep>
 
+<blocking_rule>
 **Rule:** Do NOT start any other work until this update sweep is complete. The sweep ensures future sessions land in the correct state.
+</blocking_rule>
+</add_component_protocol>
 
 ## Paused Features
 

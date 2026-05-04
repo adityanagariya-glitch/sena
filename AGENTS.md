@@ -44,11 +44,13 @@ Guidance for agentic coding agents working in `C:\Users\Admin\Downloads\SENA`.
 
 - SENA is an AI/ML backend for Australian NDIS service providers.
 - This repo covers the AI backend layer, not the full product platform.
+<critical_constraints priority="MANDATORY" type="legal-compliance">
 - Critical constraints:
   - Multi-tenant isolation is mandatory.
   - Human approval is required before AI output becomes final.
   - Data residency is Australian (`ap-southeast-2`).
   - NDIS compliance matters more than speed or convenience.
+</critical_constraints>
 
 ## Repo Layout
 
@@ -196,6 +198,7 @@ CI currently runs:
 - JSON columns are used for draft state, section coverage, and event payloads.
 - Favor explicit status fields such as `ACTIVE`, `COMPLETED`, `PENDING_APPROVAL`, `DELIVERED`.
 
+<error_handling_rules>
 ### Error Handling
 
 - Use `HTTPException` with explicit `status_code` and concise `detail`.
@@ -204,6 +207,7 @@ CI currently runs:
 - Raise `404` for missing entities.
 - Raise `409` for invalid lifecycle state, duplicate activity, or already-completed flows.
 - Use `ValueError` inside Pydantic validators, not inside route logic.
+</error_handling_rules>
 
 ## Testing Conventions
 
@@ -225,6 +229,7 @@ CI currently runs:
   - `dev_header`
   - `jwt`
 
+<agent_guidance priority="MANDATORY">
 ## Agent Guidance
 
 - Default to the `voice` service unless the task clearly targets another area.
@@ -233,7 +238,10 @@ CI currently runs:
 - Match local commands to CI when possible.
 - For architecture work, align with `.planning/` before aligning with the current HTTP implementation.
 - If you change tests or tooling instructions, update this file if the guidance becomes stale.
+</agent_guidance>
 
+<ignored_folders priority="MANDATORY" type="forbidden-paths">
 ## Ignored Folders
 
 **NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.
+</ignored_folders>

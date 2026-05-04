@@ -36,6 +36,16 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 
 ---
 
+## ✅ DONE: onboarding 7-rules + voice protocols (2026-05-02)
+
+Task #11 — implemented every rule from `SENA_AI/Issues_left_to_solve.xml` plus interrupt-recovery, silence-watchdog two-step, and Gemini context_window_compression. Tests 78/78. **Plan artifact:** `~/.claude/plans/cozy-waddling-river.md`. **Flutter delta:** Issues 7–9 in `FLUTTER_VOICE_INTEGRATION_FIXES.md`. See TASKS.md #11 for full file list.
+
+**Key entry points for resuming:**
+- `models/session_bootstrap.py` — Rule 1/2 envelope; rendered into prompt as `[LIVE_STATE_JSON]`
+- `prompts/onboarding_system.md` — fully rewritten with all 7 rules and voice protocols
+- `services/screen_context.py::ScreenStateV2.field_errors` — Rule 7 reason hints
+- `services/tools.py` — `update_field.values` array parameter (Rule 4); `_readonly_paths` set on dispatcher (Rule 3)
+
 ## ✅ DONE: onboarding v2 implemented (2026-04-29)
 
 All 14 files complete. See TASKS.md #9 for full file list. **Next task: Case Note Review #10 Phase D** (`/review` endpoint — risks + restrictive practices + anomalies). Read `.planning/CASE_NOTE_REVIEW_PLAN.md` to resume.

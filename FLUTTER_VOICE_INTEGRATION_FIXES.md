@@ -85,6 +85,9 @@ because the backend never knew those fields existed.
 | 4 | `StepSchema` entity has no `repeatable` support | CRITICAL | 20 min |
 | 5 | New session re-loads previously voice-captured values | HIGH | 5 min |
 | 6 | No live screen-state sync — schema is static | RECOMMENDED | 1 h |
+| 7 | Send `bootstrap` envelope on session create (Rules 1+2+3) | HIGH | 20 min |
+| 8 | Send `field_errors` reasons alongside `field_status` (Rule 7) | HIGH | 15 min |
+| 9 | Subscribe to `row_added` WS event and render new card (Rule 6) | HIGH | 15 min |
 
 ---
 
@@ -731,6 +734,231 @@ rapidly.
    what's your email address?" instead of asking for `full_name` first.
 3. Tap a Filled field. Gemini should confirm its value: "I see your name
    is John — is that correct?"
+
+---
+
+## Issue 7 — Send `bootstrap` envelope on session create
+
+### Symptom
+Backend cannot tell the difference between:
+- **New user, fresh page** — should greet generically and start collection
+- **Same page, retried voice session** — must not bleed prior chat memory but must respect already-typed values
+- **Multi-page handoff** — agent should acknowledge the user by name without re-asking earlier-step data
+- **Read-only fields** (e.g. email) — agent must not offer to edit them
+
+The legacy `initial_state` map can't carry that intent — it's just a values blob.
+
+### Backend reference
+`POST /v1/onboarding/session` now accepts an explicit `bootstrap`
+envelope (`SessionBootstrap` model in
+`services/onboarding/src/onboarding/models/session_bootstrap.py`). The
+backend renders it into a `[LIVE_STATE_JSON]` block in the system prompt
+and Gemini is instructed to treat it as the only authority for prior
+context.
+
+### Wire shape
+```json
+POST /v1/onboarding/session
+{
+  "participant_id": "...",
+  "step": "personal_information",
+  "schema": { "...": "StepSchema" },
+  "bootstrap": {
+    "mode": "page_handoff",
+    "current_page_values": {
+      "basics": {
+        "full_name": "Jane Doe",
+        "phone": "0412345678",
+        "email": "jane@example.com"
+      }
+    },
+    "readonly_paths": ["basics.email"],
+    "prior_pages": {
+      "step_0_invitation": { "basics.email": "jane@example.com" }
+    },
+    "participant_display_name": "Jane"
+  }
+}
+```
+
+`mode` values:
+- `new_user` — Fresh participant, no pre-fill. Default for first-time users.
+- `returning_same_page` — Same page, fresh session. Agent will not reference
+  any prior conversation. Use this when the user retries voice on a page
+  they had partially filled by typing.
+- `page_handoff` — User just moved here from a prior step. Populate
+  `prior_pages` with values from earlier steps so the agent can
+  acknowledge them.
+
+### Fix — `voice_session_controller.dart`
+
+Replace the legacy `initialState` map with a typed `Bootstrap` object:
+
+```dart
+class VoiceBootstrap {
+  final String mode; // 'new_user' | 'returning_same_page' | 'page_handoff'
+  final Map<String, dynamic> currentPageValues;
+  final List<String> readonlyPaths;
+  final Map<String, Map<String, dynamic>> priorPages;
+  final String? participantDisplayName;
+
+  const VoiceBootstrap({
+    required this.mode,
+    this.currentPageValues = const {},
+    this.readonlyPaths = const [],
+    this.priorPages = const {},
+    this.participantDisplayName,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'mode': mode,
+    'current_page_values': currentPageValues,
+    'readonly_paths': readonlyPaths,
+    'prior_pages': priorPages,
+    if (participantDisplayName != null)
+      'participant_display_name': participantDisplayName,
+  };
+}
+```
+
+Wire it in `CreateVoiceSessionParams`:
+```dart
+final params = CreateVoiceSessionParams(
+  participantId: _participantId,
+  tenantId: _tenantId,
+  locale: _locale,
+  schema: _stepConfig.schema,
+  bootstrap: VoiceBootstrap(
+    mode: isFirstTimeForParticipant ? 'new_user' : 'page_handoff',
+    currentPageValues: _readPrefilledValues(),
+    readonlyPaths: const ['basics.email'],
+    priorPages: _readPriorStepValues(),
+    participantDisplayName: _participantFirstName,
+  ),
+);
+```
+
+The session creation HTTP datasource posts `bootstrap` as a JSON object on
+`POST /v1/onboarding/session`. Issue 5's `initialState: null` workaround is
+superseded by setting `mode: 'returning_same_page'` and supplying
+`currentPageValues` — this is the right answer for a same-page retry.
+
+### Test
+1. New user, no pre-fill → `mode: 'new_user'`, currentPageValues empty.
+   Agent gives a generic greeting.
+2. Page handoff with name pre-filled → `mode: 'page_handoff'`,
+   `participant_display_name: 'Jane'`, `currentPageValues` contains the
+   name + phone. Agent says "Hi Jane, I see your name is Jane and phone
+   is 0412…, are these correct?".
+3. Email pre-filled, in readonly_paths → say "change my email" and confirm
+   the agent says "your email is read-only, let's keep moving" instead of
+   trying to edit it.
+
+---
+
+## Issue 8 — Send `field_errors` alongside `field_status` (Rule 7)
+
+### Symptom
+Flutter rejects a value the agent stored ("phone must be 10 digits"), but
+the agent re-asks generically because the backend only knows the field is
+"invalid" — not why.
+
+### Backend reference
+`screen_context.py::ScreenStateV2` now accepts `field_errors: dict[str,
+str]`. `render_injection_text()` surfaces the reason in parentheses:
+```
+Invalid (re-ask): basics.phone (Must be 10 digits with no spaces)
+```
+The system prompt (Rule 7) tells Gemini to paraphrase the parenthetical
+hint when re-asking — without quoting regexes at the user.
+
+### Wire shape (additive — old payloads still valid)
+```json
+{
+  "type": "screen_state_v2",
+  "data": {
+    "step_id": "personal_information",
+    "focused_section": "basics",
+    "focused_field": "phone",
+    "field_status":  { "basics.phone": "invalid" },
+    "field_errors":  { "basics.phone": "Must be 10 digits with no spaces" },
+    "repeatable_rows": { "emergency_contacts": 1 },
+    "ui_flags": {}
+  }
+}
+```
+
+### Fix — wherever you build the screen_state_v2 frame
+Whenever a field validator fails, populate BOTH:
+- `field_status[path] = 'invalid'`
+- `field_errors[path] = '<short human reason>'`
+
+Keep the reason short and human (max ~80 chars). Example sources:
+- Use the same string your `TextFormField`'s validator returns.
+- For pattern errors, paraphrase: "Must be 10 digits", "Must be a valid
+  email", "Must be in the future".
+- Never put the regex itself in the reason — Gemini will read it aloud.
+
+If a field becomes valid, omit it from `field_errors` (or remove the key).
+
+### Test
+1. Type "abc" in the phone field, blur it. Send a `screen_state_v2` with
+   `field_status.basics.phone='invalid'`,
+   `field_errors.basics.phone='Must be 10 digits, no spaces'`.
+2. Confirm the next `agent_said` event includes a re-ask in the form
+   "It looks like the system didn't accept that phone number — could we
+   try again? Just 10 digits, no spaces."
+3. Type a valid phone, blur. Send updated frame with phone removed from
+   `field_errors`. Agent moves on without re-asking.
+
+---
+
+## Issue 9 — Subscribe to `row_added` WS event (Rule 6)
+
+### Symptom
+User says "I want to add another emergency contact" but no new card
+appears on the screen. Agent then asks for values targeting an index that
+the UI doesn't have rendered yet, so the user can see updates landing in
+fields that don't exist visually.
+
+### Backend reference
+The dispatcher already calls `add_repeatable_row(section_id)` (function
+declared in `services/tools.py`) and emits a `row_added` WS event. No
+backend change needed — only Flutter must subscribe.
+
+### Wire shape (server → client)
+```json
+{ "type": "row_added", "section_id": "emergency_contacts", "new_index": 1 }
+```
+
+Sent immediately when the agent's tool call mutates the repeatable row
+count. The full `state` event also fires right after with the new shape,
+so you can choose which to react to (rendering the new empty card on
+`row_added` is faster).
+
+### Fix — `voice_session_controller.dart`
+
+Add a handler in the existing event switch:
+```dart
+case 'row_added':
+  final sectionId = event['section_id'] as String;
+  final newIndex = event['new_index'] as int;
+  _stepBindingFor(sectionId)?.addEmptyRow(newIndex);
+  break;
+```
+
+`_stepBindingFor()` is your bridge between the voice agent and the form
+controller — for `emergency_contacts` it should call something like
+`controller.emergencyContacts.add(EmergencyContactRow.empty())`.
+
+### Test
+1. Start voice session on the personal info step.
+2. Say "I'd like to add another emergency contact, please."
+3. Confirm:
+   - A new empty emergency-contact card appears on screen within ~1s.
+   - The agent then asks "Great — what's the new contact's name?".
+   - Subsequent `update_field` calls write to the new index, populating
+     the new card live.
 
 ---
 

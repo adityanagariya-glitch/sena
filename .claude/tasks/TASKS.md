@@ -1,9 +1,9 @@
 ---
 title: Persistent Task List
-updated: 2026-04-29
+updated: 2026-05-02
 ---
 
-> Last session end-state (2026-04-29): Onboarding #9 v2 implementation COMPLETE. 14 files edited/created. Case Note Review #10 Phase D still next.
+> Last session end-state (2026-05-02): Onboarding #11 (7 behavioural rules + voice protocols) COMPLETE. 9 backend files + system prompt rewritten. Tests 78/78. Flutter delta documented in `FLUTTER_VOICE_INTEGRATION_FIXES.md` (Issues 7–9). Case Note Review #10 Phase D still next.
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -15,6 +15,36 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ---
 
 ## Active
+
+### #11 — Onboarding rules-and-voice-protocols (7 rules + interrupt + silence + compression)
+- **Status:** completed (2026-05-02)
+- **Priority:** P1
+- **Plan:** `~/.claude/plans/cozy-waddling-river.md` (approved by user, executed end-to-end)
+- **Source spec:** `SENA_AI/Issues_left_to_solve.xml`
+- **What shipped:**
+  - Rule 1 + 2 — `SessionBootstrap` envelope (`models/session_bootstrap.py`) wired through `routes.py` → Redis (`state_repo.py`, new `_KEY_BOOTSTRAP`) → `ws_routes.py` → `prompt_builder.py` (`__LIVE_STATE_JSON__` placeholder) → `prompts/onboarding_system.md` (full rewrite, [LIVE_STATE_JSON] block as the SOLE state authority)
+  - Rule 3 — readonly enforcement in `ToolDispatcher._update_field` (rejects paths in `bootstrap.readonly_paths`); pre-fill verify rule in system prompt
+  - Rule 4 — multi-value capture: `update_field` tool decl now exposes both `value` (scalar) and `values` (array) parameters; dispatcher prefers `values` and logs `multi_value applied field=... count=N`
+  - Rule 5 — proactive optional prompting rule in system prompt
+  - Rule 6 — already-shipped `add_repeatable_row` tool / `row_added` event (verified, documented Flutter subscribe in Issue 9)
+  - Rule 7 — `field_errors: dict[str, str]` field on `ScreenStateV2`; `render_injection_text` surfaces reasons in `Invalid (re-ask): path (reason)` form
+  - Voice protocol — interrupt-intent preservation: `_last_interrupted_intent` retained, hidden `[INTERRUPTED]` text turn injected so next agent turn can address user AND finish the prior thought
+  - Voice protocol — context_window_compression with sliding window enabled in `LiveConnectConfig` (with SDK-version fallback)
+  - Voice protocol — silence watchdog two-step (existing single-threshold extended; `_silence_warned` flag tracks first warn vs follow-up summary)
+- **Tests:** 78/78 pass via `PYTHONPATH=src python -m pytest tests/`. Added 2 new tests for Rule 7 `field_errors` rendering. Updated 1 stale `test_function_decls_cover_all_handlers` (4→5 handlers) and 4 stale v1-signature `render_injection_text` tests (now use v2 `ScreenStateV2`).
+- **Flutter delta:** `SENA_AI/FLUTTER_VOICE_INTEGRATION_FIXES.md` Issues 7 (bootstrap), 8 (`field_errors`), 9 (subscribe `row_added`).
+- **Files modified (9 + tests + docs):**
+  - `src/onboarding/models/session_bootstrap.py` (NEW)
+  - `src/onboarding/repositories/state_repo.py`
+  - `src/onboarding/api/routes.py`
+  - `src/onboarding/api/ws_routes.py`
+  - `src/onboarding/services/prompt_builder.py`
+  - `src/onboarding/services/screen_context.py`
+  - `src/onboarding/services/tools.py`
+  - `src/onboarding/services/gemini_live.py`
+  - `src/onboarding/prompts/onboarding_system.md` (full rewrite — 50→200 lines)
+  - `tests/test_tools.py`, `tests/test_screen_context.py`
+  - `SENA_AI/FLUTTER_VOICE_INTEGRATION_FIXES.md`
 
 ### #10 — Case Note Review service (pair-programming split)
 - **Status:** in_progress — Phase C complete (2026-04-27), Phase D next

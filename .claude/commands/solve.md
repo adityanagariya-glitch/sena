@@ -7,8 +7,10 @@ argument-hint: <symptom keywords>
 
 User symptom: **$ARGUMENTS**
 
+<workflow>
 ## Your job
 
+<step n="1" type="search">
 1. **Grep the index** — run:
    ```
    Grep pattern="$ARGUMENTS" path=".claude/issues-solved/INDEX.md" -i=true output_mode=content
@@ -18,7 +20,9 @@ User symptom: **$ARGUMENTS**
    Grep pattern="$ARGUMENTS" path=".claude/issues-solved/" -i=true output_mode=content -n=true
    ```
    Include aliases — search frontmatter `aliases:` fields too.
+</step>
 
+<step n="2" type="match-found">
 2. **If you find a matching entry:**
    - Read the matched detail file in full
    - Report to user in this format:
@@ -31,20 +35,28 @@ User symptom: **$ARGUMENTS**
      ```
    - Ask: "Apply this fix, or does the context differ?"
    - Do NOT start debugging from scratch.
+</step>
 
+<step n="3" type="no-match">
 3. **If NO match:**
    - Report: "No match in issues-solved. Debugging from scratch."
    - Proceed to normal debugging.
    - After solving, REMIND yourself to add a new entry via the TEMPLATE.
+</step>
 
+<step n="4" type="multiple-matches">
 4. **If multiple matches:**
    - List all matches (ID + symptom) in a short table
    - Ask user which is closest
    - Then proceed with step 2
+</step>
+</workflow>
 
+<rules>
 ## Rules
 
 - Do NOT skip the grep. Token cost of grep << token cost of re-debugging.
 - Do NOT paraphrase the fix. Read the actual file. Prior-solved fixes are exact for a reason.
 - Do NOT apply the fix blindly if the symptom is only superficially similar — confirm root cause matches context.
 - If fix looks obsolete (files moved, API changed), flag to user and consider updating the entry.
+</rules>
