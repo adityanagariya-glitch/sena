@@ -38,7 +38,7 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 
 ## ✅ DONE: onboarding 7-rules + voice protocols (2026-05-02)
 
-Task #11 — implemented every rule from `SENA_AI/Issues_left_to_solve.xml` plus interrupt-recovery, silence-watchdog two-step, and Gemini context_window_compression. Tests 78/78. **Plan artifact:** `~/.claude/plans/cozy-waddling-river.md`. **Flutter delta:** Issues 7–9 in `FLUTTER_VOICE_INTEGRATION_FIXES.md`. See TASKS.md #11 for full file list.
+Task #11 — implemented all 7 voice-onboarding behavioural rules plus interrupt-recovery, silence-watchdog two-step, and Gemini context_window_compression. Tests 78/78. **Plan artifact:** `~/.claude/plans/cozy-waddling-river.md`. **Flutter delta:** Issues 7–9 in `FLUTTER_VOICE_INTEGRATION_FIXES.md`. See TASKS.md #11 for full file list.
 
 **Key entry points for resuming:**
 - `models/session_bootstrap.py` — Rule 1/2 envelope; rendered into prompt as `[LIVE_STATE_JSON]`
@@ -196,10 +196,6 @@ In `build_system_prompt`, add to replacements: `.replace("__VOICE_COVERAGE_SECTI
 - `fixtures/schema_documents.json`: After `"progress_percent": 80,` add: `"voice_coverage": [], "voice_repeatable_sections": [],`
 - `fixtures/schema_medical_information.json`: After `"progress_percent": 100,` add: `"voice_coverage": [], "voice_repeatable_sections": [],`
 
-**STEP 13 — HANDOFF_VOICE_ONBOARDING.md** (Write — full rewrite): Document v2 protocol: screen_state_v2 shape, field_apply envelope, row_added envelope, ready envelope with coverage list, voice coverage matrix per step, v1 adapter window note. Keep REST endpoints table. Update WS events table to include field_apply + row_added.
-
-**STEP 14 — post-tool-use.sh** (Edit): After the pipreqs block, add a doc-update trigger: when the tool touches any file in `services/onboarding/src/onboarding/` (services/, models/, api/, fixtures/), regenerate `HANDOFF_VOICE_ONBOARDING.md` and `services/onboarding/docs/FLUTTER_VOICE_INTEGRATION.md` by appending a note: "⚠ Run: update HANDOFF and FLUTTER_VOICE_INTEGRATION.md after this session's changes."
-
 ---
 
 ## Current state snapshot (2026-04-24)
@@ -265,10 +261,6 @@ Phase C — `/classify` paragraph → structured fields + reask prompts
 - `prompts/classify.md` — system prompt with field schema injected
 - `services/classify_service.py` — persists to `review_session`, logs to `review_audit_log`
 - Re-ask: if `missing_required` non-empty, response includes `reask_prompts`
-
-**What's next (Onboarding — PAUSED):**
-Phase D — Vision ingress (camera + screen frames) — BLOCKED (office dep)
-- Resume via `.planning/paused_state_phase_d_camera_screen_ingress.md`
 
 **Blocked:**
 - Case Review Phase F (submit gate) — waiting on other engineer's register schema

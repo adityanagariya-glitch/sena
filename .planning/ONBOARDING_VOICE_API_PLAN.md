@@ -11,7 +11,7 @@ updated: 2026-04-20
 
 ## 1. Overview
 
-The SENA mobile app already exists. Screens in `SENA SCREENS ONBORDING/` show the real, shipped onboarding flow: 5 steps (Personal Information, Participant Requirements, NDIS Plan Details, Documents, Medical Information) plus a separate Consent Sharing flow.
+The SENA mobile app already exists. The shipped onboarding flow is 5 steps (Personal Information, Participant Requirements, NDIS Plan Details, Documents, Medical Information) plus a separate Consent Sharing flow, crystallized into `services/onboarding/fixtures/schema_*.json`.
 
 We build a **standalone Python service** that the mobile app integrates with to deliver a voice-driven alternative path through the same form. The service handles:
 

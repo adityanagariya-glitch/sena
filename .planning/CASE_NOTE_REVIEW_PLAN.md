@@ -252,8 +252,7 @@ Each phase = atomic commit-ready unit. Do NOT cross phase boundaries in one PR.
 - [ ] G2. `openapi/` dir with exported schema for mobile team
 - [ ] G3. Rate limiting (Redis token bucket) on LLM endpoints
 - [ ] G4. Structured logging (JSON) — all events
-- [ ] G5. Add routes to root `api_contracts.py`
-- [ ] G6. README.md for service
+- [ ] G5. README.md for service
 
 ---
 

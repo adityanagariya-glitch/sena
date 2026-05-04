@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service providers. This repo contains the **AI/ML backend layer only** — the broader platform (HR, payroll, shifts, client management) is built by a separate client team. API contracts between the two teams are defined in `api_contracts.py` at the root.
+SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service providers. This repo contains the **AI/ML backend layer only** — the broader platform (HR, payroll, shifts, client management) is built by a separate client team.
 
 **Domain:** NDIS (National Disability Insurance Scheme) — Australian disability services compliance, case note drafting, voice-based workflows.
 
@@ -19,9 +19,7 @@ Monorepo at `sena-ai/` with Python microservices. Active services: voice (8082),
 **Root-level files:**
 ```
 SENA/
-├── api_contracts.py    # Shared API contracts between AI layer and client platform
 ├── AGENTS.md           # Guidance for agentic coding agents in this repo
-├── requirements.txt    # Root-level Python dependencies
 ├── sena-ai/            # Monorepo — all AI/ML services
 └── graphify-out/       # Auto-generated knowledge graph
 ```
@@ -411,8 +409,6 @@ When the user says **"I am adding X"** (a new directory, service, file, or exter
 
 ## Paused Features
 
-| Feature | Status | Snapshot |
-|---------|--------|----------|
-| Phase D — Camera + Screen Ingress | PAUSED - BLOCKED (office dep) | [.planning/paused_state_phase_d_camera_screen_ingress.md](.planning/paused_state_phase_d_camera_screen_ingress.md) |
+(none)
 
 <!-- Last auto-updated: 2026-04-16 00:23:07 by hook -->

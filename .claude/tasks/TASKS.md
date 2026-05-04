@@ -20,7 +20,6 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 - **Status:** completed (2026-05-02)
 - **Priority:** P1
 - **Plan:** `~/.claude/plans/cozy-waddling-river.md` (approved by user, executed end-to-end)
-- **Source spec:** `SENA_AI/Issues_left_to_solve.xml`
 - **What shipped:**
   - Rule 1 + 2 — `SessionBootstrap` envelope (`models/session_bootstrap.py`) wired through `routes.py` → Redis (`state_repo.py`, new `_KEY_BOOTSTRAP`) → `ws_routes.py` → `prompt_builder.py` (`__LIVE_STATE_JSON__` placeholder) → `prompts/onboarding_system.md` (full rewrite, [LIVE_STATE_JSON] block as the SOLE state authority)
   - Rule 3 — readonly enforcement in `ToolDispatcher._update_field` (rejects paths in `bootstrap.readonly_paths`); pre-fill verify rule in system prompt
@@ -99,13 +98,11 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
   - `prompts/onboarding_system.md` — updated [SCREEN] rule for v2, added `__VOICE_COVERAGE_SECTION__`
   - `fixtures/schema_personal_information.json` — `bio`→`about_me`, `required:false`, `voice_coverage` added
   - `fixtures/schema_ndis_plan_details.json` — `voice_coverage` + `voice_repeatable_sections` added
-  - `HANDOFF_VOICE_ONBOARDING.md`, `FLUTTER_VOICE_INTEGRATION.md` — updated for v2
 - **v1 status (frozen):** DONE — Phases A–F shipped (2026-04-28)
-- **Resume via:** `.planning/paused_state_phase_d_camera_screen_ingress.md`
 - **Prior status:** in_progress (Phase C complete 2026-04-21)
 - **Priority:** P1
 - **Scope:** Tasks #3, #4, #5, #6, #7, #8 rolled into a single API-first delivery
-- **Why consolidated:** mobile app already exists (screens in `SENA SCREENS ONBORDING/`); we build the backend only — all six tasks naturally share the same session model, WS protocol, and state store
+- **Why consolidated:** mobile app already exists; we build the backend only — all six tasks naturally share the same session model, WS protocol, and state store
 - **Plan:** `.planning/ONBOARDING_VOICE_API_PLAN.md` (full architecture, API contract, 6 build phases)
 - **Decisions locked (from user, 2026-04-20):**
   - Webhook to mock URL on step completion
@@ -115,7 +112,7 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
   - FormState writer = voice only during WS; app PUTs only when WS closed
   - Document/photo capture via voice skipped (app handles)
   - Locale = Australian English (`en-AU`)
-- **Source of form structure:** 17 screens in `C:\Users\Admin\Downloads\SENA\SENA SCREENS ONBORDING\` (analyzed 2026-04-20) — 5 steps + 6-section consent flow
+- **Source of form structure:** mobile-app screens (analyzed 2026-04-20, since crystallized into `services/onboarding/fixtures/schema_*.json`) — 5 steps + 6-section consent flow
 - **Phases:**
   - A: REST scaffold + Redis state store + webhook ✓ (36/36 tests, 2026-04-20)
   - B: WS endpoint + Gemini Live wiring + system prompt injection (#3) ✓ (2026-04-21)

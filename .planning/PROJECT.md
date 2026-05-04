@@ -43,7 +43,6 @@ A support worker — including those with no digital literacy or visual impairme
 **Existing codebase:** `sena-ai/services/voice/` — HTTP turn-based pipeline (POST /session → POST /session/turn → POST /session/end). This is replaced, not extended.
 
 **Existing assets to migrate/reuse:**
-- `api_contracts.py` — Full FormState schema (40+ fields, 7 screens) → migrate to proper SQLAlchemy model
 - `poc_onboarding.py` — Working LangGraph + tool calling POC → extract tool patterns, discard LangGraph orchestration
 - `voice_repo.py` — SQLAlchemy async data layer → reuse as-is (god node, 26 edges)
 - `redis_service.py` — Session state caching → extend for 14-state machine
