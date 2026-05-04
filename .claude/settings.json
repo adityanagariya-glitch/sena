@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/session-start.sh"
+            "command": "bash .claude/hooks/session-start.sh"
           }
         ]
       }
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/pre-tool-use.sh"
+            "command": "bash .claude/hooks/pre-tool-use.sh"
           }
         ]
       }
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/post-tool-use.sh"
+            "command": "bash .claude/hooks/post-tool-use.sh"
           }
         ]
       },
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/bump-updated.sh"
+            "command": "bash .claude/hooks/bump-updated.sh"
           }
         ]
       },
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/architecture-reminder.sh"
+            "command": "bash .claude/hooks/architecture-reminder.sh"
           }
         ]
       },
@@ -59,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/issue-capture-reminder.sh"
+            "command": "bash .claude/hooks/issue-capture-reminder.sh"
           }
         ]
       },
@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/ctx7-flag.sh"
+            "command": "bash .claude/hooks/ctx7-flag.sh"
           }
         ]
       },
@@ -77,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/skills-flag.sh"
+            "command": "bash .claude/hooks/skills-flag.sh"
           }
         ]
       }
@@ -88,7 +88,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash SENA_AI/.claude/hooks/stop.sh"
+            "command": "bash .claude/hooks/stop.sh"
           }
         ]
       }
