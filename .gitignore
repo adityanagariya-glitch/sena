@@ -50,6 +50,6 @@ Figma
 
 # archive/
 # graphify-out/
-# .ruff_cache/
+.ruff_cache/
 # .claude/
 # .gemini/
