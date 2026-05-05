@@ -10015,8 +10015,8 @@
       "source_file": "sena-ai\\services\\case_review\\scripts\\test_context_live.py",
       "source_location": "L22",
       "weight": 0.8,
-      "_src": "test_context_live_rationale_1",
-      "_tgt": "case_note_client_casenoteclient",
+      "_src": "case_note_client_casenoteclient",
+      "_tgt": "test_context_live_rationale_1",
       "confidence_score": 0.5,
       "source": "case_note_client_casenoteclient",
       "target": "test_context_live_rationale_1"

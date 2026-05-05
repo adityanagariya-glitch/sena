@@ -40,7 +40,10 @@
       "Bash(pytest tests/ -v)",
       "Bash(ngrok version *)",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(winget install *)"
+      "Bash(winget install *)",
+      "Bash(python3 -c \"from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code\\(Path\\('.'\\)\\)\")",
+      "Read(//c/Users/Admin/Downloads/sena-mobile/sena-mobile/.claude/**)",
+      "Read(//c/Users/Admin/.claude/**)"
     ]
   },
   "enableAllProjectMcpServers": true,
