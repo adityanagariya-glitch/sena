@@ -35,7 +35,8 @@
       "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" -c \"import main; print\\('main.py import OK'\\)\")",
       "Bash(pkill -f \"uvicorn main:app\")",
       "Bash(taskkill /F /IM python.exe /FI \"WINDOWTITLE eq uvicorn*\")",
-      "PowerShell(Get-NetTCPConnection *)"
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(python -m json.tool)"
     ]
   },
   "enableAllProjectMcpServers": true,

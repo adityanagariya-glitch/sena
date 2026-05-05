@@ -1,27 +1,144 @@
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db
-from models.schemas import CaseNoteInput, PipelineResult
+from models.db import BehaviourSupportPlan
+from models.schemas import (
+    AuthorisationStatus,
+    BSPCreate,
+    BSPResponse,
+    BSPUpdateStatus,
+    CaseNoteInput,
+    EvaluateResponse,
+    PipelineResult,
+    VerdictOutcome,
+    _AuthorisationSection,
+    _BehaviourSupportPlan,
+    _DetectedPracticeSection,
+    _ReportingSection,
+    _SubmissionSection,
+    _VerdictSection,
+)
 from pipeline.graph import run_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/restrictive-practices", tags=["restrictive-practices"])
 
 
-@router.post("/evaluate", response_model=PipelineResult)
+def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
+    """Transform internal PipelineResult into the human-readable API response."""
+    ev = result.evaluator
+    cc = result.cross_check
+
+    # ── Verdict ───────────────────────────────────────────────────────────────
+    if not result.triage.flagged:
+        outcome = VerdictOutcome.CLEAR
+        risk_level = "N/A"
+        action_required = "No action required. Case note passed initial screening."
+    elif ev is None or not ev.incident_detected:
+        outcome = VerdictOutcome.NO_INCIDENT
+        risk_level = "N/A"
+        action_required = "No action required. Detailed review found no violation."
+    elif cc and cc.authorisation_status == AuthorisationStatus.AUTHORISED_REVIEW:
+        outcome = VerdictOutcome.AUTHORISED_USE
+        risk_level = ev.policy_violation_risk.value
+        action_required = (
+            "Review the Behaviour Support Plan to confirm conditions were met. "
+            "Record the use and ensure the BSP is current."
+        )
+    else:
+        outcome = VerdictOutcome.UNAUTHORISED
+        risk_level = ev.policy_violation_risk.value
+        timeframe = ev.notification_timeframe or "5 business days"
+        action_required = (
+            f"IMMEDIATE ACTION: Notify the NDIS Quality and Safeguards Commission "
+            f"within {timeframe}. Document the incident and initiate a review of the "
+            f"participant's Behaviour Support Plan."
+        )
+
+    verdict = _VerdictSection(
+        outcome=outcome,
+        risk_level=risk_level,
+        alert_required=result.alert_required,
+        action_required=action_required,
+    )
+
+    # ── Detected practice ─────────────────────────────────────────────────────
+    detected_practice = None
+    if ev and ev.incident_detected:
+        detected_practice = _DetectedPracticeSection(
+            category=ev.practice_category,
+            what_happened=ev.action_summary,
+            reasoning=ev.reasoning,
+        )
+
+    # ── Authorisation ─────────────────────────────────────────────────────────
+    authorisation = None
+    if cc:
+        bsp_on_file = cc.bsp_id is not None
+        authorisation = _AuthorisationSection(
+            status=cc.authorisation_status.value,
+            behaviour_support_plan=_BehaviourSupportPlan(
+                on_file=bsp_on_file,
+                details=cc.notes or (
+                    "Active Behaviour Support Plan found." if bsp_on_file
+                    else "No active Behaviour Support Plan found for this client and practice type."
+                ),
+            ),
+        )
+
+    # ── Reporting obligations ─────────────────────────────────────────────────
+    must_report = ev.reporting_required if ev else False
+    reporting = _ReportingSection(
+        must_report=must_report,
+        notify_within=ev.notification_timeframe if ev else None,
+        guidance=(
+            "Under the NDIS (Restrictive Practices and Behaviour Support) Rules 2018, "
+            "unauthorised use of a regulated restrictive practice is a reportable incident. "
+            "Failure to report may result in regulatory action against the provider."
+        ) if must_report else (
+            "No mandatory reporting obligation triggered for this incident."
+        ),
+    )
+
+    # ── Submission metadata ───────────────────────────────────────────────────
+    submission = _SubmissionSection(
+        case_note_id=str(result.case_note_id),
+        client_id=result.client_id,
+        worker_id=worker_id,
+        screening_result=(
+            "Flagged for detailed review" if result.triage.flagged
+            else "Passed initial screening — no restrictive practice indicators found"
+        ),
+        screening_summary=result.triage.action_summary,
+    )
+
+    return EvaluateResponse(
+        verdict=verdict,
+        detected_practice=detected_practice,
+        authorisation=authorisation,
+        reporting_obligations=reporting,
+        submission=submission,
+        privacy=result.privacy_notice,
+    )
+
+
+@router.post("/evaluate", response_model=EvaluateResponse)
 async def evaluate_case_note(
     payload: CaseNoteInput,
     response: Response,
     db: AsyncSession = Depends(get_db),
-) -> PipelineResult:
+) -> EvaluateResponse:
     """Run a case note through the full restrictive practice detection pipeline."""
     response.headers["X-Privacy-Classification"] = "Sensitive-Health-Information-APP3"
     response.headers["X-Data-Retention"] = "No-Retention-Session-Only"
     try:
-        return await run_pipeline(payload, db)
+        result = await run_pipeline(payload, db)
+        return _build_response(result, worker_id=payload.worker_id)
     except Exception as exc:
         logger.error(
             "Pipeline error case_note_id=%s: %s",
@@ -30,6 +147,99 @@ async def evaluate_case_note(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+
+
+@router.post("/bsp", response_model=BSPResponse, status_code=201)
+async def create_bsp(
+    payload: BSPCreate,
+    db: AsyncSession = Depends(get_db),
+) -> BSPResponse:
+    """Register a new Behaviour Support Plan for a client.
+
+    Called by the platform backend when a practitioner's BSP is approved.
+    One row per (client_id, practice_type) combination. To replace an existing
+    authorisation, revoke the old record first then POST a new one.
+    """
+    bsp = BehaviourSupportPlan(
+        id=str(uuid.uuid4()),
+        client_id=payload.client_id,
+        practice_type=payload.practice_type,
+        status=payload.status,
+        approved_dosage=payload.approved_dosage,
+        approved_conditions=payload.approved_conditions,
+        authorised_by=payload.authorised_by,
+        valid_from=payload.valid_from,
+        valid_until=payload.valid_until,
+    )
+    db.add(bsp)
+    try:
+        await db.commit()
+        await db.refresh(bsp)
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"DB error: {exc}") from exc
+
+    return _bsp_to_response(bsp)
+
+
+@router.get("/bsp/{client_id}", response_model=list[BSPResponse])
+async def list_bsps(
+    client_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[BSPResponse]:
+    """Return all BSP records for a given client, ordered by creation date descending."""
+    result = await db.execute(
+        select(BehaviourSupportPlan)
+        .where(BehaviourSupportPlan.client_id == client_id)
+        .order_by(BehaviourSupportPlan.created_at.desc())
+    )
+    rows = result.scalars().all()
+    return [_bsp_to_response(r) for r in rows]
+
+
+@router.patch("/bsp/{bsp_id}/status", response_model=BSPResponse)
+async def update_bsp_status(
+    bsp_id: str,
+    payload: BSPUpdateStatus,
+    db: AsyncSession = Depends(get_db),
+) -> BSPResponse:
+    """Update the status of a BSP (e.g. revoke or expire it).
+
+    Valid values: Active | Expired | Revoked
+    """
+    result = await db.execute(
+        select(BehaviourSupportPlan).where(BehaviourSupportPlan.id == bsp_id)
+    )
+    bsp = result.scalar_one_or_none()
+    if bsp is None:
+        raise HTTPException(status_code=404, detail=f"BSP {bsp_id} not found.")
+
+    allowed = {"Active", "Expired", "Revoked"}
+    if payload.status not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid status '{payload.status}'. Must be one of: {', '.join(sorted(allowed))}",
+        )
+
+    bsp.status = payload.status
+    await db.commit()
+    await db.refresh(bsp)
+    return _bsp_to_response(bsp)
+
+
+def _bsp_to_response(bsp: BehaviourSupportPlan) -> BSPResponse:
+    return BSPResponse(
+        id=bsp.id,
+        client_id=bsp.client_id,
+        practice_type=bsp.practice_type,
+        status=bsp.status,
+        approved_dosage=bsp.approved_dosage,
+        approved_conditions=bsp.approved_conditions,
+        authorised_by=bsp.authorised_by,
+        valid_from=bsp.valid_from,
+        valid_until=bsp.valid_until,
+        created_at=bsp.created_at,
+    )
 
 
 @router.get("/health")

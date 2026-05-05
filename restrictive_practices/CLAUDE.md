@@ -40,7 +40,7 @@ START → triage_step (Flash, thinking_budget=0)
 
 | File | Role |
 |------|------|
-| `main.py` | FastAPI factory; `create_tables()` runs on startup (dev mode, no Alembic) |
+| `main.py` | FastAPI app (`app = create_app()`) + factory; `create_tables()` runs on startup (dev mode, no Alembic) |
 | `config.py` | Pydantic settings, `SENA_AI_` env prefix, `.env` loaded by absolute path |
 | `db/session.py` | Async SQLAlchemy engine + `get_db` dep; creates pgvector ext + HNSW index |
 | `models/db.py` | ORM: `NDISPolicyChunk` (HALFVEC 3072), `BehaviourSupportPlan`, `CaseNoteRun` |
@@ -50,12 +50,28 @@ START → triage_step (Flash, thinking_budget=0)
 | `pipeline/evaluator.py` | Gemini Pro grounded verdict; `response_schema` enforced; `max_output_tokens=4096` |
 | `pipeline/cross_check.py` | Pure SQL BSP lookup, case-insensitive match on `practice_type` |
 | `pipeline/graph.py` | LangGraph wiring; node names use `_step` suffix to avoid TypedDict-key clash |
-| `api/routes.py` | `POST /v1/restrictive-practices/evaluate`, `GET .../health` |
+| `api/routes.py` | All routes: `/evaluate`, `/bsp` CRUD, `/health` — see **API Routes** below |
 | `ingestion/chunker.py` | PyMuPDF text extract + langchain text splitter |
 | `ingestion/embedder.py` | Gemini embed (3072-dim) + upsert via `ON CONFLICT DO UPDATE` |
 | `scripts/ingest_docs.py` | CLI: `--sample` or `--pdf <path> --category <c> --source <s>` |
 | `scripts/test_*.py` | Standalone smoke runners (not pytest); per-step verification |
 | `scripts/test_sarah_note.py` | Realistic end-to-end fixture — complex multi-practice shift note (physical + chemical + seclusion); good regression canary |
+
+### API Routes
+
+All routes under prefix `/v1/restrictive-practices`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/evaluate` | Run a case note through the full pipeline. Sets privacy response headers (see below). |
+| `POST` | `/bsp` | Register a new Behaviour Support Plan (called by platform backend on practitioner approval). |
+| `GET` | `/bsp/{client_id}` | List all BSP records for a client, ordered newest-first. |
+| `PATCH` | `/bsp/{bsp_id}/status` | Update BSP status — valid values: `Active`, `Expired`, `Revoked`. |
+| `GET` | `/health` | Health check. |
+
+**Privacy response headers** (set on every `/evaluate` response):
+- `X-Privacy-Classification: Sensitive-Health-Information-APP3`
+- `X-Data-Retention: No-Retention-Session-Only`
 
 ### DB conventions
 
@@ -64,13 +80,16 @@ START → triage_step (Flash, thinking_budget=0)
 - HNSW index uses `halfvec_cosine_ops` (matches the `HALFVEC` column type).
 - `create_tables()` runs on FastAPI startup — replace with Alembic before production.
 
-### Authorisation outcomes
+### Verdict outcomes and authorisation
 
-| Status | Trigger | `alert_required` |
-|--------|---------|------------------|
+| `VerdictOutcome` | Trigger | `alert_required` |
+|-----------------|---------|-----------------|
+| `CLEAR` | `triage.flagged=False` (early exit) | False |
 | `NO_INCIDENT` | `evaluator.incident_detected=False` | False |
-| `AUTHORISED_REVIEW` | active BSP found for `(client_id, practice_type)` | False |
+| `AUTHORISED_USE` | active BSP found for `(client_id, practice_type)` | False |
 | `UNAUTHORISED` | no active BSP found | **True** |
+
+Webhook (`pipeline/webhook.py`) fires only when `alert_required=True` — not on every run.
 
 BSP match is case-insensitive on `practice_type`; `valid_from/until = NULL` means unbounded.
 
@@ -123,19 +142,28 @@ python scripts/ingest_docs.py --pdf path/to/guide.pdf \
     --source "NDIS Regulated Restrictive Practices Guide 2023" \
     --risk "High Risk" --document-type "Regulatory"
 
-# Smoke-test individual pipeline steps
+# Smoke-test individual pipeline steps (standalone — not pytest)
+make test            # runs triage → rag → evaluator → cross_check → pipeline in sequence
+make test-sarah      # realistic complex fixture (physical + chemical + seclusion)
+
+# Or individual steps:
 python scripts/test_triage.py
 python scripts/test_rag.py
 python scripts/test_evaluator.py
 python scripts/test_cross_check.py
-python scripts/test_pipeline.py    # end-to-end
-python scripts/test_sarah_note.py  # realistic complex fixture (physical + chemical + seclusion)
+python scripts/test_pipeline.py
 
-# Verify audit rows written to DB
-make audit
+# Code quality
+make lint            # ruff check .
+make format          # ruff format .
+make typecheck       # mypy . --ignore-missing-imports
 
-# Verify chunk counts by document type
-make audit-chunks
+# DB inspection
+make audit           # last 5 pipeline run rows
+make audit-chunks    # chunk counts by document type
+
+# Direct psql (container name: sena-ai-db)
+docker exec -it sena-ai-db psql -U sena_ai -d sena_ai
 ```
 
 ## Critical Rules
