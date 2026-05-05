@@ -51,5 +51,7 @@ Figma
 # archive/
 # graphify-out/
 .ruff_cache/
-# .claude/
+.claude/
 # .gemini/
+github
+github.pub
