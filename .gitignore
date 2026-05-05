@@ -50,3 +50,8 @@ Figma
 .claude/
 .gemini/
 CLAUDE.md
+# Added by code-review-graph
+.code-review-graph/
+.agent_memory/
+.agents/
+.mcp.json
