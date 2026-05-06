@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NDIS Restrictive Practice Detector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f5f7;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    header .badge {
+      background: #e63946;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 32px auto;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    /* ── Input panel ── */
+    .panel {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #e2e4e9;
+      padding: 24px;
+    }
+    .panel h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+textarea {
+      width: 100%;
+      height: 260px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13.5px;
+      line-height: 1.6;
+      resize: vertical;
+      font-family: inherit;
+      color: #333;
+      background: #fafafa;
+      margin-bottom: 16px;
+    }
+    textarea:focus { outline: none; border-color: #4361ee; background: #fff; }
+    textarea::placeholder { color: #aaa; }
+
+button#submit-btn {
+      width: 100%;
+      padding: 12px;
+      background: #4361ee;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button#submit-btn:hover { background: #3451d1; }
+    button#submit-btn:disabled { background: #9fb0f5; cursor: not-allowed; }
+
+    .spinner {
+      display: none;
+      text-align: center;
+      padding: 12px 0;
+      font-size: 13px;
+      color: #888;
+    }
+    .spinner.active { display: block; }
+
+    /* ── Result panel ── */
+    #result-panel { display: none; }
+    #result-panel.visible { display: block; }
+
+    .verdict-banner {
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .verdict-banner .icon { font-size: 28px; flex-shrink: 0; line-height: 1; }
+    .verdict-banner .text .label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      opacity: 0.75;
+      margin-bottom: 3px;
+    }
+    .verdict-banner .text .outcome {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .verdict-banner .text .action {
+      font-size: 13px;
+      margin-top: 6px;
+      line-height: 1.5;
+      opacity: 0.9;
+    }
+
+    .verdict-CLEAR       { background: #d4edda; color: #155724; }
+    .verdict-NO_INCIDENT { background: #d1ecf1; color: #0c5460; }
+    .verdict-AUTHORISED  { background: #fff3cd; color: #856404; }
+    .verdict-UNAUTHORISED{ background: #f8d7da; color: #721c24; }
+
+    .risk-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .risk-Low      { background: #d4edda; color: #155724; }
+    .risk-Medium   { background: #fff3cd; color: #856404; }
+    .risk-High     { background: #ffe0b2; color: #7b4200; }
+    .risk-Critical { background: #f8d7da; color: #721c24; }
+    .risk-NA       { background: #e9ecef; color: #555; }
+
+    .section {
+      margin-bottom: 18px;
+      padding: 16px;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      background: #fdfdfd;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #888;
+      margin-bottom: 10px;
+    }
+    .kv { display: flex; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+    .kv .k { font-weight: 600; color: #555; min-width: 120px; flex-shrink: 0; }
+    .kv .v { color: #333; line-height: 1.5; }
+
+    .reasoning-box {
+      background: #f8f9fa;
+      border-left: 3px solid #4361ee;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #444;
+      border-radius: 0 6px 6px 0;
+      margin-top: 8px;
+    }
+
+    .alert-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .alert-true  { background: #f8d7da; color: #721c24; }
+    .alert-false { background: #d4edda; color: #155724; }
+
+    .error-box {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+    }
+    .error-box.visible { display: block; }
+
+    /* sample notes */
+    .samples { margin-bottom: 14px; }
+    .samples label { font-size: 12px; font-weight: 600; color: #666; display: block; margin-bottom: 6px; }
+    .sample-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      padding: 4px 10px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      font-size: 11px;
+      cursor: pointer;
+      color: #555;
+      background: #fafafa;
+      transition: all 0.1s;
+    }
+    .chip:hover { background: #4361ee; color: #fff; border-color: #4361ee; }
+
+    @media (max-width: 780px) {
+      .container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SENA — Restrictive Practice Detector</div>
+  <div class="badge">DEMO</div>
+</header>
+
+<div class="container">
+
+  <!-- ── INPUT PANEL ── -->
+  <div class="panel">
+    <h2>Case Note Input</h2>
+
+    <div class="samples">
+      <label>Quick-load sample</label>
+      <div class="sample-chips">
+        <span class="chip" data-sample="clean">Clean shift</span>
+        <span class="chip" data-sample="chemical">Chemical restraint</span>
+        <span class="chip" data-sample="physical">Physical restraint</span>
+        <span class="chip" data-sample="seclusion">Seclusion</span>
+        <span class="chip" data-sample="environmental">Environmental</span>
+        <span class="chip" data-sample="seizure">Seizure med (no incident)</span>
+      </div>
+    </div>
+
+    <textarea id="transcript" placeholder="Paste or type the support worker case note here..."></textarea>
+
+    <button id="submit-btn">Analyse Case Note</button>
+    <div class="spinner" id="spinner">⏳ Running pipeline — triage → RAG → evaluator → cross-check...</div>
+    <div class="error-box" id="error-box"></div>
+  </div>
+
+  <!-- ── RESULT PANEL ── -->
+  <div class="panel" id="result-panel">
+    <h2>Pipeline Result</h2>
+    <div id="result-content"></div>
+  </div>
+
+</div>
+
+<script>
+  // ── Sample notes ──────────────────────────────────────────────────────────
+  const SAMPLES = {
+    clean: `Supported Marcus with community access today — attended weekly grocery shopping at Woolworths and visited the local library. Marcus chose his own groceries independently and interacted warmly with library staff. He was engaged and communicative throughout the shift with no signs of distress. Medication reminders given as scheduled. No incidents.`,
+
+    chemical: `John was becoming increasingly agitated during the group activity and started hitting the table repeatedly. Verbal de-escalation was attempted for approximately 10 minutes without effect. I gave him 5mg of diazepam to calm him down before the activity continued. He settled after about 20 minutes. No behaviour support plan was available on site.`,
+
+    physical: `At approximately 4:45 PM Tom became extremely agitated — shouting and attempting to overturn the coffee table. Verbal de-escalation was attempted for five minutes without effect. I then placed both hands on Tom's shoulders and guided him firmly to the floor into a prone position, keeping him restrained for approximately three minutes until he stopped struggling. No behaviour support plan was available on site. Tom had a red mark on his left forearm after the hold.`,
+
+    seclusion: `Kevin became disruptive during shared TV time and started shouting at his housemate. To protect the other participant I guided Kevin to his bedroom and stood outside the door holding it closed so he could not leave for approximately 45 minutes until he had calmed down. Kevin knocked on the door repeatedly asking to come out but I told him he needed to stay in there until he was calm. No behaviour support plan authorising this was in place.`,
+
+    environmental: `Jake has been repeatedly accessing the kitchen pantry and consuming large quantities of food unsafely throughout the shift. After the fourth attempt I locked the pantry door and the fridge using the padlocks kept in the staff drawer to prevent Jake from accessing food between meals. Jake became frustrated and agitated when he found the fridge locked and tried to pull it open repeatedly. The fridge and pantry remained locked for the remainder of the four-hour shift. There is no behaviour support plan in place authorising restriction of Jake's access to the kitchen or food storage areas.`,
+
+    seizure: `Robert experienced a mild focal seizure at 10:15 AM lasting approximately 90 seconds. Per his epilepsy management plan, I administered 5mg midazolam buccally as prescribed by his neurologist for seizure management. Robert recovered within 10 minutes and we proceeded to the GP appointment as planned. GP was informed of the seizure on arrival and reviewed the management plan.`,
+  };
+
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.getElementById('transcript').value = SAMPLES[chip.dataset.sample] || '';
+    });
+  });
+
+  // ── Verdict helpers ───────────────────────────────────────────────────────
+  function verdictClass(outcome) {
+    if (outcome.includes('CLEAR'))          return 'verdict-CLEAR';
+    if (outcome.includes('NO INCIDENT'))    return 'verdict-NO_INCIDENT';
+    if (outcome.includes('UNAUTHORISED'))   return 'verdict-UNAUTHORISED';
+    if (outcome.includes('AUTHORISED'))     return 'verdict-AUTHORISED';
+    return 'verdict-UNAUTHORISED';
+  }
+  function verdictIcon(outcome) {
+    if (outcome.includes('CLEAR'))          return '✅';
+    if (outcome.includes('NO INCIDENT'))    return 'ℹ️';
+    if (outcome.includes('UNAUTHORISED'))   return '🚨';
+    if (outcome.includes('AUTHORISED'))     return '⚠️';
+    return '🚨';
+  }
+  function riskClass(risk) {
+    return 'risk-' + (risk || 'NA').replace(/\s/g, '');
+  }
+
+  // ── Wire button (avoid onclick= attribute — document.evaluate exists and shadows global scope) ──
+  document.getElementById('submit-btn').addEventListener('click', () => submitNote());
+
+  // ── Submit ────────────────────────────────────────────────────────────────
+  async function submitNote() {
+    const transcript = document.getElementById('transcript').value.trim();
+    if (!transcript) { showError('Please enter a case note.'); return; }
+
+    const clientId = 'client-demo-unauth';
+    const workerId = 'worker-demo-001';
+
+    clearError();
+    setLoading(true);
+    document.getElementById('result-panel').classList.remove('visible');
+
+    const payload = {
+      case_note_id: crypto.randomUUID(),
+      client_id:    clientId,
+      worker_id:    workerId,
+      transcript:   transcript,
+    };
+
+    try {
+      const res = await fetch('/v1/restrictive-practices/evaluate', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showError(`API error ${res.status}: ${data.detail || JSON.stringify(data)}`);
+        return;
+      }
+      renderResult(data);
+    } catch (err) {
+      showError(`Network error: ${err.message}. Is the server running at http://localhost:8084?`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function renderResult(d) {
+    const v  = d.verdict;
+    const dp = d.detected_practice;
+    const au = d.authorisation;
+
+    let html = '';
+
+    // Verdict banner
+    html += `
+      <div class="verdict-banner ${verdictClass(v.outcome)}">
+        <div class="icon">${verdictIcon(v.outcome)}</div>
+        <div class="text">
+          <div class="outcome">${v.outcome}</div>
+        </div>
+      </div>`;
+
+    // Core 5 fields
+    html += `<div class="section">`;
+
+    // Risk level
+    html += `<div class="kv">
+      <span class="k">Risk Level</span>
+      <span class="v"><span class="risk-badge ${riskClass(v.risk_level)}">${v.risk_level}</span></span>
+    </div>`;
+
+    // Category
+    html += `<div class="kv">
+      <span class="k">Category</span>
+      <span class="v">${dp ? `<strong>${dp.category}</strong>` : '—'}</span>
+    </div>`;
+
+    // Restrictive action
+    html += `<div class="kv">
+      <span class="k">Restrictive Action</span>
+      <span class="v">${dp ? dp.what_happened : 'No restrictive practice detected.'}</span>
+    </div>`;
+
+    // BSP on file
+    const bspOnFile = au ? au.behaviour_support_plan.on_file : null;
+    html += `<div class="kv">
+      <span class="k">BSP on File</span>
+      <span class="v">${bspOnFile === true ? '✅ Yes' : bspOnFile === false ? '❌ No' : '—'}</span>
+    </div>`;
+
+    // Action required
+    html += `<div class="kv">
+      <span class="k">Action Required</span>
+      <span class="v">${v.action_required}</span>
+    </div>`;
+
+    html += `</div>`;
+
+    document.getElementById('result-content').innerHTML = html;
+    document.getElementById('result-panel').classList.add('visible');
+  }
+
+  function setLoading(on) {
+    document.getElementById('submit-btn').disabled = on;
+    document.getElementById('submit-btn').textContent = on ? 'Analysing...' : 'Analyse Case Note';
+    document.getElementById('spinner').classList.toggle('active', on);
+  }
+  function showError(msg) {
+    const el = document.getElementById('error-box');
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+  function clearError() {
+    document.getElementById('error-box').classList.remove('visible');
+  }
+</script>
+
+</body>
+</html>

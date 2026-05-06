@@ -1,12 +1,15 @@
 import logging
 import traceback
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from api.routes import router
 from db.session import create_tables
+
+_DEMO_HTML = Path(__file__).parent / "demo_ui.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,6 +30,10 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(router)
+
+    @app.get("/demo", include_in_schema=False)
+    async def demo_ui() -> FileResponse:
+        return FileResponse(_DEMO_HTML, media_type="text/html")
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
