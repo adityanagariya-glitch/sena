@@ -76,6 +76,44 @@ class FormStateRepo:
             ex=ttl_sec,
         )
 
+    # ── Session ownership guard (cross-tenant isolation) ─────────────────────
+
+    async def assert_session_owner(
+        self,
+        session_id: str,
+        tenant_id: str | None,
+        participant_id: str,
+    ) -> None:
+        """Raise HTTP 403 when caller's (tenant, participant) does not own session.
+
+        Closes the latent gap where a guessed UUID4 could read another
+        tenant's transcript. Called from GET state, PUT state, and any new
+        cross-screen context paths whose authorisation depends on session
+        ownership.
+
+        Legacy sessions saved before tenant_id was required may carry
+        ``state.tenant_id is None``. We treat those as opt-out from this
+        check (matches today's behaviour) while requiring tenant_id on every
+        new session created since this guard landed.
+        """
+        from fastapi import HTTPException, status
+
+        state = await self.get_state(session_id)
+        if state is None:
+            # Caller will get 404 from their own get_state; we do not leak
+            # ownership info on missing sessions.
+            return
+        if state.tenant_id is not None and state.tenant_id != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Session does not belong to caller's tenant",
+            )
+        if state.participant_id != participant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Session does not belong to caller's participant",
+            )
+
     # ── State ─────────────────────────────────────────────────────────────────
 
     async def get_state(self, session_id: str) -> FormState | None:

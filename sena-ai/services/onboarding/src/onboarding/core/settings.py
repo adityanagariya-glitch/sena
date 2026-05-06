@@ -60,6 +60,10 @@ class OnboardingSettings(BaseSettings):
     # ── Feature flags ─────────────────────────────────────────────────────────
     # SENA_AI_ONBOARDING_GROUNDING_ENABLED — default off until compliance sign-off
     onboarding_grounding_enabled: bool = False
+    # SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED — default on. Controls
+    # whether prior-step summaries are persisted into and rendered out of the
+    # per-(tenant_id, participant_id) Redis bucket. Single-flag rollback path.
+    onboarding_cross_screen_context_enabled: bool = True
     # SENA_AI_ONBOARDING_FRAME_FPS_LIMIT
     onboarding_frame_fps_limit: int = 2
     # SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC — seconds of user silence before
