@@ -56,7 +56,9 @@ API-first service at `sena-ai/services/onboarding/src/onboarding/`. Mobile app i
 | Services | `services/grounding.py` | Pure: build_live_tools — assembles function_declarations + optional GoogleSearch tool (Phase E ✓) |
 | Services | `services/resumption.py` | Redis-backed: issue_handle, redeem_handle (GETDEL single-use), build_replay_context (Phase E ✓) |
 | Services | `services/webhook.py` | Outbound webhook to app backend, 3-retry exp backoff |
-| Repositories | `repositories/state_repo.py` | Redis only — no Postgres. FormState, transcript, WS lock, resumption handles |
+| Services | `services/cross_screen_context.py` | Pure: build_summary, compress_residual/decompress (lossless), render_for_prompt — feeds the EARLIER IN THIS ONBOARDING block |
+| Repositories | `repositories/state_repo.py` | Redis only — no Postgres. FormState, transcript, WS lock, resumption handles. Plus `assert_session_owner` for cross-tenant isolation. |
+| Repositories | `repositories/user_context_repo.py` | Redis only. Per-(tenant_id, participant_id) cross-screen bucket: step summaries (Hash) + session-id index (Set), 7-day TTL refreshed on every write |
 | Models | `models/schema_spec.py` | StepSchema, SectionSpec, FieldSpec (incl. visible_if, repeatable) |
 | Models | `models/form_state.py` | FormState, FieldValue, CompletionStats |
 | Models | `models/session_bootstrap.py` | SessionBootstrap envelope (Rule 1+2 hygiene contract — mode, current_page_values, readonly_paths, prior_pages); rendered into prompt as `[LIVE_STATE_JSON]` |
@@ -93,7 +95,7 @@ cd sena-ai/services/onboarding
 uvicorn src.onboarding.main:create_app --factory --reload --port 8083
 ```
 
-**Env vars (prefix `SENA_AI_`):** `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL_ID`, `ONBOARDING_PORT`, `APP_WEBHOOK_URL`, `APP_WEBHOOK_SECRET`, `REDIS_URL`, `ONBOARDING_GROUNDING_ENABLED` (default false), `SCREEN_STATE_MAX_BYTES` (default 8192), `RESUMPTION_HANDLE_TTL_SEC` (default 600), `RESUMPTION_REPLAY_TURNS` (default 4)
+**Env vars (prefix `SENA_AI_`):** `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL_ID`, `ONBOARDING_PORT`, `APP_WEBHOOK_URL`, `APP_WEBHOOK_SECRET`, `REDIS_URL`, `ONBOARDING_GROUNDING_ENABLED` (default false), `ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED` (default true — controls per-(tenant_id, participant_id) shared-context bucket reads/writes; rollback flag), `SCREEN_STATE_MAX_BYTES` (default 8192), `RESUMPTION_HANDLE_TTL_SEC` (default 600), `RESUMPTION_REPLAY_TURNS` (default 4)
 
 ---
 

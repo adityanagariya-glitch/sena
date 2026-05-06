@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-04-30
+updated: 2026-05-06
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -26,6 +26,7 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 | Voice demo / Gemini Live bugs | `memory/feedback_gemini_live_patterns.md`, `memory/project_voice_demo_working.md` |
 | What's left to build (voice) | `.planning/GEMINI_LIVE_NATIVE_SCOPE.md` (Gemini-native only) + `.planning/FEATURES_LEFT.md` (full scope) |
 | Case Note Review service (task #10) | `.planning/CASE_NOTE_REVIEW_PLAN.md` — phases A–G, subagent policy, blockers |
+| Onboarding cross-screen context | `.planning/PRD-cross-screen-context.md` + `.claude/plans/no-graceful-muffin.md` — per-(tenant_id, participant_id) shared bucket, lossless compression, isolation guard |
 | Architecture / code structure | `graphify-out/GRAPH_REPORT.md` |
 | NDIS domain / compliance | specific files in `ndis_markdown_docs/` (never the whole folder) |
 

@@ -1038,3 +1038,42 @@ Backend logs four high-signal lines that confirm Flutter changes are landing:
 | `interrupt_intent preserved chars=N` | Interrupt-recovery is engaged (Issue #1b downstream) |
 
 Tail those four during smoke testing and you'll see exactly what the backend received from Flutter.
+
+---
+
+## Addendum (2026-05-06) — Cross-screen shared context
+
+**Status:** server-side only. The Flutter app benefits with **no code changes required** for the happy path. Two optional changes harden security and unlock manual override.
+
+### What changed on the server
+
+When a participant finishes one onboarding step, the backend now writes a structured summary into a per-(tenant_id, participant_id) Redis bucket. When the next step's voice session starts, the bucket is read and woven into the system prompt before the first word is spoken. The assistant on Step 3 will reference what the participant said on Steps 1–2 by name and by hobby — without re-asking.
+
+The bucket is keyed by **participant**, not by operator, so a support worker taking over mid-flow inherits the prior conversation. It is tenant-prefixed by construction; another tenant cannot read it.
+
+### What the Flutter app gets for free
+
+- **Auto-populated `bootstrap.prior_pages`** on `POST /v1/onboarding/session`. You do not need to track or re-send prior summaries client-side. The backend reads them from Redis and injects them into the bootstrap envelope automatically when you do not supply them. If you do supply your own `prior_pages`, the client wins (forward-compatibility, manual-override path during testing).
+- **No new WS events.** The protocol is unchanged.
+- **No schema migration.** Existing in-flight sessions keep working with no shared context (forward-only feature).
+
+### Two recommended changes (security hardening)
+
+These are not breaking. The endpoints continue to work without them.
+
+1. **Send `X-Tenant-Id` and `X-Participant-Id` on `GET /v1/onboarding/session/{id}/state` and `PUT .../state`.** The backend now validates that the caller owns the session and returns **HTTP 403** on mismatch. Without these headers the backend falls back to today's behaviour (no ownership check). Send them now to close the latent gap.
+   ```http
+   GET /v1/onboarding/session/abc-123/state
+   X-Tenant-Id: <current tenant>
+   X-Participant-Id: <current participant>
+   ```
+
+2. **Treat 403 like 404** in the state endpoints. A 403 means the session does not belong to this participant — show the session-expired card and route the user back to the onboarding entry, the same way you handle 404 today.
+
+### Rollback knob
+
+A single env flag `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED=false` disables the bucket (no reads, no writes, no prompt injection). No mobile change is required to back out.
+
+### Where to escalate
+
+If `bootstrap.prior_pages` is empty when you expected it populated, capture `tenant_id`, `participant_id`, and the previous step's `session_id`, then ping the backend team — the diagnostic command is `redis-cli HGETALL sena:onboarding:user_ctx:<tenant_id>:<participant_id>` against the dev Redis.

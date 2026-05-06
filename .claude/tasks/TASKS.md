@@ -1,6 +1,6 @@
 ---
 title: Persistent Task List
-updated: 2026-05-02
+updated: 2026-05-06
 ---
 
 > Last session end-state (2026-05-02): Onboarding #11 (7 behavioural rules + voice protocols) COMPLETE. 9 backend files + system prompt rewritten. Tests 78/78. Flutter delta documented in `FLUTTER_VOICE_INTEGRATION_FIXES.md` (Issues 7–9). Case Note Review #10 Phase D still next.
@@ -15,6 +15,33 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ---
 
 ## Active
+
+### #12 — Onboarding cross-screen shared context (per-(tenant, participant) bucket)
+- **Status:** completed (2026-05-06)
+- **Priority:** P1
+- **PRD:** `.planning/PRD-cross-screen-context.md`
+- **Plan:** `.claude/plans/no-graceful-muffin.md` (approved, executed end-to-end)
+- **What shipped:**
+  - New pure module `services/cross_screen_context.py` — `KEY_ALIASES` table, `VERBATIM_FIELDS = {name, dob, gender, goals, hobbies, interests}`, `build_summary`, `compress_residual`/`decompress` (lossless), `render_for_prompt` (caps inline-verbatim to last 5 steps)
+  - New repository `repositories/user_context_repo.py` — Redis Hash + Set keyed `sena:onboarding:user_ctx:{tenant_id}:{participant_id}` and `…user_idx:…`, 7-day TTL refreshed on every write
+  - New models `models/cross_screen_summary.py` — `StepSummary`, `CrossScreenContext` (versioned `schema_version=1`)
+  - Prompt-builder `__CROSS_SCREEN_SUMMARY__` placeholder (between `__LIVE_STATE_JSON__` and SCHEMA), rendered only when bucket non-empty
+  - `system prompt` template — placeholder added between bootstrap-mode line and behaviour-by-mode block
+  - Routes — `POST /v1/onboarding/session` auto-hydrates `bootstrap.prior_pages` from bucket (client-supplied wins); `POST .../complete` persists `StepSummary` BEFORE webhook fires
+  - `ws_routes` — best-effort summary flush on clean WS close (idempotent on `(participant_id, step_number)`); cross-screen text rendered into prompt
+  - `state_repo.assert_session_owner(session_id, tenant_id, participant_id)` — closes latent isolation gap; wired into GET state and PUT state via X-Tenant-Id / X-Participant-Id headers
+  - Settings flag `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED` (default `true`); single-flag rollback path
+  - `.env.example` — new env var documented
+- **Tests:** 89/89 pass via `PYTHONPATH=services/onboarding/src python -m pytest services/onboarding/tests/ -q`. New file `tests/test_cross_screen_context.py` adds 11 cases covering round-trip (lossless property), verbatim passthrough, empty FormState, render snapshot, token-budget smoke.
+- **Flutter delta:** auto-hydration is server-side only — Flutter benefits with no code change. Documented in `SENA_AI/FLUTTER_DEV_HANDOFF.md`.
+- **Out of scope:** LLM-based summarization (deferred to v2), bucket-list API endpoint, schema-migration tooling, fakeredis tests for `user_context_repo` (PRD §"What is intentionally not unit-tested").
+- **Files (5 new + 7 modified):**
+  - NEW: `src/onboarding/services/cross_screen_context.py`
+  - NEW: `src/onboarding/repositories/user_context_repo.py`
+  - NEW: `src/onboarding/models/cross_screen_summary.py`
+  - NEW: `tests/test_cross_screen_context.py`
+  - MODIFIED: `src/onboarding/services/prompt_builder.py`, `src/onboarding/prompts/onboarding_system.md`, `src/onboarding/api/routes.py`, `src/onboarding/api/ws_routes.py`, `src/onboarding/repositories/state_repo.py`, `src/onboarding/core/settings.py`, `sena-ai/.env.example`
+  - DOCS: `SENA_AI/CLAUDE.md`, `SENA_AI/.claude/SESSION_START.md`, `SENA_AI/FLUTTER_DEV_HANDOFF.md`
 
 ### #11 — Onboarding rules-and-voice-protocols (7 rules + interrupt + silence + compression)
 - **Status:** completed (2026-05-02)
