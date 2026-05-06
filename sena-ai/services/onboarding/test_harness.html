@@ -649,6 +649,30 @@ $('freshTestBtn').addEventListener('click', () => {
       ' (next Create Session will start with an empty bucket)', 'log-ok');
 });
 
+// Auto-randomize the default IDs the moment this script runs. The HTML
+// defaults `t-harness-001` / `p-harness-001` are stable across page loads,
+// which means every test that didn't click 🆕 Fresh Test would inherit the
+// bucket left over from yesterday's session. Randomizing on load makes the
+// safe behaviour the default; users who want continuation testing can type
+// a stable ID manually (we only overwrite when both fields still hold the
+// untouched defaults).
+(function autoRandomizeIdsOnLoad() {
+  const p = $('participantId');
+  const t = $('tenantId');
+  if (!p || !t) return;
+  if (p.value === 'p-harness-001' && t.value === 't-harness-001') {
+    const suffix = Math.random().toString(36).slice(2, 8);
+    p.value = 'p-harness-' + suffix;
+    t.value = 't-harness-' + suffix;
+    log(
+      'Auto-randomized default IDs on page load to prevent bucket inheritance — ' +
+      'participant=' + p.value + ' tenant=' + t.value +
+      ' (type stable IDs above if you want continuation testing)',
+      'log-ok',
+    );
+  }
+})();
+
 $('nextStepBtn').addEventListener('click', async () => {
   const sel = $('schemaSelect');
   const idx = STEPS.indexOf(sel.value);
