@@ -38,6 +38,8 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
 from onboarding.repositories.state_repo import FormStateRepo
+from onboarding.repositories.user_context_repo import UserContextRepo
+from onboarding.services.cross_screen_context import build_summary, render_for_prompt
 from onboarding.services.gemini_live import GeminiLiveSession
 from onboarding.services.prompt_builder import build_system_prompt
 from onboarding.services.resumption import build_replay_context, issue_handle, redeem_handle
@@ -125,11 +127,30 @@ async def onboarding_ws(
         }))
 
         # ── 6. Build system prompt + tool dispatcher + run Gemini bridge ──────
+        # Render the cross-screen context block when the participant has prior
+        # completed steps. Empty string when bucket is empty so the prompt
+        # template's placeholder collapses cleanly to nothing.
+        cross_screen_text: str | None = None
+        if (
+            settings.onboarding_cross_screen_context_enabled
+            and state.tenant_id
+        ):
+            try:
+                ctx_repo = UserContextRepo(repo._r)
+                bucket = await ctx_repo.get_bucket(state.tenant_id, state.participant_id)
+                if not bucket.is_empty():
+                    cross_screen_text = render_for_prompt(bucket)
+            except Exception:
+                # Never crash a fresh session because the bucket read failed —
+                # the block is non-essential context, not authoritative state.
+                cross_screen_text = None
+
         system_instruction = build_system_prompt(
             schema,
             state,
             grounding_enabled=settings.onboarding_grounding_enabled,
             bootstrap=bootstrap,
+            cross_screen_text=cross_screen_text,
         )
 
         tool_dispatcher = ToolDispatcher(
@@ -164,6 +185,7 @@ async def onboarding_ws(
             pass
     finally:
         # ── Issue resumable handle on non-terminal close (Phase E) ────────────
+        state_after = None
         try:
             state_after = await repo.get_state(session_id)
             if state_after and not state_after.completed:
@@ -176,6 +198,33 @@ async def onboarding_ws(
                 log.debug("resumable_envelope_sent session=%s handle=%.8s…", session_id, handle)
         except Exception:
             pass  # best-effort — WS may already be closed
+
+        # ── Best-effort summary flush on clean WS close ───────────────────────
+        # Idempotent on (participant_id, step_number): if POST /complete already
+        # wrote, this overwrite is a safe no-op. The branch only runs when the
+        # session has accumulated something worth preserving (transcript or
+        # populated state) and a tenant is known.
+        try:
+            if (
+                settings.onboarding_cross_screen_context_enabled
+                and state_after is not None
+                and state_after.tenant_id
+                and (state_after.transcript_count > 0 or any(state_after.values.values()))
+            ):
+                from onboarding.api.routes import _step_id_to_number  # local import
+                ctx_repo = UserContextRepo(repo._r)
+                step_number = _step_id_to_number(state_after.step_id)
+                step_label = schema.step_label if schema else state_after.step_id
+                summary = build_summary(
+                    state_after,
+                    step_number=step_number,
+                    step_label=step_label,
+                )
+                await ctx_repo.put_step_summary(
+                    state_after.tenant_id, state_after.participant_id, summary,
+                )
+        except Exception:
+            log.debug("ws_close_flush_failed session=%s", session_id, exc_info=True)
 
         await repo.release_ws_lock(session_id)
         log.info("ws_lock_released session=%s", session_id)

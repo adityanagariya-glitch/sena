@@ -68,6 +68,7 @@ def build_system_prompt(
     screen_context_text: str | None = None,
     resume_context_text: str | None = None,
     bootstrap: SessionBootstrap | None = None,
+    cross_screen_text: str | None = None,
 ) -> str:
     """
     Render the onboarding system prompt with the session schema and current state.
@@ -112,6 +113,13 @@ def build_system_prompt(
 
     voice_coverage_section = _voice_coverage_section(schema.voice_coverage)
 
+    # Cross-screen summary block — rendered between LIVE_STATE_JSON and the
+    # SCHEMA. Hidden entirely when the participant has no prior steps so the
+    # first screen of an onboarding journey doesn't carry a stub heading.
+    cross_screen_block = (
+        f"\n\n{cross_screen_text}" if (cross_screen_text and cross_screen_text.strip()) else ""
+    )
+
     result = (
         template
         .replace("__STEP_LABEL__", schema.step_label)
@@ -119,6 +127,7 @@ def build_system_prompt(
         .replace("__SCHEMA_JSON__", schema_json)
         .replace("__STATE_JSON__", state_json)
         .replace("__LIVE_STATE_JSON__", live_state_json)
+        .replace("__CROSS_SCREEN_SUMMARY__", cross_screen_block)
         .replace("__BOOTSTRAP_MODE__", bootstrap_mode)
         .replace("__GROUNDING_SECTION__", grounding_section)
         .replace("__VOICE_COVERAGE_SECTION__", voice_coverage_section)

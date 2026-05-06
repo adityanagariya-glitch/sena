@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
 from onboarding.api.deps import get_repo
@@ -12,6 +12,8 @@ from onboarding.models.form_state import FieldSource, FieldValue, FormState
 from onboarding.models.schema_spec import StepSchema
 from onboarding.models.session_bootstrap import SessionBootstrap
 from onboarding.repositories.state_repo import FormStateRepo
+from onboarding.repositories.user_context_repo import UserContextRepo
+from onboarding.services.cross_screen_context import build_summary
 from onboarding.services.webhook import fire_webhook
 
 router = APIRouter()
@@ -45,6 +47,28 @@ class UpdateStateRequest(BaseModel):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _step_id_to_number(step_id: str) -> int:
+    """Map a step_id (e.g. "personal_information", "step3", "3") to an int.
+
+    The cross-screen bucket keys summaries by step number for stable ordering
+    and prompt rendering. This is a best-effort heuristic; unrecognised
+    step_ids hash deterministically to a stable positive integer so two
+    summaries for the same step_id always collide on the same hash field
+    (the idempotency contract).
+    """
+    if step_id.isdigit():
+        return int(step_id)
+    # "step3" → 3
+    digits = "".join(c for c in step_id if c.isdigit())
+    if digits:
+        try:
+            return int(digits)
+        except ValueError:
+            pass
+    # Stable, deterministic fallback. abs() keeps it positive.
+    return abs(hash(step_id)) % 10_000
+
 
 def _build_initial_values(initial_state: dict | None) -> dict:
     """Wrap raw values dict from app into FieldValue format if not already wrapped."""
@@ -88,6 +112,29 @@ async def create_session(
     # is wrapped into a synthesised bootstrap so older clients keep working.
     bootstrap = req.bootstrap or SessionBootstrap.from_initial_state(req.initial_state)
 
+    # Auto-hydrate `bootstrap.prior_pages` from the cross-screen context bucket
+    # when the client did not supply one. Client-supplied prior_pages always
+    # wins (forward-compatibility, manual-override path during testing).
+    if (
+        settings.onboarding_cross_screen_context_enabled
+        and not bootstrap.prior_pages
+        and req.tenant_id
+    ):
+        ctx_repo = UserContextRepo(repo._r)
+        bucket = await ctx_repo.get_bucket(req.tenant_id, req.participant_id)
+        if not bucket.is_empty():
+            bootstrap = bootstrap.model_copy(update={
+                "mode": "page_handoff",
+                "prior_pages": {
+                    f"step:{s.step_number}": {
+                        **s.verbatim,
+                        "_compressed": s.compressed,
+                        "_step_label": s.step_label,
+                    }
+                    for s in bucket.summaries
+                },
+            })
+
     # Seed FormState.values from whichever side provided pre-fill data. Explicit
     # initial_state still wins (it is shape-stable {section: {field: v}});
     # otherwise current_page_values from bootstrap is used.
@@ -107,6 +154,12 @@ async def create_session(
         state, req.schema, ttl_sec=settings.session_max_sec, bootstrap=bootstrap,
     )
 
+    # Track this session in the per-participant index so on-call tooling can
+    # enumerate sessions for "the assistant forgot me" debug requests.
+    if settings.onboarding_cross_screen_context_enabled and req.tenant_id:
+        ctx_repo = UserContextRepo(repo._r)
+        await ctx_repo.add_session_to_index(req.tenant_id, req.participant_id, session_id)
+
     ws_url = f"ws://localhost:{settings.onboarding_port}/ws/onboarding/{session_id}"
 
     return CreateSessionResponse(
@@ -121,10 +174,17 @@ async def create_session(
 async def get_state(
     session_id: str,
     repo: FormStateRepo = Depends(get_repo),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+    x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
 ) -> FormState:
     state = await repo.get_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
+    # Cross-tenant isolation guard. Only enforced when caller supplied
+    # identity headers — older mobile clients without the headers fall back to
+    # today's lookup-by-session-id behaviour. New clients SHOULD send both.
+    if x_participant_id is not None:
+        await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
     return state
 
 
@@ -133,7 +193,11 @@ async def update_state(
     session_id: str,
     req: UpdateStateRequest,
     repo: FormStateRepo = Depends(get_repo),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+    x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
 ) -> FormState:
+    if x_participant_id is not None:
+        await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
     if await repo.is_ws_locked(session_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -180,12 +244,38 @@ async def complete_session(
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
     transcript = await repo.get_transcript(session_id)
+    schema = await repo.get_schema(session_id)
 
     from datetime import timezone as _tz
     from datetime import datetime as _dt
     state.completed = True
     state.completed_at = _dt.now(_tz.utc)
     await repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+    # Persist a StepSummary into the cross-screen bucket BEFORE firing the
+    # webhook. Idempotent on (participant_id, step_number) — a subsequent
+    # WS-close flush for the same step is a safe no-op overwrite. Skipped
+    # entirely when the feature flag is off or tenant_id is unknown
+    # (legacy sessions created before the field was required).
+    if (
+        settings.onboarding_cross_screen_context_enabled
+        and state.tenant_id
+    ):
+        try:
+            ctx_repo = UserContextRepo(repo._r)
+            step_number = _step_id_to_number(state.step_id)
+            step_label = schema.step_label if schema else state.step_id
+            summary = build_summary(
+                state,
+                step_number=step_number,
+                step_label=step_label,
+                completed_at=state.completed_at,
+            )
+            await ctx_repo.put_step_summary(state.tenant_id, state.participant_id, summary)
+        except Exception:
+            # Never fail completion because of a context-bucket write error;
+            # the webhook is the contract that matters here.
+            pass
 
     payload = {
         "event": "onboarding.session.completed",

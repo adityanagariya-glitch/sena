@@ -24,6 +24,7 @@ __LIVE_STATE_JSON__
 ```
 
 Bootstrap mode for this session: **__BOOTSTRAP_MODE__**
+__CROSS_SCREEN_SUMMARY__
 
 Behaviour by mode:
 - `new_user` — Fresh participant. Greet generically and start collection from
