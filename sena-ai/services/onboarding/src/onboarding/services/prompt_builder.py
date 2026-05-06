@@ -16,10 +16,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import structlog
+
 from onboarding.models.form_state import FormState
 from onboarding.models.schema_spec import StepSchema
 from onboarding.models.session_bootstrap import SessionBootstrap
 
+log = structlog.get_logger(__name__)
 _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
 
 
@@ -119,6 +122,20 @@ def build_system_prompt(
     cross_screen_block = (
         f"\n\n{cross_screen_text}" if (cross_screen_text and cross_screen_text.strip()) else ""
     )
+    if cross_screen_block:
+        # PII-aware diagnostic: this is the ONE log line that intentionally
+        # samples the prompt body (first 80 chars). The whole purpose is
+        # cross-screen-leak audit — without seeing the prefix we cannot tell
+        # whether the right participant's data was injected. DO NOT copy
+        # this log pattern into other handlers without a similar audit need.
+        log.info(
+            "cross_screen_block_injected",
+            session_id=state.session_id,
+            tenant_id=state.tenant_id,
+            participant_id=state.participant_id,
+            chars=len(cross_screen_block),
+            first_80=cross_screen_block[:80].replace("\n", " "),
+        )
 
     result = (
         template

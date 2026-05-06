@@ -3,7 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+import structlog
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 
 from onboarding.api.deps import get_repo
@@ -16,6 +17,7 @@ from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
 from onboarding.services.webhook import fire_webhook
 
+log = structlog.get_logger(__name__)
 router = APIRouter()
 
 
@@ -115,6 +117,14 @@ async def create_session(
     # Auto-hydrate `bootstrap.prior_pages` from the cross-screen context bucket
     # when the client did not supply one. Client-supplied prior_pages always
     # wins (forward-compatibility, manual-override path during testing).
+    if settings.onboarding_cross_screen_context_enabled and not req.tenant_id:
+        log.warning(
+            "session_create_tenant_id_missing",
+            session_id=session_id,
+            participant_id=req.participant_id,
+            note="cross_screen_context flag is on but tenant_id is empty — "
+                 "bucket lookup skipped, no shared context for this session",
+        )
     if (
         settings.onboarding_cross_screen_context_enabled
         and not bootstrap.prior_pages
@@ -134,6 +144,19 @@ async def create_session(
                     for s in bucket.summaries
                 },
             })
+
+    # Diagnostic boundary log — proves what the new session inherits BEFORE
+    # FormState is created. Identifiers + shape only; no raw values.
+    log.info(
+        "session_create_resolved_bootstrap",
+        session_id=session_id,
+        tenant_id=req.tenant_id,
+        participant_id=req.participant_id,
+        step=req.step,
+        bootstrap_mode=bootstrap.mode,
+        prior_pages_keys=list(bootstrap.prior_pages.keys()) if bootstrap.prior_pages else [],
+        cross_screen_enabled=settings.onboarding_cross_screen_context_enabled,
+    )
 
     # Seed FormState.values from whichever side provided pre-fill data. Explicit
     # initial_state still wins (it is shape-stable {section: {field: v}});
@@ -272,10 +295,23 @@ async def complete_session(
                 completed_at=state.completed_at,
             )
             await ctx_repo.put_step_summary(state.tenant_id, state.participant_id, summary)
+            log.info(
+                "complete_session_summary_written",
+                session_id=session_id,
+                tenant_id=state.tenant_id,
+                participant_id=state.participant_id,
+                step=state.step_id,
+                step_number=step_number,
+            )
         except Exception:
             # Never fail completion because of a context-bucket write error;
             # the webhook is the contract that matters here.
-            pass
+            log.exception(
+                "complete_session_summary_write_failed",
+                session_id=session_id,
+                tenant_id=state.tenant_id,
+                participant_id=state.participant_id,
+            )
 
     payload = {
         "event": "onboarding.session.completed",
@@ -301,6 +337,35 @@ async def complete_session(
         "session_id": session_id,
         "completed": True,
         "webhook_delivered": delivered,
+    }
+
+
+# ── Diagnostic (non-production only) ──────────────────────────────────────────
+
+@router.get("/v1/onboarding/_diag/bucket")
+async def diag_bucket(
+    repo: FormStateRepo = Depends(get_repo),
+    tenant_id: str = Query(..., min_length=1),
+    participant_id: str = Query(..., min_length=1),
+) -> dict:
+    """Inspect the cross-screen bucket for a (tenant_id, participant_id) pair.
+
+    Dev-only — returns 404 in production. Lets the test harness or on-call
+    engineer confirm the bucket state without redis-cli access. Returns shape
+    counts only — never the verbatim summaries — to keep PII off the wire.
+    """
+    if settings.environment == "production":
+        raise HTTPException(status_code=404, detail="Not found")
+    ctx_repo = UserContextRepo(repo._r)
+    bucket = await ctx_repo.get_bucket(tenant_id, participant_id)
+    return {
+        "tenant_id": tenant_id,
+        "participant_id": participant_id,
+        "bucket_empty": bucket.is_empty(),
+        "summary_count": len(bucket.summaries),
+        "step_numbers": [s.step_number for s in bucket.summaries],
+        "step_labels": [s.step_label for s in bucket.summaries],
+        "cross_screen_enabled": settings.onboarding_cross_screen_context_enabled,
     }
 
 

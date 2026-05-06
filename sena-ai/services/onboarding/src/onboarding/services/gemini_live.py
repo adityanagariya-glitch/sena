@@ -22,6 +22,7 @@ Key implementation notes:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -91,6 +92,20 @@ class GeminiLiveSession:
         # the first "still there?" check-in; the second timeout then summarises
         # pending fields. Reset to False on any new user audio.
         self._silence_warned: bool = False
+        # Diagnostic — proves the system_instruction is unique per session.
+        # If two consecutive sessions log the same sha8, the prompt builder
+        # is leaking state across requests; that would be the cross-screen
+        # leak source. SHA-only — full prompt never hits the log.
+        _instruction_sha8 = hashlib.sha256(system_instruction.encode("utf-8")).hexdigest()[:8]
+        log.info(
+            "gemini_bridge_constructed session=%s system_instruction_sha8=%s "
+            "instruction_chars=%d tools_count=%d replay_context=%s",
+            session_id,
+            _instruction_sha8,
+            len(system_instruction),
+            len(FUNCTION_DECLS) if tool_dispatcher else 0,
+            "yes" if replay_context else "no",
+        )
 
     # ── Public ────────────────────────────────────────────────────────────────
 

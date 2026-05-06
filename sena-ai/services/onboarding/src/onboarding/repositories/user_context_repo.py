@@ -68,11 +68,12 @@ class UserContextRepo:
             pipe.hset(key, field, summary.model_dump_json())
             pipe.expire(key, ttl_sec)
             await pipe.execute()
-        log.debug(
+        log.info(
             "user_ctx_step_written",
             tenant_id=tenant_id,
             participant_id=participant_id,
             step=summary.step_number,
+            key=key,
         )
 
     async def get_bucket(
@@ -88,6 +89,14 @@ class UserContextRepo:
         key = _KEY_USER_CTX.format(tenant_id=tenant_id, participant_id=participant_id)
         raw_map = await self._r.hgetall(key)
         if not raw_map:
+            log.info(
+                "user_ctx_bucket_lookup",
+                tenant_id=tenant_id,
+                participant_id=participant_id,
+                key=key,
+                bucket_empty=True,
+                summary_count=0,
+            )
             return CrossScreenContext()
         summaries: list[StepSummary] = []
         for _field, raw in raw_map.items():
@@ -102,6 +111,15 @@ class UserContextRepo:
                     participant_id=participant_id,
                 )
         summaries.sort(key=lambda s: s.step_number)
+        log.info(
+            "user_ctx_bucket_lookup",
+            tenant_id=tenant_id,
+            participant_id=participant_id,
+            key=key,
+            bucket_empty=False,
+            summary_count=len(summaries),
+            step_numbers=[s.step_number for s in summaries],
+        )
         return CrossScreenContext(summaries=summaries)
 
     # ── Session-id index ──────────────────────────────────────────────────────

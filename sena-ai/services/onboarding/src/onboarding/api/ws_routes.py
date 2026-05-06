@@ -223,8 +223,27 @@ async def onboarding_ws(
                 await ctx_repo.put_step_summary(
                     state_after.tenant_id, state_after.participant_id, summary,
                 )
+                log.info(
+                    "ws_close_summary_flushed",
+                    session_id=session_id,
+                    tenant_id=state_after.tenant_id,
+                    participant_id=state_after.participant_id,
+                    step=state_after.step_id,
+                    step_number=step_number,
+                )
+            elif (
+                settings.onboarding_cross_screen_context_enabled
+                and state_after is not None
+                and not state_after.tenant_id
+            ):
+                log.warning(
+                    "ws_close_summary_skipped_no_tenant",
+                    session_id=session_id,
+                    participant_id=state_after.participant_id,
+                    note="state.tenant_id empty — bucket write skipped",
+                )
         except Exception:
-            log.debug("ws_close_flush_failed session=%s", session_id, exc_info=True)
+            log.exception("ws_close_flush_failed session=%s", session_id)
 
         await repo.release_ws_lock(session_id)
         log.info("ws_lock_released session=%s", session_id)
