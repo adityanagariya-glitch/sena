@@ -16,11 +16,14 @@ NOTE = CaseNoteInput(
     case_note_id=uuid.uuid4(),
     client_id="client-001",
     worker_id="worker-001",
-    transcript=(
-        "John was becoming agitated and started hitting the table. "
+    describe="Supported John during group activity at the day centre.",
+    behavioural_events=(
+        "John became agitated and started hitting the table. "
         "I gave him 5mg of diazepam to calm him down before the group activity. "
         "He settled after about 20 minutes."
     ),
+    incident_occurred=True,
+    any_concerns=True,
 )
 
 TRIAGE = TriageResult(

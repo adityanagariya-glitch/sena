@@ -18,10 +18,11 @@ async def main() -> None:
         case_note_id=uuid.UUID("a1b2c3d4-0000-0000-0000-000000000001"),
         client_id="client-demo-unauth",
         worker_id="w-001",
-        transcript=(
+        behavioural_events=(
             "I held James by the arms and forced him into the chair "
             "to stop him hitting himself."
         ),
+        incident_occurred=True,
     )
     print(f"Running pipeline for {note.case_note_id}...")
     try:

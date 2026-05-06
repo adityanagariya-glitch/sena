@@ -14,21 +14,27 @@ FLAGGED_NOTE = CaseNoteInput(
     case_note_id=uuid.uuid4(),
     client_id="client-001",
     worker_id="worker-001",
-    transcript="John was becoming agitated so I gave him 5mg of diazepam to calm him down before the group activity.",
+    describe="Supported John during group activity session at the day centre.",
+    behavioural_events="John became agitated before the group activity. I gave him 5mg of diazepam to calm him down.",
+    incident_occurred=True,
+    any_concerns=True,
 )
 
 CLEAN_NOTE = CaseNoteInput(
     case_note_id=uuid.uuid4(),
     client_id="client-002",
     worker_id="worker-001",
-    transcript="Assisted Sarah with her morning routine, prepared breakfast, and supported her to attend her physio appointment.",
+    describe="Assisted Sarah with her morning routine, prepared breakfast, and supported her to attend her physio appointment.",
+    mood="Good spirits throughout the shift.",
 )
 
 SECLUSION_NOTE = CaseNoteInput(
     case_note_id=uuid.uuid4(),
     client_id="client-003",
     worker_id="worker-002",
-    transcript="Michael was refusing to cooperate so we put him in the quiet room and locked the door until he settled down.",
+    behavioural_events="Michael was refusing to cooperate so we put him in the quiet room and locked the door until he settled down.",
+    any_concerns=True,
+    incident_occurred=True,
 )
 
 

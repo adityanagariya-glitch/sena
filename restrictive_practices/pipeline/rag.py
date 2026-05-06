@@ -26,7 +26,7 @@ async def retrieve_policy_chunks(
     """Embed the query and retrieve top-K relevant NDIS policy chunks."""
     # Prefer the focused action_summary over the full transcript —
     # it's a clean 1-sentence description of the suspected practice.
-    query_text = triage.action_summary or note.transcript
+    query_text = triage.action_summary or note.to_text()
 
     logger.info(
         "rag retrieve case_note_id=%s query=%r",

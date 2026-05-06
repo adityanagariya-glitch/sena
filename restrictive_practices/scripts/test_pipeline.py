@@ -15,21 +15,25 @@ FLAGGED_NOTE = CaseNoteInput(
     case_note_id=uuid.uuid4(),
     client_id="client-e2e-001",
     worker_id="worker-001",
-    transcript=(
-        "John was becoming agitated and started hitting the table. "
+    describe="Supported John during group activity at the day centre.",
+    behavioural_events=(
+        "John became agitated and started hitting the table. "
         "I gave him 5mg of diazepam to calm him down before the group activity. "
         "He settled after about 20 minutes."
     ),
+    incident_occurred=True,
+    any_concerns=True,
 )
 
 CLEAN_NOTE = CaseNoteInput(
     case_note_id=uuid.uuid4(),
     client_id="client-e2e-002",
     worker_id="worker-001",
-    transcript=(
+    describe=(
         "Assisted Sarah with her morning routine, prepared breakfast, "
-        "and supported her to attend her physio appointment. She was in good spirits."
+        "and supported her to attend her physio appointment."
     ),
+    mood="Good spirits throughout the shift.",
 )
 
 

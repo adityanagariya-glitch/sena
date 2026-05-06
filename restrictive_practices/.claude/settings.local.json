@@ -36,7 +36,12 @@
       "Bash(pkill -f \"uvicorn main:app\")",
       "Bash(taskkill /F /IM python.exe /FI \"WINDOWTITLE eq uvicorn*\")",
       "PowerShell(Get-NetTCPConnection *)",
-      "Bash(python -m json.tool)"
+      "Bash(python -m json.tool)",
+      "WebFetch(domain:nds.org.au)",
+      "WebFetch(domain:www.ausmed.com)",
+      "WebFetch(domain:www.outcomesconnect.com.au)",
+      "WebFetch(domain:www.cliniccomply.com.au)",
+      "WebFetch(domain:shiftcare.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

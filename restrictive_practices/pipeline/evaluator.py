@@ -173,11 +173,11 @@ async def run_evaluator(
     logger.info("evaluator start case_note_id=%s chunks=%d", note.case_note_id, len(chunks))
 
     policy_context = _format_policy_context(chunks)
-    action_summary = triage.action_summary or note.transcript[:200]
+    action_summary = triage.action_summary or note.to_text()[:200]
 
     result = await asyncio.to_thread(
         _run_evaluator,
-        note.transcript,
+        note.to_text(),
         action_summary,
         policy_context,
     )

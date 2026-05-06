@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── Verdict outcome labels ────────────────────────────────────────────────────
@@ -71,7 +71,144 @@ class CaseNoteInput(BaseModel):
     case_note_id: UUID
     client_id: str
     worker_id: str
-    transcript: str = Field(..., min_length=10)
+
+    # Optional voice transcript — present only when voice capture was used
+    transcript: str | None = None
+
+    # Form header metadata
+    shift_date: str | None = Field(None, description="e.g. '22 Nov 2025'")
+    shift_time: str | None = Field(None, description="e.g. '5:00 PM - 1:00 AM'")
+    worker_position: str | None = Field(None, description="e.g. 'Support Worker'")
+
+    # Section 1 — Summary of Shift
+    # Form sub-field: "Describe"
+    describe: str | None = Field(
+        None,
+        description="What activities and community access opportunities did you and the participant engage in together?",
+    )
+
+    # Section 2 — Activities Completed & Skill-Building
+    # Form sub-fields: Assisted | Practised skill | Participant's level of independence | Observations
+    assisted: str | None = None
+    practised_skill: str | None = None
+    participants_level_of_independence: str | None = None
+    observations: str | None = None
+
+    # Section 3 — Well-being & Behaviour
+    # Form sub-fields: Mood | Behavioural events | Any concerns (Yes/No)
+    mood: str | None = None
+    behavioural_events: str | None = None
+    any_concerns: bool = False
+
+    # Section 4 — Outcomes & Progress
+    # Form sub-fields: What went well | What needs further support | Participant's comments
+    what_went_well: str | None = None
+    what_needs_further_support: str | None = None
+    participant_comments: str | None = None
+
+    # Section 5 — Safety / Health Monitoring
+    # Form sub-fields: Medication reminders given | Safety hazards observed |
+    #                  Any injuries | Text Box (injury description) | Image / Documents
+    medication_reminders_given: bool = False
+    safety_hazards_observed: bool = False
+    any_injuries: bool = False
+    injury_description: str | None = Field(None, description="Text Box — free-text injury description")
+    uploaded_documents: list[str] | None = Field(
+        None, description="Document IDs or URLs from the Image / Documents upload"
+    )
+
+    # Section 6 — Notes / Additional Comments
+    # Form sub-fields: Carer feedback | Did Any Incident Occurred? (Yes/No)
+    carer_feedback: str | None = None
+    incident_occurred: bool = False
+
+    @model_validator(mode="after")
+    def _require_content(self) -> "CaseNoteInput":
+        text_fields = [
+            self.transcript, self.describe, self.behavioural_events,
+            self.observations, self.carer_feedback, self.assisted, self.mood,
+        ]
+        if not any(text_fields):
+            raise ValueError(
+                "At least one text field must be provided "
+                "(transcript, describe, behavioural_events, observations, "
+                "carer_feedback, assisted, or mood)"
+            )
+        return self
+
+    def to_text(self) -> str:
+        """Flatten form fields to plain text for LLM consumption.
+
+        Uses transcript directly if provided; otherwise builds a structured
+        narrative from the form sections in the order they appear on screen.
+        """
+        if self.transcript:
+            return self.transcript
+
+        parts: list[str] = []
+
+        if self.shift_date or self.shift_time:
+            parts.append(f"Date/Time: {self.shift_date or ''} {self.shift_time or ''}".strip())
+        if self.worker_position:
+            parts.append(f"Worker Position: {self.worker_position}")
+
+        # Section 1
+        if self.describe:
+            parts.append(f"Summary of Shift:\n{self.describe}")
+
+        # Section 2
+        activity_lines = []
+        if self.assisted:
+            activity_lines.append(f"Assisted: {self.assisted}")
+        if self.practised_skill:
+            activity_lines.append(f"Practised Skill: {self.practised_skill}")
+        if self.participants_level_of_independence:
+            activity_lines.append(f"Participant's Level of Independence: {self.participants_level_of_independence}")
+        if self.observations:
+            activity_lines.append(f"Observations: {self.observations}")
+        if activity_lines:
+            parts.append("Activities Completed & Skill-Building:\n" + "\n".join(activity_lines))
+
+        # Section 3
+        behaviour_lines = []
+        if self.mood:
+            behaviour_lines.append(f"Mood: {self.mood}")
+        if self.behavioural_events:
+            behaviour_lines.append(f"Behavioural Events: {self.behavioural_events}")
+        if self.any_concerns:
+            behaviour_lines.append("Any Concerns: Yes")
+        if behaviour_lines:
+            parts.append("Well-being & Behaviour:\n" + "\n".join(behaviour_lines))
+
+        # Section 4
+        outcome_lines = []
+        if self.what_went_well:
+            outcome_lines.append(f"What Went Well: {self.what_went_well}")
+        if self.what_needs_further_support:
+            outcome_lines.append(f"What Needs Further Support: {self.what_needs_further_support}")
+        if self.participant_comments:
+            outcome_lines.append(f"Participant's Comments: {self.participant_comments}")
+        if outcome_lines:
+            parts.append("Outcomes & Progress:\n" + "\n".join(outcome_lines))
+
+        # Section 5
+        safety_lines = [
+            f"Medication Reminders Given: {'Yes' if self.medication_reminders_given else 'No'}",
+            f"Safety Hazards Observed: {'Yes' if self.safety_hazards_observed else 'No'}",
+            f"Any Injuries: {'Yes' if self.any_injuries else 'No'}",
+        ]
+        if self.any_injuries and self.injury_description:
+            safety_lines.append(f"Injury Description: {self.injury_description}")
+        parts.append("Safety / Health Monitoring:\n" + "\n".join(safety_lines))
+
+        # Section 6
+        notes_lines = []
+        if self.carer_feedback:
+            notes_lines.append(f"Carer Feedback: {self.carer_feedback}")
+        notes_lines.append(f"Did Any Incident Occur: {'Yes' if self.incident_occurred else 'No'}")
+        parts.append("Notes / Additional Comments:\n" + "\n".join(notes_lines))
+
+        return "\n\n".join(parts)
 
 
 # ── Triage ────────────────────────────────────────────────────────────────────

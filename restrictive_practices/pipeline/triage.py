@@ -92,7 +92,7 @@ def _run_triage(transcript: str) -> TriageResult:
 async def run_triage(note: CaseNoteInput) -> TriageResult:
     """Async entry point — offloads blocking SDK call to a thread pool."""
     logger.info("triage start case_note_id=%s", note.case_note_id)
-    result = await asyncio.to_thread(_run_triage, note.transcript)
+    result = await asyncio.to_thread(_run_triage, note.to_text())
     logger.info(
         "triage done case_note_id=%s flagged=%s",
         note.case_note_id,
