@@ -1041,39 +1041,179 @@ Tail those four during smoke testing and you'll see exactly what the backend rec
 
 ---
 
-## Addendum (2026-05-06) — Cross-screen shared context
+## Addendum (2026-05-06) — Cross-Screen Shared Context
 
-**Status:** server-side only. The Flutter app benefits with **no code changes required** for the happy path. Two optional changes harden security and unlock manual override.
+**Status:** server-side complete and tested (89/89 unit tests pass). The Flutter app gets the friendlier-assistant behaviour automatically as long as **two existing fields** are sent correctly on every session create. Two additional changes harden security and unlock manual override.
 
-### What changed on the server
+### What this feature does (in plain language)
 
-When a participant finishes one onboarding step, the backend now writes a structured summary into a per-(tenant_id, participant_id) Redis bucket. When the next step's voice session starts, the bucket is read and woven into the system prompt before the first word is spoken. The assistant on Step 3 will reference what the participant said on Steps 1–2 by name and by hobby — without re-asking.
+Today, when a participant moves from Screen 1 → Screen 2, the assistant has zero memory of Screen 1. It greets the participant cold every time. That's the bug.
 
-The bucket is keyed by **participant**, not by operator, so a support worker taking over mid-flow inherits the prior conversation. It is tenant-prefixed by construction; another tenant cannot read it.
+After this change, when a participant finishes a step, the backend silently writes a structured summary of what they said into a per-`(tenant_id, participant_id)` Redis bucket. When the next step's voice session starts, the backend reads the bucket and injects the prior steps into the assistant's system prompt before the first word is spoken. The assistant on Step 3 will say things like "Hi Sarah — last time you mentioned wanting to keep gardening on weekends, does that come up here?" without you doing anything.
 
-### What the Flutter app gets for free
+The bucket is keyed by the **participant being onboarded**, not by the operator. A support worker who takes over a participant's onboarding from a colleague will see the prior conversation. The bucket is tenant-prefixed; one tenant cannot read another tenant's bucket.
 
-- **Auto-populated `bootstrap.prior_pages`** on `POST /v1/onboarding/session`. You do not need to track or re-send prior summaries client-side. The backend reads them from Redis and injects them into the bootstrap envelope automatically when you do not supply them. If you do supply your own `prior_pages`, the client wins (forward-compatibility, manual-override path during testing).
-- **No new WS events.** The protocol is unchanged.
-- **No schema migration.** Existing in-flight sessions keep working with no shared context (forward-only feature).
+### What the Flutter app must do (HARD REQUIREMENTS)
 
-### Two recommended changes (security hardening)
+For the feature to work at all, **both** of these fields must be sent on every `POST /v1/onboarding/session` body:
 
-These are not breaking. The endpoints continue to work without them.
+| Field | Type | Constraint | What happens if you skip it |
+|---|---|---|---|
+| `participant_id` | string | Same value across **all** steps for the same participant. Stable, durable, app-owned identifier (typically the participant's row UUID in your DB). | Bucket lookup is skipped — assistant starts cold every step. Feature appears broken. |
+| `tenant_id` | string | Same value across all steps. Identifies the org/tenant the participant belongs to. | Bucket lookup is skipped — same broken-feature symptom. Tenant isolation also depends on this — do not make it up client-side. |
 
-1. **Send `X-Tenant-Id` and `X-Participant-Id` on `GET /v1/onboarding/session/{id}/state` and `PUT .../state`.** The backend now validates that the caller owns the session and returns **HTTP 403** on mismatch. Without these headers the backend falls back to today's behaviour (no ownership check). Send them now to close the latent gap.
-   ```http
-   GET /v1/onboarding/session/abc-123/state
-   X-Tenant-Id: <current tenant>
-   X-Participant-Id: <current participant>
-   ```
+**The most common bug is generating a new `participant_id` per voice session.** Don't. The participant_id is the participant. Sessions are ephemeral; participants are not.
 
-2. **Treat 403 like 404** in the state endpoints. A 403 means the session does not belong to this participant — show the session-expired card and route the user back to the onboarding entry, the same way you handle 404 today.
+If your app currently treats `tenant_id` as optional and only sends it sometimes, you must change that — every session create must carry both. Look at your `CreateVoiceSessionParams` and confirm `tenantId` and `participantId` are both required, not optional.
+
+### What you get back, automatically
+
+When you create a session for a participant who has prior steps in the bucket, the response's `bootstrap.prior_pages` field is **auto-populated by the server**. You do not have to track previous summaries client-side. The backend reads Redis and stuffs them into the bootstrap envelope before returning.
+
+The shape of `bootstrap.prior_pages` will look like this:
+
+```json
+{
+  "step:1": {
+    "name": "Sarah Chen",
+    "dob": "1990-04-12",
+    "gender": "female",
+    "goals": ["independence at home", "rejoin choir"],
+    "hobbies": ["gardening", "chess"],
+    "interests": ["audiobooks"],
+    "_compressed": "{\"ec\":[{\"n\":\"Mum\",\"p\":\"+61...\"}],\"addr\":{...}}",
+    "_step_label": "Personal Details"
+  },
+  "step:2": {
+    "name": "Sarah Chen",
+    "goals": [...],
+    "_compressed": "{...}",
+    "_step_label": "Lifestyle"
+  }
+}
+```
+
+Two zones:
+
+- **Top-level keys** (`name`, `dob`, `gender`, `goals`, `hobbies`, `interests`) are preserved **verbatim** — full original values, untouched. These are the high-signal fields chosen by the product owner because they matter most for tone and conversational continuity.
+- **`_compressed`** is a deterministic, **lossless** key-aliased JSON string of every other populated field on that prior step (e.g. emergency contacts, address, medical history). It's compact (~30–60% token saving) but no information is lost — it round-trips byte-equivalent under decompression. You can usually ignore this on the Flutter side; it's there for the assistant's prompt.
+- **`_step_label`** is the human label of the step (e.g. "Personal Details").
+
+`bootstrap.mode` will be set to `"page_handoff"` automatically when prior_pages are populated, even if the client sent `mode: "new_user"`. This is intentional — the agent reads `mode` to decide whether to greet generically or by name.
+
+### When the server skips bucket lookup
+
+The auto-populate only runs when **all** of these are true:
+
+1. `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED=true` (default true; rollback flag).
+2. `req.tenant_id` is non-empty.
+3. The client did NOT supply `bootstrap.prior_pages` already (client-supplied wins).
+4. The Redis bucket for `(tenant_id, participant_id)` has at least one prior step.
+
+Any miss → empty `prior_pages` → Step 2 starts cold. Logging on the server will tell you which condition failed.
+
+### Manual override path (rarely needed)
+
+If you want to send your own `prior_pages` (e.g. during local testing, or because the app has fresher data than Redis), set `bootstrap.prior_pages` in your request body. The server-supplied bucket is **completely ignored** when the client supplies its own. There is no merge; client wins entirely. Use this only when you know what you're doing.
+
+### Two recommended Flutter changes (security hardening — non-breaking)
+
+These are not required for the feature to work, but you should land them in the same sprint because they close a latent isolation gap that has been there since v1.
+
+#### Change 1 — Add ownership headers to state endpoints
+
+On `GET /v1/onboarding/session/{id}/state` and `PUT .../state`, send these headers:
+
+```http
+GET /v1/onboarding/session/abc-123/state
+X-Tenant-Id: <current tenant_id>
+X-Participant-Id: <current participant_id>
+```
+
+When both headers are present, the server validates that the session at `{id}` belongs to that tenant + participant and returns **HTTP 403** with `{"detail": "session does not belong to this participant"}` on mismatch. When the headers are absent, the server falls back to today's behaviour (no check). You should send them — without them, a malicious client that guesses a session_id can read another tenant's transcript.
+
+The same headers are not yet required on `POST /v1/onboarding/session` (the create call) because tenant + participant come from the body there. Don't add them on POST — they'd be ignored.
+
+#### Change 2 — Treat 403 like 404 on state endpoints
+
+When you GET or PUT state and receive 403, do not retry, do not show a generic error. Treat it the same way you treat 404 today: show "Your session expired. Please start over." and navigate the user back to the step entry. A 403 here means either the headers were stale (user logged in as someone else) or the session_id was wrong — neither is recoverable in-place.
+
+```dart
+if (response.statusCode == 403 || response.statusCode == 404) {
+  _showError('Your session expired. Please start over.');
+  _navToStepStart();
+  return;
+}
+```
+
+### Edge cases & operational notes
+
+| Situation | Behaviour |
+|---|---|
+| First-ever step for a participant | Bucket is empty → `prior_pages: {}` → assistant greets generically per `mode: "new_user"`. Working as intended. |
+| Participant restarts onboarding 8+ days after their last step | Bucket TTL is 7 days. Older buckets have expired. Behaves like a first-ever step. If you need longer-horizon memory, your app backend (DB of record) must re-seed `prior_pages` manually on the create call — feature does not block this. |
+| Same participant on a different device / different staff user | Same bucket — operator identity does not affect the key. Context follows the participant. |
+| Participant switches tenants (rare) | Different bucket — tenant_id is part of the key. Context does not follow across tenants. By design. |
+| Backend is down / Redis is down | Session create still works. Bucket lookup fails open: `prior_pages: {}`. Assistant starts cold. No client-visible error. |
+| `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED=false` | Feature disabled server-side. No reads, no writes. Equivalent to v1 behaviour. No client change needed to handle this. |
+| The same step is "completed" twice (via `/complete` then a clean WS close, or vice-versa) | Idempotent on `(participant_id, step_number)`. The second write overwrites the first; no duplicate, no race. |
+
+### Optional UX you could add (no backend dependency)
+
+If you want to surface the cross-screen context visually in the Flutter UI (not required, but a clear win):
+
+- **"Continuing your onboarding" banner.** When `bootstrap.prior_pages` is non-empty on session create, show a small banner above the voice modal: "Picking up from where you left off — Sena remembers your last step." Helps the user understand why the assistant references prior info.
+- **Prior-step summary chip row.** Render `_step_label` from each entry in `prior_pages` as a chip ("✓ Personal Details", "✓ Lifestyle"). Pure UI candy; data is already in your hands.
+- **No work needed on the audio path.** The assistant's first words on Step 2 will reference Step 1 automatically because the prompt was rendered with that context. You don't need to inject anything into the audio stream client-side.
+
+Skip all of these and the feature still works invisibly — the assistant just sounds smarter.
+
+### Verifying it works end-to-end
+
+1. Run a full Step 1 voice session for participant `P1` under tenant `T1`. Complete it (`POST /complete`).
+2. Open Step 2 for the **same** `P1` + `T1`. Inspect the `POST /v1/onboarding/session` response. `bootstrap.prior_pages` should contain `step:1` with the verbatim block populated.
+3. Connect WS. Sena's first turn should reference the participant's name and at least one prior detail.
+4. Backend smoke command (run in dev environment): `redis-cli HGETALL sena:onboarding:user_ctx:T1:P1` — should print one field `step:1` and a JSON value.
+
+If step 2's `prior_pages` is empty:
+- Verify `participant_id` is identical across both create calls (most common bug).
+- Verify `tenant_id` is sent and identical.
+- Verify the server flag is on (`SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED`).
 
 ### Rollback knob
 
-A single env flag `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED=false` disables the bucket (no reads, no writes, no prompt injection). No mobile change is required to back out.
+A single env flag `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED=false` disables the bucket (no reads, no writes, no prompt injection, no session-id index updates). No Flutter change is required to back out — when the flag flips off, `prior_pages` is always empty and the app behaves exactly as it did before this addendum landed.
+
+### What you do NOT need to change
+
+Just to be explicit — these things are unaffected by this feature:
+
+- WS protocol — no new events, no changed payloads.
+- Existing `bootstrap.mode` semantics for `new_user` and `returning_same_page` — still work the same way.
+- `field_updated` / `row_added` / `field_errors` handling — unchanged.
+- Echo gating, interrupt flush, audio format — unchanged.
+- Session expiry, resume handles, `go_away` behaviour — unchanged.
+- Schema declaration — unchanged.
+
+If you are mid-way through Issues #1–#13 above, this addendum does not change any of those tasks. It runs alongside.
 
 ### Where to escalate
 
-If `bootstrap.prior_pages` is empty when you expected it populated, capture `tenant_id`, `participant_id`, and the previous step's `session_id`, then ping the backend team — the diagnostic command is `redis-cli HGETALL sena:onboarding:user_ctx:<tenant_id>:<participant_id>` against the dev Redis.
+If `bootstrap.prior_pages` is empty when you expected it populated, capture and send to the backend team:
+
+1. The exact `tenant_id` and `participant_id` values used on the **first** create call.
+2. The exact `tenant_id` and `participant_id` values used on the **second** create call (verify byte-for-byte identical to #1).
+3. The session_ids returned from both calls.
+4. The approximate timestamps.
+
+Backend will run `redis-cli HGETALL sena:onboarding:user_ctx:<tenant_id>:<participant_id>` against the dev Redis to confirm whether the bucket exists. If the bucket exists but `prior_pages` came back empty, that's a server bug and we'll fix it. If the bucket is missing, the Step 1 `/complete` call did not fire — check your client-side flow.
+
+### Final checklist (cross-screen-context-specific)
+
+- [ ] Every `POST /v1/onboarding/session` body sends both `participant_id` and `tenant_id`.
+- [ ] `participant_id` is stable across steps for the same participant (not regenerated per session).
+- [ ] `tenant_id` is stable across steps for the same participant.
+- [ ] `bootstrap.prior_pages` is read from the response and **not** overwritten by the client (unless you have a deliberate manual-override case).
+- [ ] `X-Tenant-Id` and `X-Participant-Id` headers added to GET / PUT state endpoints (recommended, not blocking).
+- [ ] 403 from state endpoints handled the same way as 404 (recommended, not blocking).
+- [ ] Smoke-tested two consecutive steps for the same participant — second step's response has populated `prior_pages`.

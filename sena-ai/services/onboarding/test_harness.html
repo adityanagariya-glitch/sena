@@ -311,8 +311,16 @@
       <label>Participant ID</label>
       <input type="text" id="participantId" value="p-harness-001" />
     </div>
+    <div class="field-row">
+      <label>Tenant ID <span style="color:#888;font-weight:normal;">(required for cross-screen context)</span></label>
+      <input type="text" id="tenantId" value="t-harness-001" />
+    </div>
+    <div class="field-row" style="font-size:12px;color:#666;margin-top:-4px;margin-bottom:8px;">
+      Same IDs across steps = assistant inherits prior context. New IDs = fresh start.
+    </div>
     <div class="btn-row">
       <button id="createBtn" class="btn-primary">Create Session</button>
+      <button id="freshTestBtn" type="button" title="Randomize IDs so the next session starts with an empty bucket">🆕 Fresh Test (new IDs)</button>
       <button id="getStateBtn" class="btn-ghost" disabled>Refresh State</button>
       <button id="completeBtn" class="btn-warn" disabled>Fire Webhook</button>
       <button id="nextStepBtn" class="btn-success" disabled>Next Step →</button>
@@ -571,6 +579,7 @@ $('resumeSessionBtn').addEventListener('click', () => doResumeById($('resumeSess
 $('createBtn').addEventListener('click', async () => {
   const stepId = $('schemaSelect').value;
   const participantId = $('participantId').value.trim() || 'p-harness-001';
+  const tenantId = $('tenantId').value.trim() || 't-harness-001';
   setSessionStatus('Loading fixture…', 'idle');
   try {
     const fres = await fetch('/harness/fixtures/' + stepId);
@@ -583,7 +592,7 @@ $('createBtn').addEventListener('click', async () => {
     const res = await fetch('/v1/onboarding/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ participant_id: participantId, step: stepId, schema, locale: 'en-AU' }),
+      body: JSON.stringify({ participant_id: participantId, tenant_id: tenantId, step: stepId, schema, locale: 'en-AU' }),
     });
     if (!res.ok) throw new Error('POST /session → ' + res.status);
     const data = await res.json();
@@ -627,14 +636,41 @@ async function refreshState() {
 }
 
 const STEPS = ['personal_information', 'participant_requirements', 'ndis_plan_details', 'documents', 'medical_information'];
-$('nextStepBtn').addEventListener('click', () => {
+
+// Randomize IDs so the next session lands in an empty bucket — useful when
+// you want to test "first step" behaviour without redis-cli'ing the bucket
+// away. Keeps the same numeric prefix so it's obvious in the logs.
+$('freshTestBtn').addEventListener('click', () => {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  $('participantId').value = 'p-harness-' + suffix;
+  $('tenantId').value = 't-harness-' + suffix;
+  log('Fresh IDs generated — participant=' + $('participantId').value +
+      ' tenant=' + $('tenantId').value +
+      ' (next Create Session will start with an empty bucket)', 'log-ok');
+});
+
+$('nextStepBtn').addEventListener('click', async () => {
   const sel = $('schemaSelect');
   const idx = STEPS.indexOf(sel.value);
   if (idx < 0 || idx >= STEPS.length - 1) {
     log('Already on last step (' + (sel.value || '?') + ').', 'log-warn'); return;
   }
+  // Close any active WS so the new session isn't shadowed by the old one
+  // (mic chunks would otherwise keep flowing to the closed-step session_id).
+  if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) {
+    log('Closing WS for previous step before next-step create…', 'log-warn');
+    try { ws.close(); } catch (_) {}
+    await new Promise(r => setTimeout(r, 250));  // let close handler settle
+  }
+  // Reset local UI state so the new step's empty form renders cleanly.
+  formState = null;
+  const fr = $('formRender'); if (fr) fr.textContent = '';
+  const cp = $('coveragePills'); if (cp) cp.textContent = '';
+
   sel.value = STEPS[idx + 1];
-  log('Advancing to step: ' + sel.value + ' (same participant_id)', 'log-ok');
+  log('Advancing to step: ' + sel.value +
+      ' (same participant_id=' + $('participantId').value +
+      ', tenant_id=' + $('tenantId').value + ')', 'log-ok');
   $('createBtn').click();
 });
 
