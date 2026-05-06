@@ -45,7 +45,9 @@
       "Read(//c/Users/Admin/Downloads/sena-mobile/sena-mobile/.claude/**)",
       "Read(//c/Users/Admin/.claude/**)",
       "Bash(ssh -T -o StrictHostKeyChecking=accept-new git@github.com)",
-      "Bash(ssh-keygen -t ed25519 -C \"aditya.nagariya@bosctechlabs.com\" -f ~/.ssh/id_ed25519 -N \"\")"
+      "Bash(ssh-keygen -t ed25519 -C \"aditya.nagariya@bosctechlabs.com\" -f ~/.ssh/id_ed25519 -N \"\")",
+      "Bash(gh auth *)",
+      "Bash(gh issue *)"
     ]
   },
   "enableAllProjectMcpServers": true,

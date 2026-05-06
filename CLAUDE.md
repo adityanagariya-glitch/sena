@@ -31,11 +31,11 @@ sena-ai/
 │   ├── voice/          # Active — Flow B case note dictation (port 8082)
 │   ├── onboarding/     # Active — Voice onboarding API (Gemini Live, port 8083)
 │   ├── case_review/    # Active — Case note review + intelligence layer (port 8084)
-│   └── ocr/            # Scaffolded, not yet implemented
+│   └── ocr/            # Skeleton only (main.py + pyproject); no tests/ dir; not wired into routing
 ├── shared/             # sena-common shared library (DB, middleware, schemas)
 ├── migrations/         # Alembic DB migrations + init SQL + RLS setup scripts
 ├── scripts/            # Dev/ops scripts
-├── Makefile            # Common task shortcuts
+├── Makefile            # Stub only — comment header, no targets implemented yet
 ├── docker-compose.yml  # Redis + 2x PostgreSQL (ai-db with pgvector, shared-db)
 ├── .env.example        # All env vars with SENA_AI_ prefix
 └── pyproject.toml      # Workspace root — ruff, mypy, pytest config
@@ -174,9 +174,9 @@ At `sena-ai/services/case_review/src/case_review/`. Port 8084, ai-db (pgvector).
 **Run:**
 ```bash
 cd sena-ai/services/case_review
-pip install -e .
 uvicorn src.case_review.main:create_app --factory --reload --port 8084
 # Alembic: alembic upgrade head  (requires ai-db running)
+# Install once via the per-service Setup block in Build & Run Commands.
 ```
 
 **Env vars (prefix `SENA_AI_`):** `CASE_REVIEW_PORT`, `AI_DB_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL_ID`, `GEMINI_REGION`, `DRAFTING_SERVICE_URL`, `DRAFTING_SERVICE_API_KEY`, `CASE_NOTE_FETCH_LIMIT`
@@ -186,10 +186,12 @@ uvicorn src.case_review.main:create_app --factory --reload --port 8084
 ## Build & Run Commands
 
 ```bash
-# Setup
+# Setup — install per service (matches CI; root pyproject has no dev extra)
 cd sena-ai
-pip install -e ".[dev]"                    # workspace install (from sena-ai/)
 cp .env.example .env                       # configure env vars
+pip install -e "services/voice[dev]"       # voice service (also pulls shared lib)
+pip install -e "services/onboarding[dev]"  # onboarding service
+pip install -e "services/case_review[dev]" # case review service
 
 # Infrastructure
 docker-compose up -d                       # Redis + both Postgres DBs
@@ -202,16 +204,16 @@ uvicorn src.voice.main:create_app --factory --reload --port 8082
 cd services/onboarding
 uvicorn src.onboarding.main:create_app --factory --reload --port 8083
 
-# Run case review service
+# Run case review service (install once via Setup block above)
 cd services/case_review
-pip install -e .
 uvicorn src.case_review.main:create_app --factory --reload --port 8084
 
-# Tests
-pytest                                     # all tests (from sena-ai/)
-pytest services/voice/tests/               # voice service only
-pytest services/voice/tests/test_file.py   # single test file
-pytest -k "test_name"                      # single test by name
+# Tests — always pass an explicit path; root pytest testpaths excludes active services
+pytest services/voice/tests/               # voice service
+pytest services/onboarding/tests/          # onboarding service
+pytest services/case_review/tests/         # case review service
+pytest services/voice/tests/test_file.py   # single file
+pytest services/voice/tests -k "test_name" # single test by name
 
 # Lint & Format
 ruff check src/                            # lint
