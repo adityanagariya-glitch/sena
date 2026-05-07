@@ -1438,3 +1438,334 @@ A consolidated table of EVERY new wire event introduced by Issues #14 / #15 / #1
 - [ ] Listening for `schema_drift_detected`; rendering "noted for team" inline notice.
 - [ ] `row_added` handler is queue-safe (handles multiple events in one turn).
 - [ ] (Optional) dev-build polls `_diag/schema-drift` for an in-app schema requests panel.
+
+---
+
+## Addendum (2026-05-07) — Forensic Audit: 5 Missing Event Handlers + Schema-Drift Refresh
+
+> **Source:** Forensic audit identified that 5 of 7 reported user-visible bugs are **Flutter consumer gaps**, not backend defects. The backend already emits the right events; `voice_event_model.dart` has no `case` for them, and they fall through `default → return null` silently.
+>
+> **Anti-pattern:** *Missing Consumer Subscription* (AP-1). Every server event without an explicit Flutter case is a silent UX regression waiting to happen.
+>
+> **Goal of this addendum:** wire 5 typed events end-to-end (entity → model parser → controller reaction → UI) so that every documented server emission has a visible UI consequence.
+
+### Bugs this addendum fixes
+
+| User-visible bug | Server event already emitted | Flutter gap |
+|---|---|---|
+| Email validation appears to do nothing | `validation_rejection` | No case in `VoiceEventModel.parse` switch |
+| Vague "add more info" — user has no idea what's left | `field_skipped_warning` (with `missing_fields[]`) | No case |
+| Agent uses field names not in the form, no UI signal | `schema_drift_detected` | No case |
+| Repeatable rows feel chaotic — UI doesn't track agent focus | `repeatable_section_entered` / `repeatable_section_exited` | No case |
+| Personalisation drops on new screens | `bootstrap.participant_display_name` (server-side) | Flutter doesn't read it for UI personalisation |
+
+### Issue #18 — Wire `validation_rejection` event (CRITICAL, NEW)
+
+**Symptom:** server-side validators (e.g. email regex, NDIS number, plan-date ordering) fire correctly; the model receives the rejection and re-asks. The user sees red on no field — no inline error string, no audible cue from the UI.
+
+**Source of truth:** `services/tools.py::_update_field` returns `{"ok": false, "rejection": {code, reason_human, suggested_fix?}}` AND `_emit({"type": "validation_rejection", "section_id", "field_id", "rejection": {...}})` for non-cross-section rejections.
+
+**Implementation steps (sequential):**
+
+1. **Domain entity** — `lib/features/voice_onboarding/domain/entities/voice_event.dart`:
+   ```dart
+   class VoiceValidationRejection extends VoiceEvent {
+     final String sectionId;
+     final String fieldId;
+     final int? repeatableIndex;
+     final String code;          // e.g. "email_invalid"
+     final String reasonHuman;   // server-authored, display VERBATIM
+     const VoiceValidationRejection({
+       required this.sectionId,
+       required this.fieldId,
+       required this.code,
+       required this.reasonHuman,
+       this.repeatableIndex,
+     });
+   }
+   ```
+
+2. **Parser case** — `lib/features/voice_onboarding/data/models/voice_event_model.dart`, in the switch:
+   ```dart
+   case 'validation_rejection':
+     final r = (json['rejection'] as Map?)?.cast<String, dynamic>() ?? const {};
+     return VoiceValidationRejection(
+       sectionId: (json['section_id'] as String?) ?? '',
+       fieldId: (json['field_id'] as String?) ?? '',
+       repeatableIndex: json['repeatable_index'] as int?,
+       code: (r['code'] as String?) ?? 'unknown',
+       reasonHuman: (r['reason_human'] as String?) ?? '',
+     );
+   ```
+
+3. **Controller reaction** — in `voice_session_controller.dart` event-handling switch:
+   ```dart
+   if (e is VoiceValidationRejection) {
+     final key = _fieldKey(e.sectionId, e.fieldId, e.repeatableIndex);
+     validationErrors[key] = e.reasonHuman;        // RxMap<String,String>
+     AppSnackbar.error(message: e.reasonHuman);    // server copy, no rephrase
+   }
+   ```
+
+4. **UI binding** — wherever the field's error helper is rendered (e.g. `AppTextField.errorText:`), read from `validationErrors[key]`. Clear the entry when the field re-submits successfully (drive on next `field_updated` for the same key).
+
+5. **Verify** — voice-test an email like "not-an-email"; expect inline red copy with the server's `reason_human` string verbatim.
+
+**Anti-recurrence rule:** copy is server-authored. Do NOT translate, paraphrase, or substitute UI strings.
+
+---
+
+### Issue #19 — Wire `field_skipped_warning` event (CRITICAL, NEW)
+
+**Note:** Issue #14 above already documents the event payload. This issue is the *implementation contract* — what the controller and UI must do with it.
+
+**Symptom:** assistant says "we still need a few things" but user has no visible indicator of what.
+
+**Source of truth:** `services/tools.py::_advance_step` emits `{type, missing_count, required_filled, required_total, missing_fields:[{section_id, field_id, repeatable_index?}]}` whenever the model calls `advance_step` while required fields are still empty.
+
+**Implementation steps:**
+
+1. **Domain entity:**
+   ```dart
+   class VoiceFieldSkippedWarning extends VoiceEvent {
+     final int missingCount;
+     final int requiredFilled;
+     final int requiredTotal;
+     final List<Map<String, dynamic>> missingFields;
+     const VoiceFieldSkippedWarning({
+       required this.missingCount,
+       required this.requiredFilled,
+       required this.requiredTotal,
+       required this.missingFields,
+     });
+   }
+   ```
+
+2. **Parser case:**
+   ```dart
+   case 'field_skipped_warning':
+     final mfRaw = json['missing_fields'];
+     final mf = (mfRaw is List)
+         ? mfRaw.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList(growable: false)
+         : const <Map<String, dynamic>>[];
+     return VoiceFieldSkippedWarning(
+       missingCount: (json['missing_count'] as int?) ?? 0,
+       requiredFilled: (json['required_filled'] as int?) ?? 0,
+       requiredTotal: (json['required_total'] as int?) ?? 0,
+       missingFields: mf,
+     );
+   ```
+
+3. **Controller reaction:**
+   ```dart
+   if (e is VoiceFieldSkippedWarning) {
+     remainingRequired.value = e.missingCount;
+     requiredProgress.value = (e.requiredTotal == 0)
+         ? 0.0 : e.requiredFilled / e.requiredTotal;
+     pendingMissingFields.assignAll(e.missingFields);
+     // Highlight the cards listed in missing_fields
+     for (final mf in e.missingFields) {
+       final key = _fieldKey(mf['section_id'], mf['field_id'], mf['repeatable_index']);
+       missingHighlights.add(key);
+     }
+   }
+   ```
+
+4. **UI binding:**
+   - Top-of-form banner: `"$missingCount fields still needed — $requiredFilled of $requiredTotal complete"`
+   - Pulsing/highlighted border on each `missingHighlights` field card
+   - Banner clears on next `field_updated` that fills one of the missing items (or on next `state` event when `required_filled` advances)
+
+5. **Verify** — voice-test by saying "I'm done" before filling all required fields; expect banner + pulsing field highlights.
+
+---
+
+### Issue #20 — Wire `schema_drift_detected` event (HIGH, NEW)
+
+**Symptom:** the agent receives a tool call for a field/section that does not exist in the schema (Gemini hallucinated, or the Flutter schema is genuinely out of date). Server logs the drift; UI is blind.
+
+**Source of truth:** `services/tools.py` emits `{type, kind: "unknown_field"|"unknown_section", attempted_section, attempted_field?, label?}` from three sites: `_update_field` unknown-section branch, `_update_field` unknown-field branch, and `_request_unknown_section` handler.
+
+**Implementation steps:**
+
+1. **Domain entity:**
+   ```dart
+   class VoiceSchemaDriftDetected extends VoiceEvent {
+     final String kind;             // "unknown_field" | "unknown_section"
+     final String attemptedSection;
+     final String? attemptedField;
+     final String? label;
+     const VoiceSchemaDriftDetected({
+       required this.kind,
+       required this.attemptedSection,
+       this.attemptedField,
+       this.label,
+     });
+   }
+   ```
+
+2. **Parser case:**
+   ```dart
+   case 'schema_drift_detected':
+     return VoiceSchemaDriftDetected(
+       kind: (json['kind'] as String?) ?? 'unknown',
+       attemptedSection: (json['attempted_section'] as String?) ?? '',
+       attemptedField: json['attempted_field'] as String?,
+       label: json['label'] as String?,
+     );
+   ```
+
+3. **Controller reaction (architectural choice — pick A unless during dictation):**
+
+   **A. Auto-refetch schema (recommended for non-active state):**
+   ```dart
+   if (e is VoiceSchemaDriftDetected) {
+     AppLogger.warn('VoiceCtrl', 'schema_drift kind=${e.kind} sec=${e.attemptedSection}');
+     if (turnInProgress.value) {
+       // Defer until turn_complete — never refresh mid-utterance
+       _pendingSchemaRefresh = true;
+     } else {
+       await _refreshSchemaFromBackend();
+     }
+   }
+   ```
+
+   **B. Banner during active turn:**
+   ```dart
+   schemaDriftNotice.value = e.kind == 'unknown_section'
+       ? "Noted — '${e.label ?? e.attemptedSection}' isn't part of this form. We've passed it on."
+       : "Noted that field for the dev team.";
+   ```
+
+4. **UI binding:** show `schemaDriftNotice` as a dismissible inline notice (NOT snackbar — non-blocking). Auto-clear on next user turn.
+
+5. **Verify** — voice-test "can you also note down my pet's name?" — expect inline notice with copy from §A above.
+
+---
+
+### Issue #21 — Wire `repeatable_section_entered` / `repeatable_section_exited` events (HIGH, NEW)
+
+**Symptom:** when the agent collects emergency contacts, NDIS goals, or any repeatable section, multiple row cards appear but the user has no visual signal of which row the agent is currently filling. Compounds bug #19 because the user can't track progress per-row.
+
+**Source of truth:**
+- `tools.py::_enter_repeatable_section` emits `{type, section_id, row_index, intent}`
+- `tools.py::_exit_repeatable_section` emits `{type, section_id}`
+
+**Implementation steps:**
+
+1. **Domain entities:**
+   ```dart
+   class VoiceRepeatableSectionEntered extends VoiceEvent {
+     final String sectionId;
+     final int rowIndex;
+     final String intent;  // "first" | "next"
+     const VoiceRepeatableSectionEntered({
+       required this.sectionId,
+       required this.rowIndex,
+       required this.intent,
+     });
+   }
+
+   class VoiceRepeatableSectionExited extends VoiceEvent {
+     final String sectionId;
+     const VoiceRepeatableSectionExited(this.sectionId);
+   }
+   ```
+
+2. **Parser cases:**
+   ```dart
+   case 'repeatable_section_entered':
+     return VoiceRepeatableSectionEntered(
+       sectionId: (json['section_id'] as String?) ?? '',
+       rowIndex: (json['row_index'] as int?) ?? 0,
+       intent: (json['intent'] as String?) ?? 'first',
+     );
+   case 'repeatable_section_exited':
+     return VoiceRepeatableSectionExited(
+       (json['section_id'] as String?) ?? '',
+     );
+   ```
+
+3. **Controller reaction:**
+   ```dart
+   if (e is VoiceRepeatableSectionEntered) {
+     focusedSection.value = e.sectionId;
+     focusedRowIndex.value = e.rowIndex;
+     // Scroll the section header into view
+     await _scrollSectionIntoView(e.sectionId);
+   } else if (e is VoiceRepeatableSectionExited) {
+     if (focusedSection.value == e.sectionId) {
+       focusedSection.value = null;
+       focusedRowIndex.value = null;
+     }
+   }
+   ```
+
+4. **UI binding:**
+   - Section header gets a subtle "active" state (filled accent border) when `focusedSection.value == section.id`
+   - Row card at `focusedRowIndex.value` gets a stronger highlight ("collecting now" pulse)
+   - Card collapses to a finalised state when its row exits focus
+
+5. **Verify** — voice-test adding two NDIS goals; expect first goal card to highlight while the agent collects, then collapse, then second card highlights.
+
+---
+
+### Issue #22 — Use `bootstrap.participant_display_name` for UI personalisation (LOW, NEW)
+
+**Symptom:** the agent says "Hi Jane" via TTS, but the voice-session sheet header reads a generic "Voice Onboarding" title. UI doesn't pull from the bootstrap envelope the app itself sent in `POST /v1/onboarding/session`.
+
+**Source of truth:** `bootstrap.participant_display_name` was sent by the Flutter app when creating the session. It's mirrored back in the `ready` event's `state` block — the app already has it locally and it's also visible in the FormState model.
+
+**Implementation steps:**
+
+1. **Controller exposes:** add `participantDisplayName.value = ...` populated when the bootstrap is constructed (or read from the local user profile cache that drove the bootstrap).
+
+2. **UI binding:** in the voice-session sheet header, render:
+   ```dart
+   Text(
+     ctrl.participantDisplayName.value.isNotEmpty
+         ? AppStrings.voiceSheetGreeting(ctrl.participantDisplayName.value)
+         : AppStrings.voiceSheetGreetingGeneric,
+     style: AppText.h3,
+   )
+   ```
+
+3. **AppStrings additions** (single source of truth — no inline text):
+   ```dart
+   static String voiceSheetGreeting(String name) => "Welcome back, $name";
+   static const voiceSheetGreetingGeneric = "Welcome back";
+   ```
+
+4. **Verify** — open voice sheet on a returning-user step; expect "Welcome back, Jane" in header.
+
+---
+
+### Sequenced Implementation Plan (for Sonnet — follow in order)
+
+| Step | Issue | Files | Verifier |
+|------|-------|-------|----------|
+| 1 | #18 `validation_rejection` | entity + parser + controller | manual: voice-test invalid email |
+| 2 | #19 `field_skipped_warning` | entity + parser + controller + banner UI | manual: say "done" before filling required fields |
+| 3 | #20 `schema_drift_detected` | entity + parser + controller + inline notice | manual: ask for an off-schema field |
+| 4 | #21 `repeatable_section_entered/exited` | 2 entities + 2 parser cases + controller + section/row UI states | manual: add 2 NDIS goals back-to-back |
+| 5 | #22 `participantDisplayName` UI | controller getter + sheet header + AppStrings | manual: visual check on returning-user step |
+
+**After each step:**
+- `flutter analyze` → 0 warnings
+- Manual voice-test the verifier above before moving to the next step
+- Commit atomically with conventional message: `feat(voice): wire <event> end-to-end`
+
+**Anti-recurrence test (run after step 5):**
+- Send `{"type": "an_event_that_does_not_exist"}` from a backend test stub
+- Confirm: `VoiceEventModel.parse` returns `null` and a `WARN` log line is emitted (not silent)
+- This guards AP-5 (Producer-Without-Schema-Contract) — future server events will surface as warnings until Flutter wires them.
+
+### Final Audit Checklist (5 issues)
+
+- [ ] Issue #18 — `validation_rejection` parsed → controller writes to `validationErrors[key]` → field shows server `reason_human` verbatim.
+- [ ] Issue #19 — `field_skipped_warning` parsed → banner shows `N of M complete` + missing-field highlights drawn from `missing_fields[]`.
+- [ ] Issue #20 — `schema_drift_detected` parsed → inline notice rendered (non-blocking); auto-refresh queued if turn in progress.
+- [ ] Issue #21 — `repeatable_section_entered/exited` parsed → focused section + row visually distinguishable; scroll-into-view triggers on enter.
+- [ ] Issue #22 — Voice-sheet header reads `participantDisplayName`; falls back to generic greeting when empty.
+- [ ] Anti-recurrence — `default` arm of `VoiceEventModel.parse` logs a `WARN` instead of silent `null`.
+- [ ] All `reason_human` and notice strings are server-authored — no Flutter-side rephrasing.

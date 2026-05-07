@@ -3,7 +3,7 @@ title: Persistent Task List
 updated: 2026-05-07
 ---
 
-> Last session end-state (2026-05-07): Onboarding #13 (validation awareness + sequencing + schema-drift discovery) COMPLETE — server validators authoritative, `pending_validation_errors` blocks `advance_step`, `validation_failed`/`validation_cleared` client→server frames wired, 4 new server→client events shipped (`repeatable_section_entered/exited`, `field_skipped_warning` with `missing_fields[]`, `schema_drift_detected`). `FLUTTER_DEV_HANDOFF.md` brought into sync. Tests 78/78 (excluding 2 pre-existing import errors). Case Note Review #10 Phase D still next.
+> Last session end-state (2026-05-07): Forensic audit identified 7 systemic anti-patterns + 7 newly-discovered issues. Plan written to `.planning/PLAN-audit-2026-05-07-fixes.md` (backend, 7 sequential steps, 93 tests target). Flutter changes documented in `FLUTTER_DEV_HANDOFF.md` Addendum 2026-05-07 (Issues #18-#22). System prompt got Rules 10 + 11 (post-capture readback + self-knowledge from state). **Task #14 PENDING — execute the audit plan next session.**
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -15,6 +15,55 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ---
 
 ## Active
+
+### #14 — Forensic audit fixes (anti-pattern remediation, 2026-05-07)
+- **Status:** pending — plan written, execution next session
+- **Priority:** P0 (NDIS legal-compliance risk in N-2: cross-field invariants bypassed at advance gate)
+- **Backend plan:** `.planning/PLAN-audit-2026-05-07-fixes.md` (7 sequential steps, 93 tests target)
+- **Frontend plan:** `SENA_AI/FLUTTER_DEV_HANDOFF.md` Addendum 2026-05-07 — Issues #18-#22
+- **Anti-patterns identified:**
+  - **AP-1** Missing Consumer Subscription — Flutter switch has no `case` for 5 server events (validation_rejection, field_skipped_warning, schema_drift_detected, repeatable_section_entered/exited)
+  - **AP-2** Prompt-vs-Schema Drift — Rule 5 had no anchor; Rule 9 had no min-zero protocol
+  - **AP-3** Context Boundary Leak — `participant_display_name` buried in `[LIVE_STATE_JSON]`, not interpolated as directive
+  - **AP-4** Trust-the-Model Termination — `confirmation_transcript` not required, cross-field invariants never gated
+  - **AP-5** Producer-Without-Schema-Contract — new server events ship without typed Flutter contract
+- **What's already done (this session):**
+  - System prompt — Rule 10 (post-capture readback) + Rule 11 (self-knowledge from state) added; Pace section tightened (one-sentence default, listen-first rule)
+  - Forensic report + plan files written; nothing else yet
+- **Backend steps remaining (execute in order — see `PLAN-audit-2026-05-07-fixes.md`):**
+  1. Add `next_optional_field` helper to `services/validators/sequencing.py` + 2 tests
+  2. Interpolate `__PARTICIPANT_NAME__` + `__NEXT_OPTIONAL_FIELD__` tokens in `prompt_builder.py` + 4 tests
+  3. Update `prompts/onboarding_system.md` — top-level greeting directive + Rule 5 anchor + Rule 9 min-zero protocol
+  4. Harden `_advance_step` in `tools.py` — `confirmation_transcript` required+non-empty + cross-field invariant gate via `validate_step_complete` + 4 tests
+  5. Race fix in `_handle_validation_failed` (`gemini_live.py`) — `audio_stream_end=True` flush before text injection (manual integration test)
+  6. Mirror v2 `field_errors` → `state.pending_validation_errors` in `_handle_screen_state` (`gemini_live.py`) + 3 tests
+  7. Auto-pin focus + emit `repeatable_section_entered` from `_add_repeatable_row` (`tools.py`) + 2 tests
+- **Frontend steps remaining (separate session — Flutter team):**
+  - Issue #18 — `validation_rejection` entity + parser + controller + UI binding
+  - Issue #19 — `field_skipped_warning` entity + parser + banner + missing-field highlights
+  - Issue #20 — `schema_drift_detected` entity + parser + inline notice + auto-refresh strategy
+  - Issue #21 — `repeatable_section_entered/exited` entities + focused-row UI states
+  - Issue #22 — `participantDisplayName` UI personalisation in voice-sheet header
+  - Anti-recurrence — `default` arm of `VoiceEventModel.parse` logs `WARN` instead of silent `null`
+- **Verification gates:**
+  - After each backend step: `pytest services/onboarding/tests/ --ignore=test_cross_screen_context.py --ignore=test_validators.py -x -q`
+  - Test count progression: 78 → 80 → 84 → 84 → 88 → 88 → 91 → 93
+- **Bugs this addresses (from user report):**
+  - #1 Email validation broken → Issue #18 (Flutter consumer gap)
+  - #2 Non-sequential flow → Step 3 (Rule 5 anchor + Rule 9 min-zero)
+  - #3 Personalisation lost on new screens → Step 2 + Step 3a (token interpolation)
+  - #4 Morning Routine called optional → Step 3c (Rule 9 min-zero protocol)
+  - #5 Vague "add more info" → Issue #19 (Flutter consumer gap)
+  - #6 Abrupt session termination → Step 4 (`confirmation_transcript` required)
+  - #7 No dynamic field-added sync → Issue #20 (Flutter consumer gap)
+- **Newly discovered issues (Group 2):**
+  - N-1 → Issue #21 (Flutter)
+  - N-2 → Step 4 (cross-field gate) — **NDIS legal-compliance risk**
+  - N-3 → Step 5 (audio race fix)
+  - N-4 → Step 6 (v2 mirror)
+  - N-5 → Step 7 (auto-pin focus)
+  - N-6 → Issue #22 (Flutter)
+  - N-7 → Step 4 (confirmation_transcript validated end-to-end)
 
 ### #13 — Onboarding validation awareness + sequencing + schema-drift discovery
 - **Status:** completed (2026-05-07)
