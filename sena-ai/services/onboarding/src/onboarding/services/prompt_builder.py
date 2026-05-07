@@ -26,6 +26,48 @@ log = structlog.get_logger(__name__)
 _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
 
 
+def _compute_next_required_field(schema: StepSchema, state: FormState) -> dict | None:
+    """First required empty field in schema order — rendered into live-state JSON."""
+    for section in schema.sections:
+        is_rep = getattr(section, "is_repeatable", False)
+        fields = section.item_fields if is_rep else (section.fields or [])
+        sec_vals = state.values.get(section.id) or {}
+        row: dict = (sec_vals[0] if isinstance(sec_vals, list) and sec_vals else {}) if is_rep else (sec_vals if isinstance(sec_vals, dict) else {})
+        for field in fields:
+            if not field.required:
+                continue
+            if field.visible_if:
+                cond_f, cond_v = next(iter(field.visible_if.items()))
+                actual_raw = row.get(cond_f) if isinstance(row, dict) else None
+                actual = actual_raw.get("value") if isinstance(actual_raw, dict) else actual_raw
+                if actual != cond_v:
+                    continue
+            raw = row.get(field.id) if isinstance(row, dict) else None
+            is_empty = (
+                raw is None
+                or (isinstance(raw, dict) and raw.get("value") is None)
+                or (isinstance(raw, dict) and isinstance(raw.get("value"), str) and not raw["value"].strip())
+                or (isinstance(raw, dict) and isinstance(raw.get("value"), list) and not raw["value"])
+            )
+            if is_empty:
+                return {"section_id": section.id, "field_id": field.id, "label": field.label}
+    return None
+
+
+def _render_pending_validation_errors(errors: list[dict]) -> str:
+    """Render the PENDING_VALIDATION_ERRORS block, or return empty string."""
+    if not errors:
+        return ""
+    lines = [
+        "PENDING VALIDATION ERRORS (re-ask — the server rejected the previous answer):"
+    ]
+    for e in errors:
+        ri = e.get("repeatable_index")
+        loc = f"{e['section_id']}.{e['field_id']}" + (f"[{ri}]" if ri is not None else "")
+        lines.append(f"  - {loc}: {e['reason_human']}  [code: {e['code']}]")
+    return "\n".join(lines)
+
+
 def _voice_coverage_section(voice_coverage: list[str]) -> str:
     if not voice_coverage:
         return ""
@@ -59,6 +101,9 @@ def _build_live_state_block(
         "readonly_paths": (bootstrap.readonly_paths if bootstrap else []),
         "prior_pages": (bootstrap.prior_pages if bootstrap else {}),
         "completion": completion,
+        "next_required_field": _compute_next_required_field(schema, state),
+        "pending_validation_errors": getattr(state, "pending_validation_errors", []),
+        "focused_section": getattr(state, "focused_section", None),
     }
     return json.dumps(payload, default=str)
 
@@ -137,6 +182,15 @@ def build_system_prompt(
             first_80=cross_screen_block[:80].replace("\n", " "),
         )
 
+    next_req = _compute_next_required_field(schema, state)
+    next_req_text = (
+        f"{next_req['section_id']}.{next_req['field_id']} ({next_req['label']})"
+        if next_req else ""
+    )
+    pending_errors_text = _render_pending_validation_errors(
+        getattr(state, "pending_validation_errors", [])
+    )
+
     result = (
         template
         .replace("__STEP_LABEL__", schema.step_label)
@@ -148,6 +202,8 @@ def build_system_prompt(
         .replace("__BOOTSTRAP_MODE__", bootstrap_mode)
         .replace("__GROUNDING_SECTION__", grounding_section)
         .replace("__VOICE_COVERAGE_SECTION__", voice_coverage_section)
+        .replace("__NEXT_REQUIRED_FIELD__", next_req_text)
+        .replace("__PENDING_VALIDATION_ERRORS__", pending_errors_text)
     )
 
     if resume_context_text:

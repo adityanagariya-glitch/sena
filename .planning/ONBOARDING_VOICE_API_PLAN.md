@@ -1,10 +1,12 @@
 ---
 title: SENA Voice Onboarding API — Implementation Plan
 scope: Tasks #3–#8 consolidated (form-aware prompt, tool calling, camera/screen frames, session resumption, Google Search grounding) delivered as an API service for the existing SENA mobile app
-status: draft — awaiting approval
+status: shipped (2026-04-29) — historical reference only
 author: Claude + user
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-07
+post_ship_addendum: |
+  This plan covered phases A–F (REST scaffold, WS+Gemini Live, tool calling, screen frames, resumption+grounding, docs/test harness). All shipped 2026-04-29. Subsequent work — task #11 (7 behavioural rules + voice protocols, 2026-05-02), task #12 (cross-screen shared context, 2026-05-06), task #13 (validation awareness + sequencing + schema-drift discovery, 2026-05-07) — built on top of this foundation and is tracked in TASKS.md, not here. Do NOT use this doc for next-step planning; read TASKS.md instead.
 ---
 
 # SENA Voice Onboarding API — Implementation Plan

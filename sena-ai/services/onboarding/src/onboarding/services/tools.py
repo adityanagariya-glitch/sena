@@ -41,6 +41,7 @@ from onboarding.models.session_bootstrap import SessionBootstrap
 from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.services import field_apply as _fa
 from onboarding.services.coverage import is_repeatable_eligible
+from onboarding.services.validators import validate_field as _validate_field
 from onboarding.services.webhook import fire_webhook
 
 log = logging.getLogger(__name__)
@@ -101,6 +102,14 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
                 "confidence": {
                     "type": "number",
                     "description": "Model confidence in the captured value, 0.0 to 1.0.",
+                },
+                "cross_section_intent": {
+                    "type": "boolean",
+                    "description": (
+                        "Set true ONLY when intentionally updating a field outside the "
+                        "currently focused section. Omit or false normally — the dispatcher "
+                        "blocks cross-section writes without this flag."
+                    ),
                 },
             },
             "required": ["section", "field"],
@@ -169,6 +178,58 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
             "required": ["section_id"],
         },
     },
+    {
+        "name": "enter_repeatable_section",
+        "description": (
+            "Pin focus to a repeatable section before collecting values. "
+            "MUST be called before any update_field in a repeatable section. "
+            "intent='first' for the first row, intent='next' for each subsequent row."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "Repeatable section id (e.g. 'emergency_contacts').",
+                },
+                "intent": {
+                    "type": "string",
+                    "enum": ["first", "next"],
+                    "description": "'first' pins to row 0; 'next' pins to the next available row.",
+                },
+            },
+            "required": ["section_id", "intent"],
+        },
+    },
+    {
+        "name": "exit_repeatable_section",
+        "description": (
+            "Release focus from the current repeatable section after all values "
+            "for the current row are collected."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "request_unknown_section",
+        "description": (
+            "Call when the participant asks for a section or field that is not in the schema. "
+            "Logs the request for the dev team. Do NOT attempt to fill fields in unknown sections."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "The section id the participant asked for.",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Human-readable label the participant used.",
+                },
+            },
+            "required": ["section_id", "label"],
+        },
+    },
 ]
 
 # ── Policy block tool (grounding-off fallback) ───────────────────────────────
@@ -226,6 +287,44 @@ def _coerce_value(raw: Any, field: FieldSpec) -> Any:
     except (ValueError, TypeError):
         return raw
     return s
+
+
+# ── Validation error helpers ─────────────────────────────────────────────────
+
+def _upsert_validation_error(
+    state: FormState,
+    section_id: str,
+    field_id: str,
+    repeatable_index: int | None,
+    rej: Any,
+) -> None:
+    """Upsert a validation error into state.pending_validation_errors (dedup by key)."""
+    key = (section_id, field_id, repeatable_index)
+    state.pending_validation_errors = [
+        e for e in state.pending_validation_errors
+        if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+    ]
+    state.pending_validation_errors.append({
+        "section_id": section_id,
+        "field_id": field_id,
+        "repeatable_index": repeatable_index,
+        "code": rej.code,
+        "reason_human": rej.reason_human,
+    })
+
+
+def _clear_validation_error(
+    state: FormState,
+    section_id: str,
+    field_id: str,
+    repeatable_index: int | None,
+) -> None:
+    """Remove any pending validation error for this (section, field, index) tuple."""
+    key = (section_id, field_id, repeatable_index)
+    state.pending_validation_errors = [
+        e for e in state.pending_validation_errors
+        if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+    ]
 
 
 # ── Policy block signal ──────────────────────────────────────────────────────
@@ -302,6 +401,9 @@ class ToolDispatcher:
             "advance_step": self._advance_step,
             "escalate_incident": self._escalate_incident,
             "add_repeatable_row": self._add_repeatable_row,
+            "enter_repeatable_section": self._enter_repeatable_section,
+            "exit_repeatable_section": self._exit_repeatable_section,
+            "request_unknown_section": self._request_unknown_section,
             "policy_block": self._policy_block,
         }.get(name)
 
@@ -337,6 +439,7 @@ class ToolDispatcher:
             raw_value = args.get("value")
         repeatable_index = args.get("repeatable_index")
         confidence = float(args.get("confidence", 1.0))
+        cross_section_intent = bool(args.get("cross_section_intent", False))
 
         if not section_id or not field_id:
             return {"ok": False, "error": "section and field are required"}
@@ -379,12 +482,32 @@ class ToolDispatcher:
                 [s.id for s in self._schema.sections],
                 self._session_id,
             )
+            await self._emit({
+                "type": "schema_drift_detected",
+                "kind": "unknown_section",
+                "attempted_section": section_id,
+                "attempted_field": field_id,
+            })
             return {"ok": False, "error": f"unknown section: {section_id}"}
 
         field: FieldSpec | None = next(
             (f for f in section.all_fields() if f.id == field_id), None
         )
         if field is None:
+            log.info(
+                "unknown_field_attempt session=%s attempted_section=%s "
+                "attempted_field=%s attempted_value_shape=%s",
+                self._session_id,
+                section_id,
+                field_id,
+                type(raw_value).__name__,
+            )
+            await self._emit({
+                "type": "schema_drift_detected",
+                "kind": "unknown_field",
+                "attempted_section": section_id,
+                "attempted_field": field_id,
+            })
             log.warning(
                 "update_field REJECTED — field '%s' not in section '%s' "
                 "(declared fields: %s) session=%s. "
@@ -418,6 +541,46 @@ class ToolDispatcher:
         state = await self._repo.get_state(self._session_id)
         if state is None:
             return {"ok": False, "error": "session state not found"}
+
+        # Cross-section guard — reject writes to sections other than the focused one
+        if (
+            state.focused_section
+            and section_id != state.focused_section
+            and not cross_section_intent
+        ):
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "cross_section_blocked",
+                    "reason_human": (
+                        f"I'm still collecting information for '{state.focused_section}' — "
+                        f"please finish that before moving to '{section_id}'."
+                    ),
+                    "suggested_fix": (
+                        f"Finish '{state.focused_section}' first, or set "
+                        "cross_section_intent=true if this is intentional."
+                    ),
+                },
+            }
+
+        # Server-side validation — authoritative; runs before any FormState write
+        _ri = repeatable_index if section.is_repeatable else None
+        rej = _validate_field(
+            section_id, field_id, typed_value,
+            repeatable_index=_ri,
+            state=state,
+        )
+        if rej is not None:
+            _upsert_validation_error(state, section_id, field_id, _ri, rej)
+            await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+            log.info(
+                "validation_rejection section=%s field=%s code=%s session=%s",
+                section_id, field_id, rej.code, self._session_id,
+            )
+            return {"ok": False, "rejection": rej.model_dump()}
+
+        # Clear any prior error for this field — validation now passes
+        _clear_validation_error(state, section_id, field_id, _ri)
 
         state.set_field(
             section_id=section_id,
@@ -523,10 +686,57 @@ class ToolDispatcher:
         if state.completed:
             return {"ok": True, "webhook_delivered": False, "already_completed": True}
 
+        # Reject if any required field still has a pending validation error
+        if state.pending_validation_errors:
+            return {
+                "ok": False,
+                "error": (
+                    f"{len(state.pending_validation_errors)} field(s) have unresolved "
+                    "validation errors — re-ask them before advancing"
+                ),
+                "pending_errors": state.pending_validation_errors,
+            }
+
         # Re-validate completion before firing webhook — model may be optimistic
         state.recompute_completion(self._schema)
         if state.completion and not state.completion.complete:
             missing = state.completion.required_total - state.completion.required_filled
+            # Enumerate exactly which required fields are still empty so Flutter
+            # can highlight them and the Gemini prompt injection is precise.
+            missing_fields: list[dict] = []
+            for sec in self._schema.sections:
+                sec_vals = state.values.get(sec.id)
+                if sec.is_repeatable:
+                    rows = sec_vals if isinstance(sec_vals, list) else []
+                    for idx, row in enumerate(rows):
+                        for f in sec.all_fields():
+                            if not f.required or f.visible_if is not None:
+                                continue
+                            fv = (row or {}).get(f.id)
+                            if (fv.get("value") if isinstance(fv, dict) else None) is None:
+                                missing_fields.append({
+                                    "section_id": sec.id,
+                                    "field_id": f.id,
+                                    "repeatable_index": idx,
+                                })
+                else:
+                    row = sec_vals if isinstance(sec_vals, dict) else {}
+                    for f in sec.all_fields():
+                        if not f.required or f.visible_if is not None:
+                            continue
+                        fv = row.get(f.id)
+                        if (fv.get("value") if isinstance(fv, dict) else None) is None:
+                            missing_fields.append({
+                                "section_id": sec.id,
+                                "field_id": f.id,
+                            })
+            await self._emit({
+                "type": "field_skipped_warning",
+                "missing_count": missing,
+                "required_filled": state.completion.required_filled,
+                "required_total": state.completion.required_total,
+                "missing_fields": missing_fields,
+            })
             return {
                 "ok": False,
                 "error": f"{missing} required field(s) still unfilled — "
@@ -641,6 +851,96 @@ class ToolDispatcher:
 
     async def _policy_block(self, args: dict[str, Any]) -> dict[str, Any]:
         raise PolicyBlockSignal(args.get("question", ""))
+
+    # ── Handler: enter_repeatable_section ────────────────────────────────────
+
+    async def _enter_repeatable_section(self, args: dict[str, Any]) -> dict[str, Any]:
+        section_id = args.get("section_id", "").strip()
+        intent = args.get("intent", "first")
+
+        if not section_id:
+            return {"ok": False, "error": "section_id required"}
+
+        section = self._schema.get_section(section_id)
+        if section is None:
+            return {"ok": False, "error": f"unknown section: {section_id}"}
+        if not section.is_repeatable:
+            return {"ok": False, "error": f"not repeatable: {section_id}"}
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return {"ok": False, "error": "session state not found"}
+
+        current_rows = state.values.get(section_id)
+        existing_count = len(current_rows) if isinstance(current_rows, list) else 0
+
+        if intent == "first":
+            row_index = 0
+            if existing_count == 0:
+                state.values[section_id] = [{}]
+        else:
+            row_index = existing_count if existing_count > 0 else 0
+
+        state.focused_section = section_id
+        state.focused_repeatable_index = row_index
+        state.touch()
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        await self._emit({
+            "type": "repeatable_section_entered",
+            "section_id": section_id,
+            "row_index": row_index,
+            "intent": intent,
+        })
+
+        return {"ok": True, "section_id": section_id, "row_index": row_index, "intent": intent}
+
+    # ── Handler: exit_repeatable_section ─────────────────────────────────────
+
+    async def _exit_repeatable_section(self, _args: dict[str, Any]) -> dict[str, Any]:
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return {"ok": False, "error": "session state not found"}
+
+        exited = state.focused_section
+        state.focused_section = None
+        state.focused_repeatable_index = None
+        state.touch()
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        await self._emit({
+            "type": "repeatable_section_exited",
+            "section_id": exited,
+        })
+
+        return {"ok": True, "exited_section": exited}
+
+    # ── Handler: request_unknown_section ─────────────────────────────────────
+
+    async def _request_unknown_section(self, args: dict[str, Any]) -> dict[str, Any]:
+        section_id = args.get("section_id", "")
+        label = args.get("label", section_id)
+
+        log.info(
+            "unknown_section_request session=%s attempted_section=%s label=%r",
+            self._session_id,
+            section_id,
+            label,
+        )
+        await self._emit({
+            "type": "schema_drift_detected",
+            "kind": "unknown_section",
+            "attempted_section": section_id,
+            "label": label,
+        })
+
+        return {
+            "ok": True,
+            "message": (
+                f"Noted — '{label}' isn't part of this form, but we've logged "
+                "the request for the team. Let's keep going with what we have."
+            ),
+        }
 
     # ── Default emit: send over WS ───────────────────────────────────────────
 

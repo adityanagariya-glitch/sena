@@ -81,6 +81,13 @@ class FormState(BaseModel):
     completed_at: datetime | None = None
     repeatable_rows: dict[str, int] = Field(default_factory=dict)
 
+    # Sequencing / validation state (PRD-validation-sequencing-discovery)
+    focused_section: str | None = None
+    focused_repeatable_index: int | None = None
+    # Deduped by (section_id, field_id, repeatable_index). Each entry:
+    # {section_id, field_id, repeatable_index, code, reason_human}
+    pending_validation_errors: list[dict] = Field(default_factory=list)
+
     def touch(self) -> None:
         self.updated_at = _utcnow()
 

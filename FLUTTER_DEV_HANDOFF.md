@@ -1,8 +1,8 @@
 # Flutter Dev Handoff — SENA Voice Onboarding
 
 **Audience:** Flutter developer integrating with the SENA voice onboarding backend.
-**Updated:** 2026-05-04
-**Backend status:** complete and tested (78/78 unit tests pass). All remaining work is in `lib/`.
+**Updated:** 2026-05-07
+**Backend status:** complete and tested. All remaining work is in `lib/`.
 
 This single document covers every Flutter-side change required to ship the voice feature end-to-end. Apply the issues in the order shown.
 
@@ -931,6 +931,10 @@ Run a full session. After every backend interaction, ask: "did the UI tell the u
 | `field_updated` | `{section, field, value, repeatable_index?, confidence, turn_id}` | Apply to UI controller — **value can be String OR List<String>** (Issue #10) |
 | `state` | `{state: <full FormState>}` | Reconcile UI from full snapshot |
 | `row_added` | `{section_id, new_index}` | Render empty card (Issue #9) |
+| `repeatable_section_entered` | `{section_id, row_index, intent}` | Scroll to section header, highlight row (Issue #14) |
+| `repeatable_section_exited` | `{section_id}` | Collapse/finalise the active row card (Issue #14) |
+| `field_skipped_warning` | `{missing_count, required_filled, required_total, missing_fields[]}` | Show inline "N fields still needed" notice; highlight fields in `missing_fields` (Issue #14) |
+| `schema_drift_detected` | `{kind, attempted_section, attempted_field?, label?}` | Show "noted for team" inline notice (Issue #16) |
 | `step_completed` | — | Close voice modal, advance to next step |
 | `escalated` | `{reason, transcript_excerpt}` | Show safety message; close voice |
 | `go_away` | `{time_left_ms}` | Schedule resume reconnect (Issue #11) |
@@ -946,6 +950,8 @@ Run a full session. After every backend interaction, ask: "did the UI tell the u
 | `user_text` | `{text}` | Typed-input alternative |
 | `audio_end` | — | End-of-utterance flush |
 | `screen_state_v2` | full v2 payload (Issues #6, #8) | On focus change, debounced 200ms |
+| `validation_failed` | `{section_id, field_id, repeatable_index?, reason_human, code?, attempted_value?}` | Immediately when frontend validator rejects a value (Issue #15) |
+| `validation_cleared` | `{section_id, field_id, repeatable_index?}` | When a previously-failed field now passes validation (Issue #15) |
 | `stop` | — | Graceful client close |
 
 ### REST endpoints
@@ -1254,15 +1260,30 @@ Without explicit per-section pinning, Gemini's natural conversational flow lets 
 
 2. **Listen for a new event:**
    ```json
-   { "type": "section_entered", "section_id": "emergency_contacts", "row_index": 0 }
+   { "type": "repeatable_section_entered", "section_id": "emergency_contacts", "row_index": 0, "intent": "first" }
    ```
    Fired when the assistant calls `enter_repeatable_section`. Use it to scroll to the section header and visually highlight which row the assistant is filling. Without this the participant sees the assistant filling row 0 but the UI still shows row 0 collapsed; visual confusion.
 
+   A paired `repeatable_section_exited` fires when the assistant finishes a row:
+   ```json
+   { "type": "repeatable_section_exited", "section_id": "emergency_contacts" }
+   ```
+   Use it to collapse/finalize the row card.
+
 3. **Listen for a new event:**
    ```json
-   { "type": "field_skipped_warning", "section_id": "basics", "field_id": "interpreter_required" }
+   {
+     "type": "field_skipped_warning",
+     "missing_count": 2,
+     "required_filled": 5,
+     "required_total": 7,
+     "missing_fields": [
+       { "section_id": "basics", "field_id": "phone" },
+       { "section_id": "emergency_contacts", "field_id": "name", "repeatable_index": 0 }
+     ]
+   }
    ```
-   Fired when the server detects the assistant tried to advance past a required field that has not been filled. Render a non-blocking inline warning ("the assistant is being asked to come back to this field"). Optional UX; backend will block the advance regardless.
+   Fired when the server blocks `advance_step` because required fields are still unfilled. Render a non-blocking inline warning ("N required fields are still needed"). Optional UX; backend blocks the advance regardless. The `missing_fields` array enumerates exactly which required fields are empty — use it to highlight the relevant form cards. `repeatable_index` is present only for fields inside repeatable sections.
 
 ### Verify
 
@@ -1319,7 +1340,7 @@ Validation is currently a one-way frontend concern. There is no wire path that s
 
 - Type a 3-digit number into the phone field while voice is active. Within 500ms, the assistant should re-prompt with "Phone number needs to be 10 digits..." (your exact reason_human text).
 - Correct the phone. Within 500ms, assistant moves on.
-- Server logs show `validation_failed_received` and `validation_cleared_received` lines.
+- Server logs show `validation_failed_injected` and `validation_cleared` lines.
 
 ---
 
@@ -1356,7 +1377,7 @@ The current contract:
    ```
    ```json
    { "type": "schema_drift_detected", "kind": "unknown_section",
-     "requested_section_label": "Evening routine" }
+     "attempted_section": "evening_routine", "label": "Evening routine" }
    ```
    When you receive either, render a small inline notice: "We've noted this for the team." Optional UX, backend logs regardless.
 
@@ -1386,10 +1407,10 @@ A consolidated table of EVERY new wire event introduced by Issues #14 / #15 / #1
 
 | Event | Payload | Source issue | When it fires |
 |-------|---------|--------------|---------------|
-| `section_entered` | `{section_id, row_index}` | #14 | Assistant entered a (possibly repeatable) section |
-| `field_skipped_warning` | `{section_id, field_id}` | #14 | Server blocked an attempt to advance past required |
-| `schema_drift_detected` | `{kind: "unknown_field"|"unknown_section", ...}` | #16 | Assistant tried to use a path or section the schema doesn't have |
-| `repeatable_section_entered` | `{section_id}` | #16 | Assistant entered a repeatable section, before any `row_added` |
+| `repeatable_section_entered` | `{section_id, row_index, intent}` | #14, #16 | Assistant called `enter_repeatable_section` — scroll to section header, highlight row |
+| `repeatable_section_exited` | `{section_id}` | #14 | Assistant called `exit_repeatable_section` — collapse/finalise the row card |
+| `field_skipped_warning` | `{missing_count, required_filled, required_total, missing_fields[]}` | #14 | `advance_step` blocked because required fields are unfilled; `missing_fields` enumerates exactly which |
+| `schema_drift_detected` | `{kind: "unknown_field"\|"unknown_section", attempted_section, attempted_field?, label?}` | #16 | Assistant tried to use a field/section not in the schema |
 
 ### Client → Server (events the Flutter app must EMIT)
 
@@ -1408,12 +1429,12 @@ A consolidated table of EVERY new wire event introduced by Issues #14 / #15 / #1
 ### Final checklist for Issues #14–#17
 
 - [ ] `current_section_id` and `focused_field` on `screen_state_v2` are precise (not stale).
-- [ ] Listening for `section_entered`; scrolling section into view + highlighting row.
-- [ ] Listening for `field_skipped_warning`; showing inline warning.
+- [ ] Listening for `repeatable_section_entered` (`{section_id, row_index, intent}`); scrolling section into view + highlighting the active row.
+- [ ] Listening for `repeatable_section_exited` (`{section_id}`); collapsing/finalising the row card.
+- [ ] Listening for `field_skipped_warning` (`{missing_count, required_filled, required_total, missing_fields[]}`); showing inline "N fields still needed" notice and highlighting the fields listed in `missing_fields`.
 - [ ] Emitting `validation_failed` with full payload on every validator failure.
 - [ ] Emitting `validation_cleared` when a field corrects.
 - [ ] `reason_human` strings are user-facing only — no regex / no error codes.
 - [ ] Listening for `schema_drift_detected`; rendering "noted for team" inline notice.
-- [ ] Listening for `repeatable_section_entered`; scrolling section header pre-row.
 - [ ] `row_added` handler is queue-safe (handles multiple events in one turn).
 - [ ] (Optional) dev-build polls `_diag/schema-drift` for an in-app schema requests panel.

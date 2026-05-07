@@ -9,6 +9,11 @@ Protocol summary:
     {"type":"start"}    — first text frame; opens the Gemini connection
     {"type":"user_text","text":"..."} — typed input alternative
     {"type":"audio_end"}              — signal end-of-utterance (flush)
+    {"type":"validation_failed","section_id":"...","field_id":"...","reason_human":"...","code":"...","repeatable_index":N?}
+                                      — frontend validator rejected a value; upserted into
+                                        pending_validation_errors + injected into Gemini stream
+    {"type":"validation_cleared","section_id":"...","field_id":"...","repeatable_index":N?}
+                                      — previously-failed field now passes; cleared from state
     {"type":"stop"}                   — client-initiated graceful close
 
   Server → Client:

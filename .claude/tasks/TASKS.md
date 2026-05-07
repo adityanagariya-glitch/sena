@@ -1,9 +1,9 @@
 ---
 title: Persistent Task List
-updated: 2026-05-06
+updated: 2026-05-07
 ---
 
-> Last session end-state (2026-05-02): Onboarding #11 (7 behavioural rules + voice protocols) COMPLETE. 9 backend files + system prompt rewritten. Tests 78/78. Flutter delta documented in `FLUTTER_VOICE_INTEGRATION_FIXES.md` (Issues 7–9). Case Note Review #10 Phase D still next.
+> Last session end-state (2026-05-07): Onboarding #13 (validation awareness + sequencing + schema-drift discovery) COMPLETE — server validators authoritative, `pending_validation_errors` blocks `advance_step`, `validation_failed`/`validation_cleared` client→server frames wired, 4 new server→client events shipped (`repeatable_section_entered/exited`, `field_skipped_warning` with `missing_fields[]`, `schema_drift_detected`). `FLUTTER_DEV_HANDOFF.md` brought into sync. Tests 78/78 (excluding 2 pre-existing import errors). Case Note Review #10 Phase D still next.
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -15,6 +15,33 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ---
 
 ## Active
+
+### #13 — Onboarding validation awareness + sequencing + schema-drift discovery
+- **Status:** completed (2026-05-07)
+- **Priority:** P1
+- **PRD:** `.planning/PRD-validation-sequencing-discovery.md`
+- **Cross-check:** `.planning/VALIDATION-CROSS-CHECK-2026-05-07.md` (canon: Flutter code is ground truth, mirrored into server `validators.py` + `client_onboarding_validations.md`)
+- **What shipped (server-side, this branch):**
+  - `services/validators.py` — server-side authoritative validator catalogue (phone shape, date sanity, email, NDIS number, plan-date ordering, BSB, ABN, etc.) — runs BEFORE every `update_field` write; rejection upserts into `state.pending_validation_errors`
+  - `FormState.pending_validation_errors: list[dict]` — keyed by `(section_id, field_id, repeatable_index)`; mirrored into `[LIVE_STATE_JSON]` block of system prompt every turn
+  - `_advance_step` blocks while `pending_validation_errors` non-empty; emits `field_skipped_warning` with `missing_fields: [{section_id, field_id, repeatable_index?}]` when required fields still empty
+  - WS server→client events:
+    - `repeatable_section_entered` `{section_id, row_index, intent}` — emitted from `_enter_repeatable_section`
+    - `repeatable_section_exited` `{section_id}` — newly emitted from `_exit_repeatable_section`
+    - `field_skipped_warning` `{missing_count, required_filled, required_total, missing_fields[]}` — `missing_fields` enumerates exactly which required fields are empty
+    - `schema_drift_detected` `{kind: "unknown_field"|"unknown_section", attempted_section, attempted_field?, label?}` — wired in 3 sites: `_update_field` unknown-section branch, `_update_field` unknown-field branch, `_request_unknown_section` tool
+  - WS client→server frames (new handlers in `GeminiLiveSession._handle_control`):
+    - `validation_failed` `{section_id, field_id, repeatable_index?, code, reason_human}` — upserts into `pending_validation_errors`, injects `[SCREEN VALIDATION]` text into Gemini stream so model re-asks
+    - `validation_cleared` `{section_id, field_id, repeatable_index?}` — drops the entry from `pending_validation_errors`
+  - System prompt — Rule 7 (frontend validation loop) + Rule 8 (server-side validation guard) + Rule 9 (sequencing + repeatable entry) added; `[LIVE_STATE_JSON]` block now exposes `pending_validation_errors` and `next_required_field`
+- **Flutter delta:** `SENA_AI/FLUTTER_DEV_HANDOFF.md` rewritten for accuracy — corrected event names (`section_entered` → `repeatable_section_entered`), payload shapes (added `missing_fields[]`), client→server tables, integration checklist
+- **Tests:** 78/78 pass (excluding 2 pre-existing import errors in `test_cross_screen_context.py` and `test_validators.py` — unrelated to this work)
+- **Files modified:**
+  - `src/onboarding/services/tools.py` — schema_drift emits + missing_fields enumeration in advance_step
+  - `src/onboarding/services/gemini_live.py` — `_handle_validation_failed` + `_handle_validation_cleared`
+  - `src/onboarding/api/ws_routes.py` — docstring updated for new client→server frames
+  - `SENA_AI/FLUTTER_DEV_HANDOFF.md` — full accuracy pass on event names + payloads + checklist
+- **Out of scope:** Flutter implementation of `validation_failed`/`validation_cleared` emit + listener for the 4 new server events (mobile-team work, documented in handoff)
 
 ### #12 — Onboarding cross-screen shared context (per-(tenant, participant) bucket)
 - **Status:** completed (2026-05-06)

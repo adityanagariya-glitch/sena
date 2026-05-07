@@ -270,12 +270,88 @@ class GeminiLiveSession:
         elif msg_type == "screen_state_v2":
             await self._handle_screen_state(session, data, version=2)
 
+        elif msg_type == "validation_failed":
+            await self._handle_validation_failed(session, data)
+
+        elif msg_type == "validation_cleared":
+            await self._handle_validation_cleared(data)
+
         elif msg_type == "stop":
             log.info("client_stop session=%s", self._session_id)
             return True
 
         # "start" arrives before run() — safe to ignore here if it slips through
         return False
+
+    async def _handle_validation_failed(
+        self, session: "genai.live.AsyncSession", data: dict
+    ) -> None:
+        """Flutter reports a client-side validation rejection — upsert into
+        pending_validation_errors and inject a re-ask prompt into Gemini."""
+        section_id = data.get("section_id", "")
+        field_id = data.get("field_id", "")
+        repeatable_index = data.get("repeatable_index")
+        reason_human = data.get("reason_human", "The value was not accepted.")
+        code = data.get("code", "client_validation_failed")
+
+        if not section_id or not field_id:
+            log.warning("validation_failed missing section/field session=%s", self._session_id)
+            return
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return
+
+        key = (section_id, field_id, repeatable_index)
+        state.pending_validation_errors = [
+            e for e in state.pending_validation_errors
+            if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+        ]
+        state.pending_validation_errors.append({
+            "section_id": section_id,
+            "field_id": field_id,
+            "repeatable_index": repeatable_index,
+            "code": code,
+            "reason_human": reason_human,
+        })
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        loc = f"{section_id}.{field_id}"
+        if repeatable_index is not None:
+            loc += f"[{repeatable_index}]"
+        injection = (
+            f"[SCREEN VALIDATION] The screen rejected the value stored for {loc}: "
+            f"{reason_human} — re-ask the participant for a corrected value (Rule 7)."
+        )
+        await session.send_realtime_input(text=injection)
+        log.info(
+            "validation_failed_injected session=%s loc=%s code=%s",
+            self._session_id, loc, code,
+        )
+
+    async def _handle_validation_cleared(self, data: dict) -> None:
+        """Flutter reports a validation error has been resolved — remove from state."""
+        section_id = data.get("section_id", "")
+        field_id = data.get("field_id", "")
+        repeatable_index = data.get("repeatable_index")
+
+        if not section_id or not field_id:
+            return
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return
+
+        key = (section_id, field_id, repeatable_index)
+        state.pending_validation_errors = [
+            e for e in state.pending_validation_errors
+            if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+        ]
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+        log.info(
+            "validation_cleared session=%s section=%s field=%s",
+            self._session_id, section_id, field_id,
+        )
 
     async def _handle_screen_state(
         self, session: "genai.live.AsyncSession", data: dict, *, version: int = 1
