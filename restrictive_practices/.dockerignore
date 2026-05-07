@@ -12,6 +12,5 @@ graphify-out
 .gitignore
 *.md
 !data_flow.md
-scripts/
 .dockerignore
 docker-compose*.yml
