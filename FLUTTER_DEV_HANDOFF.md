@@ -1274,6 +1274,8 @@ Without explicit per-section pinning, Gemini's natural conversational flow lets 
 
 ## Issue #15 — Validation awareness (CRITICAL, NEW)
 
+> **Update 2026-05-07:** the server is now the **authoritative** validator and mirrors every rule in `lib/core/utils/validators.dart` byte-equivalent. Frontend `validation_failed` events are still consumed (defense in depth) and are still recommended — they catch the rare case where the user types into the field while voice is also active. But the assistant no longer **depends** on those events to reject bad data; it will refuse to write `phone="12"` regardless of whether the Flutter validator gets there first. This is a **scope reduction** for the Flutter side: implement the events when convenient, not as a launch blocker.
+
 ### Symptom observed
 
 Participant gives obviously invalid data ("phone number is twelve", "DOB is January thirty-second", "name is asdfasdf"). Assistant accepts each, calls `update_field`, moves on. Frontend's existing validators would have caught all three, but the assistant never sees them. Form ends up with junk values; participant either has to fix manually or downstream processing fails.

@@ -57,13 +57,45 @@ From the mobile dev's perspective: a single daily digest tells them exactly what
 - A new `next_required_field` server-side computation is added: it returns `(section_id, field_id, label)` for the first required field with an empty value, walking sections in declared order. The result is rendered into the system prompt and refreshed on every screen_state event.
 - Repeatable sections get a special protocol: when the assistant enters a repeatable section, it must call a new `enter_repeatable_section(section_id, intent: "first" | "next")` tool that pins the focus to a specific row. All subsequent `update_field` calls inherit that row index until `exit_repeatable_section` is called. This eliminates the cross-row collision.
 
-### Validation awareness
+### Validation awareness (REVISED 2026-05-07)
 
-- Validation contract is bidirectional. Frontend already runs validators on every field update. The new contract: **whenever a frontend validator fails, the frontend MUST emit a `validation_failed` WS event**. Payload: `{section_id, field_id, attempted_value, reason_human, reason_code, suggested_fix}`.
-- The backend pipes this event into Gemini's input stream as a structured text injection: `[VALIDATION_FAILED] field=basics.phone reason="needs 10 digits with no spaces"`. Gemini is instructed to immediately re-prompt the user with the human reason verbatim and clear the field.
-- The system prompt gains a `pending_validation_errors` block in `[LIVE_STATE_JSON]` that mirrors any unresolved validation failures — so even if the model loses the WS injection, the next prompt build re-includes it.
-- On the server side, a parallel "soft validator" runs against well-defined types (phone format, date sanity, email shape) before `update_field` writes. If the soft validator fails AND the frontend hasn't yet emitted its own `validation_failed`, the server-side rejection fires the same Gemini-side path. This protects the rare case where a frontend validator is missing.
-- Validation rejection messages are paraphrased to plain language by the system prompt — never the raw regex or error code. The reason_human field from the frontend is the canonical text.
+**Decision change:** server-side validators are now **authoritative**, not a "soft" supplement. Every Step 1–6 validator that exists in the Flutter `lib/core/utils/validators.dart` is mirrored on the server, byte-equivalent in rule and error message, and runs **before** `update_field` writes to FormState. The frontend continues to validate (defense in depth) and continues to emit `validation_failed` WS events when its own validators fire — but the assistant no longer depends on those events to reject bad data. Round-trips are eliminated for any value the assistant captures by voice.
+
+The authoritative reference for every validator's rule and error string is `.claude/client_onboarding_validations.md` — a field-by-field catalog that has been cross-checked against `lib/core/utils/validators.dart` (phone regex, DOB age-18, NDIS-9-digits, postcode-4-digits, full-name first+last, emergency-contact email uniqueness all confirmed identical). The server implementation MUST mirror that catalog exactly. When the catalog and the Flutter validator disagree, the catalog is canon and the Flutter validator is the bug.
+
+How it works at the call site:
+
+- `update_field` invokes a new `ServerValidator.validate(section_id, field_id, value, repeatable_index, formstate_for_cross_field)` BEFORE writing to FormState. The signature takes the surrounding FormState because some validators are cross-field (emergency-contact email uniqueness, plan-end-after-start, conditional-required-when-other-filled).
+- On failure, validate returns `(rejection_code, reason_human, suggested_fix)`. The dispatcher returns this structured rejection to Gemini synchronously, so the model can re-prompt in the same turn.
+- On success, the value is written; the bridge also clears any matching entry in the `pending_validation_errors` block.
+- The bridge still pipes incoming `validation_failed` WS events from the Flutter app into Gemini (defense in depth) and writes them into `pending_validation_errors`. Gemini sees both server-side and client-side rejections through the same channel; deduplication is by `(section_id, field_id, repeatable_index)`.
+- The system prompt is updated with explicit rules: read the validator's `reason_human` verbatim, never invent your own validation logic, never describe the rule in regex or technical language.
+
+Cross-field invariants the server enforces (mirroring the Flutter cross-step rules section of the reference doc):
+
+- Emergency contact email ≠ client email (Step 1).
+- Emergency contact emails unique across all rows (Step 1).
+- Service-location fields all-required-when-any-filled (Step 1).
+- Plan end > plan start (Step 3).
+- Plan-manager fields appear only when `plan_management = "Plan Managed"` — server validates conditional presence.
+- Time slots within a support item: `end_time > start_time`, no overlap on the same day (Step 3).
+- Medical-history row all-required-when-any-filled (Step 5).
+- Allergy/medication/medical-history row caps (10 each).
+- Schedule-of-supports cap (5), time-slots-per-day cap (5), morning/evening routine cap (12), NDIS goals cap (10), emergency contact cap (5).
+
+### Server-side Validator Catalog (mirror of frontend)
+
+The full per-field catalog lives in `.claude/client_onboarding_validations.md`. The server implementation organises validators into one module per onboarding step (1 through 6), exposing a single `validate_field(field_path, value, formstate)` entry point per step plus a `validate_step_complete(formstate)` aggregate that runs at the `/complete` boundary. The aggregate is the gate that fails closed: `/complete` cannot return success if `validate_step_complete` returns any failure.
+
+Every validator has, at minimum:
+- A stable `code` (e.g. `phone_invalid_format`, `dob_under_18`, `emergency_email_matches_client`).
+- A `reason_human` string that exactly matches the AppStrings constant on the Flutter side. The reference doc lists the canonical text for each.
+- An optional `suggested_fix` plain-language hint when there is a constructive next step.
+- An optional `min`/`max`/`pattern`/`enum` machine-readable spec used by the soft-validator path so the server can produce the rejection without relying on a hardcoded match block per field.
+
+Localisation note: `reason_human` is English in v1 (matching the current AppStrings). Locale handling stays out of scope.
+
+PII safeguard: rejection logs include `(tenant_id, participant_id, section_id, field_id, code)`. They do NOT include `attempted_value` because rejected raw values can be sensitive (phone, DOB, name). The diagnostic value is the rule that fired, not the value that fired it.
 
 ### Schema-drift discovery
 
@@ -92,6 +124,10 @@ A good test here verifies external behaviour: given a state and a user utterance
 - **Sequencing**: a unit test against `next_required_field` that asserts the right `(section, field)` is returned for several FormState fixtures (some with first section partially filled, some with optional fields filled before required). Pure function, no Redis.
 - **Cross-section guard**: a unit test against the dispatcher that asserts `update_field("emergency_contacts[0]", "name", "Jane")` is rejected when the focus hint is `basics`. Mocked dispatcher state.
 - **Validation echo**: a unit test that simulates a `validation_failed` event arriving at the bridge and asserts the next prompt-build call includes the failure in the `pending_validation_errors` block. Mocked Gemini bridge.
+- **Server-side validator catalog**: one parameterised unit test per onboarding step that walks every field listed in `.claude/client_onboarding_validations.md`, asserts a known-bad value produces the expected `(code, reason_human)` pair, and asserts a known-good value passes. The fixtures live in the test file as table-driven data so adding a new validator is one row, not one new test. Bytes-exact match against the canonical AppStrings text for each field is the success criterion.
+- **Cross-field invariants**: a unit test per cross-field rule (emergency email uniqueness, plan-end-after-start, conditional-required-when-any-filled service location, time-slot non-overlap, all-required-when-any-filled medical history). Each test uses a minimal FormState fixture and asserts the right rejection code fires.
+- **Round-trip elimination**: a behavioural test that simulates `update_field("basics", "phone", "12")` and asserts the dispatcher returns a structured rejection WITHOUT writing to FormState AND WITHOUT requiring a `validation_failed` event from the Flutter side. Proves the server is now authoritative.
+- **/complete gate**: a unit test that asserts `validate_step_complete` blocks the completion when any field has an unresolved rejection. Step is not marked completed; webhook does not fire.
 - **Unknown field log**: a unit test that calls `update_field` on a non-existent path and asserts a log capture shows `unknown_field_attempt` with the right payload. `caplog`-style.
 - **Repeatable entry**: a unit test that calls `enter_repeatable_section("emergency_contacts", "first")` and asserts the focus pin is set, subsequent `update_field` calls land on row 0, and the event is emitted.
 
@@ -115,7 +151,9 @@ A good test here verifies external behaviour: given a state and a user utterance
 - **Auto-growth of schema based on `unknown_field_attempt` frequency.** v1 logs only; humans review.
 - **Voice-side handling of disability-specific input modes** (e.g. AAC devices). Separate workstream.
 - **Cross-tenant analytics on validation/discovery telemetry.** Multi-tenant isolation is preserved by design (the structured logs include tenant_id but no aggregated cross-tenant view exists).
-- **Backwards-compatible rollout path for clients that haven't shipped the validation_failed event yet.** They continue to work; the assistant's awareness simply degrades to "soft validator only" until they upgrade. No breaking change.
+- **Backwards-compatible rollout path for clients that haven't shipped the validation_failed event yet.** They continue to work — the server is now the authoritative validator, so the absence of frontend validation_failed events is not a regression; it just means the assistant won't see two redundant signals. No breaking change.
+- **Drift detection between server validators and Flutter validators.** v1 mirrors `lib/core/utils/validators.dart` against `.claude/client_onboarding_validations.md` once at implementation time. A future workstream may add a CI check that diffs the two; not in this PRD.
+- **Server-side enforcement of fields that are display-only on the frontend.** The `email` field on Step 1 is `readOnly` (pre-filled from auth profile). The server-side validator for `email` rejects writes via `update_field` regardless of value — that's not "validation," it's a readonly-path rejection that already exists. Documented here so it isn't reinvented.
 - **Refactoring the existing repeatable section logic.** The strengthening builds on top; the existing surface is unchanged.
 
 ## Further Notes
