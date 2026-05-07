@@ -333,7 +333,7 @@ button#submit-btn {
     };
 
     try {
-      const res = await fetch('/v1/restrictive-practices/evaluate', {
+      const res = await fetch('v1/restrictive-practices/evaluate', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
