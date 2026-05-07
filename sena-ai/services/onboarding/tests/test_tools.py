@@ -210,6 +210,113 @@ async def test_advance_step_rejects_when_incomplete(dispatcher) -> None:
 
 
 @pytest.mark.asyncio
+async def test_advance_step_rejects_empty_confirmation_transcript(dispatcher) -> None:
+    result = await dispatcher.dispatch("advance_step", {})
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "missing_confirmation"
+
+
+@pytest.mark.asyncio
+async def test_advance_step_rejects_short_confirmation_transcript(dispatcher) -> None:
+    # "ok" is 2 chars — below the 3-char minimum
+    result = await dispatcher.dispatch("advance_step", {"confirmation_transcript": "ok"})
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "missing_confirmation"
+
+
+@pytest.mark.asyncio
+async def test_advance_step_cross_field_gate_blocks_on_rejection(
+    dispatcher, seeded_repo, personal_schema, emitted, monkeypatch
+) -> None:
+    from onboarding.services.validators.base import ValidationRejection
+
+    fake_rejection = ValidationRejection(
+        code="emergency_email_duplicate",
+        reason_human="Emergency contacts must have unique email addresses.",
+    )
+    monkeypatch.setattr(tools_module, "validate_step_complete", lambda s, st: [fake_rejection])
+
+    # Fill all required fields so the completion gate passes
+    fills = {
+        ("basics", "full_name"): "Aditya Nagariya",
+        ("basics", "email"): "a@b.com",
+        ("basics", "phone"): "+61400000000",
+        ("basics", "date_of_birth"): "1990-01-01",
+        ("basics", "gender"): "Male",
+        ("basics", "about_me"): "hello",
+        ("basics", "preferred_language"): "English",
+        ("basics", "interpreter_required"): "false",
+        ("home_address", "address"): "1 Example St",
+        ("home_address", "state"): "NSW",
+        ("home_address", "city"): "Sydney",
+        ("home_address", "zip_code"): "2000",
+    }
+    for (sec, fld), val in fills.items():
+        await dispatcher.dispatch("update_field", {"section": sec, "field": fld, "value": val})
+    for field, value in [
+        ("name", "Sarah"), ("relation", "Parent"),
+        ("email", "s@b.com"), ("phone", "+61400111222"),
+    ]:
+        await dispatcher.dispatch(
+            "update_field",
+            {"section": "emergency_contacts", "field": field, "value": value, "repeatable_index": 0},
+        )
+
+    result = await dispatcher.dispatch(
+        "advance_step", {"confirmation_transcript": "yes I'm done"}
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "cross_field_invariants_failed"
+
+
+@pytest.mark.asyncio
+async def test_advance_step_emits_validation_rejection_for_cross_field_violation(
+    dispatcher, seeded_repo, personal_schema, emitted, monkeypatch
+) -> None:
+    from onboarding.services.validators.base import ValidationRejection
+
+    fake_rejection = ValidationRejection(
+        code="plan_end_before_start",
+        reason_human="Plan end date must be after start date.",
+    )
+    monkeypatch.setattr(tools_module, "validate_step_complete", lambda s, st: [fake_rejection])
+    # Fill all required fields so the completion check passes
+    fills = {
+        ("basics", "full_name"): "Aditya Nagariya",
+        ("basics", "email"): "a@b.com",
+        ("basics", "phone"): "+61400000000",
+        ("basics", "date_of_birth"): "1990-01-01",
+        ("basics", "gender"): "Male",
+        ("basics", "about_me"): "hello",
+        ("basics", "preferred_language"): "English",
+        ("basics", "interpreter_required"): "false",
+        ("home_address", "address"): "1 Example St",
+        ("home_address", "state"): "NSW",
+        ("home_address", "city"): "Sydney",
+        ("home_address", "zip_code"): "2000",
+    }
+    for (sec, fld), val in fills.items():
+        await dispatcher.dispatch("update_field", {"section": sec, "field": fld, "value": val})
+    for field, value in [
+        ("name", "Sarah"), ("relation", "Parent"),
+        ("email", "s@b.com"), ("phone", "+61400111222"),
+    ]:
+        await dispatcher.dispatch(
+            "update_field",
+            {"section": "emergency_contacts", "field": field, "value": value, "repeatable_index": 0},
+        )
+
+    result = await dispatcher.dispatch(
+        "advance_step", {"confirmation_transcript": "yes, that's everything"}
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "cross_field_invariants_failed"
+    validation_events = [e for e in emitted if e["type"] == "validation_rejection"]
+    assert len(validation_events) >= 1
+    assert validation_events[0]["section_id"] == "_aggregate"
+
+
+@pytest.mark.asyncio
 async def test_advance_step_fires_webhook_when_complete(
     dispatcher, seeded_repo, personal_schema, emitted, monkeypatch
 ) -> None:

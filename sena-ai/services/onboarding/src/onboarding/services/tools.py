@@ -42,6 +42,7 @@ from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.services import field_apply as _fa
 from onboarding.services.coverage import is_repeatable_eligible
 from onboarding.services.validators import validate_field as _validate_field
+from onboarding.services.validators import validate_step_complete
 from onboarding.services.webhook import fire_webhook
 
 log = logging.getLogger(__name__)
@@ -126,17 +127,24 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
     {
         "name": "advance_step",
         "description": (
-            "Call ONLY when every required field is filled and the user has confirmed "
-            "they are done with this step. Finalizes the session and notifies the app."
+            "Call ONLY after every required field is filled, validate_step_complete "
+            "has zero rejections, and the user has spoken an explicit confirmation "
+            "(e.g. 'yes I'm done', 'submit it'). Pass the user's exact confirmation "
+            "words in confirmation_transcript — server rejects empty strings."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "confirmation_transcript": {
                     "type": "string",
-                    "description": "Exact words the user used to confirm they are done.",
+                    "minLength": 3,
+                    "description": (
+                        "EXACT verbatim words the user spoke to confirm completion. "
+                        "Required and non-empty. Do not paraphrase. Do not synthesise."
+                    ),
                 },
             },
+            "required": ["confirmation_transcript"],
         },
     },
     {
@@ -682,6 +690,22 @@ class ToolDispatcher:
         if state is None:
             return {"ok": False, "error": "session state not found"}
 
+        # AP-4 fix: validate confirmation_transcript is genuinely user-spoken.
+        # Without this Gemini can call with zero args when the user's prior
+        # utterance happened to end with "okay" — that is not consent.
+        confirmation = (args.get("confirmation_transcript") or "").strip()
+        if len(confirmation) < 3:
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "missing_confirmation",
+                    "reason_human": (
+                        "I need a clear yes from you before I save and move on — "
+                        "could you confirm you're happy with everything you've shared?"
+                    ),
+                },
+            }
+
         # Idempotency guard — prevent double webhook fire across resume-then-advance
         if state.completed:
             return {"ok": True, "webhook_delivered": False, "already_completed": True}
@@ -743,6 +767,30 @@ class ToolDispatcher:
                          f"do not call advance_step yet",
                 "required_filled": state.completion.required_filled,
                 "required_total": state.completion.required_total,
+            }
+
+        # N-2 fix: cross-field invariant gate (NDIS compliance).
+        # pending_validation_errors only catches per-field rejections. Cross-field
+        # rules (emergency-email-unique, plan-end-after-start, medical-history-
+        # all-or-none) only run inside validate_step_complete, which was never
+        # called at advance time. A user could hit advance with two emergency
+        # contacts sharing one email and the webhook would fire with corrupt data.
+        cross_rejections = validate_step_complete(self._schema, state)
+        if cross_rejections:
+            for rej in cross_rejections:
+                await self._emit({
+                    "type": "validation_rejection",
+                    "section_id": "_aggregate",
+                    "field_id": "_aggregate",
+                    "rejection": rej.model_dump(),
+                })
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "cross_field_invariants_failed",
+                    "reason_human": cross_rejections[0].reason_human,
+                    "all_rejections": [r.model_dump() for r in cross_rejections],
+                },
             }
 
         state.completed = True
