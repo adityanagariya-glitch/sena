@@ -1217,3 +1217,201 @@ Backend will run `redis-cli HGETALL sena:onboarding:user_ctx:<tenant_id>:<partic
 - [ ] `X-Tenant-Id` and `X-Participant-Id` headers added to GET / PUT state endpoints (recommended, not blocking).
 - [ ] 403 from state endpoints handled the same way as 404 (recommended, not blocking).
 - [ ] Smoke-tested two consecutive steps for the same participant — second step's response has populated `prior_pages`.
+
+---
+
+## Addendum (2026-05-07) — Issues observed during cross-screen testing
+
+These are PRODUCTION-FEEDBACK issues. They were caught by manually running the
+voice flow end-to-end after the cross-screen feature shipped. Each one breaks
+participant trust in a different way; each has a wire contract the Flutter app
+must implement to fix it. Source PRD: `.planning/PRD-validation-sequencing-discovery.md`.
+
+---
+
+## Issue #14 — Sequencing strictness (CRITICAL, NEW)
+
+### Symptom observed
+
+Voice run on personal_information step:
+- Assistant skipped a `*`-required field (it was never asked, the step still advanced).
+- Assistant treated `emergency_contacts[0].name` and `basics.full_name` as the same field — when the participant said their own name during emergency-contact intake, it wrote it to the participant profile.
+- Order of asked fields did not match the schema declaration order.
+
+### Why this happens
+
+Without explicit per-section pinning, Gemini's natural conversational flow lets it move freely between sections. The system prompt's "ask in order" guidance was advisory, not enforced. Repeatable sections share field names (`name`, `phone`) with the parent profile, so when the assistant calls `update_field` mid-conversation it inferred the wrong section.
+
+### Server-side fix (already in plan)
+
+- New `next_required_field` server-side hint computed from schema + current FormState. Rendered into `[LIVE_STATE_JSON]` block of the system prompt and refreshed on every `screen_state_v2` event.
+- Dispatcher rejects `update_field` calls whose `section_id` does not match the focused-section hint, unless the assistant passes `cross_section_intent: true` (declared intent).
+- New tools `enter_repeatable_section(section_id, intent: "first" | "next")` and `exit_repeatable_section()` pin the focus to a specific row index; subsequent `update_field` calls inherit that index.
+
+### Flutter-side requirements
+
+1. **Send the `current_section_id` and `focused_field` accurately on every `screen_state_v2` event.** The server uses `current_section_id` as ground truth for the cross-section guard; if the field you sent doesn't match what the user is actually on, the server may reject valid updates. Already required by Issue #6 — strengthen the focused-field tracking to be precise.
+
+2. **Listen for a new event:**
+   ```json
+   { "type": "section_entered", "section_id": "emergency_contacts", "row_index": 0 }
+   ```
+   Fired when the assistant calls `enter_repeatable_section`. Use it to scroll to the section header and visually highlight which row the assistant is filling. Without this the participant sees the assistant filling row 0 but the UI still shows row 0 collapsed; visual confusion.
+
+3. **Listen for a new event:**
+   ```json
+   { "type": "field_skipped_warning", "section_id": "basics", "field_id": "interpreter_required" }
+   ```
+   Fired when the server detects the assistant tried to advance past a required field that has not been filled. Render a non-blocking inline warning ("the assistant is being asked to come back to this field"). Optional UX; backend will block the advance regardless.
+
+### Verify
+
+- Run a voice session that asks for emergency contacts. After "let's add your first emergency contact," confirm the UI scrolls to the emergency contacts section and row 0 is visually highlighted.
+- Try to make the assistant skip a required field (say "skip the gender question"). Server rejects the advance; UI does not move on.
+- Say your own name during emergency-contact intake. Confirm the value lands on `emergency_contacts[0].name`, not on `basics.full_name`.
+
+---
+
+## Issue #15 — Validation awareness (CRITICAL, NEW)
+
+### Symptom observed
+
+Participant gives obviously invalid data ("phone number is twelve", "DOB is January thirty-second", "name is asdfasdf"). Assistant accepts each, calls `update_field`, moves on. Frontend's existing validators would have caught all three, but the assistant never sees them. Form ends up with junk values; participant either has to fix manually or downstream processing fails.
+
+### Why this happens
+
+Validation is currently a one-way frontend concern. There is no wire path that surfaces validation failures back to Gemini in real time. The server has no soft-validator either, so even values the frontend hasn't typed yet (mid-voice) reach `update_field` unfiltered.
+
+### Server-side fix (already in plan)
+
+- A new `pending_validation_errors` block in `[LIVE_STATE_JSON]` mirrors any unresolved validation failures so even cold-start prompts include them.
+- A "soft validator" runs server-side against well-defined types (phone shape, date sanity, email format) before `update_field` writes. Catches the cases where the frontend hasn't yet emitted its own validation result.
+- Validation rejection is fed into Gemini's input stream as a structured text injection: `[VALIDATION_FAILED] field=basics.phone reason="needs 10 digits with no spaces"`. The system prompt instructs the assistant to immediately re-prompt with the human reason verbatim and clear the field.
+
+### Flutter-side requirements
+
+1. **MUST emit a new WS event whenever a frontend validator fails.** Send AS SOON as the validator returns the failure, not on form submit:
+   ```json
+   {
+     "type": "validation_failed",
+     "section_id": "basics",
+     "field_id": "phone",
+     "attempted_value": "12",
+     "reason_human": "Phone number needs to be 10 digits with no spaces.",
+     "reason_code": "phone_too_short",
+     "suggested_fix": "Try saying the full number including the area code."
+   }
+   ```
+   - `reason_human`: the SAME text your form would have shown the user if they were typing. Will be paraphrased verbatim by the assistant.
+   - `reason_code`: a stable identifier for analytics (e.g. `phone_too_short`, `dob_in_future`, `email_no_at`). Never exposed to the user.
+   - `suggested_fix`: optional plain-language hint. The assistant will use it in the re-ask if present.
+2. **MUST emit a paired success event when validation now passes** (after a corrected re-entry):
+   ```json
+   { "type": "validation_cleared", "section_id": "basics", "field_id": "phone" }
+   ```
+   Without this, the assistant's `pending_validation_errors` block will keep listing the field as broken even after correction.
+3. **DO NOT** include the regex pattern, the validator function name, or any internal error code text in `reason_human`. The string is read verbatim to the user.
+4. **Locale**: emit in the user's selected locale (the same string you would have shown in the form). Server does not translate.
+
+### Verify
+
+- Type a 3-digit number into the phone field while voice is active. Within 500ms, the assistant should re-prompt with "Phone number needs to be 10 digits..." (your exact reason_human text).
+- Correct the phone. Within 500ms, assistant moves on.
+- Server logs show `validation_failed_received` and `validation_cleared_received` lines.
+
+---
+
+## Issue #16 — Schema-drift discovery (HIGH, NEW)
+
+### Symptom observed
+
+- Participant said "actually I have two emergency contacts" → assistant added one row but UI didn't render the second; second contact's data was silently lost.
+- Participant said "I'd like to add my evening routine" → assistant said "noted" and moved on; the request never reached the dev team. No metric, no log, no ticket.
+
+The mobile dev team has no signal telling them which fields/sections participants are trying to give the assistant that the schema can't accommodate.
+
+### Why this happens
+
+The current contract:
+- `add_repeatable_row` exists, but only for sections already declared as repeatable.
+- Sections not in the schema have no surface at all — the assistant just declines.
+- Unknown field paths (e.g. `personal_information.basics.middle_name` when the schema only has `first_name` and `last_name`) get rejected silently with no telemetry.
+
+### Server-side fix (already in plan)
+
+- Two new structured logs at INFO level:
+  - `unknown_field_attempt` — fires whenever `update_field` targets a `(section, field)` pair the schema doesn't declare.
+  - `unknown_section_request` — fires when the participant asks for a section that doesn't exist (assistant calls a new `request_unknown_section` tool).
+- Both feed a daily digest aggregating by attempted name. Out of scope for v1; v1 just emits the logs.
+- A new `repeatable_section_entered` event fires the moment the assistant enters a repeatable section, even before any row materialises.
+
+### Flutter-side requirements
+
+1. **Listen for two new server→client events:**
+   ```json
+   { "type": "schema_drift_detected", "kind": "unknown_field",
+     "attempted_section": "basics", "attempted_field": "middle_name" }
+   ```
+   ```json
+   { "type": "schema_drift_detected", "kind": "unknown_section",
+     "requested_section_label": "Evening routine" }
+   ```
+   When you receive either, render a small inline notice: "We've noted this for the team." Optional UX, backend logs regardless.
+
+2. **Listen for `repeatable_section_entered` (already covered in Issue #4 / #9) but extend handling:** ensure the section header scrolls into view BEFORE the first `row_added` arrives, not after. Current code waits for the row.
+
+3. **Strengthen the existing `row_added` handler:** if the assistant has called `add_repeatable_row` more than once in a single turn, you may receive multiple `row_added` events in rapid succession. Current code may render only one. Confirm your handler is queue-safe (apply each event in order, don't debounce).
+
+4. **NEW: send a daily-summary endpoint hit on app startup** (recommended, not blocking):
+   ```
+   GET /v1/onboarding/_diag/schema-drift?tenant_id=<id>&days=7
+   ```
+   Returns the aggregated unknown attempts for the last 7 days. Use this to drive an in-app "Schema requests" panel in the dev-only build. Not required for production.
+
+### Verify
+
+- Run a session, ask for "evening routine." Server log: `unknown_section_request requested_section_label="evening routine"`. Mobile renders inline notice.
+- Run a session, ask the assistant to fill `basics.middle_name` (not in schema). Server log: `unknown_field_attempt attempted_section=basics attempted_field=middle_name`. Mobile renders inline notice.
+- Run a session with two emergency contacts. Confirm BOTH rows render in the UI with the correct data.
+
+---
+
+## Issue #17 — Discovery telemetry contract documentation (REFERENCE, NEW)
+
+A consolidated table of EVERY new wire event introduced by Issues #14 / #15 / #16 so you can grep this section once instead of hunting across three issues.
+
+### Server → Client (events the Flutter app must HANDLE)
+
+| Event | Payload | Source issue | When it fires |
+|-------|---------|--------------|---------------|
+| `section_entered` | `{section_id, row_index}` | #14 | Assistant entered a (possibly repeatable) section |
+| `field_skipped_warning` | `{section_id, field_id}` | #14 | Server blocked an attempt to advance past required |
+| `schema_drift_detected` | `{kind: "unknown_field"|"unknown_section", ...}` | #16 | Assistant tried to use a path or section the schema doesn't have |
+| `repeatable_section_entered` | `{section_id}` | #16 | Assistant entered a repeatable section, before any `row_added` |
+
+### Client → Server (events the Flutter app must EMIT)
+
+| Event | Payload | Source issue | When to emit |
+|-------|---------|--------------|--------------|
+| `validation_failed` | `{section_id, field_id, attempted_value, reason_human, reason_code, suggested_fix?}` | #15 | The frontend's validator just rejected a value |
+| `validation_cleared` | `{section_id, field_id}` | #15 | A previously-failed field now passes validation |
+
+### Endpoints
+
+| Method | Path | Purpose | Issue |
+|--------|------|---------|-------|
+| GET | `/v1/onboarding/_diag/bucket?tenant_id=&participant_id=` | Inspect cross-screen bucket (dev only) | (cross-screen addendum) |
+| GET | `/v1/onboarding/_diag/schema-drift?tenant_id=&days=` | Aggregate unknown attempts (dev only) | #16 |
+
+### Final checklist for Issues #14–#17
+
+- [ ] `current_section_id` and `focused_field` on `screen_state_v2` are precise (not stale).
+- [ ] Listening for `section_entered`; scrolling section into view + highlighting row.
+- [ ] Listening for `field_skipped_warning`; showing inline warning.
+- [ ] Emitting `validation_failed` with full payload on every validator failure.
+- [ ] Emitting `validation_cleared` when a field corrects.
+- [ ] `reason_human` strings are user-facing only — no regex / no error codes.
+- [ ] Listening for `schema_drift_detected`; rendering "noted for team" inline notice.
+- [ ] Listening for `repeatable_section_entered`; scrolling section header pre-row.
+- [ ] `row_added` handler is queue-safe (handles multiple events in one turn).
+- [ ] (Optional) dev-build polls `_diag/schema-drift` for an in-app schema requests panel.
