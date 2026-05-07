@@ -21,15 +21,17 @@ Verification run: read-only audit of `.claude/client_onboarding_validations.md` 
 - Emergency contact emails unique across rows → `client_step1_controller.dart` line 321
 - Time slot end > start + non-overlap on same day → confirmed in step3 controller
 
-## DRIFT items (3) — doc takes precedence per implementation contract
+## DRIFT items (3) — code takes precedence (policy reversed 2026-05-07)
 
-Each row below: server validator should mirror the **doc's** text, not the code's, because we agreed the doc is canon and the Flutter validator is the bug when they disagree.
+**Canon:** the Flutter code is ground truth. When the doc and the code disagree, the **code wins** and the doc is updated to match. The earlier "doc is canon" framing was wrong: the production Flutter app already ships with these strings in `AppStrings`, so the participant has already read them on screen. The assistant's voice must match what the screen says, or the user gets two different versions of the same error.
 
-1. **Funding allocation** — minor phrasing drift between `> 0` (doc) and "positive number" (code). Both reject the same inputs; only the user-facing string differs. Implement per doc.
-2. **Medical history year range** — message wording drift on the out-of-range year error. Doc says "Year must be between 1900 and [current year]"; code says something close but not identical. Implement per doc.
-3. **(Third minor wording drift flagged by the audit; specifics in the audit summary above.)**
+Server-side implementation reads `AppStrings` byte-for-byte at implementation time. No retyping from the doc. The 3 DRIFT items below resolve automatically because the server mirrors the AppStrings constant the Flutter validator already references.
 
-None of the three change which inputs are accepted vs rejected. They only change the user-visible message string. Server-side implementation MUST use the doc's `Error (…)` text verbatim so the assistant reads aloud the same phrasing the user would see in the form.
+1. **Funding allocation** — Flutter code uses one phrasing; doc uses another. Server mirrors the Flutter `AppStrings` constant verbatim. Doc gets a follow-up correction.
+2. **Medical history year range** — same situation; server mirrors the AppStrings text the Flutter `validators.dart` (or the step5 controller) references.
+3. **(Third minor wording drift identified during the audit.)** — same handling.
+
+None of these change which inputs accept vs reject — only the message text. Under the new policy this means: implement per Flutter code, then file a follow-up to bring the doc into line.
 
 ## Intentional non-enforcement
 
@@ -37,8 +39,8 @@ None of the three change which inputs are accepted vs rejected. They only change
 
 ## Implementation guidance (locked in)
 
-1. **Doc is canon.** When code disagrees with doc, server mirrors doc.
-2. **AppStrings constants.** Server `reason_human` must be byte-equivalent to the AppStrings text the Flutter validator references — for the 58 PASS fields, that means copying the AppStrings text verbatim. For the 3 DRIFT fields, copy the doc text verbatim and flag the Flutter side as a follow-up.
+1. **Flutter code is canon (reversed 2026-05-07).** When doc disagrees with code, server mirrors code. The reference doc gets corrected to match Flutter; never the reverse. The production app already shipped these strings to participants — voice must match screen, or the user reads two different errors.
+2. **AppStrings constants.** Server `reason_human` is the AppStrings text the Flutter validator references, byte-for-byte. For all 62 fields (58 PASS + 3 DRIFT + 1 intentional FAIL), the server reads `lib/core/constants/app_strings.dart` at implementation time and copies the constant value into the validator's `reason_human`. For DRIFT fields this means the server's text differs from this report's earlier doc-aligned phrasing — that is correct under the new policy.
 3. **Cross-field invariants** (all confirmed implemented in Flutter):
    - Emergency email ≠ client email
    - Emergency emails unique across rows
