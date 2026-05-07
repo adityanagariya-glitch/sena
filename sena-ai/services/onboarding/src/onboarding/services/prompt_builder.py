@@ -21,6 +21,7 @@ import structlog
 from onboarding.models.form_state import FormState
 from onboarding.models.schema_spec import StepSchema
 from onboarding.models.session_bootstrap import SessionBootstrap
+from onboarding.services.validators.sequencing import next_optional_field as _next_optional_field
 
 log = structlog.get_logger(__name__)
 _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
@@ -102,6 +103,7 @@ def _build_live_state_block(
         "prior_pages": (bootstrap.prior_pages if bootstrap else {}),
         "completion": completion,
         "next_required_field": _compute_next_required_field(schema, state),
+        "next_optional_field": _next_optional_field(schema, state),
         "pending_validation_errors": getattr(state, "pending_validation_errors", []),
         "focused_section": getattr(state, "focused_section", None),
     }
@@ -131,6 +133,10 @@ def build_system_prompt(
       __BOOTSTRAP_MODE__     — convenience: bootstrap.mode value as a string
       __GROUNDING_SECTION__  — Google Search instruction when grounding is on
       __VOICE_COVERAGE_SECTION__ — voice-coverage restriction block (or empty)
+      __PARTICIPANT_NAME__   — display name for top-level greeting directive
+                                (falls back to "unknown" when not set)
+      __NEXT_OPTIONAL_FIELD__ — next unfilled optional field in schema order
+                                (empty string when all optionals filled)
 
     Optional dynamic sections appended after the template:
       screen_context_text   — injected as SCREEN CONTEXT block
@@ -191,6 +197,23 @@ def build_system_prompt(
         getattr(state, "pending_validation_errors", [])
     )
 
+    # AP-3 fix: surface participant name as a top-level directive token.
+    # Previously buried in [LIVE_STATE_JSON] JSON data — model treated it as
+    # data, not a greeting directive, causing personalisation to drop on new screens.
+    participant_name = (
+        bootstrap.participant_display_name
+        if bootstrap and bootstrap.participant_display_name
+        else "unknown"
+    )
+
+    # AP-2 fix: Rule-5 anchor. Gives the model a deterministic next-optional
+    # pointer so it iterates optional fields in schema order, not randomly.
+    next_opt = _next_optional_field(schema, state)
+    next_opt_text = (
+        f"{next_opt['section_id']}.{next_opt['field_id']} ({next_opt['label']})"
+        if next_opt else ""
+    )
+
     result = (
         template
         .replace("__STEP_LABEL__", schema.step_label)
@@ -204,6 +227,8 @@ def build_system_prompt(
         .replace("__VOICE_COVERAGE_SECTION__", voice_coverage_section)
         .replace("__NEXT_REQUIRED_FIELD__", next_req_text)
         .replace("__PENDING_VALIDATION_ERRORS__", pending_errors_text)
+        .replace("__PARTICIPANT_NAME__", participant_name)
+        .replace("__NEXT_OPTIONAL_FIELD__", next_opt_text)
     )
 
     if resume_context_text:
