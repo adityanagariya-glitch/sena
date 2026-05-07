@@ -56,6 +56,28 @@ def next_required_field(schema: "StepSchema", state: "FormState") -> dict | None
     return None
 
 
+def next_optional_field(schema: "StepSchema", state: "FormState") -> dict | None:
+    """First optional (required=False) field with no value, in schema order.
+
+    Rule-5 anchor: returns a deterministic next-optional pointer so the prompt
+    model iterates optional fields predictably. Mirrors next_required_field shape.
+    Returns None when every optional is filled (or the step has none).
+    """
+    for section in schema.sections:
+        is_rep = getattr(section, "is_repeatable", False)
+        fields = section.item_fields if is_rep else (section.fields or [])
+        sec_vals = state.values.get(section.id) or {}
+        row: dict = (sec_vals[0] if isinstance(sec_vals, list) and sec_vals else {}) if is_rep else (sec_vals if isinstance(sec_vals, dict) else {})
+
+        for field in fields:
+            if field.required:
+                continue
+            raw = row.get(field.id) if isinstance(row, dict) else None
+            if not _has_value(raw):
+                return {"section_id": section.id, "field_id": field.id, "label": field.label}
+    return None
+
+
 def validate_step_complete(schema: "StepSchema", state: "FormState") -> list[ValidationRejection]:
     """Aggregate gate for /complete — returns [] only if every required field passes.
 

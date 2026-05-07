@@ -77,6 +77,9 @@ def test_function_decls_cover_all_handlers() -> None:
         "advance_step",
         "escalate_incident",
         "add_repeatable_row",
+        "enter_repeatable_section",
+        "exit_repeatable_section",
+        "request_unknown_section",
     }
     for decl in FUNCTION_DECLS:
         assert decl["parameters"]["type"] == "object"
@@ -90,13 +93,13 @@ def test_function_decls_cover_all_handlers() -> None:
 async def test_update_field_happy_path(dispatcher, seeded_repo, emitted) -> None:
     result = await dispatcher.dispatch(
         "update_field",
-        {"section": "basics", "field": "full_name", "value": "Aditya", "confidence": 0.95},
+        {"section": "basics", "field": "full_name", "value": "Aditya Nagariya", "confidence": 0.95},
     )
     assert result["ok"] is True
     assert result["required_filled"] == 1
 
     state = await seeded_repo.get_state("sid-1")
-    assert state.values["basics"]["full_name"]["value"] == "Aditya"
+    assert state.values["basics"]["full_name"]["value"] == "Aditya Nagariya"
     assert state.values["basics"]["full_name"]["confidence"] == 0.95
 
     types_emitted = [e["type"] for e in emitted]
@@ -184,11 +187,11 @@ async def test_update_field_repeatable_exceeds_max(dispatcher) -> None:
 async def test_get_session_context_reports_progress(dispatcher) -> None:
     await dispatcher.dispatch(
         "update_field",
-        {"section": "basics", "field": "full_name", "value": "Aditya"},
+        {"section": "basics", "field": "full_name", "value": "Aditya Nagariya"},
     )
     result = await dispatcher.dispatch("get_session_context", {})
     assert result["ok"] is True
-    assert result["filled"]["basics.full_name"] == "Aditya"
+    assert result["filled"]["basics.full_name"] == "Aditya Nagariya"
     assert "basics.email" in result["missing_required"]
     assert result["required_filled"] >= 1
 
@@ -212,12 +215,12 @@ async def test_advance_step_fires_webhook_when_complete(
 ) -> None:
     # Fill every field visible to recompute_completion as "required"
     fills = {
-        ("basics", "full_name"): "Aditya",
+        ("basics", "full_name"): "Aditya Nagariya",
         ("basics", "email"): "a@b.com",
         ("basics", "phone"): "+61400000000",
         ("basics", "date_of_birth"): "1990-01-01",
         ("basics", "gender"): "Male",
-        ("basics", "bio"): "hello",
+        ("basics", "about_me"): "hello",
         ("basics", "preferred_language"): "English",
         ("basics", "interpreter_required"): "false",
         ("home_address", "address"): "1 Example St",
