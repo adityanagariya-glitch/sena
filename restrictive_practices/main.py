@@ -1,12 +1,13 @@
 import logging
+import os
 import traceback
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from api.routes import router
+from api.routes import _require_auth, router
 from db.session import create_tables
 
 _DEMO_HTML = Path(__file__).parent / "demo_ui.html"
@@ -22,16 +23,19 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    demo_host = os.getenv("SENA_AI_DEMO_HOST", "")
+    origins = [demo_host] if demo_host else ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     app.include_router(router)
 
-    @app.get("/demo", include_in_schema=False)
+    @app.get("/demo", include_in_schema=False, dependencies=[Depends(_require_auth)])
     async def demo_ui() -> FileResponse:
         return FileResponse(_DEMO_HTML, media_type="text/html")
 

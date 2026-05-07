@@ -1,7 +1,11 @@
 import logging
+import os
+import secrets
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +31,23 @@ from pipeline.graph import run_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/restrictive-practices", tags=["restrictive-practices"])
+
+_security = HTTPBasic(auto_error=False)
+
+
+def _require_auth(credentials: Optional[HTTPBasicCredentials] = Depends(_security)) -> None:
+    expected_user = os.getenv("SENA_AI_BASIC_AUTH_USER", "")
+    expected_pass = os.getenv("SENA_AI_BASIC_AUTH_PASSWORD", "")
+    if not expected_user or not expected_pass:
+        return  # auth not configured — allow through (local dev)
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Unauthorized",
+                            headers={"WWW-Authenticate": "Basic"})
+    user_ok = secrets.compare_digest(credentials.username.encode(), expected_user.encode())
+    pass_ok = secrets.compare_digest(credentials.password.encode(), expected_pass.encode())
+    if not (user_ok and pass_ok):
+        raise HTTPException(status_code=401, detail="Unauthorized",
+                            headers={"WWW-Authenticate": "Basic"})
 
 
 def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
@@ -127,7 +148,7 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
     )
 
 
-@router.post("/evaluate", response_model=EvaluateResponse)
+@router.post("/evaluate", response_model=EvaluateResponse, dependencies=[Depends(_require_auth)])
 async def evaluate_case_note(
     payload: CaseNoteInput,
     response: Response,

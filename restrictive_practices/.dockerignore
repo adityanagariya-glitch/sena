@@ -1,0 +1,17 @@
+.venv
+.env
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.claude
+archive
+wiki
+graphify-out
+.git
+.gitignore
+*.md
+!data_flow.md
+scripts/
+.dockerignore
+docker-compose*.yml
