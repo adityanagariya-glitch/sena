@@ -415,4 +415,13 @@ When the user says **"I am adding X"** (a new directory, service, file, or exter
 
 (none)
 
+## Sena Agent System
+
+- Read `.claude/rules/sena-rules.md` at session start for routing rules and constraints.
+- Read `.claude/memory/sena-memory.md` to recall past decisions and outcomes.
+- For non-trivial multi-file or multi-subsystem tasks, route through the Sena agents in `.claude/agents/`. Never handle work of that scope directly in the main session thread.
+- The numbered prompt templates in `.agents/01-08*.md` are templates for an external multi-model orchestrator (see `.agents/WORKFLOW_PLAN.md`). They are **not** Claude Code subagents — do not invoke them via the Task tool.
+- After completing any significant task, append one line to `.claude/memory/sena-memory.md`:
+  `[YYYY-MM-DD] [agent name or "main"] — [what was done] — [key outcome]`
+
 <!-- Last auto-updated: 2026-04-16 00:23:07 by hook -->

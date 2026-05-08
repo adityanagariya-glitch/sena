@@ -1769,3 +1769,306 @@ A consolidated table of EVERY new wire event introduced by Issues #14 / #15 / #1
 - [ ] Issue #22 — Voice-sheet header reads `participantDisplayName`; falls back to generic greeting when empty.
 - [ ] Anti-recurrence — `default` arm of `VoiceEventModel.parse` logs a `WARN` instead of silent `null`.
 - [ ] All `reason_human` and notice strings are server-authored — no Flutter-side rephrasing.
+
+---
+
+## Addendum (2026-05-08) — Bidirectional Sync Gaps: Manual UI Edits, Screen Boundaries, Cross-Screen Context
+
+> **Source:** User-reported gaps after the 2026-05-07 forensic remediation shipped. Three new categories of bug, all symptoms of the same root cause: **the WS protocol is one-directional in practice.** Server emits typed events to client; client only sends raw audio + screen-state pings. So when the user does anything *with their hands* (taps "Add", types into a field, navigates Next), the assistant is blind to it.
+>
+> **Anti-pattern:** *Producer-Without-Consumer* (AP-1, server side) — but inverted. Now Flutter is the producer-without-consumer-on-the-server. The assistant has no schema-typed channel to react to user-driven UI changes.
+>
+> **Scope of this addendum:** five new issues (#23–#27). Add a typed **client → server** event channel, formalise step-boundary signalling, and verify cross-screen context actually loads when the user moves between steps mid-session.
+
+### Bugs this addendum fixes
+
+| User-visible bug | Root cause | Fix issue |
+|---|---|---|
+| User adds an emergency contact via the "+" UI button. Agent has no idea — keeps asking about the previous contact | No client→server "user added row" event | #23 |
+| User types a value into a field manually. Agent re-asks for the same field on next turn | No client→server "user filled field" event | #24 |
+| User taps Next / Back on the step header. Agent keeps asking step-1 questions on step 2 | Step boundary not signalled to backend | #25 |
+| Returning user starts step 3 — assistant says "Hi, what's your name?" as if it never met them | Cross-screen context bucket either not written on step-1 completion or not read on step-3 session create | #26 |
+| User adds a min-zero repeatable section row (Morning Routine) by hand. Agent says "you don't have a morning routine yet" | Same as #23 — no signal | #27 |
+
+---
+
+### Issue #23 — Wire `user_action` channel: client → server typed events (CRITICAL, NEW)
+
+**Symptom.** The Flutter app supports manual UI edits in parallel with voice. Today, those manual actions are invisible to the agent — Gemini has no idea the user just added a contact, deleted a row, or finalised a section.
+
+**Why this is a Flutter-side fix (and a tiny backend addition).** The backend currently has no inbound message type for "user did X with their finger". We need to add one, but the contract — what events to send and when — is owned by Flutter because Flutter is the only place that knows when the user touches the UI.
+
+**Source of truth (backend addition).** `api/ws_routes.py` and `services/gemini_live.py` will accept a new client→server JSON frame type:
+```json
+{ "type": "user_action", "action": "<action_name>", "payload": { ... } }
+```
+Backend treats this exactly like a tool call from the model — it mutates `FormState`, fires the same `field_updated` / `row_added` / `repeatable_section_entered` events back to the client (so the agent's view and the UI stay aligned), and injects a one-line `[USER ACTION]` text turn into Gemini so the agent acknowledges it on the next turn.
+
+**Action types Flutter must emit (v1):**
+
+| `action` | When to emit | `payload` |
+|---|---|---|
+| `manual_field_set` | User typed into a field and the field blurred / form value committed | `{section_id, field_id, repeatable_index?, value}` |
+| `manual_field_cleared` | User explicitly cleared a previously-filled field | `{section_id, field_id, repeatable_index?}` |
+| `manual_row_added` | User tapped the "+" / "Add another contact" button in a repeatable section | `{section_id}` (server returns the new index in the echoed `row_added` event) |
+| `manual_row_removed` | User tapped delete on a row card | `{section_id, repeatable_index}` |
+| `manual_section_skipped` | User tapped "Skip" on a min-zero repeatable section | `{section_id}` |
+
+**Implementation steps:**
+
+1. **Outbound model** — `lib/features/voice_onboarding/data/models/user_action_model.dart` (new):
+   ```dart
+   class UserActionModel {
+     final String action;             // 'manual_field_set' | 'manual_row_added' | ...
+     final Map<String, dynamic> payload;
+     const UserActionModel({required this.action, required this.payload});
+     Map<String, dynamic> toJson() => {
+       'type': 'user_action',
+       'action': action,
+       'payload': payload,
+     };
+   }
+   ```
+
+2. **Datasource send method** — `voice_session_datasource.dart`:
+   ```dart
+   Future<void> sendUserAction(UserActionModel action) async {
+     final ws = _ws;
+     if (ws == null) return;
+     ws.add(jsonEncode(action.toJson()));
+   }
+   ```
+
+3. **Controller convenience methods** — `voice_session_controller.dart`:
+   ```dart
+   Future<void> notifyManualFieldSet({
+     required String section,
+     required String field,
+     int? row,
+     required Object value,
+   }) =>
+       _ds.sendUserAction(UserActionModel(
+         action: 'manual_field_set',
+         payload: {
+           'section_id': section,
+           'field_id': field,
+           if (row != null) 'repeatable_index': row,
+           'value': value,
+         },
+       ));
+
+   Future<void> notifyManualRowAdded(String sectionId) =>
+       _ds.sendUserAction(UserActionModel(
+         action: 'manual_row_added',
+         payload: {'section_id': sectionId},
+       ));
+   // ... mirror for cleared / removed / skipped
+   ```
+
+4. **Wire into existing form widgets** — every form widget already has an onChanged or controller; on commit, call the matching `notifyManual*` method **only when** `voiceCtrl.isConnected.value == true`. (No-op when voice sheet is closed.) Examples:
+   - `personal_details_step_content.dart` — text field commits → `notifyManualFieldSet`
+   - Emergency-contact "+" button — `notifyManualRowAdded('emergency_contacts')`
+   - Min-zero "Skip" button (Morning Routine) — `notifyManualSectionSkipped('morning_routine')`
+
+5. **Echo handling.** The server will fire back the same `field_updated` / `row_added` / `repeatable_section_entered` events Flutter already handles. Do NOT separately update local state from the user_action — wait for the echo, so voice and manual paths converge through one consistent state-update pipeline. (Prevents double-write races.)
+
+6. **Verify** — open the voice sheet, manually type into the email field. Within ~1s the agent should say something like "Got the email, thanks — phone next?" — proving the agent saw the user's typed input.
+
+**Anti-recurrence:** every form widget that mutates `FormState` MUST emit a `user_action` when the voice session is connected. Add a Dart lint or PR-checklist item: "If you add a new field/section to a step, add a corresponding `notifyManual*` call."
+
+---
+
+### Issue #24 — `manual_field_set` debounce + value-equality guard (HIGH, NEW)
+
+**Symptom (after #23 lands).** Without care, Flutter spams `manual_field_set` on every keystroke, flooding Gemini with "user typed J… Ja… Jan… Jane" and burning input tokens.
+
+**Fix.** Debounce per-field with a 600ms trailing edge AND only emit when the value actually differs from the last emitted value for that key.
+
+```dart
+final _lastEmittedValue = <String, Object>{};   // key = "section.field[.row]"
+final _debouncers = <String, Timer>{};
+
+void scheduleManualFieldSet({
+  required String section,
+  required String field,
+  int? row,
+  required Object value,
+}) {
+  final key = '$section.$field${row != null ? '.$row' : ''}';
+  _debouncers[key]?.cancel();
+  _debouncers[key] = Timer(const Duration(milliseconds: 600), () {
+    if (_lastEmittedValue[key] == value) return;     // unchanged — skip
+    _lastEmittedValue[key] = value;
+    notifyManualFieldSet(section: section, field: field, row: row, value: value);
+  });
+}
+```
+
+Use `scheduleManualFieldSet` from text-field `onChanged`; use the immediate `notifyManualFieldSet` from blur / form-submit events.
+
+**Verify** — type a 12-character name slowly; expect exactly 1 `user_action` frame on the wire (use the WS inspector or backend log).
+
+---
+
+### Issue #25 — Step boundary: emit `step_changed` when the user navigates (CRITICAL, NEW)
+
+**Symptom.** User completes step 1 in voice → taps Next → arrives on step 2's screen. Voice sheet stays open. Agent keeps asking "What's your full name?" because the agent's `[LIVE_STATE_JSON]` still says it's collecting `personal_information`.
+
+**Why.** The server's WS session is bound 1:1 to a single step (by design — clean resumption semantics). When the user navigates between steps in the UI, the *correct* behaviour is to close the current voice WS and open a new one for the new step. Today, Flutter doesn't do that — it leaves the WS open and the agent drifts.
+
+**Two contracts to implement (Flutter side):**
+
+#### 25a. On step navigation while voice is connected — close + reopen
+
+```dart
+// In step navigation handler (Next / Back / direct step jump):
+if (voiceCtrl.isConnected.value) {
+  await voiceCtrl.disconnect(reason: 'step_changed');   // closes WS gracefully (code 4001)
+  // ... allow the new step screen to mount and bootstrap
+  await voiceCtrl.connect(stepId: newStepId, schema: newStepSchema);
+}
+```
+
+Backend close code `4001` ("step_change") is reserved — server will skip the auto-resumption handle on this code (next session is intentionally fresh, not a resume).
+
+#### 25b. Bootstrap envelope on the NEW session must include prior-step data
+
+The new session's `POST /v1/onboarding/session` body must set `bootstrap.mode = "page_handoff"` and include `prior_pages` mapping each completed step's `step_id` to its key fields. Server then injects them into the new step's `[LIVE_STATE_JSON].prior_pages`.
+
+```dart
+final priorPages = <String, Map<String, dynamic>>{};
+for (final completedStep in onboardingCtrl.completedSteps) {
+  priorPages[completedStep.id] = completedStep.publicValuesForVoiceContext();
+  // publicValuesForVoiceContext returns a flat map: {'full_name': 'Jane', 'phone': '+61...'}
+}
+
+final body = CreateVoiceSessionRequest(
+  stepId: newStepId,
+  schema: newStepSchema,
+  bootstrap: BootstrapEnvelope(
+    mode: priorPages.isEmpty ? 'new_user' : 'page_handoff',
+    participantDisplayName: profile.displayName,
+    priorPages: priorPages,
+    // current_page_values: any pre-fills the user already saved on this step (often {})
+    currentPageValues: stepCtrl.currentValues,
+    readonlyPaths: stepCtrl.readonlyPaths,
+  ),
+);
+```
+
+This is what makes the agent say "Hi Jane, welcome to the next step — I've got your contact details from earlier." (Rule 2 in the system prompt.)
+
+**Verify**:
+1. Complete step 1 by voice, tap Next.
+2. Tap the voice button on step 2.
+3. First utterance MUST say "Hi {name}" + reference at least one value from step 1 (e.g. "your phone we have on file").
+4. Agent must NOT re-ask any field that's in `prior_pages`.
+
+---
+
+### Issue #26 — Cross-screen context bucket: verify it actually loads (CRITICAL, NEW)
+
+**Symptom.** Even after #25 lands, the user reports that the agent on a later step has no memory of earlier steps when they take a break and return the next day.
+
+**Why this is separate from #25.** `bootstrap.prior_pages` covers the in-app, same-session handoff — Flutter has the data locally and ships it on session create. The cross-screen context bucket is for the cross-day case: data persists in Redis under `sena:onboarding:user_ctx:{tenant_id}:{participant_id}` for 7 days, refreshed on every write. The server reads it on `POST /v1/onboarding/session` AFTER applying `bootstrap.prior_pages`, so it can fill the gaps when Flutter doesn't have local data (e.g. the user uninstalled and reinstalled).
+
+**Flutter contract (no new code, but verify):**
+
+1. **`tenant_id` and `participant_id` MUST be set on every `CreateVoiceSessionRequest`.** Without them the server silently skips the bucket lookup. Confirm both fields are non-empty in the wire body for every session create. (See `api/routes.py` `_resolve_bootstrap_with_user_ctx` — it short-circuits when either is empty.)
+
+2. **`mode` selection rule:**
+   - Set `mode: "page_handoff"` when `priorPages` is non-empty OR when the local profile has any onboarding step marked as previously-completed-by-this-participant.
+   - Set `mode: "new_user"` ONLY when the participant truly has zero history.
+   - When in doubt, send `page_handoff` — the server's bucket lookup is harmless and additive.
+
+3. **Diagnostic (dev builds only).** Hit `GET /v1/onboarding/_diag/bucket?tenant_id=...&participant_id=...` before opening the voice sheet — confirm `bucket_empty` reflects reality.
+
+**Verify (cross-day scenario):**
+1. Complete steps 1–2, fully close the app.
+2. Wait 5 minutes (proves it's not session-cache).
+3. Reopen, navigate to step 3, open voice sheet.
+4. Agent's first utterance must reference at least one fact from step 1 OR 2 (name, NDIS goal, support frequency, anything).
+5. If it doesn't, capture the server log line `session_create_resolved_bootstrap` — `prior_pages_keys` will tell you whether the bucket loaded; if not, `tenant_id` / `participant_id` mismatch is the most likely cause.
+
+---
+
+### Issue #27 — Min-zero repeatable: "Skip" button must emit `manual_section_skipped` (HIGH, NEW)
+
+**Symptom.** Morning Routine, Evening Routine, Medical History etc. are repeatable sections with `min: 0`. The voice agent (post-Rule-9 fix) surfaces them and offers to skip. If the user taps the on-screen "Skip" button instead of saying "skip", the agent has no idea — keeps asking.
+
+**Fix (Flutter):** the section's "Skip" button calls `notifyManualSectionSkipped(sectionId)` from #23. Server marks the section as user-declined in `state.declined_sections` (new field — backend addition required) and the agent stops surfacing it.
+
+**Server-side addition (informational — not Flutter scope, but cite for clarity):**
+- `FormState.declined_sections: list[str]` (default `[]`)
+- `prompt_builder.py` excludes any section in `declined_sections` from `next_optional_field` enumeration
+- `tools.py` accepts a new `manual_section_skipped` user_action handler
+
+**Verify** — on the requirements step, tap "Skip" on Morning Routine. Within one turn the agent should NOT mention morning routine. If it does, capture the server log — `declined_sections` should contain `morning_routine`.
+
+---
+
+### Wire-Level Contract Summary (additions from this addendum)
+
+#### Client → Server (NEW direction)
+
+| Frame | Payload | Purpose |
+|---|---|---|
+| `{type: "user_action", action: "manual_field_set", payload: {section_id, field_id, repeatable_index?, value}}` | typed | User typed/picked a value with their finger |
+| `{type: "user_action", action: "manual_field_cleared", payload: {section_id, field_id, repeatable_index?}}` | typed | User explicitly cleared a field |
+| `{type: "user_action", action: "manual_row_added", payload: {section_id}}` | typed | User tapped "+" |
+| `{type: "user_action", action: "manual_row_removed", payload: {section_id, repeatable_index}}` | typed | User tapped delete on a row |
+| `{type: "user_action", action: "manual_section_skipped", payload: {section_id}}` | typed | User tapped "Skip" on a min-zero repeatable |
+
+#### Server → Client (echo behaviour — existing events, new triggers)
+
+| Echo event | Triggered by | Notes |
+|---|---|---|
+| `field_updated` | every successful `manual_field_set` | identical shape to voice-driven update |
+| `state` | every `user_action` that mutates state | full snapshot |
+| `row_added` | `manual_row_added` | `{section_id, new_index}` |
+| `repeatable_section_entered` | `manual_row_added` (auto-pin focus) | `{section_id, intent: "next", row_index}` |
+| `validation_rejection` | `manual_field_set` whose value fails server validators | identical handling to Issue #18 |
+
+#### WS close codes (additions)
+
+| Code | Meaning | Flutter response |
+|---|---|---|
+| `4001` | step_change (intentional) | Do NOT show error; expected during step navigation. Skip resume handle. |
+
+---
+
+### Sequenced Implementation Plan (Issues #23–#27)
+
+| Step | Issue | Files | Verifier |
+|------|-------|-------|----------|
+| 1 | #23 `user_action` channel scaffold | `user_action_model.dart`, datasource send method, controller `notifyManual*` methods | unit: model `toJson` round-trips |
+| 2 | #23 wire form widgets | each step's step_content widget | manual: type into a field, see `field_updated` echo within 1s |
+| 3 | #24 debounce + dedup | controller `scheduleManualFieldSet` | manual: type 12-char string, observe exactly 1 frame |
+| 4 | #25a step-change disconnect/reconnect | step navigation handler | manual: complete step 1 by voice, tap Next, voice sheet on step 2 references prior data |
+| 5 | #25b `prior_pages` in bootstrap | `create_voice_session_usecase.dart` + `BootstrapEnvelope` model | manual: agent acknowledges name from step 1 on step 2 |
+| 6 | #26 verify cross-screen bucket | NO Flutter code change — verify `tenant_id`/`participant_id` always set + diag endpoint check | cross-day scenario above |
+| 7 | #27 min-zero Skip button | requirements step UI | manual: tap Skip on Morning Routine, agent stops asking |
+
+**After each step:**
+- `flutter analyze` → 0 warnings
+- Manual voice-test the verifier above before moving on
+- Conventional commit: `feat(voice): wire <action> client→server`
+
+**Anti-recurrence test (run after step 7):**
+- Open voice on step 2 with a populated step-1 history. Agent's first utterance MUST contain at least one value from step 1.
+- Open voice on step 3 next day (force-quit + reopen). Agent's first utterance MUST contain at least one value from step 1 or 2.
+- Tap "Skip" on Morning Routine — agent must not bring it up again that session.
+- These three checks together prove that bidirectional sync (#23), step boundaries (#25), and cross-screen context (#26) are all functioning.
+
+### Final Audit Checklist (Issues #23–#27)
+
+- [ ] Issue #23 — `UserActionModel` + datasource send method + 5 `notifyManual*` controller methods exist; every form-widget mutation calls the matching method when `voiceCtrl.isConnected`.
+- [ ] Issue #23 — Echo events (`field_updated`, `row_added`, `repeatable_section_entered`) handled identically whether triggered by voice or by `user_action`.
+- [ ] Issue #24 — Per-key debounce (600ms) + value-equality guard implemented; manually typing a long string produces exactly one frame.
+- [ ] Issue #25a — Step navigation while voice is connected closes WS with code 4001 and reopens with the new step's schema.
+- [ ] Issue #25b — `BootstrapEnvelope.priorPages` populated from completed steps' `publicValuesForVoiceContext()`; `mode = "page_handoff"` when non-empty.
+- [ ] Issue #26 — Every `CreateVoiceSessionRequest` includes non-empty `tenant_id` and `participant_id`; `mode` defaults to `page_handoff` whenever the participant has any prior step history.
+- [ ] Issue #27 — Min-zero repeatable "Skip" buttons emit `manual_section_skipped`; server's `declined_sections` honoured.
+- [ ] WS close code `4001` does NOT surface an error toast — silent expected-state handling.
+- [ ] No Flutter-side rephrasing of server-authored strings.
+- [ ] Anti-recurrence tests above all pass.
