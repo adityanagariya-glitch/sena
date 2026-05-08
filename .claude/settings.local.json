@@ -60,7 +60,8 @@
       "PowerShell($svc = \"C:\\\\Users\\\\Admin\\\\Downloads\\\\sena-mobile\\\\sena-mobile\\\\SENA_AI\\\\sena-ai\\\\services\\\\onboarding\"; $env:PYTHONPATH = \"$svc\\\\src\"; cd $svc; python -m pytest tests/test_validators.py -v --tb=short 2>&1 | Select-Object -Last 70)",
       "PowerShell($env:PYTHONPATH = \"C:\\\\Users\\\\Admin\\\\Downloads\\\\sena-mobile\\\\sena-mobile\\\\SENA_AI\\\\sena-ai\\\\services\\\\onboarding\\\\src\"; cd \"C:\\\\Users\\\\Admin\\\\Downloads\\\\sena-mobile\\\\sena-mobile\\\\SENA_AI\\\\sena-ai\\\\services\\\\onboarding\"; python -m pytest tests/test_validators.py --tb=short -q 2>&1 | Select-Object -Last 20)",
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Admin\\\\Downloads\\\\sena-mobile\\\\sena-mobile\\\\SENA_AI\\\\\" -Directory | Where-Object {$_.Name -match '^\\\\.'})",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Bash(dir C:\\\\Users\\\\Admin\\\\Downloads\\\\sena-mobile\\\\sena-mobile\\\\SENA_AI\\\\sena-ai\\\\services\\\\onboarding\\\\src\\\\onboarding\\\\services\\\\validators *)"
     ]
   },
   "enableAllProjectMcpServers": true,

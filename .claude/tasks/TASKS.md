@@ -3,7 +3,7 @@ title: Persistent Task List
 updated: 2026-05-07
 ---
 
-> Last session end-state (2026-05-07): Forensic audit identified 7 systemic anti-patterns + 7 newly-discovered issues. Plan written to `.planning/PLAN-audit-2026-05-07-fixes.md` (backend, 7 sequential steps, 93 tests target). Flutter changes documented in `FLUTTER_DEV_HANDOFF.md` Addendum 2026-05-07 (Issues #18-#22). System prompt got Rules 10 + 11 (post-capture readback + self-knowledge from state). **Task #14 PENDING — execute the audit plan next session.**
+> Last session end-state (2026-05-07): Task #14 forensic audit plan **COMPLETE**. All 7 backend steps executed; 192 tests pass (was 78 broken → 80 fixed baseline → 192 after full suite including validators/cross-screen context). Server boots cleanly. Flutter frontend work (Issues #18-#22) remains for mobile team.
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -17,7 +17,7 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ## Active
 
 ### #14 — Forensic audit fixes (anti-pattern remediation, 2026-05-07)
-- **Status:** pending — plan written, execution next session
+- **Status:** completed (2026-05-07)
 - **Priority:** P0 (NDIS legal-compliance risk in N-2: cross-field invariants bypassed at advance gate)
 - **Backend plan:** `.planning/PLAN-audit-2026-05-07-fixes.md` (7 sequential steps, 93 tests target)
 - **Frontend plan:** `SENA_AI/FLUTTER_DEV_HANDOFF.md` Addendum 2026-05-07 — Issues #18-#22
@@ -30,14 +30,14 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 - **What's already done (this session):**
   - System prompt — Rule 10 (post-capture readback) + Rule 11 (self-knowledge from state) added; Pace section tightened (one-sentence default, listen-first rule)
   - Forensic report + plan files written; nothing else yet
-- **Backend steps remaining (execute in order — see `PLAN-audit-2026-05-07-fixes.md`):**
-  1. Add `next_optional_field` helper to `services/validators/sequencing.py` + 2 tests
-  2. Interpolate `__PARTICIPANT_NAME__` + `__NEXT_OPTIONAL_FIELD__` tokens in `prompt_builder.py` + 4 tests
-  3. Update `prompts/onboarding_system.md` — top-level greeting directive + Rule 5 anchor + Rule 9 min-zero protocol
-  4. Harden `_advance_step` in `tools.py` — `confirmation_transcript` required+non-empty + cross-field invariant gate via `validate_step_complete` + 4 tests
-  5. Race fix in `_handle_validation_failed` (`gemini_live.py`) — `audio_stream_end=True` flush before text injection (manual integration test)
-  6. Mirror v2 `field_errors` → `state.pending_validation_errors` in `_handle_screen_state` (`gemini_live.py`) + 3 tests
-  7. Auto-pin focus + emit `repeatable_section_entered` from `_add_repeatable_row` (`tools.py`) + 2 tests
+- **Backend steps (all completed 2026-05-07):**
+  1. ✓ `next_optional_field` in `services/validators/sequencing.py` + 2 tests
+  2. ✓ `__PARTICIPANT_NAME__` + `__NEXT_OPTIONAL_FIELD__` tokens in `prompt_builder.py` + 4 tests
+  3. ✓ `prompts/onboarding_system.md` — greeting directive + Rule 5 anchor + Rule 9 min-zero protocol
+  4. ✓ `_advance_step` hardened — `confirmation_transcript` required + cross-field invariant gate + 4 tests
+  5. ✓ Race fix in `_handle_validation_failed` — `audio_stream_end=True` before text injection
+  6. ✓ v2 `field_errors` → `state.pending_validation_errors` mirror in `_handle_screen_state` + 3 tests (bug fixed: uses `state_v2.field_errors` dict not raw list)
+  7. ✓ Auto-pin focus + emit `repeatable_section_entered` from `_add_repeatable_row` + 2 tests
 - **Frontend steps remaining (separate session — Flutter team):**
   - Issue #18 — `validation_rejection` entity + parser + controller + UI binding
   - Issue #19 — `field_skipped_warning` entity + parser + banner + missing-field highlights
