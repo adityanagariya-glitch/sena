@@ -292,6 +292,20 @@ def _coerce_value(raw: Any, field: FieldSpec) -> Any:
             if isinstance(raw, list):
                 return raw
             return [x.strip() for x in s.split(",") if x.strip()]
+        if ftype == "enum" and field.options:
+            # Normalise model output (e.g. "SELF_MANAGED", "self managed", "self-managed")
+            # to the canonical schema option string (e.g. "Self Managed").
+            # Strategy: case-insensitive comparison after collapsing [-_\s] to space.
+            import re as _re
+            def _normalise(v: str) -> str:
+                return _re.sub(r"[-_\s]+", " ", v).strip().lower()
+            s_norm = _normalise(s)
+            for opt in field.options:
+                if _normalise(opt) == s_norm:
+                    return opt  # return canonical casing from schema
+            # No exact (normalised) match — return raw so downstream validator
+            # can emit a human-readable rejection rather than silently accepting
+            # an invalid value.
     except (ValueError, TypeError):
         return raw
     return s
@@ -885,12 +899,24 @@ class ToolDispatcher:
             }
 
         new_index = state.increment_repeatable_row(section_id)
+        # Auto-pin focus to the new row so any immediate update_field call
+        # doesn't hit cross_section_blocked — agent doesn't need a separate
+        # enter_repeatable_section after add_repeatable_row.
+        state.focused_section = section_id
+        state.focused_repeatable_index = new_index
+        state.touch()
         await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
 
         await self._emit({
             "type": "row_added",
             "section_id": section_id,
             "new_index": new_index,
+        })
+        await self._emit({
+            "type": "repeatable_section_entered",
+            "section_id": section_id,
+            "intent": "next",
+            "row_index": new_index,
         })
 
         return {"ok": True, "section_id": section_id, "new_index": new_index}

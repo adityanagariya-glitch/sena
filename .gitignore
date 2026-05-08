@@ -55,3 +55,6 @@ Figma
 # .gemini/
 github
 github.pub
+
+# Windows reserved device name (not a real file)
+nul

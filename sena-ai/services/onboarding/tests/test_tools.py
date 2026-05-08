@@ -404,6 +404,43 @@ async def test_escalate_incident_appends_and_emits(dispatcher, seeded_repo, emit
     assert escalated[0]["reason"] == "self_harm"
 
 
+# ── add_repeatable_row ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_add_repeatable_row_pins_focus_to_new_index(
+    dispatcher, seeded_repo
+) -> None:
+    result = await dispatcher.dispatch(
+        "add_repeatable_row", {"section_id": "emergency_contacts"}
+    )
+    assert result["ok"] is True
+    new_index = result["new_index"]
+
+    state = await seeded_repo.get_state("sid-1")
+    assert state.focused_section == "emergency_contacts"
+    assert state.focused_repeatable_index == new_index
+
+
+@pytest.mark.asyncio
+async def test_add_repeatable_row_emits_repeatable_section_entered(
+    dispatcher, emitted
+) -> None:
+    result = await dispatcher.dispatch(
+        "add_repeatable_row", {"section_id": "emergency_contacts"}
+    )
+    assert result["ok"] is True
+
+    types_emitted = [e["type"] for e in emitted]
+    assert "row_added" in types_emitted
+    assert "repeatable_section_entered" in types_emitted
+
+    entered = next(e for e in emitted if e["type"] == "repeatable_section_entered")
+    assert entered["section_id"] == "emergency_contacts"
+    assert entered["row_index"] == result["new_index"]
+    assert entered["intent"] == "next"
+
+
 # ── unknown tool ─────────────────────────────────────────────────────────────
 
 

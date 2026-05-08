@@ -323,6 +323,10 @@ class GeminiLiveSession:
             f"[SCREEN VALIDATION] The screen rejected the value stored for {loc}: "
             f"{reason_human} — re-ask the participant for a corrected value (Rule 7)."
         )
+        # N-3 race fix: flush any in-flight audio buffer before injecting text
+        # so the [SCREEN VALIDATION] hint cannot be concatenated into the user's
+        # current utterance and misread as their speech by Gemini's VAD.
+        await session.send_realtime_input(audio_stream_end=True)
         await session.send_realtime_input(text=injection)
         log.info(
             "validation_failed_injected session=%s loc=%s code=%s",
@@ -389,6 +393,33 @@ class GeminiLiveSession:
         injection = render_injection_text(state_v2)
         log.debug("screen_state_inject session=%s version=%d", self._session_id, version)
         await session.send_realtime_input(text=injection)
+
+        # N-4 fix: mirror v2 field_errors into state.pending_validation_errors so
+        # advance_step's gate has a single source of truth regardless of whether
+        # Flutter also sends a separate validation_failed control frame.
+        # Use state_v2.field_errors (dict[dotted_path → reason_human]) from the
+        # already-validated Pydantic model — avoids raw_data format skew.
+        if state_v2.field_errors:
+            state_fv = await self._repo.get_state(self._session_id)
+            if state_fv is not None:
+                for dotted_path, reason_human in state_v2.field_errors.items():
+                    parts = dotted_path.split(".", 1)
+                    if len(parts) != 2:
+                        continue
+                    sec, fld = parts
+                    key = (sec, fld, None)
+                    state_fv.pending_validation_errors = [
+                        e for e in state_fv.pending_validation_errors
+                        if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+                    ]
+                    state_fv.pending_validation_errors.append({
+                        "section_id": sec,
+                        "field_id": fld,
+                        "repeatable_index": None,
+                        "code": "client_validation",
+                        "reason_human": reason_human,
+                    })
+                await self._repo.save_state(state_fv, ttl_sec=settings.session_max_sec)
 
         if settings.debug:
             await self._ws.send_text(json.dumps({"type": "screen_state_ack", "accepted": True, "version": version}))
