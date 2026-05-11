@@ -2072,3 +2072,60 @@ This is what makes the agent say "Hi Jane, welcome to the next step — I've got
 - [ ] WS close code `4001` does NOT surface an error toast — silent expected-state handling.
 - [ ] No Flutter-side rephrasing of server-authored strings.
 - [ ] Anti-recurrence tests above all pass.
+
+---
+
+## Addendum 2026-05-08 — Issue #28: Section-copy auto-fill contract
+
+### Symptom that prompted this fix
+
+User filled `home_address` by voice on the personal-information step. The schema declares `service_same_as_home: true` by default. The four `service_address` fields stayed empty on the Flutter UI. Voice agent moved on. User saw a half-empty form.
+
+### Backend behaviour (now live)
+
+The schema's `copy_from_if_flagged` declaration is now load-bearing. When a section declares:
+
+```json
+{
+  "id": "service_address",
+  "copy_from_if_flagged": "home_address",
+  "flag_field": {
+    "id": "service_same_as_home",
+    "type": "boolean",
+    "default": true
+  }
+}
+```
+
+…the server mirrors every matching field id from the source section into the target section after every successful `update_field` call, IF the flag is `true` (or unset and `default: true`). The mirror is idempotent — it only writes when the source value differs from the current target value.
+
+### New WS event payload field
+
+Each auto-mirrored field is surfaced as an additional `field_updated` event with two extra keys the Flutter client must accept:
+
+```jsonc
+{
+  "type": "field_updated",
+  "section": "service_address",
+  "field": "address",
+  "value": "1 Example St",
+  "repeatable_index": null,
+  "confidence": 1.0,
+  "turn_id": 7,
+  "source": "app",                  // NEW: distinguish from voice captures
+  "auto_copied_from": "home_address" // NEW: where the value came from
+}
+```
+
+The base `field_updated` event for the user's voice-driven home_address write fires unchanged. The mirrored events fire AFTER it, before the trailing `state` snapshot.
+
+### Flutter checklist
+
+- [ ] `FieldUpdatedModel` parser accepts (and ignores if not interested) the new `source` and `auto_copied_from` keys without crashing.
+- [ ] When `auto_copied_from` is non-null, the UI MAY show a subtle "auto-filled from <label>" hint next to the field — but the field MUST be populated either way.
+- [ ] Toggling the `service_same_as_home` checkbox in the UI must emit the same `update_field` payload the voice path uses (`section: "service_address"`, `field: "service_same_as_home"`, `value: <bool>`, `cross_section_intent: true`). The server will fan out the four mirrored field events automatically.
+- [ ] When user explicitly sets the flag to `false` mid-session, do NOT clear the previously-mirrored values — the schema's `visible_if: { service_same_as_home: false }` already hides the wrapped fields. Server keeps the values for round-trip safety.
+
+### Cross-screen context flag note
+
+`SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED` now defaults to `true`. The bucket key is `sena:onboarding:user_ctx:{tenant_id}:{participant_id}` so cross-tenant isolation is structural — there is no flag-flip required to be safe. If the agent re-asks for the participant's name on a new screen, the cause is the client failing to send `tenant_id` + `participant_id` on `POST /v1/onboarding/session` (Issue #26), NOT the flag. Verify the request body before assuming a backend regression.

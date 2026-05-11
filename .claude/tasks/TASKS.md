@@ -3,7 +3,7 @@ title: Persistent Task List
 updated: 2026-05-07
 ---
 
-> Last session end-state (2026-05-07): Task #14 forensic audit plan **COMPLETE**. All 7 backend steps executed; 192 tests pass (was 78 broken → 80 fixed baseline → 192 after full suite including validators/cross-screen context). Server boots cleanly. Flutter frontend work (Issues #18-#22) remains for mobile team.
+> Last session end-state (2026-05-11): Task #15 state-sync desync repair **COMPLETE**. 4 frontend-reported bugs fixed surgically (service-address auto-copy, cross-screen flag default, emergency-contact update loop, JSON-as-Truth prompt rule). 198/198 tests pass (+6 regression). Stale `FLUTTER_VOICE_INTEGRATION_FIXES.md` removed; `FLUTTER_DEV_HANDOFF.md` extended with Issue #28 contract.
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -15,6 +15,34 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ---
 
 ## Active
+
+### #15 — State-sync desync repair (2026-05-11)
+- **Status:** completed (2026-05-11)
+- **Priority:** P0 (user-reported regressions blocking voice rollout)
+- **Trigger:** User report — 4 production-shape bugs after Task #14 shipped:
+  1. Service-address auto-copy broken (schema declared `copy_from_if_flagged: home_address` but no code read it)
+  2. Resumed sessions re-asked for name (cross-screen context flag default OFF)
+  3. Emergency-contact updates dropped silently (`cross_section_blocked` after focus pinned to non-repeatable section)
+  4. Double-prompted email even after the value was captured (agent not consulting `[LIVE_STATE_JSON]` before asking)
+- **Root cause pattern:** State-sync desync — Gemini agent + Flutter UI built parallel views of "what's filled" instead of treating the server-authored JSON state as the single source of truth.
+- **Fixes shipped:**
+  - `core/settings.py:69` — `onboarding_cross_screen_context_enabled` default `False` → `True`. Bucket key (`{tenant_id}:{participant_id}`) makes isolation structural, not flag-dependent.
+  - `services/tools.py` — new `_apply_copy_mirroring()` helper invoked after every successful `set_field`. Materialises schema's `copy_from_if_flagged` declaration. Idempotent; emits per-field `field_updated` events with new keys `source: "app"` and `auto_copied_from: <section>`.
+  - `services/tools.py` `_update_field` — implicit-enter for repeatable targets. Auto-pins `focused_section` + `focused_repeatable_index` (mirrors `_add_repeatable_row` behaviour) so `cross_section_blocked` never fires for legitimate repeatable writes.
+  - `prompts/onboarding_system.md` — new "JSON-as-Truth Protocol — MANDATORY pre-flight" block under ABSOLUTE STATE AUTHORITY. 5 enforcement rules: never ask for filled fields, never start from section[0] when state has data, never ask the same question twice, prior_pages personalisation, auto-copied fields are still filled.
+- **Docs:**
+  - `FLUTTER_DEV_HANDOFF.md` — appended Issue #28 documenting auto-copy contract + new payload keys + flag-default note.
+  - `FLUTTER_VOICE_INTEGRATION_FIXES.md` — **deleted** (superseded by HANDOFF). Log reference in `tools.py:537` updated.
+- **Tests:** 192 → 198 (+6 regression):
+  - `test_service_address_auto_copies_when_flag_default_true`
+  - `test_service_address_no_copy_when_flag_explicit_false`
+  - `test_service_address_copies_after_flag_flip_to_true`
+  - `test_cross_screen_context_flag_defaults_on`
+  - `test_repeatable_update_auto_pins_focus_when_other_section_focused`
+  - `test_non_repeatable_cross_section_still_blocked_without_intent`
+- **Plan artifact:** `SENA_AI/.claude/plans/no-graceful-muffin.md` (PRD style — overwrites prior cross-screen isolation plan, preserved in git history)
+- **Flutter follow-up:** Issue #28 in `FLUTTER_DEV_HANDOFF.md` — accept new `source` + `auto_copied_from` keys on `field_updated` events; verify `tenant_id` + `participant_id` are non-empty on `POST /v1/onboarding/session` (Issue #26 dependency for resume context to populate `prior_pages`).
+- **Anti-recurrence guard:** the JSON-as-Truth Protocol block is the durable fix for the bug *family*. Whenever a future "agent re-asked field X" report arrives, first check whether the prompt rule is still present and whether the cross-screen flag is still ON.
 
 ### #14 — Forensic audit fixes (anti-pattern remediation, 2026-05-07)
 - **Status:** completed (2026-05-07)

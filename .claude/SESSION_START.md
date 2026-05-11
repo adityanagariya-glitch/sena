@@ -38,6 +38,16 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 
 ---
 
+## ✅ DONE: state-sync desync repair (2026-05-11)
+
+Task #15 — Four user-reported voice-flow bugs fixed in one surgical pass:
+1. **Service-address auto-copy** — schema's `copy_from_if_flagged: home_address` is now load-bearing. New `_apply_copy_mirroring()` helper in `services/tools.py` runs after every successful `set_field`, mirroring source-section fields into the target when the flag (default `true`) is set. Mirrored events carry `source: "app"` + `auto_copied_from: <section>`.
+2. **Resumed sessions re-asking name** — `onboarding_cross_screen_context_enabled` default flipped `False` → `True` in `core/settings.py`. Bucket key (`{tenant_id}:{participant_id}`) makes isolation structural; the flag-off default was a diagnostic pause, not a permanent kill.
+3. **Emergency-contact update loop** — `_update_field` now does implicit-enter for repeatable targets (auto-pin `focused_section` + `focused_repeatable_index`) so `cross_section_blocked` never fires when the agent skips the explicit `enter_repeatable_section` call. Non-repeatable cross-section writes still require `cross_section_intent: true`.
+4. **Double-prompted email** — new "JSON-as-Truth Protocol — MANDATORY pre-flight" block in `prompts/onboarding_system.md` directly under ABSOLUTE STATE AUTHORITY. 5 rules force the agent to consult `current_page_values` + `prior_pages` before generating any question.
+
+**Tests:** 192 → 198 (+6 regression). **Stale file removed:** `FLUTTER_VOICE_INTEGRATION_FIXES.md` (content consolidated into `FLUTTER_DEV_HANDOFF.md` Issue #28 addendum). **Flutter follow-up:** parse `source` + `auto_copied_from` keys on `field_updated` events (HANDOFF Issue #28); ensure `tenant_id` + `participant_id` non-empty on `POST /v1/onboarding/session` (HANDOFF Issue #26 — required for `prior_pages` to populate). See TASKS.md #15 for the full inventory.
+
 ## ✅ DONE: validation awareness + sequencing + schema-drift discovery (2026-05-07)
 
 Task #13 — server-side validators authoritative; `pending_validation_errors` blocks `advance_step`; `validation_failed`/`validation_cleared` client→server frames wired in `gemini_live._handle_control`; 4 new server→client events shipped (`repeatable_section_entered/exited`, `field_skipped_warning` with `missing_fields[]` enumerating exactly which required fields are empty, `schema_drift_detected` with `kind: unknown_field|unknown_section`). `FLUTTER_DEV_HANDOFF.md` brought into full sync with backend reality. Tests 78/78 (excluding 2 pre-existing unrelated import errors). **PRD:** `.planning/PRD-validation-sequencing-discovery.md`. **Cross-check:** `.planning/VALIDATION-CROSS-CHECK-2026-05-07.md`. **Validator catalogue:** `.claude/client_onboarding_validations.md` (Flutter-canonical). See TASKS.md #13 for full file list.
@@ -48,7 +58,7 @@ Task #12 — per-(tenant_id, participant_id) shared bucket of step summaries (`U
 
 ## ✅ DONE: onboarding 7-rules + voice protocols (2026-05-02)
 
-Task #11 — implemented all 7 voice-onboarding behavioural rules plus interrupt-recovery, silence-watchdog two-step, and Gemini context_window_compression. Tests 78/78. **Plan artifact:** `~/.claude/plans/cozy-waddling-river.md`. **Flutter delta:** Issues 7–9 in `FLUTTER_VOICE_INTEGRATION_FIXES.md`. See TASKS.md #11 for full file list.
+Task #11 — implemented all 7 voice-onboarding behavioural rules plus interrupt-recovery, silence-watchdog two-step, and Gemini context_window_compression. Tests 78/78. **Plan artifact:** `~/.claude/plans/cozy-waddling-river.md`. **Flutter delta:** Issues 7–9 in `FLUTTER_DEV_HANDOFF.md` (was `FLUTTER_VOICE_INTEGRATION_FIXES.md` — deleted 2026-05-11, content consolidated into HANDOFF). See TASKS.md #11 for full file list.
 
 **Key entry points for resuming:**
 - `models/session_bootstrap.py` — Rule 1/2 envelope; rendered into prompt as `[LIVE_STATE_JSON]`

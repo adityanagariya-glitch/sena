@@ -449,3 +449,190 @@ async def test_dispatch_unknown_tool(dispatcher) -> None:
     result = await dispatcher.dispatch("frobnicate", {})
     assert result["ok"] is False
     assert "unknown tool" in result["error"]
+
+
+# ── service_address ← home_address auto-copy ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_service_address_auto_copies_when_flag_default_true(
+    dispatcher, seeded_repo, emitted
+) -> None:
+    """service_same_as_home defaults to true in the schema; filling
+    home_address should mirror into service_address without an explicit flag
+    set."""
+    for fld, val in [
+        ("address", "1 Example St"),
+        ("state", "NSW"),
+        ("city", "Sydney"),
+        ("zip_code", "2000"),
+    ]:
+        await dispatcher.dispatch(
+            "update_field",
+            {"section": "home_address", "field": fld, "value": val},
+        )
+
+    state = await seeded_repo.get_state("sid-1")
+    svc = state.values.get("service_address") or {}
+    assert svc.get("address", {}).get("value") == "1 Example St"
+    assert svc.get("state", {}).get("value") == "NSW"
+    assert svc.get("city", {}).get("value") == "Sydney"
+    assert svc.get("zip_code", {}).get("value") == "2000"
+
+    # The mirror-side fields should be tagged source=app, not voice
+    assert svc["address"]["source"] == "app"
+
+    # Each mirrored field surfaces a field_updated event with auto_copied_from
+    auto_copy_events = [
+        e for e in emitted
+        if e.get("type") == "field_updated"
+        and e.get("section") == "service_address"
+        and e.get("auto_copied_from") == "home_address"
+    ]
+    assert len(auto_copy_events) == 4
+
+
+@pytest.mark.asyncio
+async def test_service_address_no_copy_when_flag_explicit_false(
+    dispatcher, seeded_repo, emitted
+) -> None:
+    """When the user explicitly says 'service address differs from home',
+    home_address fills must NOT mirror into service_address."""
+    await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "service_address",
+            "field": "service_same_as_home",
+            "value": "false",
+            "cross_section_intent": True,
+        },
+    )
+    for fld, val in [
+        ("address", "1 Home St"),
+        ("state", "NSW"),
+        ("city", "Sydney"),
+        ("zip_code", "2000"),
+    ]:
+        await dispatcher.dispatch(
+            "update_field",
+            {"section": "home_address", "field": fld, "value": val},
+        )
+
+    state = await seeded_repo.get_state("sid-1")
+    svc = state.values.get("service_address") or {}
+    # The flag is recorded, but address fields must remain unset
+    assert svc.get("service_same_as_home", {}).get("value") is False
+    assert svc.get("address") is None or svc["address"].get("value") is None
+
+
+@pytest.mark.asyncio
+async def test_service_address_copies_after_flag_flip_to_true(
+    dispatcher, seeded_repo
+) -> None:
+    """Flag explicitly set to True after home_address is already populated
+    must trigger the mirror on the flag write itself."""
+    for fld, val in [
+        ("address", "42 Main Rd"),
+        ("state", "VIC"),
+        ("city", "Melbourne"),
+        ("zip_code", "3000"),
+    ]:
+        await dispatcher.dispatch(
+            "update_field",
+            {"section": "home_address", "field": fld, "value": val},
+        )
+    # Flip flag explicitly true (cross-section write)
+    await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "service_address",
+            "field": "service_same_as_home",
+            "value": "true",
+            "cross_section_intent": True,
+        },
+    )
+
+    state = await seeded_repo.get_state("sid-1")
+    svc = state.values["service_address"]
+    assert svc["address"]["value"] == "42 Main Rd"
+    assert svc["state"]["value"] == "VIC"
+    assert svc["city"]["value"] == "Melbourne"
+    assert svc["zip_code"]["value"] == "3000"
+
+
+# ── feature flag ────────────────────────────────────────────────────────────
+
+
+def test_cross_screen_context_flag_defaults_on() -> None:
+    """Regression: the cross-screen context bucket lookup must be ON by
+    default. Symptom of OFF: agent re-asks the participant's name on every
+    new screen because prior_pages stays empty."""
+    from onboarding.core.settings import settings
+    assert settings.onboarding_cross_screen_context_enabled is True
+
+
+# ── repeatable auto-pin (cross_section_blocked recovery) ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_repeatable_update_auto_pins_focus_when_other_section_focused(
+    dispatcher, seeded_repo, emitted
+) -> None:
+    """Regression for the 'emergency contact update loop' bug. When focus is
+    pinned to a non-repeatable section and the agent writes into a repeatable
+    section without first calling enter_repeatable_section, the dispatcher
+    must auto-pin instead of returning cross_section_blocked. Otherwise the
+    agent re-asks the user the same field over and over."""
+    # Pin focus to a non-repeatable section (e.g., basics)
+    state = await seeded_repo.get_state("sid-1")
+    state.focused_section = "basics"
+    state.focused_repeatable_index = None
+    await seeded_repo.save_state(state, ttl_sec=3600)
+
+    result = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "emergency_contacts",
+            "field": "name",
+            "value": "Sarah Brown",
+            "repeatable_index": 0,
+        },
+    )
+    assert result["ok"] is True
+
+    state_after = await seeded_repo.get_state("sid-1")
+    assert state_after.focused_section == "emergency_contacts"
+    assert state_after.focused_repeatable_index == 0
+    assert state_after.values["emergency_contacts"][0]["name"]["value"] == "Sarah Brown"
+
+    # The auto-pin emits an implicit-intent repeatable_section_entered event
+    entered = [
+        e for e in emitted
+        if e.get("type") == "repeatable_section_entered"
+        and e.get("intent") == "implicit"
+    ]
+    assert len(entered) >= 1
+
+
+@pytest.mark.asyncio
+async def test_non_repeatable_cross_section_still_blocked_without_intent(
+    dispatcher, seeded_repo
+) -> None:
+    """Auto-pin is for repeatable targets only. Non-repeatable cross-section
+    writes must still be rejected without explicit cross_section_intent so
+    the strictness fix from the prior session is preserved."""
+    state = await seeded_repo.get_state("sid-1")
+    state.focused_section = "basics"
+    state.focused_repeatable_index = None
+    await seeded_repo.save_state(state, ttl_sec=3600)
+
+    result = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "home_address",  # non-repeatable, different section
+            "field": "address",
+            "value": "1 Example St",
+        },
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "cross_section_blocked"

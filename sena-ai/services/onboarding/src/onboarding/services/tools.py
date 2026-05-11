@@ -349,6 +349,87 @@ def _clear_validation_error(
     ]
 
 
+# ── Section-copy mirroring (schema `copy_from_if_flagged`) ───────────────────
+
+def _apply_copy_mirroring(
+    state: FormState, schema: StepSchema, turn_id: int
+) -> list[tuple[str, str, Any]]:
+    """Materialise schema-declared section-copy shortcuts.
+
+    For every section that declares `copy_from_if_flagged: <source_section>`
+    plus a `flag_field`, this helper checks whether the flag currently
+    evaluates to True in `state`. When it does, every matching field id from
+    the source section is mirrored into the target section. The mirrored
+    values are tagged `FieldSource.app` so the UI can distinguish them from
+    the user's voice captures.
+
+    Idempotent — re-running with no source-side changes is a no-op (we skip
+    writes when target value already equals source value). Returns the list
+    of `(section_id, field_id, value)` tuples that were written so callers
+    can emit per-field events for the Flutter UI.
+
+    Used to satisfy the "service address same as home → auto-fill the four
+    address fields" requirement declared by the personal-information schema
+    on `service_address` (`copy_from_if_flagged: "home_address"`).
+    """
+    written: list[tuple[str, str, Any]] = []
+    for section in schema.sections:
+        if not section.copy_from_if_flagged or not section.flag_field:
+            continue
+
+        # Read flag — fall back to declared default when the target section
+        # has not been touched yet. This is the common case for
+        # service_address: the flag defaults to True, the user never explicitly
+        # confirms it, and we still need to mirror as soon as home_address is
+        # filled.
+        flag_id = section.flag_field.id
+        section_values = state.values.get(section.id)
+        flag_fv = (
+            section_values.get(flag_id)
+            if isinstance(section_values, dict) else None
+        )
+        if isinstance(flag_fv, dict):
+            flag_on = bool(flag_fv.get("value"))
+        else:
+            flag_on = bool(section.flag_field.default)
+        if not flag_on:
+            continue
+
+        source_values = state.values.get(section.copy_from_if_flagged)
+        if not isinstance(source_values, dict):
+            continue
+
+        target_field_ids = {f.id for f in (section.fields or [])}
+        for src_id, src_fv in source_values.items():
+            if src_id not in target_field_ids or not isinstance(src_fv, dict):
+                continue
+            src_value = src_fv.get("value")
+            if src_value is None:
+                continue
+
+            current_target = state.values.get(section.id)
+            tgt_fv = (
+                current_target.get(src_id)
+                if isinstance(current_target, dict) else None
+            )
+            tgt_value = tgt_fv.get("value") if isinstance(tgt_fv, dict) else None
+            if tgt_value == src_value:
+                continue
+
+            # set_field initializes the target section dict if missing.
+            state.set_field(
+                section_id=section.id,
+                field_id=src_id,
+                value=src_value,
+                source=FieldSource.app,
+                confidence=1.0,
+                turn_id=turn_id,
+                repeatable_index=None,
+            )
+            written.append((section.id, src_id, src_value))
+    return written
+
+
 # ── Policy block signal ──────────────────────────────────────────────────────
 
 class PolicyBlockSignal(BaseException):
@@ -534,7 +615,7 @@ class ToolDispatcher:
                 "update_field REJECTED — field '%s' not in section '%s' "
                 "(declared fields: %s) session=%s. "
                 "Likely cause: client schema is missing this field — "
-                "see FLUTTER_VOICE_INTEGRATION_FIXES.md Issue 3.",
+                "see FLUTTER_DEV_HANDOFF.md Issue #3.",
                 field_id,
                 section_id,
                 [f.id for f in section.all_fields()],
@@ -564,7 +645,34 @@ class ToolDispatcher:
         if state is None:
             return {"ok": False, "error": "session state not found"}
 
-        # Cross-section guard — reject writes to sections other than the focused one
+        # Implicit-enter for repeatable sections. The agent often writes
+        # `update_field("emergency_contacts", "name", ...)` without first
+        # calling `enter_repeatable_section`. Treat that write as the implicit
+        # enter — auto-pin focus to the new section + row index — instead of
+        # rejecting with `cross_section_blocked` and forcing a retry. Mirrors
+        # the auto-pin behaviour already in `_add_repeatable_row` so the two
+        # paths agree on what "focus" means.
+        if section.is_repeatable and state.focused_section != section_id:
+            prior_focus = state.focused_section
+            state.focused_section = section_id
+            state.focused_repeatable_index = (
+                repeatable_index if repeatable_index is not None else 0
+            )
+            log.info(
+                "auto_pin_repeatable session=%s prior_focus=%s new_focus=%s row=%s",
+                self._session_id, prior_focus, section_id,
+                state.focused_repeatable_index,
+            )
+            await self._emit({
+                "type": "repeatable_section_entered",
+                "section_id": section_id,
+                "intent": "implicit",
+                "row_index": state.focused_repeatable_index,
+            })
+
+        # Cross-section guard — reject writes to OTHER non-repeatable sections
+        # without explicit intent. The repeatable case was handled above by
+        # auto-pin so the guard never fires for it.
         if (
             state.focused_section
             and section_id != state.focused_section
@@ -613,6 +721,13 @@ class ToolDispatcher:
             turn_id=self._turn_id,
             repeatable_index=repeatable_index if section.is_repeatable else None,
         )
+
+        # Materialise schema-declared section-copy shortcuts (e.g. service
+        # address ← home address when service_same_as_home is true). Runs
+        # after every write so updating either the flag OR a source-side
+        # field keeps the mirrored target in sync. Idempotent.
+        mirrored = _apply_copy_mirroring(state, self._schema, self._turn_id)
+
         state.recompute_completion(self._schema)
         await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
 
@@ -626,6 +741,25 @@ class ToolDispatcher:
             "confidence": confidence,
             "turn_id": self._turn_id,
         })
+        # Surface each auto-mirrored field as its own field_updated event so
+        # the Flutter UI can re-render them inline without waiting for the
+        # next state snapshot.
+        for m_section, m_field, m_value in mirrored:
+            await self._emit({
+                "type": "field_updated",
+                "section": m_section,
+                "field": m_field,
+                "value": m_value,
+                "repeatable_index": None,
+                "confidence": 1.0,
+                "turn_id": self._turn_id,
+                "source": "app",
+                "auto_copied_from": next(
+                    (s.copy_from_if_flagged for s in self._schema.sections
+                     if s.id == m_section),
+                    None,
+                ),
+            })
         await self._emit({"type": "state", "state": state.model_dump(mode="json")})
 
         envelope = _fa.build_envelope(
