@@ -3,6 +3,29 @@
     "VIRTUAL_ENV": "C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.venv",
     "SENA_AI_VENV_SCRIPTS": "C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.venv\\Scripts"
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash .claude/statusline"
+  },
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(git push --force:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push origin master:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./**/credentials.json)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/id_rsa)",
+      "Read(./**/id_ed25519)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

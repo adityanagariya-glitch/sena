@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# SENA statusline — prints a single bottom-bar line for Claude Code.
+#
+# Format: [SENA] <branch>* <active-service> [<tasks> tasks] [⚠ <flag-warning>]
+#
+# Pieces:
+#   <branch>*           — git branch; trailing '*' if working tree is dirty
+#   <active-service>    — detected from cwd or first arg; one of: onboarding|voice|case_review|root
+#   <N> tasks           — count of '### #' headers in .claude/tasks/TASKS.md
+#   ⚠ <flag-warning>    — only if a Gemini/ctx7 flag is missing in .claude/hooks-state/
+#
+# Idempotent + fast (<50ms typical). Never errors — falls back to "[SENA]" alone.
+
+set -euo pipefail 2>/dev/null || true
+
+# Resolve repo root (the .claude/ folder lives directly inside it).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR="."
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+HOOKS_STATE="$SCRIPT_DIR/hooks-state"
+TASKS_FILE="$SCRIPT_DIR/tasks/TASKS.md"
+
+# 1. Branch + dirty marker.
+BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+DIRTY=""
+if ! { git -C "$REPO_ROOT" diff --quiet 2>/dev/null && git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null; }; then
+  DIRTY="*"
+fi
+
+# 2. Active SENA service (best-effort heuristic).
+CWD="${PWD:-$REPO_ROOT}"
+SERVICE="root"
+case "$CWD" in
+  *services/onboarding*)  SERVICE="onboarding";;
+  *services/voice*)       SERVICE="voice";;
+  *services/case_review*) SERVICE="case_review";;
+  *services/ocr*)         SERVICE="ocr";;
+  *shared*)               SERVICE="shared";;
+esac
+
+# 3. Active task count.
+TASKS="?"
+if [[ -f "$TASKS_FILE" ]]; then
+  TASKS="$(grep -c '^### #' "$TASKS_FILE" 2>/dev/null || echo 0)"
+fi
+
+# 4. Flag warnings (gates that might be blocking edits this session).
+WARN=""
+[[ -f "$HOOKS_STATE/ctx7-session.flag" ]] || WARN="${WARN}ctx7 "
+# Only warn about gemini gate if currently editing gemini-related code.
+if [[ "$CWD" == *gemini* ]] || [[ "$CWD" == *demo_live* ]]; then
+  [[ -f "$HOOKS_STATE/ctx7-gemini.flag"  ]] || WARN="${WARN}ctx7-gem "
+  [[ -f "$HOOKS_STATE/skills-gemini.flag" ]] || WARN="${WARN}skill-gem "
+fi
+
+# 5. Compose. ANSI colours intentionally omitted — Claude Code terminal may strip them.
+LINE="[SENA] ${BRANCH}${DIRTY} ${SERVICE} [${TASKS} tasks]"
+if [[ -n "$WARN" ]]; then
+  LINE="${LINE} [⚠ ${WARN% }]"
+fi
+echo "$LINE"

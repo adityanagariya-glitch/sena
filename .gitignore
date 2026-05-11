@@ -51,10 +51,15 @@ Figma
 # archive/
 # graphify-out/
 .ruff_cache/
-.claude/
+# Claude Code — track project-level config (agents, rules, hooks, skills); exclude user-private runtime files
+.claude/settings.local.json
+.claude/hooks-state/
+.claude/*.flag
+.claude/gsd-instructions.md
 # .gemini/
 github
 github.pub
 
 # Windows reserved device name (not a real file)
 nul
+CLAUDE.local.md
