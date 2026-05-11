@@ -712,6 +712,32 @@ class ToolDispatcher:
         # Clear any prior error for this field — validation now passes
         _clear_validation_error(state, section_id, field_id, _ri)
 
+        # B5 — Low-confidence gate: pause before committing uncertain captures.
+        # Threshold: anything below 0.90 requires explicit user confirmation.
+        # The model is instructed by Rule 10 to ask "Is that right?" — this
+        # code gate enforces it even if the model skips the prompt.
+        _LOW_CONF_THRESHOLD = 0.90
+        if confidence < _LOW_CONF_THRESHOLD:
+            log.info(
+                "low_confidence_gate section=%s field=%s confidence=%.2f session=%s — "
+                "returning CONFIRM_REQUIRED, value NOT committed",
+                section_id, field_id, confidence, self._session_id,
+            )
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "CONFIRM_REQUIRED",
+                    "section": section_id,
+                    "field": field_id,
+                    "heard_value": typed_value,
+                    "confidence": confidence,
+                    "reason_human": (
+                        f"I wasn't fully sure I caught that correctly — "
+                        f"did you say {typed_value}?"
+                    ),
+                },
+            }
+
         state.set_field(
             section_id=section_id,
             field_id=field_id,
@@ -850,6 +876,37 @@ class ToolDispatcher:
                     "reason_human": (
                         "I need a clear yes from you before I save and move on — "
                         "could you confirm you're happy with everything you've shared?"
+                    ),
+                },
+            }
+
+        # Require at least one affirmative token — prevents "no thanks" or a
+        # random sentence fragment from being treated as consent.
+        _AFFIRMATIVE = frozenset({
+            "yes", "yeah", "yep", "yup", "correct", "confirmed", "confirm",
+            "right", "ok", "okay", "proceed", "go", "done", "sure",
+            "absolutely", "good", "perfect", "sounds good", "that's right",
+            "thats right", "all good",
+        })
+        confirmation_words = set(confirmation.lower().split())
+        # Also check for multi-word phrases in the raw string
+        confirmation_lower = confirmation.lower()
+        has_affirmative = bool(confirmation_words & _AFFIRMATIVE) or any(
+            phrase in confirmation_lower
+            for phrase in (
+                "that's right", "thats right", "sounds good", "all good",
+                "that's all", "thats all", "that's everything", "all done",
+                "i'm done", "im done", "we're done", "that's correct",
+            )
+        )
+        if not has_affirmative:
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "missing_confirmation",
+                    "reason_human": (
+                        "I need a clear yes or confirmation before I can save and "
+                        "move on — could you say yes or confirmed to proceed?"
                     ),
                 },
             }

@@ -62,4 +62,5 @@ github.pub
 
 # Windows reserved device name (not a real file)
 nul
+AI_logs.txt
 CLAUDE.local.md

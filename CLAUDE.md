@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Session-start read order:** `.claude/SESSION_START.md` → `.claude/tasks/TASKS.md` → `~/.claude/projects/.../memory/MEMORY.md`. The SessionStart hook injects this automatically; if you don't see it, read these files manually before any work.
+
 ## Project Overview
 
 SENA is an AI-powered multi-tenant SaaS platform for Australian NDIS service providers. This repo contains the **AI/ML backend layer only** — the broader platform (HR, payroll, shifts, client management) is built by a separate client team.
@@ -57,11 +59,15 @@ API-first service at `sena-ai/services/onboarding/src/onboarding/`. Mobile app i
 | Services | `services/resumption.py` | Redis-backed: issue_handle, redeem_handle (GETDEL single-use), build_replay_context (Phase E ✓) |
 | Services | `services/webhook.py` | Outbound webhook to app backend, 3-retry exp backoff |
 | Services | `services/cross_screen_context.py` | Pure: build_summary, compress_residual/decompress (lossless), render_for_prompt — feeds the EARLIER IN THIS ONBOARDING block |
+| Services | `services/coverage.py` | Pure: voice coverage eligibility — `is_eligible`, `is_repeatable_eligible`, `coverage_paths` against `schema.voice_coverage` |
+| Services | `services/field_apply.py` | Pure: `build_envelope` — wraps field updates with coverage check, confidence score, and row_index for repeatable sections |
+| Services | `services/validators/` | Pure, no-IO validators: `field_rules` (per-field), `cross_field` (invariants), `sequencing` (next required/optional field, step-complete gate); raises `ValidationRejection` |
 | Repositories | `repositories/state_repo.py` | Redis only — no Postgres. FormState, transcript, WS lock, resumption handles. Plus `assert_session_owner` for cross-tenant isolation. |
 | Repositories | `repositories/user_context_repo.py` | Redis only. Per-(tenant_id, participant_id) cross-screen bucket: step summaries (Hash) + session-id index (Set), 7-day TTL refreshed on every write |
 | Models | `models/schema_spec.py` | StepSchema, SectionSpec, FieldSpec (incl. visible_if, repeatable) |
 | Models | `models/form_state.py` | FormState, FieldValue, CompletionStats |
 | Models | `models/session_bootstrap.py` | SessionBootstrap envelope (Rule 1+2 hygiene contract — mode, current_page_values, readonly_paths, prior_pages); rendered into prompt as `[LIVE_STATE_JSON]` |
+| Models | `models/cross_screen_summary.py` | StepSummary + CrossScreenContext; verbatim (warmth fields) vs compressed (lossless key-shortened) split for cross-step prompt injection |
 | Fixtures | `fixtures/schema_*.json` | 5 step schemas from real app screens |
 
 **Key routes:**
@@ -225,6 +231,25 @@ mypy src/voice/                            # type check
 
 # Pre-commit
 pre-commit install                         # one-time setup
+```
+
+### Windows / PowerShell variant
+
+POSIX `cd A && cmd` does NOT work in PowerShell 5.1 (no `&&` operator). Use `;` + `$?` check, or run each line separately:
+
+```powershell
+# Setup (run from repo root)
+Set-Location sena-ai
+Copy-Item .env.example .env
+pip install -e "services/voice[dev]"
+pip install -e "services/onboarding[dev]"
+pip install -e "services/case_review[dev]"
+
+# Run a service
+Set-Location services\voice; if ($?) { uvicorn src.voice.main:create_app --factory --reload --port 8082 }
+
+# Tests
+pytest services\voice\tests\
 pre-commit run --all-files                 # manual run
 ```
 
@@ -298,6 +323,8 @@ Automated hooks enforce safety rules and maintain documentation consistency. See
 - Reminds to check graphify knowledge graph before searching
 - Flags critical file modifications (CLAUDE.md, .env, settings.json)
 - **Rule 3 — Gemini Live Config Gate (STRICT):** any Write/Edit to a `gemini*` or `demo_live*` file is blocked until BOTH `skills-gemini.flag` (Skill: gemini-live-api-dev invoked) AND `ctx7-gemini.flag` (Context7 queried for google-genai/gemini this session) are present. Either missing → block with specific remediation steps.
+  - **Flag locations:** `.claude/state/skills-gemini.flag` and `.claude/state/ctx7-gemini.flag` (cleared by SessionStart hook on every new session — must be re-earned).
+  - **To clear the gate:** (1) invoke `Skill: gemini-live-api-dev` (sets skills flag automatically); (2) call `mcp__plugin_context7_context7__resolve-library-id` then `query-docs` for `google-genai` (sets ctx7 flag). Then retry the Write/Edit.
 
 **PostToolUse** (`.claude/hooks/post-tool-use.sh` + `.claude/hooks/bump-updated.sh`):
 - Maintains per-service `requirements.txt` via pipreqs on Python file edits
@@ -413,14 +440,25 @@ When the user says **"I am adding X"** (a new directory, service, file, or exter
 
 ## Paused Features
 
-(none)
+(none — see `.claude/tasks/TASKS.md` for the live work queue)
+
+## Hard Limits (added 2026-05-11)
+
+- Function length: aim ≤ 100 lines. Past 100 = refactor signal, not a hard error.
+- Cyclomatic complexity: ≤ 8 per function (ruff `C901`).
+- Line length: 100 chars (ruff enforced).
+- Test file ratio: every new non-trivial function ships with a matching test in `services/<svc>/tests/`.
+- No `print()`, `breakpoint()`, `import pdb` in committed code — structlog only.
+- No `os.environ` direct reads — go through `core/settings.py`.
+- No `time.sleep()` outside tests — async-first.
+- No `Bash(rm -rf …)`, no `git push --force`, no push to `main` directly — enforced by `.claude/settings.json` deny list.
 
 ## Sena Agent System
 
 - Read `.claude/rules/sena-rules.md` at session start for routing rules and constraints.
 - Read `.claude/memory/sena-memory.md` to recall past decisions and outcomes.
 - For non-trivial multi-file or multi-subsystem tasks, route through the Sena agents in `.claude/agents/`. Never handle work of that scope directly in the main session thread.
-- The numbered prompt templates in `.agents/01-08*.md` are templates for an external multi-model orchestrator (see `.agents/WORKFLOW_PLAN.md`). They are **not** Claude Code subagents — do not invoke them via the Task tool.
+- Path-scoped rules in `.claude/rules/api.md` and `.claude/rules/database.md` load automatically when an edit touches a matching path — no manual invocation needed.
 - After completing any significant task, append one line to `.claude/memory/sena-memory.md`:
   `[YYYY-MM-DD] [agent name or "main"] — [what was done] — [key outcome]`
 

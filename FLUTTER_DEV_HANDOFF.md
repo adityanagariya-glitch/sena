@@ -10,7 +10,7 @@ This single document covers every Flutter-side change required to ship the voice
 
 ## TL;DR
 
-The backend is final. The Flutter app must change in 13 places to:
+The backend is final. The Flutter app must change in 15 places to:
 
 1. Stop the agent from hearing its own playback (echo loop).
 1b. Cut stale audio when the user interrupts.
@@ -26,8 +26,10 @@ The backend is final. The Flutter app must change in 13 places to:
 11. Implement the connection lifecycle and resume flow (`go_away`, `resumable`).
 12. Handle every WS close code with the right user-facing fallback.
 13. Surface UX changes — read-only fields, proactive optional prompts, confidence colouring.
+14. Call `POST .../complete` when a step finishes so the cross-screen context bucket is populated.
+15. Build `prior_pages` from completed-step data when creating a new session.
 
-**Critical-path subset (do these first):** 1, 1b, 3, 4, 7, 10, 11. Without those the agent cannot collect every field, cannot stop echoing itself, cannot survive a session drop, and cannot store multi-value answers.
+**Critical-path subset (do these first):** 1, 1b, 3, 4, 7, 10, 11, 14, 15. Without those the agent cannot collect every field, cannot stop echoing itself, cannot survive a session drop, cannot store multi-value answers, and screen 2+ will not know the participant's name.
 
 ---
 
@@ -995,11 +997,103 @@ The voice is `Aoede` and the speech config language is `en-AU`.
 - [ ] `bootstrap` envelope sent on every session create with the right `mode` (Issue #7)
 - [ ] Sessions longer than 10 minutes survive Gemini's automatic drop (Issue #11)
 - [ ] Each WS close code shows distinct user-facing copy (Issue #12)
+- [ ] `POST .../complete` called on `step_completed` before navigating away (Issue #14)
+- [ ] `tenant_id` included in every session-create request body (Issue #15)
+- [ ] Step 2+ agent addresses participant by name — "Hi [name], welcome to the next step" (Issues #14 + #15)
 - [ ] Type an invalid phone, focus another field — agent re-asks with the validator message paraphrased (Issue #8)
 - [ ] Say "add another emergency contact" — empty card appears, voice-fills it (Issue #9)
 - [ ] Read-only fields visually disabled with lock icon when `bootstrap.readonly_paths` lists them (Issue #13)
 - [ ] Low-confidence captures (`confidence < 0.6`) show a warning indicator (Issue #13)
 - [ ] Tap a field mid-session — agent pivots to that field within ~1 sec (Issue #6)
+
+---
+
+## Issue #14 — Call `complete` endpoint when a step finishes (CRITICAL)
+
+### Why
+The backend's cross-screen context bucket (`UserContextRepo`) is populated ONLY when Flutter calls `POST /v1/onboarding/session/{id}/complete`. Without this call, the Redis bucket stays empty. When the user moves to screen 2, `prior_pages` is `{}` — the agent has no knowledge of their name, email, or any prior step data. This is the root cause of "screen 2 not personalised at all".
+
+### When to call it
+Call `POST /v1/onboarding/session/{session_id}/complete` **immediately after the WS session emits `step_completed`**, before navigating to the next step.
+
+### Wire contract
+
+```
+POST /v1/onboarding/session/{session_id}/complete
+(no body required)
+```
+
+Response:
+```json
+{ "session_id": "...", "completed": true, "webhook_delivered": true }
+```
+
+### Fix — `voice_session_controller.dart`
+
+```dart
+case VoiceStepCompleted():
+  // 1. Call complete endpoint FIRST so the cross-screen bucket is written.
+  await _datasource.completeSession(_sessionId);
+  // 2. Then navigate to the next step.
+  _onStepComplete?.call();
+  break;
+```
+
+### Fix — `voice_session_datasource.dart`
+
+```dart
+Future<void> completeSession(String sessionId) async {
+  await _client.post(
+    '${AppStrings.apiBaseUrl}/v1/onboarding/session/$sessionId/complete',
+  );
+}
+```
+
+### Verify
+1. Complete step 1 via voice.
+2. Open step 2 voice session immediately.
+3. Agent's first utterance addresses the participant by name (from step 1).
+4. Check Redis: `HGETALL sena:onboarding:ctx:{tenant_id}:{participant_id}` — should have a `step:1` entry.
+
+---
+
+## Issue #15 — Build `prior_pages` when creating a new session (CRITICAL)
+
+### Why
+The `bootstrap` envelope's `prior_pages` field tells the agent what the participant already gave in earlier steps. If Flutter creates a new session with `prior_pages: {}`, the agent greets them as a stranger. The backend does auto-hydrate from Redis when `ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED=true` AND `tenant_id` is set AND the bucket is non-empty — but this only works once Issue #14 is implemented (bucket populated by calling `complete`).
+
+**Two things must BOTH be true for screen 2+ to be personalised:**
+1. Issue #14 implemented — `complete` called at step end (writes bucket).
+2. `tenant_id` sent in session-create request (allows bucket lookup).
+
+### Fix — `create_voice_session_usecase.dart` / session-create call
+
+Ensure the `CreateSessionRequest` body always includes `tenant_id`:
+
+```dart
+final body = {
+  'participant_id': participantId,
+  'step': stepId,
+  'schema': schema.toJson(),
+  'tenant_id': _authCtrl.tenantId,  // ← MUST be set; null disables bucket lookup
+  'bootstrap': {
+    'mode': priorStepData.isEmpty ? 'new_user' : 'page_handoff',
+    'current_page_values': currentPageValues,  // flat {"section.field": value}
+    'readonly_paths': readonlyPaths,
+    'participant_display_name': participantDisplayName,
+    'prior_pages': {},  // leave empty — backend auto-hydrates from Redis bucket
+  },
+};
+```
+
+**Do NOT manually build `prior_pages` from local state.** The backend auto-populates it from the Redis bucket (written by Issue #14's `complete` call) — this avoids stale or partial data from the local Flutter cache. Just send `prior_pages: {}` and let the server fill it.
+
+### Verify
+1. Complete step 1 via voice (Issue #14 must be done).
+2. Start step 2 voice session.
+3. Check `POST /v1/onboarding/session` request body — `tenant_id` present.
+4. Check server log: `session_create_resolved_bootstrap` — `bootstrap_mode=page_handoff`, `prior_pages_keys=["step:1"]`.
+5. Agent says "Hi [name], welcome to the next step" (not "Hi there").
 
 ---
 
@@ -2129,3 +2223,81 @@ The base `field_updated` event for the user's voice-driven home_address write fi
 ### Cross-screen context flag note
 
 `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED` now defaults to `true`. The bucket key is `sena:onboarding:user_ctx:{tenant_id}:{participant_id}` so cross-tenant isolation is structural — there is no flag-flip required to be safe. If the agent re-asks for the participant's name on a new screen, the cause is the client failing to send `tenant_id` + `participant_id` on `POST /v1/onboarding/session` (Issue #26), NOT the flag. Verify the request body before assuming a backend regression.
+
+---
+
+## Addendum 2026-05-11 — Staff Onboarding Validator Contracts
+
+### What changed
+
+Backend `services/validators/field_rules.py` now covers the full staff onboarding spec (`staff_onboarding_validations.md`). All validation is deterministic server-side — the voice assistant no longer has authority over any of these rules.
+
+### Staff section_ids (use these exactly in `update_field` calls)
+
+| Step | `section_id` | Fields |
+|------|-------------|--------|
+| Step 1 — Basic Profile | `staff_basics` | `full_name`, `phone`, `address`, `state`, `city`, `zip_code`, `gender`, `cultural_background`, `languages_spoken`, `interpreter_required` |
+| Step 2 — Experience | `staff_experience` | `experience` |
+| Step 3 — Doc expiry field | `staff_documents` | `expires_at` |
+| Step 4 — Banking | `staff_banking` | `bank_name`, `account_holder_name`, `bsb`, `account_number`, `super_fund_name`, `super_fund_abn`, `member_number` |
+
+These section_ids are **different** from client onboarding (`basics`, `home_address`, etc.). Sending the wrong section_id means the field bypasses validation silently — `field_rules.py` returns `None` for unknown keys.
+
+### New validation rules (backend enforced — do not replicate in Flutter)
+
+| Field | Rule | Backend behaviour |
+|-------|------|-------------------|
+| `staff_basics.full_name` | Max 25 chars per part (first + last required) | Strips extra whitespace, splits on first space |
+| `staff_basics.phone` | Australian format `+61XXXXXXXXX` | Strips spaces, same regex as client phone |
+| `staff_basics.zip_code` | Exactly 4 digits | String `^\d{4}$` — send as string, not integer |
+| `staff_basics.gender` | Max 10 chars | Rejects longer values |
+| `staff_basics.cultural_background` | Max 50 chars | — |
+| `staff_basics.languages_spoken` | Each item max 50 chars | Accepts string **or** `string[]` — both shapes valid |
+| `staff_basics.interpreter_required` | Boolean | Accepts `true`/`false` or `"yes"`/`"no"` strings |
+| `staff_experience.experience` | Max 500 chars, required | Longest text field in the spec |
+| `staff_documents.expires_at` | Must be a **future** date, `YYYY-MM-DD` | Returns `INVALID` for today or past date |
+| `staff_banking.bsb` | Exactly 6 digits | **Strips hyphens and spaces** — `062-000` → `062000` is valid |
+| `staff_banking.super_fund_abn` | Exactly 11 digits | Strips all non-digits before checking |
+| `staff_banking.account_number` | Max 12 chars | — |
+
+### `INVALID` response shapes to expect
+
+BSB rejection:
+```json
+{
+  "status": "INVALID",
+  "field_id": "bsb",
+  "reason": "BSB must be exactly 6 digits (e.g. 062000)",
+  "hint": "Your BSB is the 6-digit number on your bank statement, e.g. 062000."
+}
+```
+
+ABN rejection:
+```json
+{
+  "status": "INVALID",
+  "field_id": "super_fund_abn",
+  "reason": "Super fund ABN must be exactly 11 digits (e.g. 65714394898)",
+  "hint": "The ABN is printed on your super fund statements, e.g. 65714394898."
+}
+```
+
+Document expiry rejection:
+```json
+{
+  "status": "INVALID",
+  "field_id": "expires_at",
+  "reason": "Expiry date must be a future date",
+  "hint": "Use YYYY-MM-DD format, e.g. 2028-06-01."
+}
+```
+
+### Flutter checklist
+
+- [ ] All staff voice `update_field` calls use section_ids from the table above — not the client schema ids.
+- [ ] `zip_code` is submitted as a **string** (`"3000"`) not an integer — the backend validator uses `^\d{4}$` regex on a string.
+- [ ] `languages_spoken` may be sent as a plain string (voice path) or as `["English", "Spanish"]` (typed form) — both accepted.
+- [ ] `interpreter_required` may be sent as a boolean or `"yes"`/`"no"` — backend normalises both.
+- [ ] BSB display on screen may show `062-000` format — but the submitted `value` in `update_field` can include the hyphen; backend strips it before validating.
+- [ ] Document expiry field (`expires_at`) must send `YYYY-MM-DD` — backend rejects any past or today's date with a voice-relay-friendly error message.
+- [ ] The `isRequired: true` + `notApplicable: true` conflict check (Step 3 documents) is **not yet in `field_rules.py`** — it belongs in `tools.py`. Do not assume it is enforced until confirmed.

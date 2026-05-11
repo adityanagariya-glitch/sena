@@ -72,10 +72,36 @@ def _step_id_to_number(step_id: str) -> int:
     return abs(hash(step_id)) % 10_000
 
 
+def _normalize_flat_to_nested(flat: dict) -> dict:
+    """Convert flat dot-notation keys to nested dict.
+
+    Flutter sends {"basics.full_name": "Mansi"} — normalised to
+    {"basics": {"full_name": "Mansi"}} so the downstream loop can process it.
+    Mixed inputs (some flat, some already nested dicts) are handled correctly.
+    """
+    nested: dict = {}
+    for key, value in flat.items():
+        if "." in key:
+            section, _, field = key.partition(".")
+            nested.setdefault(section, {})[field] = value
+        else:
+            existing = nested.get(key)
+            if isinstance(existing, dict) and isinstance(value, dict):
+                existing.update(value)
+            else:
+                nested[key] = value
+    return nested
+
+
 def _build_initial_values(initial_state: dict | None) -> dict:
     """Wrap raw values dict from app into FieldValue format if not already wrapped."""
     if not initial_state:
         return {}
+
+    # Flutter sends flat dot-notation {"section.field": value}; normalise first.
+    if any("." in k for k in initial_state):
+        initial_state = _normalize_flat_to_nested(initial_state)
+
     result = {}
     for section_id, section_data in initial_state.items():
         if isinstance(section_data, list):

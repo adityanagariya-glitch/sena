@@ -28,6 +28,10 @@ _DURATION_MAX_24 = "Duration must be less than or equal to 24 hours"
 _TIME_SLOTS_OVERLAP = "Time slots must not overlap"
 _TIME_INVALID_RANGE = "Start time must be before end time"
 _TIME_HM_INVALID = "Use 24-hour time as HH:mm (e.g. 09:30)."
+_BSB_INVALID = "BSB must be exactly 6 digits (e.g. 062000)"
+_ABN_INVALID = "Super fund ABN must be exactly 11 digits (e.g. 65714394898)"
+_EXPIRY_NOT_FUTURE = "Expiry date must be a future date"
+_AU_STATE_INVALID = "Please provide an Australian state (NSW, VIC, QLD, SA, WA, TAS, ACT, or NT)"
 
 
 def _at_most(n: int) -> str:
@@ -43,6 +47,8 @@ _AU_PHONE = re.compile(r"^(?:\+61[2-478]\d{8}|0[2-478]\d{8}|1300\d{6}|1800\d{6}|
 _EMAIL_RE = re.compile(r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+)+$", re.IGNORECASE)
 _POSTCODE = re.compile(r"^\d{4}$")
 _HM24 = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+_BSB_RE = re.compile(r"^\d{6}$")
+_ABN_RE = re.compile(r"^\d{11}$")
 
 
 # ── Helper extractors ────────────────────────────────────────────────────────
@@ -174,6 +180,40 @@ def _v_postcode(raw: Any, _state: Any) -> ValidationRejection | None:
     if not _POSTCODE.match(v):
         return ValidationRejection(code="postcode_invalid", reason_human=_POSTCODE_INVALID,
                                    suggested_fix="Australian postcodes are exactly 4 digits, e.g. 2000.")
+    return None
+
+
+_AU_STATE_ABBREVS = frozenset({"NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT"})
+
+# Full-name → abbreviation map for voice transcriptions
+_AU_STATE_ALIASES: dict[str, str] = {
+    "new south wales": "NSW",
+    "victoria": "VIC",
+    "queensland": "QLD",
+    "south australia": "SA",
+    "western australia": "WA",
+    "tasmania": "TAS",
+    "australian capital territory": "ACT",
+    "canberra": "ACT",
+    "northern territory": "NT",
+    "darwin": "NT",
+}
+
+
+def _v_au_state(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _str(raw).strip()
+    if not v:
+        return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
+    normalised = _AU_STATE_ALIASES.get(v.lower(), v.upper())
+    if normalised not in _AU_STATE_ABBREVS:
+        return ValidationRejection(
+            code="au_state_invalid",
+            reason_human=_AU_STATE_INVALID,
+            suggested_fix=(
+                "Australian states: NSW, VIC, QLD, SA, WA, TAS, ACT, NT. "
+                f"'{v}' is not a recognised Australian state."
+            ),
+        )
     return None
 
 
@@ -391,6 +431,112 @@ def _v_support_description(raw: Any, _state: Any) -> ValidationRejection | None:
     return _max_len(v, 255, "description_too_long")
 
 
+# ── Staff-specific validators ─────────────────────────────────────────────────
+
+def _v_text10_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _str(raw)
+    r = _required(v)
+    if r:
+        return r
+    return _max_len(v, 10, "text_too_long")
+
+
+def _v_text12_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _str(raw)
+    r = _required(v)
+    if r:
+        return r
+    return _max_len(v, 12, "text_too_long")
+
+
+def _v_text500_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _str(raw)
+    r = _required(v)
+    if r:
+        return r
+    return _max_len(v, 500, "text_too_long")
+
+
+def _v_bsb(raw: Any, _state: Any) -> ValidationRejection | None:
+    # Strip spaces/hyphens so "062-000" and "062 000" both pass
+    v = re.sub(r"[\s\-]", "", _str(raw))
+    if not v:
+        return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
+    if not _BSB_RE.match(v):
+        return ValidationRejection(
+            code="bsb_invalid",
+            reason_human=_BSB_INVALID,
+            suggested_fix="Your BSB is the 6-digit number on your bank statement, e.g. 062000.",
+        )
+    return None
+
+
+def _v_super_abn(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = re.sub(r"\D", "", _str(raw))
+    if not v:
+        return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
+    if not _ABN_RE.match(v):
+        return ValidationRejection(
+            code="abn_invalid",
+            reason_human=_ABN_INVALID,
+            suggested_fix="The ABN is printed on your super fund statements, e.g. 65714394898.",
+        )
+    return None
+
+
+def _v_boolean_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _fv(raw)
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, str) and v.lower() in ("true", "false", "yes", "no"):
+        return None
+    return ValidationRejection(
+        code="boolean_invalid",
+        reason_human=_FIELD_REQUIRED,
+        suggested_fix="Please answer yes or no.",
+    )
+
+
+def _v_languages_spoken(raw: Any, _state: Any) -> ValidationRejection | None:
+    lst = _list(raw)
+    if not lst:
+        v = _str(raw)
+        if not v:
+            return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
+        return None
+    for item in lst:
+        if isinstance(item, str) and len(item) > 50:
+            return ValidationRejection(
+                code="language_item_too_long",
+                reason_human=_at_most(50),
+                suggested_fix="Each language name must be 50 characters or fewer.",
+            )
+    return None
+
+
+def _v_doc_expiry_future(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _str(raw)
+    if not v:
+        return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
+    try:
+        expiry = date.fromisoformat(v)
+    except ValueError:
+        return ValidationRejection(
+            code="expiry_invalid_format",
+            reason_human=_EXPIRY_NOT_FUTURE,
+            suggested_fix="Use YYYY-MM-DD format, e.g. 2028-06-01.",
+        )
+    if expiry <= date.today():
+        return ValidationRejection(
+            code="expiry_not_future",
+            reason_human=_EXPIRY_NOT_FUTURE,
+            suggested_fix="The document expiry date must be a future date.",
+        )
+    return None
+
+
 # ── Field rules table ─────────────────────────────────────────────────────────
 # Key: (section_id, field_id) → validator(raw_value, state) → ValidationRejection | None
 _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] = {
@@ -404,9 +550,11 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("basics", "preferred_language"): _v_preferred_language,
     ("basics", "interpreter_required"): _v_text_required,
     ("home_address", "address"):      _v_text_required,
-    ("home_address", "state"):        _v_text_required,
+    ("home_address", "state"):        _v_au_state,
     ("home_address", "city"):         _v_text_required,
     ("home_address", "zip_code"):     _v_postcode,
+    ("service_address", "state"):     _v_au_state,
+    ("service_address", "city"):      _v_text_required,
     ("service_address", "zip_code"):  _v_postcode,
     ("emergency_contacts", "name"):   _v_text25_required,
     ("emergency_contacts", "relation"): _v_text_required,
@@ -445,6 +593,34 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("schedule_of_supports", "description"):        _v_support_description,
     ("schedule_of_supports", "frequency"):          _v_text_required,
     ("schedule_of_supports", "duration_hours"):     _v_duration_required,
+
+    # ── Staff Step 1 — Basic Profile (section_id: staff_basics) ─────────────────
+    ("staff_basics", "full_name"):               _v_full_name,
+    ("staff_basics", "phone"):                   _v_phone_au_required,
+    ("staff_basics", "address"):                 _v_text100_required,
+    ("staff_basics", "state"):                   _v_au_state,
+    ("staff_basics", "city"):                    _v_text25_required,
+    ("staff_basics", "zip_code"):                _v_postcode,
+    ("staff_basics", "gender"):                  _v_text10_required,
+    ("staff_basics", "cultural_background"):     _v_text50_required,
+    ("staff_basics", "languages_spoken"):        _v_languages_spoken,
+    ("staff_basics", "interpreter_required"):    _v_boolean_required,
+
+    # ── Staff Step 2 — Experience ─────────────────────────────────────────────
+    ("staff_experience", "experience"):          _v_text500_required,
+
+    # ── Staff Step 3 — Document expiry (hasExpiry docs) ──────────────────────
+    # Used when tools.py routes a document expiry field through validate_field.
+    ("staff_documents", "expires_at"):           _v_doc_expiry_future,
+
+    # ── Staff Step 4 — Banking Details ───────────────────────────────────────
+    ("staff_banking", "bank_name"):              _v_text50_required,
+    ("staff_banking", "account_holder_name"):    _v_text50_required,
+    ("staff_banking", "bsb"):                    _v_bsb,
+    ("staff_banking", "account_number"):         _v_text12_required,
+    ("staff_banking", "super_fund_name"):        _v_text50_required,
+    ("staff_banking", "super_fund_abn"):         _v_super_abn,
+    ("staff_banking", "member_number"):          _v_text50_required,
 
     # Step 5 — Medical Information
     ("medical_overview", "primary_diagnosis"):   _v_text250_required,
