@@ -137,10 +137,28 @@ button#submit-btn {
       opacity: 0.9;
     }
 
-    .verdict-CLEAR       { background: #d4edda; color: #155724; }
-    .verdict-NO_INCIDENT { background: #d1ecf1; color: #0c5460; }
-    .verdict-AUTHORISED  { background: #fff3cd; color: #856404; }
-    .verdict-UNAUTHORISED{ background: #f8d7da; color: #721c24; }
+    .verdict-CLEAR        { background: #d4edda; color: #155724; }
+    .verdict-NO_INCIDENT  { background: #d1ecf1; color: #0c5460; }
+    .verdict-AUTHORISED   { background: #fff3cd; color: #856404; }
+    .verdict-POSSIBLE     { background: #ffe8cc; color: #7b3800; }
+    .verdict-ADMIN-REVIEW { background: #e8f4fd; color: #0d4b7a; }
+    .verdict-UNAUTHORISED { background: #f8d7da; color: #721c24; }
+
+    .phrase-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .phrase-chip  { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; line-height: 1.5; }
+    .phrase-trigger     { background: #f8d7da; color: #721c24; border: 1px solid #f5c2c7; }
+    .phrase-suppression { background: #d4edda; color: #155724; border: 1px solid #badbcc; }
+
+    .next-steps-list { margin: 6px 0 0 0; padding: 0; list-style: none; }
+    .next-steps-list li {
+      padding: 5px 0 5px 22px;
+      position: relative;
+      font-size: 13px;
+      line-height: 1.5;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .next-steps-list li:last-child { border-bottom: none; }
+    .next-steps-list li::before { content: '→'; position: absolute; left: 4px; color: #4361ee; font-weight: 700; }
 
     .risk-badge {
       display: inline-block;
@@ -293,17 +311,21 @@ button#submit-btn {
 
   // ── Verdict helpers ───────────────────────────────────────────────────────
   function verdictClass(outcome) {
-    if (outcome.includes('CLEAR'))          return 'verdict-CLEAR';
-    if (outcome.includes('NO INCIDENT'))    return 'verdict-NO_INCIDENT';
-    if (outcome.includes('UNAUTHORISED'))   return 'verdict-UNAUTHORISED';
-    if (outcome.includes('AUTHORISED'))     return 'verdict-AUTHORISED';
+    if (outcome.includes('CLEAR'))           return 'verdict-CLEAR';
+    if (outcome.includes('NO INCIDENT'))     return 'verdict-NO_INCIDENT';
+    if (outcome.includes('POSSIBLE'))        return 'verdict-POSSIBLE';
+    if (outcome.includes('ADMINISTRATIVE'))  return 'verdict-ADMIN-REVIEW';
+    if (outcome.includes('UNAUTHORISED'))    return 'verdict-UNAUTHORISED';
+    if (outcome.includes('AUTHORISED'))      return 'verdict-AUTHORISED';
     return 'verdict-UNAUTHORISED';
   }
   function verdictIcon(outcome) {
-    if (outcome.includes('CLEAR'))          return '✅';
-    if (outcome.includes('NO INCIDENT'))    return 'ℹ️';
-    if (outcome.includes('UNAUTHORISED'))   return '🚨';
-    if (outcome.includes('AUTHORISED'))     return '⚠️';
+    if (outcome.includes('CLEAR'))           return '✅';
+    if (outcome.includes('NO INCIDENT'))     return 'ℹ️';
+    if (outcome.includes('POSSIBLE'))        return '⚠️';
+    if (outcome.includes('ADMINISTRATIVE'))  return '🔍';
+    if (outcome.includes('UNAUTHORISED'))    return '🚨';
+    if (outcome.includes('AUTHORISED'))      return '⚠️';
     return '🚨';
   }
   function riskClass(risk) {
@@ -369,41 +391,74 @@ button#submit-btn {
         </div>
       </div>`;
 
-    // Core 5 fields
+    // Core fields
     html += `<div class="section">`;
 
-    // Risk level
     html += `<div class="kv">
       <span class="k">Risk Level</span>
       <span class="v"><span class="risk-badge ${riskClass(v.risk_level)}">${v.risk_level}</span></span>
     </div>`;
 
-    // Category
     html += `<div class="kv">
       <span class="k">Category</span>
       <span class="v">${dp ? `<strong>${dp.category}</strong>` : '—'}</span>
     </div>`;
 
-    // Restrictive action
     html += `<div class="kv">
       <span class="k">Restrictive Action</span>
       <span class="v">${dp ? dp.what_happened : 'No restrictive practice detected.'}</span>
     </div>`;
 
-    // BSP on file
     const bspOnFile = au ? au.behaviour_support_plan.on_file : null;
     html += `<div class="kv">
       <span class="k">BSP on File</span>
       <span class="v">${bspOnFile === true ? '✅ Yes' : bspOnFile === false ? '❌ No' : '—'}</span>
     </div>`;
 
-    // Action required
     html += `<div class="kv">
       <span class="k">Action Required</span>
       <span class="v">${v.action_required}</span>
     </div>`;
 
     html += `</div>`;
+
+    // Trigger phrases + suppression factors
+    if (dp && (dp.trigger_phrases?.length || dp.suppression_factors?.length)) {
+      html += `<div class="section">`;
+      html += `<div class="section-title">Evidence Analysis</div>`;
+
+      if (dp.trigger_phrases?.length) {
+        html += `<div class="kv" style="flex-direction:column;align-items:flex-start;gap:4px;">
+          <span class="k" style="color:#721c24;">Trigger Phrases</span>
+          <div class="phrase-chips">
+            ${dp.trigger_phrases.map(p => `<span class="phrase-chip phrase-trigger">${p}</span>`).join('')}
+          </div>
+        </div>`;
+      }
+
+      if (dp.suppression_factors?.length) {
+        html += `<div class="kv" style="flex-direction:column;align-items:flex-start;gap:4px;margin-top:10px;">
+          <span class="k" style="color:#155724;">Suppression Factors</span>
+          <div class="phrase-chips">
+            ${dp.suppression_factors.map(p => `<span class="phrase-chip phrase-suppression">${p}</span>`).join('')}
+          </div>
+        </div>`;
+      }
+
+      html += `</div>`;
+    }
+
+    // Recommended next steps
+    if (v.next_steps?.length) {
+      html += `<div class="section">`;
+      html += `<div class="section-title">Recommended Next Steps</div>`;
+      html += `<ul class="next-steps-list">`;
+      v.next_steps.forEach(step => {
+        html += `<li>${step}</li>`;
+      });
+      html += `</ul>`;
+      html += `</div>`;
+    }
 
     document.getElementById('result-content').innerHTML = html;
     document.getElementById('result-panel').classList.add('visible');

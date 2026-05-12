@@ -44,7 +44,9 @@
       "WebFetch(domain:shiftcare.com)",
       "Bash(docker compose *)",
       "Bash(python -m json.tool --no-ensure-ascii)",
-      "Bash(docker stats *)"
+      "Bash(docker stats *)",
+      "Bash(python -c ' *)",
+      "Bash(git check-ignore *)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -11,6 +11,8 @@ class VerdictOutcome(str, Enum):
     CLEAR = "CLEAR"
     NO_INCIDENT = "NO INCIDENT DETECTED"
     AUTHORISED_USE = "AUTHORISED USE — REVIEW RECOMMENDED"
+    POSSIBLE = "POSSIBLE RESTRICTIVE PRACTICE — ADMINISTRATIVE REVIEW"
+    ADMINISTRATIVE_REVIEW = "ADMINISTRATIVE REVIEW REQUIRED — BSP reference but no DB match"
     UNAUTHORISED = "UNAUTHORISED RESTRICTIVE PRACTICE DETECTED"
 
 
@@ -19,6 +21,12 @@ class PolicyViolationRisk(str, Enum):
     MEDIUM = "Medium"
     HIGH = "High"
     CRITICAL = "Critical"
+
+
+class ConfidenceLevel(str, Enum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
 
 
 class AuthorisationStatus(str, Enum):
@@ -236,7 +244,12 @@ class EvaluatorOutput(BaseModel):
     practice_category: str
     action_summary: str
     policy_violation_risk: PolicyViolationRisk
+    confidence: ConfidenceLevel = ConfidenceLevel.HIGH
     reasoning: str
+    trigger_phrases: list[str] = []
+    suppression_factors: list[str] = []
+    bsp_mentioned_in_note: bool = False
+    bsp_mention_excerpt: str | None = None
     reporting_required: bool = False
     notification_timeframe: str | None = None  # "5 business days" | "24 hours" | None
 
@@ -272,12 +285,15 @@ class _VerdictSection(BaseModel):
     risk_level: str = Field(description="Low | Medium | High | Critical | N/A")
     alert_required: bool
     action_required: str = Field(description="What must be done next, in plain English")
+    next_steps: list[str] = Field(default=[], description="Ordered checklist of recommended investigation/response steps")
 
 
 class _DetectedPracticeSection(BaseModel):
     category: str
     what_happened: str = Field(description="One-sentence description of the practice used")
     reasoning: str = Field(description="Evidence-based analysis citing the case note")
+    trigger_phrases: list[str] = Field(default=[], description="Exact phrases from the note that indicate restrictive practice")
+    suppression_factors: list[str] = Field(default=[], description="Phrases that argue against or mitigate escalation")
 
 
 class _BehaviourSupportPlan(BaseModel):

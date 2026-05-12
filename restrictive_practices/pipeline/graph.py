@@ -20,6 +20,7 @@ from models.db import CaseNoteRun
 from models.schemas import (
     AuthorisationStatus,
     CaseNoteInput,
+    ConfidenceLevel,
     CrossCheckResult,
     EvaluatorOutput,
     PipelineResult,
@@ -129,6 +130,9 @@ async def run_pipeline(note: CaseNoteInput, db: AsyncSession) -> PipelineResult:
     alert_required = (
         cross_check is not None
         and cross_check.authorisation_status == AuthorisationStatus.UNAUTHORISED
+        and evaluator is not None
+        and evaluator.confidence == ConfidenceLevel.HIGH
+        and not evaluator.bsp_mentioned_in_note
     )
 
     # Persist audit record — every run is logged regardless of outcome

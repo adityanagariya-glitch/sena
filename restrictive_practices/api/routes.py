@@ -17,6 +17,7 @@ from models.schemas import (
     BSPResponse,
     BSPUpdateStatus,
     CaseNoteInput,
+    ConfidenceLevel,
     EvaluateResponse,
     PipelineResult,
     VerdictOutcome,
@@ -56,14 +57,26 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
     cc = result.cross_check
 
     # ── Verdict ───────────────────────────────────────────────────────────────
+    next_steps: list[str] = []
+
     if not result.triage.flagged:
         outcome = VerdictOutcome.CLEAR
         risk_level = "N/A"
         action_required = "No action required. Case note passed initial screening."
+
     elif ev is None or not ev.incident_detected:
         outcome = VerdictOutcome.NO_INCIDENT
         risk_level = "N/A"
         action_required = "No action required. Detailed review found no violation."
+
+    elif ev.confidence == ConfidenceLevel.LOW:
+        outcome = VerdictOutcome.NO_INCIDENT
+        risk_level = ev.policy_violation_risk.value
+        action_required = (
+            "Language in the case note is ambiguous and does not meet the threshold for "
+            "a restrictive practice finding. No further action required at this stage."
+        )
+
     elif cc and cc.authorisation_status == AuthorisationStatus.AUTHORISED_REVIEW:
         outcome = VerdictOutcome.AUTHORISED_USE
         risk_level = ev.policy_violation_risk.value
@@ -71,6 +84,42 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
             "Review the Behaviour Support Plan to confirm conditions were met. "
             "Record the use and ensure the BSP is current."
         )
+        next_steps = [
+            "Confirm the BSP covers this specific practice type and context.",
+            "Verify the BSP is current and has not expired.",
+            "Document the practice use in the participant's records.",
+            "Check whether the BSP conditions (e.g. specific triggers, de-escalation first) were followed.",
+        ]
+
+    elif ev.bsp_mentioned_in_note and (cc is None or cc.bsp_id is None):
+        outcome = VerdictOutcome.ADMINISTRATIVE_REVIEW
+        risk_level = ev.policy_violation_risk.value
+        action_required = (
+            "The case note references a Behaviour Support Plan, but no matching active BSP "
+            "was found in the system. Administrative verification required before escalation."
+        )
+        next_steps = [
+            "Verify whether the PBSP has been uploaded to the system.",
+            "Check whether the BSP is active and has not expired or been revoked.",
+            "Confirm the BSP covers this specific practice type.",
+            "Contact the authorising behaviour support practitioner to confirm current status.",
+            "If BSP is confirmed active and applicable, update the system record.",
+        ]
+
+    elif ev.confidence == ConfidenceLevel.MEDIUM and (cc is None or cc.bsp_id is None):
+        outcome = VerdictOutcome.POSSIBLE
+        risk_level = ev.policy_violation_risk.value
+        action_required = (
+            "The case note suggests a possible restrictive practice, but the language is "
+            "context-dependent. Escalate to a behaviour support practitioner for review."
+        )
+        next_steps = [
+            "Escalate to a behaviour support practitioner for clinical review.",
+            "Request clarification from the support worker on the specific actions described.",
+            "Check whether a Behaviour Support Plan exists or is being developed for this client.",
+            "If practice is confirmed, follow reporting obligations under NDIS Rules 2018.",
+        ]
+
     else:
         outcome = VerdictOutcome.UNAUTHORISED
         risk_level = ev.policy_violation_risk.value
@@ -80,12 +129,20 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
             f"within {timeframe}. Document the incident and initiate a review of the "
             f"participant's Behaviour Support Plan."
         )
+        next_steps = [
+            f"Notify the NDIS Quality and Safeguards Commission within {timeframe}.",
+            "Document the incident in the participant's records with full details.",
+            "Debrief the support worker involved.",
+            "Initiate a review or development of a Behaviour Support Plan for this participant.",
+            "If serious injury is also involved, notify the Commission within 24 hours.",
+        ]
 
     verdict = _VerdictSection(
         outcome=outcome,
         risk_level=risk_level,
         alert_required=result.alert_required,
         action_required=action_required,
+        next_steps=next_steps,
     )
 
     # ── Detected practice ─────────────────────────────────────────────────────
@@ -95,6 +152,8 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
             category=ev.practice_category,
             what_happened=ev.action_summary,
             reasoning=ev.reasoning,
+            trigger_phrases=ev.trigger_phrases,
+            suppression_factors=ev.suppression_factors,
         )
 
     # ── Authorisation ─────────────────────────────────────────────────────────

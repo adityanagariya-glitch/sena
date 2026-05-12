@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from config import settings
 from models.schemas import (
     CaseNoteInput,
+    ConfidenceLevel,
     EvaluatorOutput,
     PolicyChunk,
     PolicyViolationRisk,
@@ -76,6 +77,26 @@ Determine:
 - "notification_timeframe": "5 business days" for unauthorised restrictive practice use;
   "24 hours" if serious injury or death is also described; null if no reporting required
 
+6. Your confidence in the restrictive practice determination:
+   - "High": explicit restriction language used (e.g. "locked the door", "held him down",
+     "administered medication to control behaviour", "placed in his room and held the door")
+   - "Medium": restriction is implied or context-dependent (e.g. staff positioned near exit,
+     redirection used, guiding someone away without explicit force)
+   - "Low": wording is ambiguous and could reasonably describe non-restrictive support
+     (e.g. general supervision, prompting, accompanying, standby assistance)
+
+7. For "trigger_phrases": list exact short phrases (3–10 words) from the case note that indicate
+   a restrictive practice was used.
+
+8. For "suppression_factors": list exact short phrases (3–10 words) from the case note that argue
+   against escalation — e.g. participant agency, reference to a BSP or approved protocol,
+   medical/emergency context, voluntary nature of the activity, or staff following prescribed care.
+   Empty list if there are none.
+
+9. For "bsp_mentioned_in_note": check whether the case note explicitly references a Behaviour
+   Support Plan, PBSP, practitioner approval, authorisation, or BSP-aligned strategy.
+   Set to true and populate "bsp_mention_excerpt" with the exact phrase if found.
+
 Be precise and evidence-based. Quote specific phrases from the case note in your reasoning.
 """
 
@@ -85,7 +106,12 @@ class _EvaluatorResponse(BaseModel):
     practice_category: str
     action_summary: str
     policy_violation_risk: str
+    confidence: str = "High"
     reasoning: str
+    trigger_phrases: list[str] = []
+    suppression_factors: list[str] = []
+    bsp_mentioned_in_note: bool = False
+    bsp_mention_excerpt: str | None = None
     reporting_required: bool = False
     notification_timeframe: str | None = None
 
@@ -153,12 +179,22 @@ def _run_evaluator(
     except ValueError:
         risk = PolicyViolationRisk.MEDIUM
 
+    try:
+        confidence = ConfidenceLevel(parsed.confidence)
+    except ValueError:
+        confidence = ConfidenceLevel.HIGH
+
     return EvaluatorOutput(
         incident_detected=parsed.incident_detected,
         practice_category=parsed.practice_category,
         action_summary=parsed.action_summary,
         policy_violation_risk=risk,
+        confidence=confidence,
         reasoning=parsed.reasoning,
+        trigger_phrases=parsed.trigger_phrases,
+        suppression_factors=parsed.suppression_factors,
+        bsp_mentioned_in_note=parsed.bsp_mentioned_in_note,
+        bsp_mention_excerpt=parsed.bsp_mention_excerpt,
         reporting_required=parsed.reporting_required,
         notification_timeframe=parsed.notification_timeframe,
     )
