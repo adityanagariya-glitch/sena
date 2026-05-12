@@ -16,6 +16,17 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 
 ## Active
 
+### #16 — Voice assistant UX bugs (VAD, validation, routines, amnesia) (2026-05-12)
+- **Status:** completed (2026-05-12) — commit db2ee7c
+- **Priority:** P0 (user-reported — blocks voice rollout sign-off)
+- **Sub-fixes:**
+  - V1 (VAD patience): `silence_duration_ms 1000 → 3000` in `gemini_live.py` — **DONE**
+  - V2 (Email domain length): RFC 5321 per-label ≤63 + total domain ≤253 in `_email()` — **DONE**
+  - V3 (Enum validation): `validate_field()` extended with `field_spec`; `multi_enum` checked against options; `enum_invalid` with `allowed_values`; Rules 13+14 in prompt — **DONE**
+  - V4 (Mandatory routines): `section_min_unmet()` helper; fixture `min` 0→1; `advance_step` gate; Rule 9 rewritten + Rules 13/14 added — **DONE**
+  - V5 (Session name amnesia): Rule 2 + address block updated with `prior_pages` fallback — **DONE**
+- **Tests:** 198 → 238 (+40 new). All green.
+
 ### #15 — State-sync desync repair (2026-05-11)
 - **Status:** completed (2026-05-11)
 - **Priority:** P0 (user-reported regressions blocking voice rollout)

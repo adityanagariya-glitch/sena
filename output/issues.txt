@@ -1,0 +1,736 @@
+Form State Phase C
+Required: 15/15 · Optional: 6/6 · 100%
+About you
+Full Name*
+Aditya Nagariya(voice 1.00)
+Email Address*
+adityanagariya@gmail.com(voice 1.00)
+Phone Number*
++61892625282(voice 1.00)
+Date of Birth*
+2008-02-25(voice 1.00)
+Gender*
+Male(voice 1.00)
+About Me
+I am software developer stress testing AI.(voice 1.00)
+Preferred Language*
+English(voice 1.00)
+Interpreter Required*
+true(voice 1.00)
+Interpreter Language
+Gujarati(voice 1.00)
+Home address
+Street Address*
+52 George Street(voice 1.00)
+State*
+NSW(voice 1.00)
+City / Suburb*
+Sydney(voice 1.00)
+Postcode*
+2000(voice 1.00)
+Service address
+Service Street Address
+100 George Street(voice 1.00)
+State
+NSW(voice 1.00)
+City / Suburb
+London(voice 1.00)
+Postcode
+2000(voice 1.00)
+Emergency contacts
+Contact Name*
+Elliot Anderson(voice 1.00)
+Relationship*
+hacker(voice 1.00)
+Contact Email*
+elliot.anderson@hacker.com(voice 1.00)
+Contact Phone*
++61428621398(voice 1.00)
+`xml
+
+(.venv) PS C:\Users\Admin\Downloads\sena-mobile\sena-mobile\SENA_AI\sena-ai\services\onboarding> uvicorn src.onboarding.main:create_app --factory --reload --host 0.0.0.0 --port 8083 --forwarded-allow-ips='*' --proxy-headers
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\sena-ai\\services\\onboarding']
+INFO:     Uvicorn running on http://0.0.0.0:8083 (Press CTRL+C to quit)
+INFO:     Started reloader process [9672] using WatchFiles
+C:\Users\Admin\Downloads\SENA\.venv\Lib\site-packages\pydantic\_internal\_fields.py:192: UserWarning: Field name "schema" in "CreateSessionRequest" shadows an attribute in parent "BaseModel"
+  warnings.warn(
+INFO:     Started server process [17076]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:51592 - "GET /harness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51592 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51594 - "GET /harness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51594 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51595 - "GET /harness HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51595 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+2026-05-11T14:22:08.001095Z [info     ] user_ctx_bucket_lookup         bucket_empty=True key=sena:onboarding:user_ctx:t-harness-r3ekrf:p-harness-r3ekrf participant_id=p-harness-r3ekrf summary_count=0 tenant_id=t-harness-r3ekrf
+2026-05-11T14:22:08.001579Z [info     ] session_create_resolved_bootstrap bootstrap_mode=new_user cross_screen_enabled=True participant_id=p-harness-r3ekrf prior_pages_keys=[] session_id=3152eb3a-7168-4530-91d9-cd82dfe80124 step=personal_information tenant_id=t-harness-r3ekrf
+2026-05-11T14:22:08.003754Z [info     ] session_created                bootstrap_mode=new_user session_id=3152eb3a-7168-4530-91d9-cd82dfe80124 step=personal_information
+INFO:     127.0.0.1:51595 - "POST /v1/onboarding/session HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51595 - "GET /v1/onboarding/session/3152eb3a-7168-4530-91d9-cd82dfe80124/state HTTP/1.1" 200 OK
+2026-05-11T14:22:08.192307Z [info     ] user_ctx_bucket_lookup         bucket_empty=True key=sena:onboarding:user_ctx:t-harness-r3ekrf:p-harness-r3ekrf participant_id=p-harness-r3ekrf summary_count=0 tenant_id=t-harness-r3ekrf
+2026-05-11T14:22:08.193281Z [info     ] session_create_resolved_bootstrap bootstrap_mode=new_user cross_screen_enabled=True participant_id=p-harness-r3ekrf prior_pages_keys=[] session_id=08430fff-8b98-4311-9ba4-ddd42464bd7a step=personal_information tenant_id=t-harness-r3ekrf
+2026-05-11T14:22:08.197007Z [info     ] session_created                bootstrap_mode=new_user session_id=08430fff-8b98-4311-9ba4-ddd42464bd7a step=personal_information
+INFO:     127.0.0.1:51595 - "POST /v1/onboarding/session HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51595 - "GET /v1/onboarding/session/08430fff-8b98-4311-9ba4-ddd42464bd7a/state HTTP/1.1" 200 OK
+INFO:     ('127.0.0.1', 51598) - "WebSocket /ws/onboarding/08430fff-8b98-4311-9ba4-ddd42464bd7a" [accepted]
+INFO:onboarding.api.ws_routes:ws_connect session=08430fff-8b98-4311-9ba4-ddd42464bd7a resume=False
+INFO:     connection open
+2026-05-11T14:22:09.828175Z [info     ] user_ctx_bucket_lookup         bucket_empty=True key=sena:onboarding:user_ctx:t-harness-r3ekrf:p-harness-r3ekrf participant_id=p-harness-r3ekrf summary_count=0 tenant_id=t-harness-r3ekrf
+INFO:onboarding.services.gemini_live:gemini_bridge_constructed session=08430fff-8b98-4311-9ba4-ddd42464bd7a system_instruction_sha8=03458417 instruction_chars=33750 tools_count=8 replay_context=no
+INFO:onboarding.services.gemini_live:gemini_connected session=08430fff-8b98-4311-9ba4-ddd42464bd7a model=gemini-3.1-flash-live-preview
+INFO:onboarding.services.gemini_live:audio_streaming chunks=50 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'タイ セナ' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Hi there, what's your full name?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=13 turn=0 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Aditya nagariya' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "basics", "confidence": 0.8, "field": "full_name", "value": "Aditya Nagariya"}
+INFO:onboarding.services.tools:low_confidence_gate section=basics field=full_name confidence=0.80 session=08430fff-8b98-4311-9ba4-ddd42464bd7a — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I heard Aditya Nagariya — is that right?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=20 turn=1 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"confidence": 1, "section": "basics", "value": "Aditya Nagariya", "field": "full_name"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Great. And what's your email address?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=12 turn=2 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'adityanariya@gmail.com' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "basics", "confidence": 0.85, "field": "email", "value": "adityanagariya@gmail.com"}
+INFO:onboarding.services.tools:low_confidence_gate section=basics field=email confidence=0.85 session=08430fff-8b98-4311-9ba4-ddd42464bd7a — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I heard adityanagariya@gmail.com — is that right?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=24 turn=3 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "adityanagariya@gmail.com", "field": "email", "confidence": 1, "section": "basics"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Thanks. What's your phone number?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=14 turn=4 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID "It's 0892628252." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"confidence": 0.8, "section": "basics", "value": "+614892628252", "field": "phone"}
+INFO:onboarding.services.tools:validation_rejection section=basics field=phone code=phone_invalid_format session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "That phone number didn't look right — Australian numbers start with 04, 02, 03, 07, or 08 followed by eight digits. Could you try that again?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=55 turn=5 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=650 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=700 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=750 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID '289262' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "basics", "confidence": 0.8, "field": "phone", "value": "+614892628252"}
+INFO:onboarding.services.tools:validation_rejection section=basics field=phone code=phone_invalid_format session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:interrupted turn=6 chunks_before=0 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=0 turn=6 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=800 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID '8252' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "basics", "confidence": 1, "field": "phone", "value": "+614892628252"}
+INFO:onboarding.services.tools:validation_rejection section=basics field=phone code=phone_invalid_format session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "That number doesn't seem right either — Australian numbers start with 04, 02, 03, 07, or 08 followed by eight digits. Could you try again?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=51 turn=7 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=850 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=900 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=950 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1000 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID '80892625282' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"confidence": 1, "section": "basics", "value": "+61892625282", "field": "phone"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1050 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Got it, I've recorded that as 08 9262 5282 — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=29 turn=8 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'क्या बात बाबू है?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I just want to make sure I recorded your phone number correctly. Is 08 9262 5282 the right number?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=44 turn=9 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Thanks. What date were you born?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=14 turn=10 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID '25th of February, 2004' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"confidence": 1, "section": "basics", "value": "2004-02-25", "field": "date_of_birth"}
+INFO:onboarding.services.gemini_live:AGENT_SAID "I've got the 25th of February, 2004 — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=23 turn=11 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID "No, actually it's 25th of February, 2008." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "2008-02-25", "field": "date_of_birth", "confidence": 1, "section": "basics"}
+INFO:onboarding.services.gemini_live:AGENT_SAID "My mistake, I've updated that to the 25th of February, 2008 — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=31 turn=12 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Great. Do you identify as Male, Female, Non binary or something else?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=32 turn=13 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1650 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1700 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'What if we change the date of birth to 25th of February, 2010?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"confidence": 1, "section": "basics", "value": "2010-02-25", "field": "date_of_birth"}
+INFO:onboarding.services.tools:validation_rejection section=basics field=date_of_birth code=dob_under_18 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1750 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "You must be at least 18 years old to continue, so I can't complete this form for you. Thanks for checking in." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=39 turn=14 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1800 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1850 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID '2009' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"field": "date_of_birth", "value": "2009-02-25", "section": "basics", "confidence": 1}
+INFO:onboarding.services.tools:validation_rejection section=basics field=date_of_birth code=dob_under_18 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "You must be at least 18 years old to continue, so I can't complete this form for you. Thanks for checking in." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=33 turn=15 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1900 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1950 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID "Let's keep it 2008." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"field": "date_of_birth", "value": "2008-02-25", "section": "basics", "confidence": 1}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2000 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Alright, keeping that as 25 February 2008 — is that right?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=26 turn=16 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2050 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes, am I 18 years old if I was born in 2008?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Based on your date of birth of February 25th, 2008, yes, you are 18. So, do you identify as Male, Female, Non binary or something else?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=50 turn=17 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'mail' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "basics", "confidence": 1, "field": "gender", "value": "Male"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Got it, I've registered that as Male — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=19 turn=18 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Great. Is there anything you'd like to share about yourself in the 'About Me' section? It's optional, but it helps us tailor support." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=44 turn=19 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'I am software developer stress testing AI.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "I am software developer stress testing AI.", "field": "about_me", "confidence": 1, "section": "basics"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Thanks. I\'ve recorded that as "I am software developer stress testing AI" — is that right?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=32 turn=20 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Great. What's your preferred language?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=19 turn=21 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2650 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2700 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID "English. I don't need interpreter and I need interpreter for Gujarati language." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "basics", "confidence": 1, "field": "preferred_language", "value": "English"}
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "true", "field": "interpreter_required", "confidence": 1, "section": "basics"}
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"field": "interpreter_language", "value": "Gujarati", "section": "basics", "confidence": 1}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2750 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "I've recorded that your preferred language is English and you need an interpreter for Gujarati language — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=34 turn=22 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2800 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Now, let's move on to your home address. What's the street address?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=20 turn=23 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2850 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2900 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2950 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3000 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Say my street address is Just wait a minute.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'No worries, take your time.' session=08430fff-8b98-4311-9ba4-ddd42464bd7aINFO:onboarding.services.gemini_live:turn_complete chunks=11 turn=24 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3050 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3650 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3700 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3750 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID '87-135 Brompton Road' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3800 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "home_address", "confidence": 1, "field": "address", "value": "87-135 Brompton Road"}
+INFO:onboarding.services.gemini_live:AGENT_SAID "Got it, I've recorded that as 87-135 Brompton Road — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=29 turn=25 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3850 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3900 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3950 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'And where is this in Australia?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "I've recorded that as 87-135 Brompton Road. To finish the address, I'll need the state, city or suburb, and postcode. Could you provide those?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=51 turn=26 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4000 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4050 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Just tell me where is 87.135 Brompton Road in Australia?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "I'm not actually able to look that up for you. To register your address, I just need the city or suburb, postcode, and state for that road. Do you have those details?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=52 turn=27 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Just wait a minute, I am bit confused.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'No worries at all, take your time to get sorted.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=20 turn=28 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4650 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4700 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'The street address is 52 George Street.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "home_address", "confidence": 1, "field": "address", "value": "52 George Street"}
+INFO:onboarding.services.gemini_live:AGENT_SAID "Thanks. I've recorded that as 52 George Street — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=30 turn=29 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4750 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4800 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4850 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes, the city is Sydney, the state is NSW and postcode is 2000.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "home_address", "confidence": 1, "field": "city", "value": "Sydney"}
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "home_address", "confidence": 1, "field": "state", "value": "NSW"}
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "2000", "field": "zip_code", "confidence": 1, "section": "home_address"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4900 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Great. I've recorded you're in Sydney, New South Wales, postcode 2000 — is that correct?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=35 turn=30 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4950 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5000 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5050 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID "Yes, it's correct." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Great. And is your service address the same as your home address?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=25 turn=31 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "true", "field": "service_same_as_home", "confidence": 1, "section": "service_address"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Got it. Now I'll get you to provide some details for at least one emergency contact. First, let's add a contact profile. What's the contact's name?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=45 turn=32 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Elliot and' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=enter_repeatable_section args={"intent": "first", "section_id": "emergency_contacts"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"repeatable_index": 0, "confidence": 1, "section": "emergency_contacts", "value": "Elliot Anderson", "field": "name"}
+INFO:onboarding.services.gemini_live:AGENT_SAID "Thanks. I've recorded that as Elliot Anderson — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=24 turn=33 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "What's their relationship to you?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=13 turn=34 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5650 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'hacker' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"repeatable_index": 0, "confidence": 0.8, "section": "emergency_contacts", "field": "relation", "value": "hacker"}
+INFO:onboarding.services.tools:low_confidence_gate section=emergency_contacts field=relation confidence=0.80 session=08430fff-8b98-4311-9ba4-ddd42464bd7a — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5700 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I heard hacker — is that right?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=15 turn=35 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5750 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"repeatable_index": 0, "section": "emergency_contacts", "confidence": 1, "field": "relation", "value": "hacker"}
+INFO:onboarding.services.gemini_live:AGENT_SAID "I've recorded that their relationship is hacker — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=21 turn=36 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5800 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5850 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "What's their email address?" session=08430fff-8b98-4311-9ba4-ddd42464bd7aINFO:onboarding.services.gemini_live:turn_complete chunks=11 turn=37 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5900 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5950 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'elliot.anderson@hacker.com' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"repeatable_index": 0, "field": "email", "value": "elliot.anderson@hacker.com", "section": "emergency_contacts", "confidence": 1}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6000 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "Got it, I've recorded that as elliot.anderson@hacker.com — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=24 turn=38 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6050 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "And what's their phone number?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=12 turn=39 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'My phone number is 0428.621398.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"field": "phone", "value": "+61428621398", "section": "emergency_contacts", "confidence": 1, "repeatable_index": 0}
+INFO:onboarding.services.gemini_live:AGENT_SAID "I've got that as 0428 621 398 — is that right?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=26 turn=40 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'That\'s all the required fields filled. Are you happy to submit these details? You can confirm by saying something like, "Yes, submit it now".' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=40 turn=41 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6650 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'I said no.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "No worries. Is there anything in the 'About You' section, home address, or emergency contacts you'd like to change? Just let me know, or say when you're ready to continue." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=50 turn=42 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6700 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6750 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6800 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6850 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6900 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID "Actually, it's the service address which I want to change to 100 George Street, London, NW1 2000." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"field": "service_same_as_home", "value": "false", "section": "service_address", "confidence": 1}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6950 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID "I'm still collecting information for 'emergency_contacts' — please finish that before moving to 'service_address'. Do you want to finish that first, or did you want to intentionally change that other address?" session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=54 turn=43 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7000 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7050 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'I want to intentionally change the service address first.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "false", "field": "service_same_as_home", "cross_section_intent": true, "confidence": 1, "section": "service_address"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7100 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Alright, you said you wanted to change the service address to 100 George Street. Which city or suburb, state, and postcode is that?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=42 turn=44 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7150 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7200 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7250 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID "It's actually London and SW2000." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "100 George Street", "field": "address", "section": "service_address", "cross_section_intent": true, "confidence": 1}
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "service_address", "cross_section_intent": true, "confidence": 1, "field": "city", "value": "London"}
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"value": "NSW", "field": "state", "section": "service_address", "cross_section_intent": true, "confidence": 1}
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=update_field args={"section": "service_address", "confidence": 1, "cross_section_intent": true, "field": "zip_code", "value": "2000"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7300 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I\'ve updated your service address to 100 George Street, London, New South Wales, postcode 2000 — is that correct? And now, are you happy to submit everything? You can confirm by saying something like, "Yes, submit it now."' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=65 turn=45 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+WARNING:onboarding.services.gemini_live:go_away time_left=50s session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+WARNING:onboarding.services.gemini_live:go_away time_left=50s session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7350 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'submit' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=advance_step args={"confirmation_transcript": "submit"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7400 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I need a clear yes or confirmation before I can save and move on — could you say yes or confirmed to proceed?' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=40 turn=46 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7450 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:USER_SAID 'Confirm.' session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.tools:tool_call session=08430fff-8b98-4311-9ba4-ddd42464bd7a name=advance_step args={"confirmation_transcript": "confirm"}
+2026-05-11T14:31:25.365442Z [warning  ] webhook_error                  attempt=0 error=[Errno 11001] getaddrinfo failed url=https://mock.example.com/webhooks/sena webhook_event=onboarding.session.completed
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7500 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+2026-05-11T14:31:26.376013Z [warning  ] webhook_error                  attempt=1 error=[Errno 11001] getaddrinfo failed url=https://mock.example.com/webhooks/sena webhook_event=onboarding.session.completed
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7550 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:audio_streaming chunks=7600 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+2026-05-11T14:31:30.400511Z [warning  ] webhook_error                  attempt=2 error=[Errno 11001] getaddrinfo failed url=https://mock.example.com/webhooks/sena webhook_event=onboarding.session.completed
+2026-05-11T14:31:30.400832Z [error    ] webhook_failed_all_retries     max_retries=3 url=https://mock.example.com/webhooks/sena webhook_event=onboarding.session.completed
+INFO:onboarding.services.gemini_live:AGENT_SAID " submitted those details and we're all done for now." session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:turn_complete chunks=25 turn=47 session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:onboarding.services.gemini_live:gemini_disconnected session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+2026-05-11T14:31:34.686299Z [info     ] user_ctx_step_written          key=sena:onboarding:user_ctx:t-harness-r3ekrf:p-harness-r3ekrf participant_id=p-harness-r3ekrf step=9216 tenant_id=t-harness-r3ekrf
+ERROR:onboarding.api.ws_routes:ws_close_flush_failed session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+Traceback (most recent call last):
+  File "C:\Users\Admin\Downloads\sena-mobile\sena-mobile\SENA_AI\sena-ai\services\onboarding\src\onboarding\api\ws_routes.py", line 231, in onboarding_ws
+    log.info(
+    ~~~~~~~~^
+        "ws_close_summary_flushed",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        step_number=step_number,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3568.0_x64__qbz5n2kfra8p0\Lib\logging\__init__.py", line 1520, in info
+    self._log(INFO, msg, args, **kwargs)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Logger._log() got an unexpected keyword argument 'session_id'
+INFO:onboarding.api.ws_routes:ws_lock_released session=08430fff-8b98-4311-9ba4-ddd42464bd7a
+INFO:     connection closed
+
+xml`
+
+
+
+
+``INFO:onboarding.services.gemini_live:gemini_bridge_constructed session=8e69135a-3850-4e82-adce-fa04c9d01367 system_instruction_sha8=704029ae instruction_chars=33406 tools_count=8 replay_context=no
+INFO:onboarding.services.gemini_live:gemini_connected session=8e69135a-3850-4e82-adce-fa04c9d01367 model=gemini-3.1-flash-live-preview
+INFO:onboarding.services.gemini_live:audio_streaming chunks=50 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Hi.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "Hi there, we're just starting on the medical information section. What's your primary diagnosis?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=32 turn=0 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=100 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=150 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'sinus' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"value": "sinus", "section": "medical_overview", "confidence": 0.8, "field": "primary_diagnosis"}
+INFO:onboarding.services.tools:low_confidence_gate section=medical_overview field=primary_diagnosis confidence=0.80 session=8e69135a-3850-4e82-adce-fa04c9d01367 — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.gemini_live:AGENT_SAID "I didn't quite catch that one — did you say sinus?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=24 turn=1 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=200 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=250 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "medical_overview", "value": "sinus", "confidence": 1, "field": "primary_diagnosis"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=300 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Okay, got it. I\'ve recorded "sinus" for your primary diagnosis. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=28 turn=2 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=350 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "No worries. Now, would you also like to add a secondary diagnosis? It's optional." session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=32 turn=3 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=400 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=450 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=500 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=550 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=600 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID "No. No, I don't want to add." session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Sure thing. Next up, who is your primary doctor?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=23 turn=4 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=650 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=700 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'my father' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"field": "primary_doctor", "value": "father", "section": "medical_overview", "confidence": 0.8}
+INFO:onboarding.services.tools:low_confidence_gate section=medical_overview field=primary_doctor confidence=0.80 session=8e69135a-3850-4e82-adce-fa04c9d01367 — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I didn\'t catch that one clearly either — did you say "father"?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=22 turn=5 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=750 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=800 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes, he is a doctor.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"field": "primary_doctor", "confidence": 1, "section": "medical_overview", "value": "father"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=850 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Right, thanks for confirming. I\'ve got "father" for your primary doctor recorded. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=32 turn=6 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=900 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "Too easy. Would you also like to add a contact number for your doctor? It's optional." session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=31 turn=7 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=950 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1000 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1050 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1100 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1150 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID "No, no, I don't want to add." session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1200 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'No worries. Could you tell me, roughly, when was your last medical checkup?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=31 turn=8 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1250 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1300 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'just yesterday' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"field": "last_medical_checkup", "section": "medical_overview", "value": "2026-05-10", "confidence": 0.9}
+INFO:onboarding.services.gemini_live:AGENT_SAID "I've got yesterday, the 10th of May, 2026 for your medical checkup, is that right?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=30 turn=9 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1350 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1400 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "Right, thanks. Now we're on to allergies and sensitivities. Would you like to start by telling me about any allergies you have?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=40 turn=10 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1450 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'eight' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=enter_repeatable_section args={"section_id": "allergies", "intent": "first"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1500 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"field": "title", "repeatable_index": 0, "confidence": 0.8, "value": "wheat", "section": "allergies"}
+INFO:onboarding.services.tools:low_confidence_gate section=allergies field=title confidence=0.80 session=8e69135a-3850-4e82-adce-fa04c9d01367 — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.gemini_live:AGENT_SAID 'I didn\'t catch that properly either — did you say "wheat"?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=23 turn=11 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1550 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1600 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID "It's heat h e a t." session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1650 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"confidence": 1, "value": "heat", "field": "title", "repeatable_index": 0, "section": "allergies"}
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Right, I\'ve got "heat" recorded for the title of your allergy. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=27 turn=12 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1700 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1750 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "Got it. Could you describe what happens when you're exposed to heat?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=25 turn=13 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1800 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1850 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'racist' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "allergies", "confidence": 0.8, "value": "rashes", "repeatable_index": 0, "field": "description"}
+INFO:onboarding.services.tools:low_confidence_gate section=allergies field=description confidence=0.80 session=8e69135a-3850-4e82-adce-fa04c9d01367 — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Sorry, I didn\'t catch that clearly. Did you say "rashes"?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=23 turn=14 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1900 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "allergies", "value": "rashes", "confidence": 1, "repeatable_index": 0, "field": "description"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=1950 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Got it. I\'ve got "rashes" recorded for the description. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=27 turn=15 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2000 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=exit_repeatable_section args={}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2050 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "Thanks. That's all for that allergy. Would you like to add another one?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=23 turn=16 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2100 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2150 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'No. Actually, yes I want to add.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=add_repeatable_row args={"section_id": "allergies"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2200 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "I'm sorry, but I can only add rows to certain sections by voice, and allergies isn't one of them. You'll be able to add more on the confirmation screen. Can we move on to your current medications now?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=62 turn=17 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2250 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=enter_repeatable_section args={"section_id": "medications", "intent": "first"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2300 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "Alright, what's the name of the first medication?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=18 turn=18 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2350 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2400 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2450 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2500 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Edithro my same 500 g frequency three times a day purpose allergies notes nothing.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "medications", "value": "azithromycin", "confidence": 0.8, "repeatable_index": 0, "field": "medication"}
+INFO:onboarding.services.tools:low_confidence_gate section=medications field=medication confidence=0.80 session=8e69135a-3850-4e82-adce-fa04c9d01367 — returning CONFIRM_REQUIRED, value NOT committed
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"field": "dosage", "repeatable_index": 0, "confidence": 1, "value": "500mg", "section": "medications"}
+INFO:onboarding.services.tools:update_field REJECTED pending_confirmation_locked blocking=medications.medication attempted=medications.dosage session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "medications", "field": "frequency", "repeatable_index": 0, "confidence": 1, "value": "three times a day"}
+INFO:onboarding.services.tools:update_field REJECTED pending_confirmation_locked blocking=medications.medication attempted=medications.frequency session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"value": "allergies", "confidence": 1, "repeatable_index": 0, "field": "purpose", "section": "medications"}
+INFO:onboarding.services.tools:update_field REJECTED pending_confirmation_locked blocking=medications.medication attempted=medications.purpose session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"value": "nothing", "confidence": 1, "repeatable_index": 0, "field": "notes", "section": "medications"}
+INFO:onboarding.services.tools:update_field REJECTED pending_confirmation_locked blocking=medications.medication attempted=medications.notes session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2550 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Sorry, I didn\'t quite get that name. Did you say "azithromycin"?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=26 turn=19 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2600 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "medications", "field": "medication", "repeatable_index": 0, "confidence": 1, "value": "azithromycin"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2650 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Right, I\'ve got "azithromycin" recorded for the name. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=24 turn=20 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2700 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "Got it. Now, what's the dosage for that medication?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=22 turn=21 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2750 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2800 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2850 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'I already gave you in the last speech.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=get_session_context args={}
+INFO:onboarding.services.gemini_live:AGENT_SAID "Sorry about that. I've got the dosage as 500g — is that right?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=25 turn=22 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2900 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=2950 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"value": "500mg", "confidence": 1, "field": "dosage", "repeatable_index": 0, "section": "medications"}
+INFO:onboarding.services.gemini_live:AGENT_SAID "No worries. And what's the frequency for taking it?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=21 turn=23 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3000 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3050 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3100 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3150 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3200 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID "I already told you it's azithromycin 500 mg three times a day purpose allergies and nothing in notes." session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "medications", "value": "three times a day", "confidence": 1, "field": "frequency", "repeatable_index": 0}
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Right, thanks for repeating that. I\'ve got "three times a day" recorded for the frequency. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=30 turn=24 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3250 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3300 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "medications", "confidence": 1, "value": "allergies", "field": "purpose", "repeatable_index": 0}
+INFO:onboarding.services.gemini_live:AGENT_SAID 'All good. And I\'ve got "allergies" recorded for the purpose of this medication. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=30 turn=25 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3350 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3400 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=update_field args={"section": "medications", "field": "notes", "repeatable_index": 0, "value": "nothing", "confidence": 1}
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Right, I\'ve got "nothing" recorded for any notes. Is that right?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=24 turn=26 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3450 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3500 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=exit_repeatable_section args={}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3550 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Got it. Would you like to add another medication?' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=22 turn=27 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3600 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=add_repeatable_row args={"section_id": "medications"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3650 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "I'm sorry, but I can't add rows to this section by voice. You can add more on the confirmation screen. Can we move on to your medical history now?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=46 turn=28 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3700 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3750 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3800 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3850 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Yes.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=enter_repeatable_section args={"section_id": "medical_history", "intent": "first"}
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3900 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "No worries. Would you like to tell me about any conditions you've had in the past?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=28 turn=29 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=3950 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4000 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4050 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4100 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4150 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4200 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4250 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4300 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4350 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4400 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4450 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4500 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4550 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4600 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4650 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4700 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4750 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4800 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4850 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4900 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=4950 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5000 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5050 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5100 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5150 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5200 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5250 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5300 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5350 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5400 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Hey.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Hey, just checking in — are you still there? No rush at all, take your time.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=30 turn=30 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5450 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5500 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5550 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'Can address me by my name by the way.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "I understand, but I don't have your name recorded in the system yet. Once I do, I'll be able to use it. Would you like to tell me about any medical history you have now?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=55 turn=31 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5600 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5650 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5700 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5750 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5800 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID "What are you saying? We just finished the first and second form and you are saying you don't have my name." session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.tools:tool_call session=8e69135a-3850-4e82-adce-fa04c9d01367 name=get_session_context args={}
+INFO:onboarding.services.gemini_live:AGENT_SAID "I'm sorry about that misunderstanding. My memory is empty at the start of each new conversation, and I only know what's in the system right now. Your name isn't listed in the current form values. Would you like to tell me about any medical history you have now?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=73 turn=32 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5850 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5900 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=5950 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6000 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6050 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6100 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'No. I would love to hear name from your side.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID "I understand you'd prefer that, but I can only use the name recorded in the system, and right now, that's not listed. Would you like to proceed with the medical history for now?" session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_complete chunks=58 turn=33 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6150 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6200 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6250 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6300 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6350 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6400 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6450 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6500 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6550 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6600 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6650 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6700 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6750 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6800 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6850 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6900 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:audio_streaming chunks=6950 session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:USER_SAID 'night' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:AGENT_SAID 'Hey, just checking in — are you still there? No rush, take your time.' session=8e69135a-3850-4e82-adce-fa04c9d01367
+INFO:onboarding.services.gemini_live:turn_``
