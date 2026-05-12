@@ -33,7 +33,7 @@ class FieldSpec(BaseModel):
     default: Any | None = None
 
     @model_validator(mode="after")
-    def options_required_for_enum(self) -> "FieldSpec":
+    def options_required_for_enum(self) -> FieldSpec:
         if self.type in (FieldType.enum, FieldType.multi_enum) and not self.options:
             raise ValueError(f"Field '{self.id}' of type '{self.type}' must have options")
         return self
@@ -57,7 +57,7 @@ class SectionSpec(BaseModel):
     flag_field: FieldSpec | None = None
 
     @model_validator(mode="after")
-    def validate_section_shape(self) -> "SectionSpec":
+    def validate_section_shape(self) -> SectionSpec:
         if self.repeatable is not None and not self.item_fields:
             raise ValueError(f"Repeatable section '{self.id}' must have item_fields")
         if self.repeatable is None and self.fields is None:
@@ -70,10 +70,7 @@ class SectionSpec(BaseModel):
 
     def all_fields(self) -> list[FieldSpec]:
         """Return all fields (regular or item_fields for repeatable)."""
-        if self.is_repeatable:
-            base = list(self.item_fields or [])
-        else:
-            base = list(self.fields or [])
+        base = list(self.item_fields or []) if self.is_repeatable else list(self.fields or [])
         if self.flag_field:
             base.insert(0, self.flag_field)
         return base
@@ -98,3 +95,19 @@ class StepSchema(BaseModel):
 
     def get_section(self, section_id: str) -> SectionSpec | None:
         return next((s for s in self.sections if s.id == section_id), None)
+
+    def get_field_spec(self, section_id: str, field_id: str) -> FieldSpec | None:
+        """Look up a FieldSpec by (section_id, field_id).
+
+        Handles both regular sections (fields) and repeatable sections (item_fields).
+        Returns None — never raises — for unknown section/field pairs.
+        """
+        for section in self.sections:
+            if section.id != section_id:
+                continue
+            fields = section.item_fields if section.is_repeatable else (section.fields or [])
+            for f in (fields or []):
+                if f.id == field_id:
+                    return f
+            return None  # section found, field not found
+        return None  # section not found

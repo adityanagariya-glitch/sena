@@ -49,7 +49,7 @@
     {
       "id": "morning_routine",
       "label": "Morning routine",
-      "repeatable": {"min": 0, "max": 20},
+      "repeatable": {"min": 1, "max": 20},
       "item_fields": [
         {"id": "description", "type": "text", "label": "Routine step", "required": true},
         {"id": "time", "type": "time", "label": "Time", "required": false}
@@ -58,7 +58,7 @@
     {
       "id": "evening_routine",
       "label": "Evening routine",
-      "repeatable": {"min": 0, "max": 20},
+      "repeatable": {"min": 1, "max": 20},
       "item_fields": [
         {"id": "description", "type": "text", "label": "Routine step", "required": true},
         {"id": "time", "type": "time", "label": "Time", "required": false}

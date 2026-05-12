@@ -11,18 +11,19 @@ to prevent handle leak via log aggregation.
 """
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import TYPE_CHECKING
+
+import structlog
 
 if TYPE_CHECKING:
     from onboarding.repositories.state_repo import FormStateRepo
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 async def issue_handle(
-    repo: "FormStateRepo",
+    repo: FormStateRepo,
     session_id: str,
     ttl_sec: int,
 ) -> str:
@@ -37,7 +38,7 @@ async def issue_handle(
 
 
 async def redeem_handle(
-    repo: "FormStateRepo",
+    repo: FormStateRepo,
     handle: str,
     expected_session_id: str,
 ) -> bool:
@@ -75,7 +76,7 @@ def build_replay_context(transcript: list[dict], last_n: int) -> str:
     The injected text cues the model to continue naturally without reintroducing itself.
 
     Example output:
-        [RESUME] last turns: user="My name is Jane"; agent="Got it, Jane. What's your date of birth?".
+        [RESUME] last turns: user="My name is Jane"; agent="Got it, Jane. ...".
         Continue from where you left off.
     """
     if not transcript or last_n <= 0:

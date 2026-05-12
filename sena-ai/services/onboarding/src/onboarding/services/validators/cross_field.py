@@ -51,6 +51,42 @@ def check_emergency_email_unique_and_differs_from_client(
     return rejections
 
 
+def check_emergency_phone_unique_and_differs_from_client(
+    state_values: dict[str, Any],
+) -> list[ValidationRejection]:
+    """NDIS rule: emergency contact phone must not equal the participant's own
+    phone, and no two emergency contacts may share a phone number.
+    Normalises by stripping all non-digit characters so '+61 412 …' and
+    '0412 …' compare correctly.
+    """
+    rejections: list[ValidationRejection] = []
+    client_phone = _STRIP_NON_DIGIT.sub("", _s((state_values.get("basics") or {}).get("phone")))
+    rows = state_values.get("emergency_contacts") or []
+    if not isinstance(rows, list):
+        return rejections
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        phone_norm = _STRIP_NON_DIGIT.sub("", _s(row.get("phone")))
+        if not phone_norm:
+            continue
+        if client_phone and phone_norm == client_phone:
+            rejections.append(ValidationRejection(
+                code="emergency_phone_matches_client",
+                reason_human="Emergency contact phone must be different from your own phone.",
+                suggested_fix="Use a different phone number for this emergency contact.",
+            ))
+        if phone_norm in seen:
+            rejections.append(ValidationRejection(
+                code="emergency_phone_duplicate",
+                reason_human="Each emergency contact must have a unique phone number.",
+                suggested_fix="Use a different phone for this emergency contact.",
+            ))
+        seen.add(phone_norm)
+    return rejections
+
+
 def check_plan_end_after_start(state_values: dict[str, Any]) -> list[ValidationRejection]:
     plan = state_values.get("plan_info") or {}
     start_raw = _s(plan.get("plan_start"))
@@ -111,6 +147,7 @@ def check_time_slot_no_overlap(slots: list[dict[str, Any]]) -> list[ValidationRe
 def validate_cross_fields(state_values: dict[str, Any]) -> list[ValidationRejection]:
     results: list[ValidationRejection] = []
     results.extend(check_emergency_email_unique_and_differs_from_client(state_values))
+    results.extend(check_emergency_phone_unique_and_differs_from_client(state_values))
     results.extend(check_plan_end_after_start(state_values))
     results.extend(check_medical_history_all_or_none(state_values))
     return results

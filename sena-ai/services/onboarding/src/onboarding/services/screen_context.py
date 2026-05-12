@@ -12,7 +12,7 @@ import hashlib
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator  # noqa: TCH002
 
 
 # ─── v1 models (kept for adapter — one release window) ───────────────────────

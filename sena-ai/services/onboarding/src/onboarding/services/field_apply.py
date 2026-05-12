@@ -1,12 +1,12 @@
 """field_apply envelope builder — pure module (no IO)."""
 from __future__ import annotations
 
-import logging
+import structlog
 
 from onboarding.models.schema_spec import StepSchema
 from onboarding.services.coverage import is_eligible
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 def build_envelope(

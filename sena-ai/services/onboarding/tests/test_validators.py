@@ -108,7 +108,8 @@ def _load_schema(name: str) -> StepSchema:
     ("25",   "schedule_of_supports", "duration_hours", "duration_too_long"),
     ("1.5",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),  # fails regex before float check
     ("abc",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),
-    ("",     "schedule_of_supports", "duration_hours", "required"),
+    # Schema marks duration_hours as required: false — empty must PASS.
+    ("",     "schedule_of_supports", "duration_hours", None),
 
     # ── Email ─────────────────────────────────────────────────────────────────
     ("user@example.com",   "basics", "email", None),
@@ -116,6 +117,9 @@ def _load_schema(name: str) -> StepSchema:
     ("notanemail",         "basics", "email", "email_invalid"),
     ("missing@",           "basics", "email", "email_invalid"),
     ("",                   "basics", "email", "required"),
+    # RFC 5321 length guards (V2 fix — long-domain transcription artefacts)
+    ("u@" + "a" * 64 + ".com",                                              "basics", "email", "email_invalid"),  # label > 63
+    ("u@" + "a" * 63 + "." + "b" * 63 + "." + "c" * 63 + "." + "d" * 63, "basics", "email", "email_invalid"),  # domain > 253
 
     # ── Allergy description (min 5, max 250) ──────────────────────────────────
     ("Causes severe rash after contact",  "allergies", "description", None),
@@ -386,3 +390,63 @@ class TestValidateStepComplete:
         state = _state(step_id="step5")
         rejections = validate_step_complete(schema, state)
         assert len(rejections) > 0
+
+
+# ── validate_field — field_spec options enforcement (V3/S5) ──────────────────
+
+
+class _FakeFieldSpec:
+    """Minimal FieldSpec stand-in for testing the options-check path."""
+
+    def __init__(self, field_type: str, options: list[str]) -> None:
+        self.type = field_type  # attribute MUST be `type` to match FieldSpec
+        self.options = options
+
+
+_COMM_OPTIONS = [
+    "AAC Device",
+    "Verbal (spoken)",
+    "Written (text/email)",
+    "Auslan or sign-supported English",
+    "Communication board or book",
+    "Through a support person or family member",
+    "Visual supports (images, diagrams)",
+]
+
+_COMM_SPEC = _FakeFieldSpec("multi_enum", _COMM_OPTIONS)
+
+
+class TestValidateFieldEnumOptions:
+    def test_valid_option_passes(self) -> None:
+        result = validate_field(
+            "requirements", "mode_of_communication", ["Verbal (spoken)"], field_spec=_COMM_SPEC
+        )
+        assert result is None
+
+    def test_invalid_option_rejected(self) -> None:
+        result = validate_field(
+            "requirements", "mode_of_communication", ["Walkie Talkies"], field_spec=_COMM_SPEC
+        )
+        assert result is not None
+        assert result.code == "enum_invalid"
+        assert result.allowed_values == _COMM_OPTIONS
+
+    def test_case_insensitive_pass(self) -> None:
+        result = validate_field(
+            "requirements", "mode_of_communication", ["verbal (spoken)"], field_spec=_COMM_SPEC
+        )
+        assert result is None
+
+    def test_no_field_spec_skips_options_check(self) -> None:
+        # Without field_spec, any non-empty list passes (backward compatibility)
+        result = validate_field(
+            "requirements", "mode_of_communication", ["Walkie Talkies"]
+        )
+        assert result is None  # no field_spec → only required check runs
+
+    def test_empty_list_still_triggers_required(self) -> None:
+        result = validate_field(
+            "requirements", "mode_of_communication", [], field_spec=_COMM_SPEC
+        )
+        assert result is not None
+        assert result.code == "required"

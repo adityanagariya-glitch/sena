@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 import time
 from typing import TYPE_CHECKING
 
@@ -47,7 +46,9 @@ if TYPE_CHECKING:
     from onboarding.repositories.state_repo import FormStateRepo
     from onboarding.services.tools import ToolDispatcher
 
-log = logging.getLogger(__name__)
+import structlog
+
+log = structlog.get_logger(__name__)
 
 _SILENCE_POLL_SEC = 2.0  # silence monitor check interval
 
@@ -70,8 +71,8 @@ class GeminiLiveSession:
         websocket: WebSocket,
         session_id: str,
         system_instruction: str,
-        repo: "FormStateRepo",
-        tool_dispatcher: "ToolDispatcher | None" = None,
+        repo: FormStateRepo,
+        tool_dispatcher: ToolDispatcher | None = None,
         replay_context: str | None = None,
     ) -> None:
         self._ws = websocket
@@ -168,7 +169,12 @@ class GeminiLiveSession:
                     start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
                     end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
                     prefix_padding_ms=200,
-                    silence_duration_ms=1000,
+                    # 3 s — NDIS participants with cognitive/communication
+                    # support needs often pause 2-3 s mid-answer; 1 s cut them
+                    # off prematurely (user-reported: "had to ask AI to take
+                    # its time"). 3 s matches the upper end of natural
+                    # conversational pause without making the session feel stuck.
+                    silence_duration_ms=3000,
                 ),
                 activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
                 turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
@@ -284,7 +290,7 @@ class GeminiLiveSession:
         return False
 
     async def _handle_validation_failed(
-        self, session: "genai.live.AsyncSession", data: dict
+        self, session: genai.live.AsyncSession, data: dict
     ) -> None:
         """Flutter reports a client-side validation rejection — upsert into
         pending_validation_errors and inject a re-ask prompt into Gemini."""
@@ -358,7 +364,7 @@ class GeminiLiveSession:
         )
 
     async def _handle_screen_state(
-        self, session: "genai.live.AsyncSession", data: dict, *, version: int = 1
+        self, session: genai.live.AsyncSession, data: dict, *, version: int = 1
     ) -> None:
         """
         Validate, deduplicate, and inject a screen_state (v1 or v2) message as a
@@ -727,7 +733,7 @@ class GeminiLiveSession:
     async def _handle_tool_call(
         self,
         session: genai.live.AsyncSession,
-        tool_call: "types.LiveServerToolCall",
+        tool_call: types.LiveServerToolCall,
     ) -> None:
         """
         Dispatch every function call in a tool_call batch and send the

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -134,7 +134,7 @@ async def create_session(
     repo: FormStateRepo = Depends(get_repo),
 ) -> CreateSessionResponse:
     session_id = str(uuid.uuid4())
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.onboarding_session_max_min)
+    expires_at = datetime.now(UTC) + timedelta(minutes=settings.onboarding_session_max_min)
 
     # Resolve bootstrap envelope. Explicit takes precedence; legacy initial_state
     # is wrapped into a synthesised bootstrap so older clients keep working.
@@ -159,16 +159,32 @@ async def create_session(
         ctx_repo = UserContextRepo(repo._r)
         bucket = await ctx_repo.get_bucket(req.tenant_id, req.participant_id)
         if not bucket.is_empty():
+            # New CSC layer only forwards the 5-field allowlist (name, dob,
+            # gender, goals, hobbies_interests). prior_pages now carries
+            # concept-keyed dicts — see services/cross_screen_context.py.
+            hydrated_prior = {
+                f"step:{s.step_number}": {
+                    **s.verbatim,
+                    "_step_label": s.step_label,
+                }
+                for s in bucket.summaries
+            }
+            # Auto-hydrate participant_display_name from the earliest
+            # summary that captured a name, but only when the client didn't
+            # already send one. Without this, step 2+ falls back to
+            # "Hi there" even though we know the participant's name.
+            hydrated_name = bootstrap.participant_display_name
+            if not hydrated_name:
+                for s in sorted(bucket.summaries, key=lambda x: x.step_number):
+                    candidate = s.verbatim.get("name")
+                    if isinstance(candidate, str) and candidate.strip():
+                        # Use first token as the display/greeting name.
+                        hydrated_name = candidate.strip().split()[0]
+                        break
             bootstrap = bootstrap.model_copy(update={
                 "mode": "page_handoff",
-                "prior_pages": {
-                    f"step:{s.step_number}": {
-                        **s.verbatim,
-                        "_compressed": s.compressed,
-                        "_step_label": s.step_label,
-                    }
-                    for s in bucket.summaries
-                },
+                "prior_pages": hydrated_prior,
+                "participant_display_name": hydrated_name,
             })
 
     # Diagnostic boundary log — proves what the new session inherits BEFORE
@@ -250,7 +266,10 @@ async def update_state(
     if await repo.is_ws_locked(session_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Session has an active voice connection. Close the WebSocket before updating state.",
+            detail=(
+                "Session has an active voice connection. "
+                "Close the WebSocket before updating state."
+            ),
         )
     state = await repo.get_state(session_id)
     if state is None:
@@ -295,10 +314,8 @@ async def complete_session(
     transcript = await repo.get_transcript(session_id)
     schema = await repo.get_schema(session_id)
 
-    from datetime import timezone as _tz
-    from datetime import datetime as _dt
     state.completed = True
-    state.completed_at = _dt.now(_tz.utc)
+    state.completed_at = datetime.now(UTC)
     await repo.save_state(state, ttl_sec=settings.session_max_sec)
 
     # Persist a StepSummary into the cross-screen bucket BEFORE firing the

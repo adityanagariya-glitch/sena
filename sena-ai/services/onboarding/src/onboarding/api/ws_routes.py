@@ -36,8 +36,8 @@ A second connection attempt receives {"type":"error","code":"session_locked"} + 
 from __future__ import annotations
 
 import json
-import logging
 
+import structlog
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from onboarding.api.deps import get_repo
@@ -50,7 +50,7 @@ from onboarding.services.prompt_builder import build_system_prompt
 from onboarding.services.resumption import build_replay_context, issue_handle, redeem_handle
 from onboarding.services.tools import ToolDispatcher
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 ws_router = APIRouter()
 
@@ -228,14 +228,17 @@ async def onboarding_ws(
                 await ctx_repo.put_step_summary(
                     state_after.tenant_id, state_after.participant_id, summary,
                 )
-                log.info(
-                    "ws_close_summary_flushed",
-                    session_id=session_id,
-                    tenant_id=state_after.tenant_id,
-                    participant_id=state_after.participant_id,
-                    step=state_after.step_id,
-                    step_number=step_number,
-                )
+                try:
+                    log.info(
+                        "ws_close_summary_flushed",
+                        session_id=session_id,
+                        tenant_id=state_after.tenant_id,
+                        participant_id=state_after.participant_id,
+                        step=state_after.step_id,
+                        step_number=step_number,
+                    )
+                except Exception:
+                    pass  # Logging must never block a connection close.
             elif (
                 settings.onboarding_cross_screen_context_enabled
                 and state_after is not None

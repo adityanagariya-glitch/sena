@@ -8,7 +8,7 @@ from .field_rules import validate_field
 
 if TYPE_CHECKING:
     from onboarding.models.form_state import FormState
-    from onboarding.models.schema_spec import StepSchema
+    from onboarding.models.schema_spec import SectionSpec, StepSchema
 
 
 def _has_value(raw: Any) -> bool:
@@ -30,7 +30,7 @@ def _has_value(raw: Any) -> bool:
     return True
 
 
-def next_required_field(schema: "StepSchema", state: "FormState") -> dict | None:
+def next_required_field(schema: StepSchema, state: FormState) -> dict | None:
     """First required field with no value, walking schema sections in order.
 
     Returns {"section_id", "field_id", "label"} or None when all required fields filled.
@@ -56,7 +56,7 @@ def next_required_field(schema: "StepSchema", state: "FormState") -> dict | None
     return None
 
 
-def next_optional_field(schema: "StepSchema", state: "FormState") -> dict | None:
+def next_optional_field(schema: StepSchema, state: FormState) -> dict | None:
     """First optional (required=False) field with no value, in schema order.
 
     Rule-5 anchor: returns a deterministic next-optional pointer so the prompt
@@ -78,7 +78,23 @@ def next_optional_field(schema: "StepSchema", state: "FormState") -> dict | None
     return None
 
 
-def validate_step_complete(schema: "StepSchema", state: "FormState") -> list[ValidationRejection]:
+def section_min_unmet(section: SectionSpec, section_values: Any) -> bool:
+    """Return True when a repeatable section has fewer rows than its declared minimum.
+
+    Always returns False for non-repeatable sections or sections with min=0.
+    Robust against section_values being None, a plain dict, or an empty list.
+    """
+    if not getattr(section, "is_repeatable", False):
+        return False
+    rep = getattr(section, "repeatable", None)
+    if rep is None or getattr(rep, "min", 0) == 0:
+        return False
+    min_rows: int = rep.min
+    rows = section_values if isinstance(section_values, list) else []
+    return len(rows) < min_rows
+
+
+def validate_step_complete(schema: StepSchema, state: FormState) -> list[ValidationRejection]:
     """Aggregate gate for /complete — returns [] only if every required field passes.
 
     Runs field validators AND cross-field invariants. Fails closed.

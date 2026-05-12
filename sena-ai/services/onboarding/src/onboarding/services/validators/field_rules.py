@@ -6,8 +6,9 @@ assistant's voice matches what the participant reads on screen.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import date
+from typing import Any
 
 from .base import ValidationRejection
 
@@ -44,7 +45,19 @@ def _at_least(n: int) -> str:
 
 # ── Regex ────────────────────────────────────────────────────────────────────
 _AU_PHONE = re.compile(r"^(?:\+61[2-478]\d{8}|0[2-478]\d{8}|1300\d{6}|1800\d{6}|13\d{4})$")
-_EMAIL_RE = re.compile(r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+)+$", re.IGNORECASE)
+# M3 — Stricter email: cap domain at 3 labels max (e.g. foo@a.b.c.d is rejected).
+# Real-world emails almost never have >3 domain labels; voice transcription often
+# produces absurd hostnames (`foo@torproject.dev.mrrobot.com`) that pass RFC but
+# fail eyeball test. Pair with disposable-domain blocklist below.
+_EMAIL_RE = re.compile(
+    r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+){1,3}$",
+    re.IGNORECASE,
+)
+_DISPOSABLE_EMAIL_DOMAINS = frozenset({
+    "mailinator.com", "guerrillamail.com", "10minutemail.com",
+    "tempmail.com", "throwaway.email", "yopmail.com", "fakeinbox.com",
+    "trashmail.com", "sharklasers.com", "getairmail.com", "dispostable.com",
+})
 _POSTCODE = re.compile(r"^\d{4}$")
 _HM24 = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 _BSB_RE = re.compile(r"^\d{6}$")
@@ -94,6 +107,22 @@ def _email(v: str, *, required: bool = True) -> ValidationRejection | None:
         return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED) if required else None
     if not _EMAIL_RE.match(v):
         return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
+    # M3 — block known disposable inboxes; also enforce RFC 5321 length limits
+    domain = v.lower().rsplit("@", 1)[-1]
+    # RFC 5321: each dot-separated label ≤ 63 chars, total domain ≤ 253 chars.
+    # The regex already enforces shape (3-label cap); these guards catch
+    # long-domain transcription artefacts like foo@aaaaaa...64chars...aaa.com.
+    if len(domain) > 253 or any(len(lbl) > 63 for lbl in domain.split(".")):
+        return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
+    if domain in _DISPOSABLE_EMAIL_DOMAINS:
+        return ValidationRejection(
+            code="email_disposable",
+            reason_human="Please use a non-disposable email address.",
+            suggested_fix=(
+                "Disposable-inbox domains (mailinator, guerrillamail, etc.) are "
+                "not accepted — please provide a permanent email."
+            ),
+        )
     return None
 
 
@@ -295,6 +324,28 @@ def _v_duration_required(raw: Any, _state: Any) -> ValidationRejection | None:
     v = _str(raw)
     if not v:
         return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
+    if not re.match(r"^\d+(?:\.0+)?$", v):
+        return ValidationRejection(code="duration_not_a_number", reason_human=_DURATION_NUMBERS_ONLY)
+    n = float(v)
+    if n % 1 != 0:
+        return ValidationRejection(code="duration_not_whole", reason_human=_DURATION_NUMBERS_ONLY)
+    i = int(n)
+    if i < 1:
+        return ValidationRejection(code="duration_too_short", reason_human=_DURATION_MIN_1)
+    if i > 24:
+        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_24)
+    return None
+
+
+def _v_duration_optional(raw: Any, _state: Any) -> ValidationRejection | None:
+    """Same range rules as `_v_duration_required` but empty is allowed.
+
+    Schema fixtures mark `schedule_of_supports.duration_hours` as
+    `required: false`, so we must not reject an empty value.
+    """
+    v = _str(raw)
+    if not v:
+        return None
     if not re.match(r"^\d+(?:\.0+)?$", v):
         return ValidationRejection(code="duration_not_a_number", reason_human=_DURATION_NUMBERS_ONLY)
     n = float(v)
@@ -549,10 +600,12 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("basics", "about_me"):           _v_about_me,
     ("basics", "preferred_language"): _v_preferred_language,
     ("basics", "interpreter_required"): _v_text_required,
+    ("basics", "interpreter_language"): _v_text250_optional,
     ("home_address", "address"):      _v_text_required,
     ("home_address", "state"):        _v_au_state,
     ("home_address", "city"):         _v_text_required,
     ("home_address", "zip_code"):     _v_postcode,
+    ("service_address", "address"):   _v_text250_optional,
     ("service_address", "state"):     _v_au_state,
     ("service_address", "city"):      _v_text_required,
     ("service_address", "zip_code"):  _v_postcode,
@@ -592,7 +645,11 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("schedule_of_supports", "support_category"):   _v_text_required,
     ("schedule_of_supports", "description"):        _v_support_description,
     ("schedule_of_supports", "frequency"):          _v_text_required,
-    ("schedule_of_supports", "duration_hours"):     _v_duration_required,
+    # Schema declares duration_hours as required: false — use the optional variant.
+    ("schedule_of_supports", "duration_hours"):     _v_duration_optional,
+    ("schedule_of_supports", "days"):               _v_multi_enum_required,
+    ("schedule_of_supports", "start_time"):         _v_time_hm24_optional,
+    ("schedule_of_supports", "end_time"):           _v_time_hm24_optional,
 
     # ── Staff Step 1 — Basic Profile (section_id: staff_basics) ─────────────────
     ("staff_basics", "full_name"):               _v_full_name,
@@ -649,13 +706,42 @@ def validate_field(
     *,
     repeatable_index: int | None = None,
     state: Any = None,
+    field_spec: Any = None,
 ) -> ValidationRejection | None:
     """Return None if valid, ValidationRejection if the rule fires.
 
     Unknown (section, field) pairs return None — drift detection is handled
     by tools.py which logs unknown_field_attempt before calling this.
+
+    Pass ``field_spec`` (a FieldSpec instance) to enable options enforcement
+    for multi_enum fields — introduced in V3/S5. Backward-compatible: when
+    omitted (None) the options check is skipped and behaviour is identical to
+    the previous implementation.
     """
     fn = _RULES.get((section_id, field_id))
     if fn is None:
         return None
-    return fn(value, state)
+    rejection = fn(value, state)
+    if rejection is not None:
+        return rejection
+    # Options check for multi_enum fields (V3/S5)
+    if (
+        field_spec is not None
+        and getattr(field_spec, "type", None) == "multi_enum"
+        and getattr(field_spec, "options", None)
+    ):
+        lst = _list(value)
+        allowed = [o.lower() for o in field_spec.options]
+        bad = [item for item in lst if item.lower() not in allowed]
+        if bad:
+            examples = ", ".join(f'"{o}"' for o in field_spec.options[:3])
+            return ValidationRejection(
+                code="enum_invalid",
+                reason_human=(
+                    f"That option isn't available. Please choose from the list — "
+                    f"for example: {examples}."
+                ),
+                suggested_fix=f"Valid options: {', '.join(field_spec.options)}",
+                allowed_values=list(field_spec.options),
+            )
+    return None

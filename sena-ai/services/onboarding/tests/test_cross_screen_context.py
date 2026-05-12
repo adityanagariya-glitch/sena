@@ -1,25 +1,20 @@
 """Tests for services/cross_screen_context.py — pure module, no I/O.
 
-Five tests per the PRD:
-1. round_trip          — compress → decompress is byte-equivalent (lossless).
-2. verbatim_passthrough — six high-signal fields preserved exactly.
-3. empty_form_state    — empty FormState produces an empty StepSummary, not None.
-4. render_snapshot     — rendered prompt block has the expected shape.
-5. token_budget_smoke  — fully-populated 6-step participant renders under threshold.
+The cross-screen context now forwards ONLY the five allowlisted high-signal
+concepts (name, dob, gender, goals, hobbies_interests) between steps.
+Compressed residual encoding was removed because it produced noisy prompts
+and the legacy leaf-only matching collided on shared field-ids (e.g.
+emergency_contacts[].name vs basics.full_name).
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 
 from onboarding.models.cross_screen_summary import CrossScreenContext, StepSummary
 from onboarding.models.form_state import FieldSource, FieldValue, FormState
 from onboarding.services.cross_screen_context import (
-    KEY_ALIASES,
-    VERBATIM_FIELDS,
+    ALLOWLIST_PATHS,
     build_summary,
-    compress_residual,
-    decompress,
     render_for_prompt,
 )
 
@@ -31,157 +26,146 @@ def _wrap(value):
     return FieldValue(value=value, source=FieldSource.voice).model_dump(mode="json")
 
 
-def _make_state(values: dict, session_id: str = "sess-001") -> FormState:
+def _make_state(values: dict, session_id: str = "sess-001", step_id: str = "personal_information") -> FormState:
     return FormState(
         session_id=session_id,
-        step_id="personal_information",
+        step_id=step_id,
         participant_id="part-001",
         tenant_id="tenant-A",
         values=values,
     )
 
 
-def _populated_personal_state() -> FormState:
-    return _make_state({
-        "basics": {
-            "name": _wrap("Sarah Chen"),
-            "dob": _wrap("1990-04-12"),
-            "gender": _wrap("female"),
-            "phone": _wrap("+61400000000"),
-            "email": _wrap("sarah@example.com"),
-        },
-        "address": {
-            "street": _wrap("12 Pitt St"),
-            "city": _wrap("Sydney"),
-            "postcode": _wrap("2000"),
-        },
-        "emergency_contacts": [
-            {"name": _wrap("Mum"), "phone": _wrap("+61400000001")},
-            {"name": _wrap("Dad"), "phone": _wrap("+61400000002")},
-        ],
-        "goals": {
-            "goals": _wrap(["independence at home", "rejoin choir"]),
-        },
-        "hobbies": {
-            "hobbies": _wrap(["gardening", "chess", "audiobooks"]),
-        },
-    })
+# ── 1. Allowlist contract ────────────────────────────────────────────────────
 
 
-# ── 1. Round-trip property test (lossless guarantee) ─────────────────────────
-
-
-class TestRoundTrip:
-    def test_compress_then_decompress_preserves_residual(self):
-        """The PRD's lossless guarantee: compress → decompress recovers a
-        payload byte-equivalent to the original residual modulo key order.
-        We assert by re-encoding both ends with sort_keys=True and comparing.
-        """
-        state = _populated_personal_state()
-
-        # Exclude verbatim leaves so we exercise the residual encoding path.
-        exclude = {
-            "basics.name",
-            "basics.dob",
-            "basics.gender",
-            "goals.goals",
-            "hobbies.hobbies",
+class TestAllowlistContract:
+    def test_allowlist_paths_are_canonical(self):
+        """Adding/removing entries here requires a product decision — pin them."""
+        assert ALLOWLIST_PATHS == {
+            ("basics", "full_name"):                "name",
+            ("basics", "date_of_birth"):            "dob",
+            ("basics", "gender"):                   "gender",
+            ("requirements", "goals"):              "goals",
+            ("requirements", "hobbies_interests"):  "hobbies_interests",
+            ("ndis_goals", "goal"):                 "goals",
         }
 
-        encoded = compress_residual(state, exclude_keys=exclude)
-        assert encoded, "fixture must produce a non-empty residual"
 
-        decoded = decompress(encoded)
-        re_encoded = json.dumps(decoded, separators=(",", ":"), sort_keys=True, default=str)
+# ── 2. Verbatim extraction — happy path ──────────────────────────────────────
 
-        # Build the expected residual independently to assert equivalence.
-        # `goals` and `hobbies` collapse to {} after the verbatim leaf is
-        # stripped, so they are dropped by the `_is_meaningful` filter.
-        expected = {
-            "address": {"street": "12 Pitt St", "city": "Sydney", "postcode": "2000"},
-            "emergency_contacts": [
-                {"name": "Mum", "phone": "+61400000001"},
-                {"name": "Dad", "phone": "+61400000002"},
-            ],
+
+class TestVerbatimExtraction:
+    def test_basics_fields_extracted_with_concept_keys(self):
+        state = _make_state({
             "basics": {
-                "phone": "+61400000000",
-                "email": "sarah@example.com",
+                "full_name":     _wrap("Sarah Chen"),
+                "date_of_birth": _wrap("1990-04-12"),
+                "gender":        _wrap("Female"),
+                "email":         _wrap("sarah@example.com"),   # dropped
+                "phone":         _wrap("+61400000000"),         # dropped
             },
+        })
+        summary = build_summary(state, step_number=1, step_label="Personal")
+        assert summary.verbatim == {
+            "name":   "Sarah Chen",
+            "dob":    "1990-04-12",
+            "gender": "Female",
         }
-        expected_encoded = json.dumps(expected, separators=(",", ":"), sort_keys=True)
-        assert re_encoded == expected_encoded
+        assert summary.compressed == ""  # residual fully removed
 
-    def test_empty_residual_round_trips(self):
-        encoded = compress_residual(_make_state({}), exclude_keys=set())
-        assert encoded == ""
-        assert decompress(encoded) == {}
+    def test_requirements_goals_and_hobbies_extracted(self):
+        state = _make_state({
+            "requirements": {
+                "goals":              _wrap("Independence at home"),
+                "hobbies_interests":  _wrap("Chess and gardening"),
+                "cultural_considerations": _wrap("Vegetarian"),  # dropped
+            },
+        }, step_id="participant_requirements")
+        summary = build_summary(state, step_number=2, step_label="Requirements")
+        assert summary.verbatim == {
+            "goals":              "Independence at home",
+            "hobbies_interests":  "Chess and gardening",
+        }
 
-    def test_decompress_unknown_alias_passes_through(self):
-        """Aliases the table doesn't recognise round-trip as their literal alias."""
-        unknown = json.dumps({"zz_made_up": {"foo": 1}}, separators=(",", ":"))
-        assert decompress(unknown) == {"zz_made_up": {"foo": 1}}
-
-
-# ── 2. Verbatim passthrough ──────────────────────────────────────────────────
-
-
-class TestVerbatimPassthrough:
-    def test_six_fields_preserved_exactly(self):
-        state = _populated_personal_state()
-        summary = build_summary(state, step_number=1, step_label="Personal Details")
-        assert summary.verbatim["name"] == "Sarah Chen"
-        assert summary.verbatim["dob"] == "1990-04-12"
-        assert summary.verbatim["gender"] == "female"
-        assert summary.verbatim["goals"] == ["independence at home", "rejoin choir"]
-        assert summary.verbatim["hobbies"] == ["gardening", "chess", "audiobooks"]
-        # interests not in fixture → must be absent (not None)
-        assert "interests" not in summary.verbatim
-
-    def test_verbatim_set_is_canonical(self):
-        """Verbatim field set is the PRD-specified six. Drift requires PRD update."""
-        assert VERBATIM_FIELDS == frozenset(
-            {"name", "dob", "gender", "goals", "hobbies", "interests"}
-        )
-
-    def test_verbatim_excluded_from_compressed(self):
-        state = _populated_personal_state()
-        summary = build_summary(state, step_number=1, step_label="Personal Details")
-        # Verbatim leaves must not also appear inside the compressed residual.
-        decoded = decompress(summary.compressed)
-        assert "Sarah Chen" not in summary.compressed
-        # The verbatim leaves are gone from their parent sections too.
-        if "basics" in decoded:
-            assert "name" not in decoded["basics"]
-            assert "dob" not in decoded["basics"]
-            assert "gender" not in decoded["basics"]
+    def test_ndis_repeatable_goals_collected_into_list(self):
+        state = _make_state({
+            "ndis_goals": [
+                {"goal": _wrap("Find part-time work")},
+                {"goal": _wrap("Build social circle")},
+                {"goal": _wrap("Master public transport")},
+            ],
+        }, step_id="ndis_plan_details")
+        summary = build_summary(state, step_number=3, step_label="NDIS Plan")
+        assert summary.verbatim["goals"] == [
+            "Find part-time work",
+            "Build social circle",
+            "Master public transport",
+        ]
 
 
-# ── 3. Empty FormState ────────────────────────────────────────────────────────
+# ── 3. Regression: emergency-contact name MUST NOT pollute participant name ──
 
 
-class TestEmptyFormState:
-    def test_empty_state_yields_empty_summary_not_none(self):
-        empty = _make_state({})
-        summary = build_summary(empty, step_number=1, step_label="Personal Details")
+class TestEmergencyContactNameIsolation:
+    def test_basics_full_name_wins_over_emergency_contact_name(self):
+        """The previous leaf-only matcher grabbed emergency_contacts[0].name
+        as verbatim["name"]. The new allowlist is keyed by (section, field)
+        so this collision is structurally impossible.
+        """
+        state = _make_state({
+            "basics": {"full_name": _wrap("Alice Participant")},
+            "emergency_contacts": [
+                {"name": _wrap("Bob Sibling"), "phone": _wrap("+61400000001")},
+            ],
+        })
+        summary = build_summary(state, step_number=1, step_label="Personal")
+        assert summary.verbatim["name"] == "Alice Participant"
+        assert "Bob Sibling" not in str(summary.verbatim)
+
+    def test_only_basics_full_name_no_emergency_contact_yields_name(self):
+        state = _make_state({
+            "emergency_contacts": [
+                {"name": _wrap("Solo Contact")},
+            ],
+        })
+        summary = build_summary(state, step_number=1, step_label="Personal")
+        # emergency_contacts.name is NOT in allowlist → verbatim empty.
+        assert "name" not in summary.verbatim
+
+
+# ── 4. Empty / no-op behaviour ───────────────────────────────────────────────
+
+
+class TestEmpty:
+    def test_empty_state_yields_empty_summary(self):
+        summary = build_summary(_make_state({}), step_number=1, step_label="Personal")
         assert isinstance(summary, StepSummary)
         assert summary.verbatim == {}
         assert summary.compressed == ""
         assert summary.completion_pct == 0.0
-        assert summary.session_id == "sess-001"
+
+    def test_state_with_only_non_allowlisted_fields_yields_empty_verbatim(self):
+        state = _make_state({
+            "basics": {"phone": _wrap("+61400000000"), "email": _wrap("a@b.com")},
+            "home_address": {"city": _wrap("Sydney"), "zip_code": _wrap("2000")},
+        })
+        summary = build_summary(state, step_number=1, step_label="Personal")
+        assert summary.verbatim == {}
 
     def test_render_empty_bucket_returns_empty_string(self):
         assert render_for_prompt(CrossScreenContext()) == ""
         assert render_for_prompt([]) == ""
 
 
-# ── 4. Render snapshot ────────────────────────────────────────────────────────
+# ── 5. Render snapshot ───────────────────────────────────────────────────────
 
 
 class TestRenderSnapshot:
     def _frozen_now(self) -> datetime:
         return datetime(2026, 5, 6, 12, 30, 0, tzinfo=timezone.utc)
 
-    def test_render_contains_expected_shape(self):
+    def test_render_includes_concept_keys_only(self):
         now = self._frozen_now()
         summaries = [
             StepSummary(
@@ -190,85 +174,82 @@ class TestRenderSnapshot:
                 completed_at=now - timedelta(minutes=12),
                 session_id="sess-001",
                 verbatim={
-                    "name": "Sarah Chen",
-                    "dob": "1990-04-12",
-                    "gender": "female",
-                    "goals": ["independence at home", "rejoin choir"],
-                    "hobbies": ["gardening", "chess"],
+                    "name":   "Sarah Chen",
+                    "dob":    "1990-04-12",
+                    "gender": "Female",
+                    "goals":  ["independence at home", "rejoin choir"],
+                    "hobbies_interests": "Chess and gardening",
                 },
-                compressed=json.dumps({"ec": [{"name": "Mum"}]}, separators=(",", ":")),
-                completion_pct=0.83,
-            ),
-            StepSummary(
-                step_number=2,
-                step_label="Lifestyle",
-                completed_at=now - timedelta(minutes=4),
-                session_id="sess-002",
-                verbatim={"interests": ["audiobooks"]},
                 compressed="",
-                completion_pct=1.0,
+                completion_pct=0.83,
             ),
         ]
         text = render_for_prompt(summaries, now=now)
         assert "EARLIER IN THIS ONBOARDING" in text
         assert "Step 1 — Personal Details (completed 12 min ago):" in text
-        assert "Step 2 — Lifestyle (completed 4 min ago):" in text
         assert "Name: Sarah Chen" in text
-        assert "DOB: 1990-04-12" in text or "Dob: 1990-04-12" in text
-        assert "Gender: female" in text
+        assert "Dob: 1990-04-12" in text
+        assert "Gender: Female" in text
         assert "Goals: independence at home; rejoin choir" in text
-        assert "Hobbies: gardening; chess" in text
-        assert 'Other captured (compressed): {"ec":[{"name":"Mum"}]}' in text
-        assert "Interests: audiobooks" in text
+        assert "Hobbies & interests: Chess and gardening" in text
+        # Must NOT contain any non-allowlisted artifact from the legacy format.
+        assert "Other captured" not in text
+        assert "compressed" not in text
 
 
-# ── 5. Token-budget smoke ─────────────────────────────────────────────────────
+# ── 6. Token-budget smoke ────────────────────────────────────────────────────
 
 
 class TestTokenBudgetSmoke:
-    def test_fully_populated_6_step_render_under_threshold(self):
-        """Guard rail: a fully populated 6-step participant must produce a
-        rendered prompt block well under ~1500 tokens. Approximate via 4
-        chars/token; threshold 1500 tokens → 6000 chars. The PRD documents
-        this as a smoke check, not a strict assertion."""
+    def test_full_6_step_render_well_under_threshold(self):
+        """Six fully-populated steps must render well under ~1500 tokens.
+        Approximate via 4 chars/token; threshold 1500 tokens → 6000 chars.
+        """
         now = datetime(2026, 5, 6, 12, 30, 0, tzinfo=timezone.utc)
-        summaries: list[StepSummary] = []
-        for i in range(1, 7):
-            summaries.append(StepSummary(
+        summaries = [
+            StepSummary(
                 step_number=i,
                 step_label=f"Step {i}",
                 completed_at=now - timedelta(minutes=10 * i),
                 session_id=f"sess-{i:03d}",
                 verbatim={
-                    "name": "Sarah Chen",
-                    "dob": "1990-04-12",
-                    "gender": "female",
-                    "goals": ["a goal", "another goal", "a third goal"],
-                    "hobbies": ["gardening", "chess", "audiobooks"],
-                    "interests": ["volunteering", "music"],
+                    "name":   "Sarah Chen",
+                    "dob":    "1990-04-12",
+                    "gender": "Female",
+                    "goals":  ["one", "two", "three"],
+                    "hobbies_interests": "Chess and gardening",
                 },
-                compressed=json.dumps({
-                    "ec": [{"n": "Mum", "p": "+614000000" + str(i)}],
-                    "addr": {"street": "12 Pitt St", "city": "Sydney", "postcode": "2000"},
-                    "med": [{"name": "ibuprofen", "dose": "400mg"}],
-                }, separators=(",", ":")),
+                compressed="",
                 completion_pct=0.95,
-            ))
+            )
+            for i in range(1, 7)
+        ]
         text = render_for_prompt(summaries, now=now)
         assert text.startswith("EARLIER IN THIS ONBOARDING")
-        # ~4 chars per token; 1500-token budget → 6000 char ceiling.
         assert len(text) < 6000, f"prompt block too large: {len(text)} chars"
 
-    def test_known_aliases_table_is_stable(self):
-        """The KEY_ALIASES map is the on-disk shape. Removing or renaming an
-        entry breaks decompression of older summaries — only additions are
-        safe. This test pins a few canonical entries so accidental deletions
-        fail loudly."""
-        for original, alias in [
-            ("emergency_contacts", "ec"),
-            ("address", "addr"),
-            ("medical_history", "mh"),
-            ("ndis_goals", "ng"),
-            ("communication_preferences", "cp"),
-        ]:
-            assert KEY_ALIASES.get(original) == alias
+
+# ── 7. Render cap ────────────────────────────────────────────────────────────
+
+
+class TestRenderCap:
+    def test_only_last_five_steps_rendered(self):
+        now = datetime(2026, 5, 6, 12, 30, 0, tzinfo=timezone.utc)
+        # 7 steps; only steps 3..7 should render (last 5).
+        summaries = [
+            StepSummary(
+                step_number=i,
+                step_label=f"Step {i}",
+                completed_at=now - timedelta(minutes=10 * (8 - i)),
+                session_id=f"sess-{i:03d}",
+                verbatim={"name": f"Step{i}Name"},
+                compressed="",
+                completion_pct=1.0,
+            )
+            for i in range(1, 8)
+        ]
+        text = render_for_prompt(summaries, now=now)
+        assert "Step 1 —" not in text
+        assert "Step 2 —" not in text
+        assert "Step 3 —" in text
+        assert "Step 7 —" in text

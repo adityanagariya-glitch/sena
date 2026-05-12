@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -10,7 +10,7 @@ from onboarding.models.schema_spec import StepSchema
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class FieldSource(str, Enum):
@@ -87,6 +87,29 @@ class FormState(BaseModel):
     # Deduped by (section_id, field_id, repeatable_index). Each entry:
     # {section_id, field_id, repeatable_index, code, reason_human}
     pending_validation_errors: list[dict] = Field(default_factory=list)
+
+    # M1 — PENDING_CONFIRMATION lock. While set, update_field for ANY field
+    # other than the locked one is rejected with code PENDING_CONFIRMATION_LOCKED.
+    # Cleared when the user explicitly confirms (or restates the value).
+    # Shape: {"section": str, "field": str, "heard_value": Any,
+    #         "repeatable_index": int | None, "set_at": iso8601}
+    pending_confirmation: dict | None = None
+
+    # M5 — Conditional follow-up driver. After update_field commits a value
+    # that unlocks a `visible_if` dependant, the dispatcher writes that
+    # dependant here. The prompt renderer then surfaces it as
+    # next_required_field so the model has no choice but to ask it next.
+    # Shape: {"section": str, "field": str}
+    next_forced_field: dict | None = None
+
+    # C2 — Deferred batch buffer. While pending_confirmation is set,
+    # cross-row / cross-section update_field calls are appended here
+    # instead of being rejected. Drained automatically when the lock
+    # clears (target field successfully commits).
+    # Each entry shape: {"section": str, "field": str,
+    #                    "value": Any, "values": list|None,
+    #                    "confidence": float, "repeatable_index": int|None}
+    pending_batch: list[dict] = Field(default_factory=list)
 
     def touch(self) -> None:
         self.updated_at = _utcnow()

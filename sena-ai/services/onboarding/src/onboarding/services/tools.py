@@ -23,12 +23,11 @@ Design notes:
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
-from fastapi import WebSocket
+import structlog
 
 from onboarding.core.settings import settings
 from onboarding.models.form_state import (
@@ -36,16 +35,126 @@ from onboarding.models.form_state import (
     FieldSource,
     FormState,
 )
-from onboarding.models.schema_spec import FieldSpec, SectionSpec, StepSchema
-from onboarding.models.session_bootstrap import SessionBootstrap
-from onboarding.repositories.state_repo import FormStateRepo
+
+if TYPE_CHECKING:
+    from fastapi import WebSocket
+
+    from onboarding.models.schema_spec import FieldSpec, SectionSpec, StepSchema
+    from onboarding.models.session_bootstrap import SessionBootstrap
+    from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.services import field_apply as _fa
 from onboarding.services.coverage import is_repeatable_eligible
 from onboarding.services.validators import validate_field as _validate_field
 from onboarding.services.validators import validate_step_complete
+from onboarding.services.validators.sequencing import section_min_unmet as _section_min_unmet
 from onboarding.services.webhook import fire_webhook
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
+
+
+def _utcnow_iso() -> str:
+    """ISO-8601 UTC timestamp for pending_confirmation.set_at."""
+    return datetime.now(UTC).isoformat()
+
+
+def _set_next_forced_field(
+    state: FormState,
+    schema: StepSchema,
+    just_set_section: str,
+    just_set_field: str,
+    just_set_value: Any,
+) -> None:
+    """M5 — Conditional follow-up driver.
+
+    After ``update_field`` commits a value, scan the schema for any field
+    whose ``visible_if`` references the just-set field. When the unlock
+    condition is satisfied AND the dependent field is still empty, write
+    that dependent to ``state.next_forced_field`` so the prompt builder
+    surfaces it as ``next_required_field`` on the next turn.
+
+    Clears ``state.next_forced_field`` when the just-set field IS the
+    previously-forced one (the directive is now satisfied).
+    """
+    # Clear if the forced field was the one just filled.
+    forced = state.next_forced_field
+    if (
+        forced
+        and forced.get("section") == just_set_section
+        and forced.get("field") == just_set_field
+    ):
+        state.next_forced_field = None
+
+    # Clear stale forced directive when the prerequisite reverts.
+    # E.g. user said interpreter_required=true (we forced interpreter_language),
+    # then changed their mind to interpreter_required=false. The forced
+    # dependant is no longer visible — drop the directive so the agent
+    # doesn't loop asking for a field that's now hidden.
+    if state.next_forced_field is not None:
+        forced_section = state.next_forced_field.get("section")
+        forced_field = state.next_forced_field.get("field")
+        if forced_section == just_set_section:
+            for section in schema.sections:
+                if section.id != forced_section:
+                    continue
+                is_rep = getattr(section, "is_repeatable", False)
+                fields = (
+                    section.item_fields if is_rep else (section.fields or [])
+                )
+                for f in fields:
+                    if f.id != forced_field:
+                        continue
+                    vif = getattr(f, "visible_if", None)
+                    if vif and just_set_field in vif:
+                        expected = vif[just_set_field]
+                        if not _matches_visible_if(expected, just_set_value):
+                            state.next_forced_field = None
+                break
+
+    # Scan for dependants of the just-set field.
+    for section in schema.sections:
+        if section.id != just_set_section:
+            # visible_if dependants live in the same section as their condition.
+            continue
+        fields = section.item_fields if getattr(section, "is_repeatable", False) else (section.fields or [])
+        for f in fields:
+            vif = getattr(f, "visible_if", None)
+            if not vif or just_set_field not in vif:
+                continue
+            # Does the just-set value satisfy the unlock condition?
+            expected = vif[just_set_field]
+            if _matches_visible_if(expected, just_set_value):
+                # Is the dependent already filled?
+                if _field_is_filled(state, section.id, f.id):
+                    continue
+                state.next_forced_field = {
+                    "section": section.id,
+                    "field": f.id,
+                }
+                return
+
+
+def _matches_visible_if(expected: Any, actual: Any) -> bool:
+    """Loose equality for visible_if conditions.
+
+    Schemas express conditions as raw scalars (true/false, "string"). The
+    stored value may be a coerced bool, a stringified bool, or the raw
+    string. Normalise both sides before comparing.
+    """
+    def _norm(x: Any) -> Any:
+        if isinstance(x, str) and x.lower() in ("true", "false"):
+            return x.lower() == "true"
+        return x
+    return _norm(expected) == _norm(actual)
+
+
+def _field_is_filled(state: FormState, section_id: str, field_id: str) -> bool:
+    section_data = state.values.get(section_id)
+    if isinstance(section_data, dict):
+        fv = section_data.get(field_id)
+        if isinstance(fv, dict):
+            v = fv.get("value")
+            return v not in (None, "", [], {})
+    return False
 
 
 # ── Function declarations sent to Gemini ─────────────────────────────────────
@@ -326,13 +435,16 @@ def _upsert_validation_error(
         e for e in state.pending_validation_errors
         if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
     ]
-    state.pending_validation_errors.append({
+    entry: dict = {
         "section_id": section_id,
         "field_id": field_id,
         "repeatable_index": repeatable_index,
         "code": rej.code,
         "reason_human": rej.reason_human,
-    })
+    }
+    if getattr(rej, "allowed_values", None) is not None:
+        entry["allowed_values"] = rej.allowed_values
+    state.pending_validation_errors.append(entry)
 
 
 def _clear_validation_error(
@@ -524,6 +636,23 @@ class ToolDispatcher:
     async def _update_field(self, args: dict[str, Any]) -> dict[str, Any]:
         section_id = args.get("section")
         field_id = args.get("field")
+
+        # Defensive: __section_min__ is a prompt-renderer sentinel, not a real field.
+        # If Gemini echoes it back as a field_id, reject cleanly rather than touching state.
+        if field_id == "__section_min__":
+            log.info(
+                "sentinel_field_rejected section=%s session=%s",
+                section_id,
+                self._session_id,
+            )
+            return {
+                "ok": False,
+                "error": "sentinel_field_id",
+                "message": (
+                    "__section_min__ is not a real field — call add_repeatable_row "
+                    "to add a row to this section, then fill its fields."
+                ),
+            }
         # Rule 4 — multi-value capture. 'values' (array) takes precedence over
         # 'value' (scalar) so a single tool call can record an answer like
         # "verbal and phone" without splitting into two calls.
@@ -551,6 +680,90 @@ class ToolDispatcher:
                 "ok": False,
                 "error": "either 'value' (scalar) or 'values' (array) is required",
             }
+
+        # M1 — PENDING_CONFIRMATION lock with C1 same-row tolerance.
+        # While a low-confidence capture awaits user confirmation, reject
+        # update_field calls that target a DIFFERENT row or DIFFERENT section.
+        # ALLOW same-row sibling fields — when the user dictates a whole row
+        # in one breath ("Azithromycin 500mg 3x daily for allergies"), the
+        # other field updates in that same row are part of the same logical
+        # action and should commit normally. The lock only blocks cross-row
+        # or cross-section bleeds where the model races ahead.
+        state_for_lock = await self._repo.get_state(self._session_id)
+        if state_for_lock and state_for_lock.pending_confirmation:
+            pc = state_for_lock.pending_confirmation
+            same_target = (
+                pc.get("section") == section_id
+                and pc.get("field") == field_id
+                and pc.get("repeatable_index") == repeatable_index
+            )
+            # C1 — same (section, row), different field is a sibling of the
+            # locked field. Allow it through for REPEATABLE sections only.
+            # For non-repeatable sections repeatable_index is always None on
+            # both sides, so the equality test alone would incorrectly let any
+            # same-section field through. Requiring repeatable_index is not None
+            # ensures C1 only fires when a concrete row index is in play.
+            same_row_sibling = (
+                pc.get("repeatable_index") is not None
+                and pc.get("section") == section_id
+                and pc.get("repeatable_index") == repeatable_index
+                and pc.get("field") != field_id
+            )
+            if not (same_target or same_row_sibling):
+                # C2 — Buffer the call onto pending_batch; the lock-clear
+                # path will drain it. The model receives code: DEFERRED
+                # so it knows the call is queued, not lost or wrong.
+                _MAX_PENDING_BATCH = 32
+                if len(state_for_lock.pending_batch) >= _MAX_PENDING_BATCH:
+                    log.warning(
+                        "update_field BUFFER_FULL queue_size=%d attempted=%s.%s "
+                        "blocking=%s.%s session=%s",
+                        len(state_for_lock.pending_batch),
+                        section_id, field_id,
+                        pc.get("section"), pc.get("field"),
+                        self._session_id,
+                    )
+                    return {
+                        "ok": False,
+                        "rejection": {
+                            "code": "BUFFER_FULL",
+                            "reason_human": (
+                                "Too many pending updates queued — please "
+                                "confirm the previous answer before continuing."
+                            ),
+                        },
+                    }
+                state_for_lock.pending_batch.append({
+                    "section": section_id,
+                    "field": field_id,
+                    "value": raw_value if not isinstance(raw_value, list) else None,
+                    "values": list(raw_value) if isinstance(raw_value, list) else None,
+                    "confidence": confidence,
+                    "repeatable_index": repeatable_index,
+                })
+                await self._repo.save_state(state_for_lock, ttl_sec=settings.session_max_sec)
+                log.info(
+                    "update_field DEFERRED buffered=%s.%s queue_size=%d "
+                    "blocking=%s.%s session=%s",
+                    section_id, field_id,
+                    len(state_for_lock.pending_batch),
+                    pc.get("section"), pc.get("field"),
+                    self._session_id,
+                )
+                return {
+                    "ok": False,
+                    "rejection": {
+                        "code": "DEFERRED",
+                        "section": section_id,
+                        "field": field_id,
+                        "blocking_section": pc.get("section"),
+                        "blocking_field": pc.get("field"),
+                        "reason_human": (
+                            "I'll save that one in a moment — let me confirm "
+                            "the previous answer first."
+                        ),
+                    },
+                }
 
         # Rule 3 — readonly enforcement. Reject before schema lookup so paths
         # like 'basics.email' that may be legal schema fields still get blocked
@@ -695,10 +908,13 @@ class ToolDispatcher:
 
         # Server-side validation — authoritative; runs before any FormState write
         _ri = repeatable_index if section.is_repeatable else None
+        # Resolve schema FieldSpec so the validator can check enum options (V3 fix)
+        _field_spec = self._schema.get_field_spec(section_id, field_id) if self._schema else None
         rej = _validate_field(
             section_id, field_id, typed_value,
             repeatable_index=_ri,
             state=state,
+            field_spec=_field_spec,
         )
         if rej is not None:
             _upsert_validation_error(state, section_id, field_id, _ri, rej)
@@ -723,6 +939,18 @@ class ToolDispatcher:
                 "returning CONFIRM_REQUIRED, value NOT committed",
                 section_id, field_id, confidence, self._session_id,
             )
+            # M1 — Set the PENDING_CONFIRMATION lock so subsequent update_field
+            # calls for OTHER fields are rejected until the user confirms.
+            state.pending_confirmation = {
+                "section": section_id,
+                "field": field_id,
+                "heard_value": typed_value,
+                "repeatable_index": (
+                    repeatable_index if section.is_repeatable else None
+                ),
+                "set_at": _utcnow_iso(),
+            }
+            await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
             return {
                 "ok": False,
                 "rejection": {
@@ -738,6 +966,26 @@ class ToolDispatcher:
                 },
             }
 
+        # M6 — Name-anchor guard. If the agent tries to record an
+        # emergency_contact.name that exactly matches the participant's own
+        # full_name, log a warning. Don't reject (the user may legitimately
+        # have that as a contact name) but flag the suspicious overlap so
+        # post-hoc analysis catches the hallucination pattern.
+        if section_id == "emergency_contacts" and field_id == "name" and isinstance(typed_value, str):
+            participant_name_fv = (state.values.get("basics") or {}).get("full_name")
+            participant_name = (
+                participant_name_fv.get("value") if isinstance(participant_name_fv, dict) else None
+            )
+            if isinstance(participant_name, str) and participant_name.lower() == typed_value.lower():
+                import hashlib
+                value_sha8 = hashlib.sha256(typed_value.encode("utf-8")).hexdigest()[:8]
+                log.warning(
+                    "emergency_contact_name_equals_participant section=%s field=%s "
+                    "value_sha8=%s session=%s — agent may be mis-routing the participant's "
+                    "own name into the emergency-contacts section",
+                    section_id, field_id, value_sha8, self._session_id,
+                )
+
         state.set_field(
             section_id=section_id,
             field_id=field_id,
@@ -748,11 +996,81 @@ class ToolDispatcher:
             repeatable_index=repeatable_index if section.is_repeatable else None,
         )
 
+        # M1 — Clear the PENDING_CONFIRMATION lock if this commit satisfied
+        # it (same section/field/row as the lock target).
+        if state.pending_confirmation:
+            pc = state.pending_confirmation
+            if (
+                pc.get("section") == section_id
+                and pc.get("field") == field_id
+                and pc.get("repeatable_index") == (
+                    repeatable_index if section.is_repeatable else None
+                )
+            ):
+                state.pending_confirmation = None
+
+        # M5 — Conditional follow-up driver. After committing a value, scan
+        # the schema for any field whose `visible_if` references the field we
+        # just set. If the just-set value satisfies the unlock condition AND
+        # the dependent field is still empty, write it to next_forced_field
+        # so the prompt forces the model to ask it next.
+        _set_next_forced_field(state, self._schema, section_id, field_id, typed_value)
+
         # Materialise schema-declared section-copy shortcuts (e.g. service
         # address ← home address when service_same_as_home is true). Runs
         # after every write so updating either the flag OR a source-side
         # field keeps the mirrored target in sync. Idempotent.
         mirrored = _apply_copy_mirroring(state, self._schema, self._turn_id)
+
+        # C2 — If the lock just cleared and we have buffered calls, drain
+        # them iteratively. Each iteration completes before the next starts so
+        # no recursive coroutine frames pile up (depth bounded by Patch 1 cap).
+        # Clear the buffer BEFORE the loop so a replay that re-triggers the
+        # lock re-buffers into a fresh pending_batch rather than double-buffering.
+        deferred_applied: list[dict] = []
+        if state.pending_confirmation is None and state.pending_batch:
+            batch = state.pending_batch
+            state.pending_batch = []
+            await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+            for entry in batch:
+                replay_args: dict[str, Any] = {
+                    "section": entry["section"],
+                    "field": entry["field"],
+                    "confidence": entry.get("confidence", 1.0),
+                }
+                if entry.get("values"):
+                    replay_args["values"] = entry["values"]
+                elif entry.get("value") is not None:
+                    replay_args["value"] = entry["value"]
+                if entry.get("repeatable_index") is not None:
+                    replay_args["repeatable_index"] = entry["repeatable_index"]
+                # CRITICAL — refresh state before each replay so the inner
+                # call sees the up-to-date pending_confirmation/pending_batch.
+                # If a replay triggers a new low-conf lock, subsequent
+                # entries get re-buffered instead of forcing a deep recurse.
+                replay_result = await self._update_field(replay_args)
+                deferred_applied.append({
+                    "section": entry["section"],
+                    "field": entry["field"],
+                    "ok": replay_result.get("ok", False),
+                    "result_code": (
+                        replay_result.get("rejection", {}).get("code")
+                        if not replay_result.get("ok")
+                        else "applied"
+                    ),
+                })
+                # If the replay re-engaged the lock, stop draining; the rest
+                # of batch is already discarded (we cleared pending_batch
+                # before the loop), so re-buffer the unprocessed tail here.
+                fresh = await self._repo.get_state(self._session_id)
+                if fresh and fresh.pending_confirmation is not None:
+                    unprocessed = batch[batch.index(entry) + 1:]
+                    if unprocessed:
+                        fresh.pending_batch.extend(unprocessed)
+                        await self._repo.save_state(fresh, ttl_sec=settings.session_max_sec)
+                    break
+            # Re-load state — replay calls mutated it.
+            state = await self._repo.get_state(self._session_id)
 
         state.recompute_completion(self._schema)
         await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
@@ -801,7 +1119,7 @@ class ToolDispatcher:
             await self._emit(envelope)
 
         completion = state.completion
-        return {
+        result: dict[str, Any] = {
             "ok": True,
             "section": section_id,
             "field": field_id,
@@ -810,6 +1128,9 @@ class ToolDispatcher:
             "required_total": completion.required_total if completion else 0,
             "complete": bool(completion and completion.complete),
         }
+        if deferred_applied:
+            result["deferred_applied"] = deferred_applied
+        return result
 
     # ── Handler: get_session_context ─────────────────────────────────────────
 
@@ -926,6 +1247,48 @@ class ToolDispatcher:
                 "pending_errors": state.pending_validation_errors,
             }
 
+        # V4 — Section-min gate: repeatable sections with min > 0 must have
+        # enough rows before we allow the step to advance.  Runs BEFORE
+        # recompute_completion because row-count is a structural prerequisite —
+        # you cannot meaningfully evaluate per-field completeness inside a
+        # repeatable section until the section exists.  Placing it here also
+        # gives the agent a precise, actionable error ("add a morning routine
+        # entry") rather than the generic "required fields unfilled" message
+        # that recompute_completion would produce for the same condition.
+        unmet_sections = [
+            s for s in self._schema.sections
+            if _section_min_unmet(s, state.values.get(s.id))
+        ]
+        if unmet_sections:
+            section_min_missing: list[dict] = [
+                {
+                    "section_id": s.id,
+                    "field_id": "__section_min__",
+                    "label": (
+                        f"At least {s.repeatable.min} "
+                        f"{s.label or s.id} "
+                        f"entr{'y' if s.repeatable.min == 1 else 'ies'} required"
+                    ),
+                }
+                for s in unmet_sections
+            ]
+            await self._emit({
+                "type": "field_skipped_warning",
+                "missing_count": len(section_min_missing),
+                "required_filled": 0,
+                "required_total": len(section_min_missing),
+                "missing_fields": section_min_missing,
+            })
+            return {
+                "ok": False,
+                "error": "section_min_unmet",
+                "sections": [s.id for s in unmet_sections],
+                "message": (
+                    "Please add at least one entry to: "
+                    + ", ".join(s.label or s.id for s in unmet_sections)
+                ),
+            }
+
         # Re-validate completion before firing webhook — model may be optimistic
         state.recompute_completion(self._schema)
         if state.completion and not state.completion.complete:
@@ -999,7 +1362,7 @@ class ToolDispatcher:
             }
 
         state.completed = True
-        state.completed_at = datetime.now(timezone.utc)
+        state.completed_at = datetime.now(UTC)
         await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
 
         transcript = await self._repo.get_transcript(self._session_id)
