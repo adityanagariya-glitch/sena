@@ -41,7 +41,8 @@
       "WebFetch(domain:www.ausmed.com)",
       "WebFetch(domain:www.outcomesconnect.com.au)",
       "WebFetch(domain:www.cliniccomply.com.au)",
-      "WebFetch(domain:shiftcare.com)"
+      "WebFetch(domain:shiftcare.com)",
+      "Bash(python -c \"from models.schemas import DraftInput, CaseDraftResponse; from pipeline.drafter import run_drafter; from api.routes import router; print\\('imports OK'\\)\")"
     ]
   },
   "enableAllProjectMcpServers": true,

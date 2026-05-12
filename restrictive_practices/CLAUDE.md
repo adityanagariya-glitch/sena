@@ -56,6 +56,7 @@ START → triage_step (Flash, thinking_budget=0)
 | `scripts/ingest_docs.py` | CLI: `--sample` or `--pdf <path> --category <c> --source <s>` |
 | `scripts/test_*.py` | Standalone smoke runners (not pytest); per-step verification |
 | `scripts/test_sarah_note.py` | Realistic end-to-end fixture — complex multi-practice shift note (physical + chemical + seclusion); good regression canary |
+| `scripts/test_form_api.py` | 8-scenario comprehensive test covering all 4 verdict outcomes and all 5 practice types using structured form fields (not transcript); real-data scenarios sourced from NDIS Commission guides |
 
 ### API Routes
 
@@ -92,6 +93,25 @@ All routes under prefix `/v1/restrictive-practices`:
 Webhook (`pipeline/webhook.py`) fires only when `alert_required=True` — not on every run.
 
 BSP match is case-insensitive on `practice_type`; `valid_from/until = NULL` means unbounded.
+
+### CaseNoteInput — Structured Form Model
+
+`CaseNoteInput` (`models/schemas.py`) was expanded to mirror the real case note form used by support workers. It is no longer a flat transcript wrapper.
+
+**Structure:**
+- `case_note_id` / `client_id` / `worker_id` — required identifiers
+- `transcript: str | None` — optional voice transcript; takes priority in `to_text()` if present
+- **Section 1** — Shift summary (`describe`)
+- **Section 2** — Activities (`assisted`, `practised_skill`, `participants_level_of_independence`, `observations`)
+- **Section 3** — Wellbeing & behaviour (`mood`, `behavioural_events`, `any_concerns`)
+- **Section 4** — Outcomes (`what_went_well`, `what_needs_further_support`, `participant_comments`)
+- **Section 5** — Safety (`medication_reminders_given`, `safety_hazards_observed`, `any_injuries`, `injury_description`, `uploaded_documents`)
+- **Section 6** — Notes (`carer_feedback`, `incident_occurred`)
+
+**Key invariants:**
+- `_require_content` validator enforces that at least one of `transcript`, `describe`, `behavioural_events`, `observations`, `carer_feedback`, `assisted`, or `mood` is non-null — an all-empty payload returns HTTP 422.
+- `to_text()` is called by every LLM step (triage, RAG, evaluator). It returns `transcript` directly if set; otherwise builds a structured narrative from all form sections. Never pass raw form fields to Gemini — always call `note.to_text()`.
+- `behavioural_events` is the most important field for detection — triage, RAG query, and evaluator all weight it highest via the narrative structure.
 
 ### Provider toggle
 
@@ -145,6 +165,7 @@ python scripts/ingest_docs.py --pdf path/to/guide.pdf \
 # Smoke-test individual pipeline steps (standalone — not pytest)
 make test            # runs triage → rag → evaluator → cross_check → pipeline in sequence
 make test-sarah      # realistic complex fixture (physical + chemical + seclusion)
+python scripts/test_form_api.py  # 8 real-data scenarios (all 4 outcomes, all 5 practice types; uses structured form fields)
 
 # Or individual steps:
 python scripts/test_triage.py
@@ -183,3 +204,6 @@ docker exec -it sena-ai-db psql -U sena_ai -d sena_ai
 - All Gemini SDK calls are synchronous and offloaded via `asyncio.to_thread` — do not call them directly in async functions
 - **Swagger UI 422 errors**: usually caused by literal newlines in JSON string values — press Enter inside a string creates invalid JSON. Use `\n` escape or keep transcript on one line. See issues-solved 0010.
 - **Before debugging**: grep `.claude/issues-solved/INDEX.md` — 11 issues documented, saves hours of re-debugging
+- `transcript` is optional in `CaseNoteInput` — but at least one of `transcript`, `describe`, `behavioural_events`, `observations`, `carer_feedback`, `assisted`, or `mood` must be non-null (enforced by `_require_content` validator)
+- Never pass form fields directly to Gemini — always call `note.to_text()` which handles both transcript-first and form-narrative rendering
+- `behavioural_events` is the highest-signal field for detection — when constructing test notes, put restrictive practice evidence there

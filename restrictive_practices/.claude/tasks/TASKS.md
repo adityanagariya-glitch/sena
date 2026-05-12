@@ -1,6 +1,6 @@
 ---
 title: Restrictive Practices Detection Module — Task List
-updated: 2026-05-05
+updated: 2026-05-12
 ---
 
 ## Done
