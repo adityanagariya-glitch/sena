@@ -923,6 +923,17 @@ class ToolDispatcher:
                 "validation_rejection section=%s field=%s code=%s session=%s",
                 section_id, field_id, rej.code, self._session_id,
             )
+            event: dict = {
+                "type": "validation_rejection",
+                "section_id": section_id,
+                "field_id": field_id,
+                "repeatable_index": _ri,
+                "code": rej.code,
+                "reason_human": rej.reason_human,
+            }
+            if rej.allowed_values is not None:
+                event["allowed_values"] = rej.allowed_values
+            await self._emit(event)
             return {"ok": False, "rejection": rej.model_dump()}
 
         # Clear any prior error for this field — validation now passes

@@ -1157,6 +1157,15 @@ async def test_update_field_enum_invalid_via_field_spec(
     # No field_updated event emitted on rejection
     field_updates = [e for e in emitted if e.get("type") == "field_updated"]
     assert field_updates == []
+    # validation_rejection WS event emitted with allowed_values (so Flutter can show picker)
+    vr_events = [e for e in emitted if e.get("type") == "validation_rejection"]
+    assert len(vr_events) == 1
+    vr = vr_events[0]
+    assert vr["section_id"] == "requirements"
+    assert vr["field_id"] == "mode_of_communication"
+    assert vr["code"] == "enum_invalid"
+    assert "allowed_values" in vr
+    assert "Verbal (spoken)" in vr["allowed_values"]
 
 
 @pytest.mark.asyncio
