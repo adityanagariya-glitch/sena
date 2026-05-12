@@ -158,7 +158,7 @@ def _run_evaluator(
             response_mime_type="application/json",
             response_schema=_EvaluatorResponse,
             temperature=0.0,
-            max_output_tokens=4096,
+            max_output_tokens=8192,
         ),
     )
 
