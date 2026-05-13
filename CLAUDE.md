@@ -490,7 +490,6 @@ sena-ai\services\onboarding\src\onboarding\services\validators\sequencing.py ←
 sena-ai\services\onboarding\tests\test_cross_screen_context.py ← __future__, onboarding
 sena-ai\services\onboarding\tests\test_errors_endpoint.py ← __future__, pytest
 sena-ai\services\onboarding\tests\test_field_apply.py ← __future__, onboarding
-sena-ai\services\onboarding\tests\test_gemini_live.py ← __future__, unittest, onboarding, pytest, pytest_asyncio
 sena-ai\services\onboarding\tests\test_prompt_builder.py ← __future__, unittest, onboarding, pytest
 sena-ai\services\onboarding\tests\test_sequencing.py ← __future__, onboarding, pytest
 sena-ai\services\onboarding\tests\test_tools.py ← __future__, onboarding, pytest, pytest_asyncio
@@ -703,14 +702,6 @@ def test_envelope_includes_input_method_when_typed()
 def test_envelope_omits_input_method_when_none()
 def test_envelope_required_keys_present()
 def test_envelope_returns_none_when_blocked_by_coverage()
-```
-
-### sena-ai\services\onboarding\tests\test_gemini_live.py
-```
-async def seeded_repo(fake_redis)
-async def test_v2_screen_state_with_field_errors_upserts_pending_validation_errors(seeded_repo) → None  # field_errors in v2 payload → upserted into state
-async def test_v2_screen_state_idempotent_on_repeated_same_field_error(seeded_repo) → None  # Sending the same field error twice (with a different screen 
-async def test_v2_screen_state_with_no_field_errors_does_not_touch_pending_list(seeded_repo) → None  # A v2 payload with no field_errors must not modify an existin
 ```
 
 ### sena-ai\services\onboarding\tests\test_prompt_builder.py

@@ -39,6 +39,7 @@ sena-ai\services\onboarding\src\onboarding\services\coverage.py ← __future__, 
 sena-ai\services\onboarding\src\onboarding\services\grounding.py ← __future__, google
 sena-ai\services\onboarding\src\onboarding\services\webhook.py ← __future__, httpx, structlog
 sena-ai\services\onboarding\tests\conftest.py ← __future__, fakeredis, fastapi, httpx, onboarding
+sena-ai\services\onboarding\tests\test_gemini_live.py ← __future__, unittest, onboarding, pytest, pytest_asyncio
 sena-ai\services\onboarding\tests\test_grounding.py ← __future__, google, onboarding
 sena-ai\services\onboarding\tests\test_resumption.py ← __future__, fakeredis, onboarding, pytest, pytest_asyncio
 sena-ai\services\onboarding\tests\test_routes.py ← __future__, unittest, pytest
@@ -468,6 +469,14 @@ def medical_schema() → dict
 async def fake_redis()
 async def repo(fake_redis)
 async def async_client(fake_redis)
+```
+
+### sena-ai\services\onboarding\tests\test_gemini_live.py
+```
+async def seeded_repo(fake_redis)
+async def test_v2_screen_state_with_field_errors_upserts_pending_validation_errors(seeded_repo) → None  # field_errors in v2 payload → upserted into state
+async def test_v2_screen_state_idempotent_on_repeated_same_field_error(seeded_repo) → None  # Sending the same field error twice (with a different screen 
+async def test_v2_screen_state_with_no_field_errors_does_not_touch_pending_list(seeded_repo) → None  # A v2 payload with no field_errors must not modify an existin
 ```
 
 ### sena-ai\services\onboarding\tests\test_grounding.py
