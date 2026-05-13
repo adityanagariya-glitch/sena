@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  sena-onboarding:
+    build:
+      context: .
+      dockerfile: services/onboarding/Dockerfile
+    container_name: sena-onboarding
+    env_file:
+      - .env
+    environment:
+      SENA_AI_REDIS_URL: redis://redis:6379/0
+      SENA_AI_HOST: 0.0.0.0
+      SENA_AI_ONBOARDING_PORT: "8083"
+    ports:
+      - "8083:8083"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: sena-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis-data:

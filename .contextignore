@@ -1,0 +1,51 @@
+# Virtual environments — root and nested (gitignore: ** matches any depth)
+.venv/
+**/.venv/
+venv/
+**/venv/
+env/
+**/site-packages/
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+*.egg
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Generated / auto-rebuilt
+graphify-out/
+.github/copilot-instructions.md
+
+# SENA-specific non-code dirs (per CLAUDE.md rules)
+ndis_markdown_docs/
+archive/
+Figma/
+
+# Fixtures and migrations (data, not logic)
+**/fixtures/*.json
+**/migrations/versions/
+
+# Test snapshots and mocks (auto-generated)
+**/__mocks__/
+**/*.snap
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets (never index)
+.env
+.env.*
+secrets/
+**/credentials.json
+**/*.pem
+**/*.key

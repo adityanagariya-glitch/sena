@@ -1,17 +1,19 @@
 ---
 title: SENA Voice Onboarding API — Implementation Plan
 scope: Tasks #3–#8 consolidated (form-aware prompt, tool calling, camera/screen frames, session resumption, Google Search grounding) delivered as an API service for the existing SENA mobile app
-status: draft — awaiting approval
+status: shipped (2026-04-29) — historical reference only
 author: Claude + user
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-07
+post_ship_addendum: |
+  This plan covered phases A–F (REST scaffold, WS+Gemini Live, tool calling, screen frames, resumption+grounding, docs/test harness). All shipped 2026-04-29. Subsequent work — task #11 (7 behavioural rules + voice protocols, 2026-05-02), task #12 (cross-screen shared context, 2026-05-06), task #13 (validation awareness + sequencing + schema-drift discovery, 2026-05-07) — built on top of this foundation and is tracked in TASKS.md, not here. Do NOT use this doc for next-step planning; read TASKS.md instead.
 ---
 
 # SENA Voice Onboarding API — Implementation Plan
 
 ## 1. Overview
 
-The SENA mobile app already exists. Screens in `SENA SCREENS ONBORDING/` show the real, shipped onboarding flow: 5 steps (Personal Information, Participant Requirements, NDIS Plan Details, Documents, Medical Information) plus a separate Consent Sharing flow.
+The SENA mobile app already exists. The shipped onboarding flow is 5 steps (Personal Information, Participant Requirements, NDIS Plan Details, Documents, Medical Information) plus a separate Consent Sharing flow, crystallized into `services/onboarding/fixtures/schema_*.json`.
 
 We build a **standalone Python service** that the mobile app integrates with to deliver a voice-driven alternative path through the same form. The service handles:
 

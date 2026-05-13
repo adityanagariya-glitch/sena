@@ -1,0 +1,92 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\pre-tool-use.sh'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\post-tool-use.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\bump-updated.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\architecture-reminder.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\issue-capture-reminder.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_context7",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\ctx7-flag.sh'"
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\skills-flag.sh'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\session-start.sh'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash 'c:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.codex\\hooks\\stop.sh'"
+          }
+        ]
+      }
+    ]
+  }
+}

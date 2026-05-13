@@ -3,6 +3,7 @@
   "step_id": "medical_information",
   "step_label": "Medical Information",
   "progress_percent": 100,
+  "voice_repeatable_sections": ["allergies", "medications", "medical_history"],
   "sections": [
     {
       "id": "medical_overview",

@@ -1,0 +1,18 @@
+{
+  "strategy": "hot-cold",
+  "hotCommits": 15,
+  "diffPriority": true,
+  "autoMaxTokens": false,
+  "maxTokens": 48000,
+  "coverageTarget": 0.90,
+  "outputs": ["copilot", "claude"],
+  "secretScan": true,
+  "enrichTodos": true,
+  "enrichChanges": true,
+  "watchDebounce": 500,
+  "retrieval": {
+    "topK": 12,
+    "recencyBoost": 2.0,
+    "preset": "balanced"
+  }
+}

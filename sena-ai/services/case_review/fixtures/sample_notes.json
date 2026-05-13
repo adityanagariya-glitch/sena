@@ -1,0 +1,26 @@
+[
+  {
+    "note_id": "note-001",
+    "date": "2026-04-10",
+    "staff_id": "staff-uuid-001",
+    "client_id": "client-uuid-001",
+    "transcript": "Had a good session with the participant today. We worked on meal preparation skills. The participant was able to boil pasta independently. They expressed some frustration when the water took too long to boil but managed their emotions well. No incidents occurred.",
+    "drafted_note": "Support provided for meal preparation. Participant demonstrated independence in boiling pasta. Emotional regulation observed during brief frustration episode. No incidents. Goals progressing as per NDIS plan."
+  },
+  {
+    "note_id": "note-002",
+    "date": "2026-04-03",
+    "staff_id": "staff-uuid-001",
+    "client_id": "client-uuid-001",
+    "transcript": "Community access session. Took participant to the local library and supermarket. Participant selected their own groceries with minimal prompting. Required one physical prompt to redirect from a distressing situation involving a loud noise. Participant recovered quickly.",
+    "drafted_note": "Community access session conducted. Participant attended library and supermarket. Independent grocery selection with minimal prompting. One physical redirect used in response to sensory distress (loud noise). Participant self-regulated within 5 minutes."
+  },
+  {
+    "note_id": "note-003",
+    "date": "2026-03-27",
+    "staff_id": "staff-uuid-001",
+    "client_id": "client-uuid-001",
+    "transcript": "In-home support session. Assisted participant with medication management — reminder provided at 8am and 12pm as per care plan. Participant took medication independently. Also worked on daily living skills: tidying bedroom, doing laundry. Participant was in good spirits throughout.",
+    "drafted_note": "In-home support. Medication reminders provided at 8am and 12pm per care plan — participant self-administered. Daily living skills: bedroom tidy and laundry completed. Participant engaged positively throughout session."
+  }
+]

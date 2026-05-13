@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  sena-voice:
+    build:
+      context: .
+      dockerfile: services/voice/Dockerfile
+    container_name: sena-voice
+    env_file:
+      - .env
+    ports:
+      - "8082:8082"
+    depends_on:
+      - redis
+      - ai-db
+      - shared-db
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: sena-redis
+    ports:
+      - "6379:6379"
+
+  ai-db:
+    image: pgvector/pgvector:pg16
+    container_name: sena-ai-db
+    environment:
+      POSTGRES_USER: sena_ai
+      POSTGRES_PASSWORD: sena_ai
+      POSTGRES_DB: sena_ai
+    ports:
+      - "5433:5432"
+
+  sena-case-review:
+    build:
+      context: .
+      dockerfile: services/case_review/Dockerfile
+    container_name: sena-case-review
+    env_file:
+      - .env
+    ports:
+      - "8084:8084"
+    depends_on:
+      - ai-db
+
+  shared-db:
+    image: postgres:16-alpine
+    container_name: sena-shared-db
+    environment:
+      POSTGRES_USER: shared
+      POSTGRES_PASSWORD: shared
+      POSTGRES_DB: platform
+    ports:
+      - "5434:5432"

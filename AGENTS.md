@@ -44,11 +44,26 @@ Guidance for agentic coding agents working in `C:\Users\Admin\Downloads\SENA`.
 
 - SENA is an AI/ML backend for Australian NDIS service providers.
 - This repo covers the AI backend layer, not the full product platform.
+
+## Voice/Typed Validation Parity Contract (added 2026-05-12)
+
+- Voice/typed validation parity work routes through `flutterhandoffdev.md` at the root of
+  `SENA_AI/`. That document is the canonical Flutter-side contract for Step-1 client onboarding:
+  per-field validators, voice-sink interception, `validation_rejection` parsing, TTS error-speak
+  + mic auto-reopen, and the `POST /v1/onboarding/session/{session_id}/errors` reporting path.
+- The 6-agent orchestration (auditor → mapper → handoff → backend → docs → QA) on 2026-05-12
+  produced this contract. Backend wiring is complete; frontend implementation pending in the
+  `sena-mobile` Flutter repo. Step 2-5 follow the same contract once Flutter voice schemas exist
+  for those steps.
+- Future field-validation contract changes update `flutterhandoffdev.md` first; never let
+  frontend and backend drift again. See TASKS.md #17 for the full record.
+<critical_constraints priority="MANDATORY" type="legal-compliance">
 - Critical constraints:
   - Multi-tenant isolation is mandatory.
   - Human approval is required before AI output becomes final.
   - Data residency is Australian (`ap-southeast-2`).
   - NDIS compliance matters more than speed or convenience.
+</critical_constraints>
 
 ## Repo Layout
 
@@ -196,6 +211,7 @@ CI currently runs:
 - JSON columns are used for draft state, section coverage, and event payloads.
 - Favor explicit status fields such as `ACTIVE`, `COMPLETED`, `PENDING_APPROVAL`, `DELIVERED`.
 
+<error_handling_rules>
 ### Error Handling
 
 - Use `HTTPException` with explicit `status_code` and concise `detail`.
@@ -204,6 +220,7 @@ CI currently runs:
 - Raise `404` for missing entities.
 - Raise `409` for invalid lifecycle state, duplicate activity, or already-completed flows.
 - Use `ValueError` inside Pydantic validators, not inside route logic.
+</error_handling_rules>
 
 ## Testing Conventions
 
@@ -225,6 +242,7 @@ CI currently runs:
   - `dev_header`
   - `jwt`
 
+<agent_guidance priority="MANDATORY">
 ## Agent Guidance
 
 - Default to the `voice` service unless the task clearly targets another area.
@@ -233,7 +251,10 @@ CI currently runs:
 - Match local commands to CI when possible.
 - For architecture work, align with `.planning/` before aligning with the current HTTP implementation.
 - If you change tests or tooling instructions, update this file if the guidance becomes stale.
+</agent_guidance>
 
+<ignored_folders priority="MANDATORY" type="forbidden-paths">
 ## Ignored Folders
 
 **NEVER** try to read or analyze anything inside the `/archive`, `.venv`, or `.vscode` folders. They are a massive token consumption disaster and are likely useless for your analysis. Pretend they do not exist unless explicitly instructed by the user to restore something.
+</ignored_folders>

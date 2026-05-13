@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,7 +10,7 @@ from onboarding.models.schema_spec import StepSchema
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class FieldSource(str, Enum):
@@ -22,6 +22,12 @@ class FieldSource(str, Enum):
 class FieldValue(BaseModel):
     value: Any
     source: FieldSource = FieldSource.voice
+    # User-intent marker. Optional (None) when the writer is the system / a
+    # server-stamped handler with no human input — e.g. auto-copy mirroring.
+    # Set to "voice" by the Gemini tool dispatcher and to "typed" by future
+    # app-driven flows that distinguish keyboard from voice authoring.
+    # Kept optional so existing serialised FormState payloads still deserialise.
+    input_method: Literal["typed", "voice"] | None = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     turn_id: int | None = None
     updated_at: datetime = Field(default_factory=_utcnow)
@@ -79,9 +85,46 @@ class FormState(BaseModel):
     # Set True when advance_step fires
     completed: bool = False
     completed_at: datetime | None = None
+    repeatable_rows: dict[str, int] = Field(default_factory=dict)
+
+    # Sequencing / validation state (PRD-validation-sequencing-discovery)
+    focused_section: str | None = None
+    focused_repeatable_index: int | None = None
+    # Deduped by (section_id, field_id, repeatable_index). Each entry:
+    # {section_id, field_id, repeatable_index, code, reason_human}
+    pending_validation_errors: list[dict] = Field(default_factory=list)
+
+    # M1 — PENDING_CONFIRMATION lock. While set, update_field for ANY field
+    # other than the locked one is rejected with code PENDING_CONFIRMATION_LOCKED.
+    # Cleared when the user explicitly confirms (or restates the value).
+    # Shape: {"section": str, "field": str, "heard_value": Any,
+    #         "repeatable_index": int | None, "set_at": iso8601}
+    pending_confirmation: dict | None = None
+
+    # M5 — Conditional follow-up driver. After update_field commits a value
+    # that unlocks a `visible_if` dependant, the dispatcher writes that
+    # dependant here. The prompt renderer then surfaces it as
+    # next_required_field so the model has no choice but to ask it next.
+    # Shape: {"section": str, "field": str}
+    next_forced_field: dict | None = None
+
+    # C2 — Deferred batch buffer. While pending_confirmation is set,
+    # cross-row / cross-section update_field calls are appended here
+    # instead of being rejected. Drained automatically when the lock
+    # clears (target field successfully commits).
+    # Each entry shape: {"section": str, "field": str,
+    #                    "value": Any, "values": list|None,
+    #                    "confidence": float, "repeatable_index": int|None}
+    pending_batch: list[dict] = Field(default_factory=list)
 
     def touch(self) -> None:
         self.updated_at = _utcnow()
+
+    def increment_repeatable_row(self, section_id: str) -> int:
+        current = self.repeatable_rows.get(section_id, 0)
+        self.repeatable_rows[section_id] = current + 1
+        self.touch()
+        return current
 
     def recompute_completion(self, schema: StepSchema) -> None:
         req_total = req_filled = opt_total = opt_filled = 0
@@ -122,8 +165,15 @@ class FormState(BaseModel):
         confidence: float = 1.0,
         turn_id: int | None = None,
         repeatable_index: int | None = None,
+        input_method: Literal["typed", "voice"] | None = None,
     ) -> None:
-        fv = FieldValue(value=value, source=source, confidence=confidence, turn_id=turn_id)
+        fv = FieldValue(
+            value=value,
+            source=source,
+            confidence=confidence,
+            turn_id=turn_id,
+            input_method=input_method,
+        )
         if repeatable_index is not None:
             if section_id not in self.values or not isinstance(self.values[section_id], list):
                 self.values[section_id] = []

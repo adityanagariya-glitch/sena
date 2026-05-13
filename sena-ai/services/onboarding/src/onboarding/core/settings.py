@@ -58,10 +58,35 @@ class OnboardingSettings(BaseSettings):
     onboarding_webhook_max_retries: int = 3
 
     # ── Feature flags ─────────────────────────────────────────────────────────
-    # SENA_AI_ONBOARDING_GROUNDING_ENABLED
-    onboarding_grounding_enabled: bool = True
+    # SENA_AI_ONBOARDING_GROUNDING_ENABLED — default off until compliance sign-off
+    onboarding_grounding_enabled: bool = False
+    # SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED — default ON.
+    # Controls whether prior-step summaries are persisted into and rendered
+    # out of the per-(tenant_id, participant_id) Redis bucket. Bucket key is
+    # `sena:onboarding:user_ctx:{tenant_id}:{participant_id}` so isolation is
+    # structural (no cross-tenant read possible by construction). When OFF
+    # the agent has no memory of prior screens — symptom: re-asks for the
+    # participant's name on every step. Single-flag rollback path.
+    onboarding_cross_screen_context_enabled: bool = True
     # SENA_AI_ONBOARDING_FRAME_FPS_LIMIT
     onboarding_frame_fps_limit: int = 2
+    # SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC — seconds of user silence before
+    # Gemini is prompted to check in ("are you still there?"). 0 = disabled.
+    onboarding_silence_timeout_sec: int = 8
+    # SENA_AI_VOICE_COVERAGE_ENFORCED — reject field_apply for out-of-coverage fields
+    voice_coverage_enforced: bool = True
+    # SENA_AI_FIELD_APPLY_LOG_LEVEL
+    field_apply_log_level: str = "DEBUG"
+
+    # ── Screen state injection (Phase D-replacement) ──────────────────────────
+    # SENA_AI_SCREEN_STATE_MAX_BYTES — hard cap on screen_state payload size
+    screen_state_max_bytes: int = 8192
+
+    # ── Session resumption (Phase E) ──────────────────────────────────────────
+    # SENA_AI_RESUMPTION_HANDLE_TTL_SEC — handle expiry (default 10 min)
+    resumption_handle_ttl_sec: int = 600
+    # SENA_AI_RESUMPTION_REPLAY_TURNS — transcript turns replayed on resume
+    resumption_replay_turns: int = 4
 
     # ── Derived (seconds) ─────────────────────────────────────────────────────
     @property
