@@ -1,6 +1,8 @@
 """field_apply envelope builder — pure module (no IO)."""
 from __future__ import annotations
 
+from typing import Literal
+
 import structlog
 
 from onboarding.models.schema_spec import StepSchema
@@ -18,12 +20,20 @@ def build_envelope(
     confidence: float = 1.0,
     schema: StepSchema,
     enforced: bool = True,
+    input_method: Literal["typed", "voice"] | None = None,
 ) -> dict | None:
+    """Build a field_apply envelope for emission to the Flutter client.
+
+    ``input_method`` reflects the human-intent channel of the write. When
+    None (server-stamped writes, auto-copy mirrors), the key is omitted so
+    older clients keep deserialising cleanly. When set, the value is
+    surfaced verbatim so the UI can colour/tag the affected field.
+    """
     confidence = max(0.0, min(1.0, float(confidence)))
     if enforced and not is_eligible(section_id, field_id, schema):
         log.debug("field_apply_blocked section=%s field=%s", section_id, field_id)
         return None
-    return {
+    envelope: dict = {
         "type": "field_apply",
         "section_id": section_id,
         "field_id": field_id,
@@ -32,3 +42,6 @@ def build_envelope(
         "source": "voice",
         "confidence": confidence,
     }
+    if input_method is not None:
+        envelope["input_method"] = input_method
+    return envelope

@@ -166,6 +166,56 @@ def test_validate_field_unknown_pair_returns_none():
     assert validate_field("nonexistent_section", "nonexistent_field", "any value") is None
 
 
+# ── _v_boolean_required (interpreter_required, etc.) ─────────────────────────
+#
+# Added 2026-05-12 (Agent 03B). Boolean-required validator accepts Python
+# bool OR case-insensitive "yes"/"no"/"true"/"false". Anything else returns
+# code `boolean_invalid` with reason_human "Please answer yes or no.".
+
+@pytest.mark.parametrize("value", [True, False, "yes", "NO", "True", "false", "Yes", "no"])
+def test_boolean_required_happy_path(value):
+    """Bool OR case-insensitive yes/no/true/false → PASS."""
+    result = validate_field("basics", "interpreter_required", value)
+    assert result is None, (
+        f"Expected PASS for interpreter_required={value!r} "
+        f"got code={getattr(result, 'code', None)!r}"
+    )
+
+
+@pytest.mark.parametrize("value", ["maybe", "1", "0", "y", "n", "indeed"])
+def test_boolean_required_rejects_non_boolean_strings(value):
+    result = validate_field("basics", "interpreter_required", value)
+    assert result is not None
+    assert result.code == "boolean_invalid"
+    # Byte-match the wire string Flutter expects
+    assert result.reason_human == "Please answer yes or no."
+
+
+def test_boolean_required_empty_returns_required():
+    result = validate_field("basics", "interpreter_required", "")
+    assert result is not None
+    assert result.code == "required"
+
+
+# ── about_me — now REQUIRED + ≤250 chars (Agent 03B, 2026-05-12) ────────────
+
+def test_about_me_required_empty_fails():
+    result = validate_field("basics", "about_me", "")
+    assert result is not None
+    assert result.code == "required"
+
+
+def test_about_me_under_limit_passes():
+    result = validate_field("basics", "about_me", "I enjoy walking and cooking.")
+    assert result is None
+
+
+def test_about_me_too_long_fails():
+    result = validate_field("basics", "about_me", "x" * 251)
+    assert result is not None
+    assert result.code == "text_too_long"
+
+
 def test_validate_field_plan_end_cross_field_fail():
     """plan_end validator cross-references plan_start from FormState."""
     state = _state(values={"plan_info": {"plan_start": _fv("2025-06-01")}})
@@ -284,6 +334,62 @@ class TestCrossFields:
         }
         for rej in validate_cross_fields(values):
             assert rej.reason_human, f"Cross-field rejection {rej.code} missing reason_human"
+
+    # ── Byte-match reason_human for the 4 emergency-contact codes (Agent 03B,
+    # 2026-05-12). These strings MUST stay in lock-step with Flutter copy —
+    # the mobile client compares them verbatim when surfacing inline errors.
+
+    def test_emergency_email_matches_client_reason_human_bytematch(self):
+        values = {
+            "basics": {"email": _fv("shared@example.com")},
+            "emergency_contacts": [{"email": _fv("shared@example.com")}],
+        }
+        rejs = [r for r in validate_cross_fields(values)
+                if r.code == "emergency_email_matches_client"]
+        assert rejs, "Expected emergency_email_matches_client rejection"
+        assert rejs[0].reason_human == (
+            "Emergency contact email must not match your email address"
+        )
+
+    def test_emergency_email_duplicate_reason_human_bytematch(self):
+        values = {
+            "emergency_contacts": [
+                {"email": _fv("dup@example.com")},
+                {"email": _fv("dup@example.com")},
+            ],
+        }
+        rejs = [r for r in validate_cross_fields(values)
+                if r.code == "emergency_email_duplicate"]
+        assert rejs, "Expected emergency_email_duplicate rejection"
+        assert rejs[0].reason_human == (
+            "Email must be unique across emergency contacts"
+        )
+
+    def test_emergency_phone_matches_client_reason_human_bytematch(self):
+        values = {
+            "basics": {"phone": _fv("0412345678")},
+            "emergency_contacts": [{"phone": _fv("0412345678")}],
+        }
+        rejs = [r for r in validate_cross_fields(values)
+                if r.code == "emergency_phone_matches_client"]
+        assert rejs, "Expected emergency_phone_matches_client rejection"
+        assert rejs[0].reason_human == (
+            "Emergency contact phone must not match your phone number"
+        )
+
+    def test_emergency_phone_duplicate_reason_human_bytematch(self):
+        values = {
+            "emergency_contacts": [
+                {"phone": _fv("0412345678")},
+                {"phone": _fv("+61412345678")},
+            ],
+        }
+        rejs = [r for r in validate_cross_fields(values)
+                if r.code == "emergency_phone_duplicate"]
+        assert rejs, "Expected emergency_phone_duplicate rejection"
+        assert rejs[0].reason_human == (
+            "Phone number must be unique across emergency contacts"
+        )
 
 
 # ── next_required_field ───────────────────────────────────────────────────────

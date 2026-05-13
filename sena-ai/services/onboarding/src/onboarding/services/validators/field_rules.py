@@ -545,7 +545,7 @@ def _v_boolean_required(raw: Any, _state: Any) -> ValidationRejection | None:
         return None
     return ValidationRejection(
         code="boolean_invalid",
-        reason_human=_FIELD_REQUIRED,
+        reason_human="Please answer yes or no.",
         suggested_fix="Please answer yes or no.",
     )
 
@@ -597,9 +597,13 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("basics", "phone"):              _v_phone_au_required,
     ("basics", "date_of_birth"):      _v_dob,
     ("basics", "gender"):             _v_gender_required,
-    ("basics", "about_me"):           _v_about_me,
+    # about_me: required (≤250 chars). Flutter is law — the participant flow
+    # requires this field; reconciled 2026-05-12 by Agent 03B.
+    ("basics", "about_me"):           _v_text250_required,
     ("basics", "preferred_language"): _v_preferred_language,
-    ("basics", "interpreter_required"): _v_text_required,
+    # interpreter_required: boolean yes/no (Flutter ships a toggle). Accepts
+    # Python bool or "true"/"false"/"yes"/"no" (case-insensitive).
+    ("basics", "interpreter_required"): _v_boolean_required,
     ("basics", "interpreter_language"): _v_text250_optional,
     ("home_address", "address"):      _v_text_required,
     ("home_address", "state"):        _v_au_state,

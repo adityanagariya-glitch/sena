@@ -38,13 +38,15 @@ def check_emergency_email_unique_and_differs_from_client(
         if client_email and email == client_email:
             rejections.append(ValidationRejection(
                 code="emergency_email_matches_client",
-                reason_human="Emergency contact email must be different from your own email.",
+                reason_human=(
+                    "Emergency contact email must not match your email address"
+                ),
                 suggested_fix="Use a different email address for this emergency contact.",
             ))
         if email in seen:
             rejections.append(ValidationRejection(
                 code="emergency_email_duplicate",
-                reason_human="Each emergency contact must have a unique email address.",
+                reason_human="Email must be unique across emergency contacts",
                 suggested_fix="Use a different email for this emergency contact.",
             ))
         seen.add(email)
@@ -74,13 +76,15 @@ def check_emergency_phone_unique_and_differs_from_client(
         if client_phone and phone_norm == client_phone:
             rejections.append(ValidationRejection(
                 code="emergency_phone_matches_client",
-                reason_human="Emergency contact phone must be different from your own phone.",
+                reason_human=(
+                    "Emergency contact phone must not match your phone number"
+                ),
                 suggested_fix="Use a different phone number for this emergency contact.",
             ))
         if phone_norm in seen:
             rejections.append(ValidationRejection(
                 code="emergency_phone_duplicate",
-                reason_human="Each emergency contact must have a unique phone number.",
+                reason_human="Phone number must be unique across emergency contacts",
                 suggested_fix="Use a different phone for this emergency contact.",
             ))
         seen.add(phone_norm)

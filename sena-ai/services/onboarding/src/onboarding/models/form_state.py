@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,12 @@ class FieldSource(str, Enum):
 class FieldValue(BaseModel):
     value: Any
     source: FieldSource = FieldSource.voice
+    # User-intent marker. Optional (None) when the writer is the system / a
+    # server-stamped handler with no human input — e.g. auto-copy mirroring.
+    # Set to "voice" by the Gemini tool dispatcher and to "typed" by future
+    # app-driven flows that distinguish keyboard from voice authoring.
+    # Kept optional so existing serialised FormState payloads still deserialise.
+    input_method: Literal["typed", "voice"] | None = None
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     turn_id: int | None = None
     updated_at: datetime = Field(default_factory=_utcnow)
@@ -159,8 +165,15 @@ class FormState(BaseModel):
         confidence: float = 1.0,
         turn_id: int | None = None,
         repeatable_index: int | None = None,
+        input_method: Literal["typed", "voice"] | None = None,
     ) -> None:
-        fv = FieldValue(value=value, source=source, confidence=confidence, turn_id=turn_id)
+        fv = FieldValue(
+            value=value,
+            source=source,
+            confidence=confidence,
+            turn_id=turn_id,
+            input_method=input_method,
+        )
         if repeatable_index is not None:
             if section_id not in self.values or not isinstance(self.values[section_id], list):
                 self.values[section_id] = []

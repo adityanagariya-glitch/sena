@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
@@ -46,6 +47,24 @@ class CreateSessionResponse(BaseModel):
 
 class UpdateStateRequest(BaseModel):
     values: dict
+
+
+class ClientValidationErrorRequest(BaseModel):
+    """Mobile-client-reported validation error (typed or voice input).
+
+    Schema is strict (extra="forbid") so an unexpected field surfaces as a
+    422 — matches the `unknown(false)` contract documented in the
+    flutterhandoffdev.md handoff.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    error_type: str = Field(..., min_length=1, max_length=64)
+    error_message: str = Field(..., min_length=1, max_length=512)
+    input_method: Literal["typed", "voice"]
+    field_id: str = Field(..., min_length=1, max_length=128)
+    attempted_value: Any | None = None
+    ts: datetime
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -381,6 +400,52 @@ async def complete_session(
         "completed": True,
         "webhook_delivered": delivered,
     }
+
+
+# ── Client validation error reporting (telemetry) ─────────────────────────────
+
+
+@router.post(
+    "/v1/onboarding/session/{session_id}/errors",
+    status_code=204,
+)
+async def report_client_validation_error(
+    session_id: str,
+    body: ClientValidationErrorRequest,
+    repo: FormStateRepo = Depends(get_repo),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+    x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
+) -> Response:
+    """Record a client-reported validation error for telemetry / future tuning.
+
+    The mobile client posts here whenever its own validator rejects a typed
+    or voice-derived value before it would have reached the server. Server
+    persists the entry under ``sena:onboarding:errors:{session_id}`` with a
+    7-day TTL; nothing in the live decision path reads it.
+
+    Returns 204 No Content on success. Returns 404 when the session does not
+    exist (mirrors the privacy-preserving 404 behaviour of GET/PUT state —
+    we deliberately do not leak ownership info on a missing session).
+    """
+    state = await repo.get_state(session_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    # Mirror state-route guard. Both headers gate the check together — older
+    # clients without headers fall through, matching today's behaviour.
+    if x_participant_id is not None:
+        await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
+    await repo.append_client_validation_error(
+        session_id,
+        body.model_dump(mode="json"),
+    )
+    log.info(
+        "client_validation_error_recorded",
+        session_id=session_id,
+        error_type=body.error_type,
+        input_method=body.input_method,
+        field_id=body.field_id,
+    )
+    return Response(status_code=204)
 
 
 # ── Diagnostic (non-production only) ──────────────────────────────────────────

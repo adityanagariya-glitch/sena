@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -23,6 +23,11 @@ _KEY_WS_LOCK = "sena:onboarding:ws_lock:{sid}"
 _KEY_RESUMPTION = "sena:onboarding:resumption:{handle}"
 _KEY_FRAME_CAMERA = "sena:onboarding:session:{sid}:last_frame:camera"
 _KEY_FRAME_SCREEN = "sena:onboarding:session:{sid}:last_frame:screen"
+_KEY_CLIENT_ERRORS = "sena:onboarding:errors:{sid}"
+
+# 7-day TTL for client-reported validation errors (telemetry only — not used
+# in the live decision path so the longer retention is safe).
+_CLIENT_ERRORS_TTL_SEC = 60 * 60 * 24 * 7
 
 
 class FormStateRepo:
@@ -206,6 +211,42 @@ class FormStateRepo:
         if key:
             await self._r.set(key, data, ex=300)  # 5 min TTL
 
+    # ── Client-side validation error reporting (telemetry) ───────────────────
+
+    async def append_client_validation_error(
+        self,
+        session_id: str,
+        error: dict[str, Any],
+    ) -> None:
+        """Persist a client-reported validation error for later analysis.
+
+        Stored as a Redis list (RPUSH) under
+        ``sena:onboarding:errors:{session_id}`` with a 7-day TTL refreshed on
+        every write. Telemetry-only — the live decision path never reads
+        these. The companion ``read_client_validation_errors`` returns the
+        list for debugging or a future internal endpoint.
+        """
+        key = _KEY_CLIENT_ERRORS.format(sid=session_id)
+        payload = json.dumps(error, default=str, separators=(",", ":"))
+        async with self._r.pipeline(transaction=False) as p:
+            p.rpush(key, payload)
+            p.expire(key, _CLIENT_ERRORS_TTL_SEC)
+            await p.execute()
+
+    async def read_client_validation_errors(
+        self,
+        session_id: str,
+    ) -> list[dict[str, Any]]:
+        """Return all client-reported validation errors for the session.
+
+        Intentionally unexposed via REST — call from debug tooling or future
+        internal telemetry endpoint. Order matches insertion order.
+        """
+        raw_list = await self._r.lrange(
+            _KEY_CLIENT_ERRORS.format(sid=session_id), 0, -1,
+        )
+        return [json.loads(r) for r in raw_list]
+
     # ── Session deletion ──────────────────────────────────────────────────────
 
     async def delete_session(self, session_id: str) -> None:
@@ -217,6 +258,7 @@ class FormStateRepo:
             _KEY_WS_LOCK.format(sid=session_id),
             _KEY_FRAME_CAMERA.format(sid=session_id),
             _KEY_FRAME_SCREEN.format(sid=session_id),
+            _KEY_CLIENT_ERRORS.format(sid=session_id),
         ]
         await self._r.delete(*keys)
         log.info("session_deleted", session_id=session_id)

@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 
@@ -46,6 +46,12 @@ from onboarding.services import field_apply as _fa
 from onboarding.services.coverage import is_repeatable_eligible
 from onboarding.services.validators import validate_field as _validate_field
 from onboarding.services.validators import validate_step_complete
+from onboarding.services.validators.cross_field import (
+    check_emergency_email_unique_and_differs_from_client as _ec_email_check,
+)
+from onboarding.services.validators.cross_field import (
+    check_emergency_phone_unique_and_differs_from_client as _ec_phone_check,
+)
 from onboarding.services.validators.sequencing import section_min_unmet as _section_min_unmet
 from onboarding.services.webhook import fire_webhook
 
@@ -461,6 +467,33 @@ def _clear_validation_error(
     ]
 
 
+def _build_dry_run_values(
+    state: FormState,
+    section_id: str,
+    field_id: str,
+    typed_value: Any,
+    row_index: int | None,
+) -> dict[str, Any]:
+    """Return a shallow-copied state.values with the proposed write applied.
+
+    Used by the per-write cross-field check so the dry-run sees the about-
+    to-commit value in place. Does NOT mutate the live state.
+    """
+    snapshot = dict(state.values)
+    rows = snapshot.get(section_id)
+    if isinstance(rows, list):
+        new_rows = [dict(r) if isinstance(r, dict) else r for r in rows]
+        idx = row_index if row_index is not None else 0
+        while len(new_rows) <= idx:
+            new_rows.append({})
+        existing = new_rows[idx] if isinstance(new_rows[idx], dict) else {}
+        existing = dict(existing)
+        existing[field_id] = {"value": typed_value}
+        new_rows[idx] = existing
+        snapshot[section_id] = new_rows
+    return snapshot
+
+
 # ── Section-copy mirroring (schema `copy_from_if_flagged`) ───────────────────
 
 def _apply_copy_mirroring(
@@ -672,6 +705,16 @@ class ToolDispatcher:
         repeatable_index = args.get("repeatable_index")
         confidence = float(args.get("confidence", 1.0))
         cross_section_intent = bool(args.get("cross_section_intent", False))
+        # Gemini tool dispatch is voice-originated by definition. Allow
+        # callers (tests, future internal callers) to override; default to
+        # "voice" so envelopes emitted to Flutter carry the marker without
+        # the dispatcher needing to know the channel.
+        _input_method_raw = args.get("input_method", "voice")
+        input_method: Literal["typed", "voice"] | None
+        if _input_method_raw in ("typed", "voice"):
+            input_method = _input_method_raw
+        else:
+            input_method = None
 
         if not section_id or not field_id:
             return {"ok": False, "error": "section and field are required"}
@@ -931,6 +974,8 @@ class ToolDispatcher:
                 "code": rej.code,
                 "reason_human": rej.reason_human,
             }
+            if rej.suggested_fix is not None:
+                event["suggested_fix"] = rej.suggested_fix
             if rej.allowed_values is not None:
                 event["allowed_values"] = rej.allowed_values
             await self._emit(event)
@@ -938,6 +983,71 @@ class ToolDispatcher:
 
         # Clear any prior error for this field — validation now passes
         _clear_validation_error(state, section_id, field_id, _ri)
+
+        # C4 — Per-write cross-field pass for cross-row invariants involving
+        # the just-mutated field (phone/email uniqueness + ≠ client).
+        # Policy (non-obvious): the per-field write itself is INDIVIDUALLY
+        # valid (we already passed validate_field above), so it WILL commit
+        # to FormState below. But if the new value collides with an OTHER
+        # row's phone/email, that OTHER row is now invalid — we emit a
+        # validation_rejection for the OTHER row(s) so the client sees the
+        # conflict surface immediately without waiting for /complete.
+        #
+        # We intentionally do NOT emit the rejection against the just-
+        # written (section_id, field_id) — that field's value is valid on
+        # its own; the conflict is structural across rows.
+        if (
+            section.is_repeatable
+            and section_id == "emergency_contacts"
+            and field_id in ("email", "phone")
+        ):
+            # Build a dry-run state snapshot reflecting the about-to-commit
+            # value so the cross-field checks see the new value in place.
+            dry_values = _build_dry_run_values(
+                state, section_id, field_id, typed_value, _ri,
+            )
+            check_fn = _ec_email_check if field_id == "email" else _ec_phone_check
+            conflicts = check_fn(dry_values)
+            rows = dry_values.get(section_id) or []
+            # For each conflict, find the OTHER row(s) that now collide
+            # with the just-written value and emit a validation_rejection
+            # against them. The just-written row's own validation already
+            # passed; we surface only structural collisions.
+            for conflict in conflicts:
+                for other_idx, other_row in enumerate(rows):
+                    if other_idx == _ri or not isinstance(other_row, dict):
+                        continue
+                    other_fv = other_row.get(field_id)
+                    other_val = (
+                        other_fv.get("value")
+                        if isinstance(other_fv, dict) else other_fv
+                    )
+                    if not other_val:
+                        continue
+                    # Normalise compare (phone strip non-digits; email lower)
+                    if field_id == "email":
+                        match = str(other_val).strip().lower() == str(
+                            typed_value
+                        ).strip().lower()
+                    else:
+                        import re as _re
+                        _strip = _re.compile(r"\D")
+                        match = _strip.sub("", str(other_val)) == _strip.sub(
+                            "", str(typed_value),
+                        )
+                    if not match:
+                        continue
+                    cross_event: dict = {
+                        "type": "validation_rejection",
+                        "section_id": section_id,
+                        "field_id": field_id,
+                        "repeatable_index": other_idx,
+                        "code": conflict.code,
+                        "reason_human": conflict.reason_human,
+                    }
+                    if conflict.suggested_fix is not None:
+                        cross_event["suggested_fix"] = conflict.suggested_fix
+                    await self._emit(cross_event)
 
         # B5 — Low-confidence gate: pause before committing uncertain captures.
         # Threshold: anything below 0.90 requires explicit user confirmation.
@@ -1005,6 +1115,7 @@ class ToolDispatcher:
             confidence=confidence,
             turn_id=self._turn_id,
             repeatable_index=repeatable_index if section.is_repeatable else None,
+            input_method=input_method,
         )
 
         # M1 — Clear the PENDING_CONFIRMATION lock if this commit satisfied
@@ -1125,6 +1236,7 @@ class ToolDispatcher:
             confidence=confidence,
             schema=self._schema,
             enforced=settings.voice_coverage_enforced,
+            input_method=input_method,
         )
         if envelope is not None:
             await self._emit(envelope)
