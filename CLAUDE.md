@@ -475,6 +475,7 @@ sena-ai\services\onboarding\src\onboarding\api\routes.py ← __future__, fastapi
 sena-ai\services\onboarding\src\onboarding\core\settings.py ← __future__, pydantic_settings
 sena-ai\services\onboarding\src\onboarding\models\form_state.py ← __future__, pydantic, onboarding
 sena-ai\services\onboarding\src\onboarding\models\schema_spec.py ← __future__, pydantic
+sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py ← __future__, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\services\cross_screen_context.py ← __future__, onboarding
 sena-ai\services\onboarding\src\onboarding\services\field_apply.py ← __future__, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\services\gemini_live.py ← __future__, fastapi, google, onboarding, structlog
@@ -487,6 +488,8 @@ sena-ai\services\onboarding\src\onboarding\services\validators\cross_field.py �
 sena-ai\services\onboarding\src\onboarding\services\validators\field_rules.py ← __future__, base
 sena-ai\services\onboarding\src\onboarding\services\validators\sequencing.py ← __future__, base, field_rules
 sena-ai\services\onboarding\tests\test_cross_screen_context.py ← __future__, onboarding
+sena-ai\services\onboarding\tests\test_errors_endpoint.py ← __future__, pytest
+sena-ai\services\onboarding\tests\test_field_apply.py ← __future__, onboarding
 sena-ai\services\onboarding\tests\test_gemini_live.py ← __future__, unittest, onboarding, pytest, pytest_asyncio
 sena-ai\services\onboarding\tests\test_prompt_builder.py ← __future__, unittest, onboarding, pytest
 sena-ai\services\onboarding\tests\test_sequencing.py ← __future__, onboarding, pytest
@@ -563,6 +566,19 @@ h3 Rule 4 — Exhaustive Entity Extraction (Multi-Value Capture)
 h3 Rule 5 — Proactive Optional Prompting
 h3 Rule 6 — Dynamic UI Updates
 h3 Rule 7 — Frontend Validation Loop
+```
+
+### sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py
+```
+class FormStateRepo
+  def __init__(redis: "Redis") → None
+  async def get_bootstrap(session_id: str) → SessionBootstrap | None
+  async def get_state(session_id: str) → FormState | None
+  async def save_state(state: FormState, ttl_sec: int) → None
+  async def get_schema(session_id: str) → StepSchema | None
+  async def get_transcript(session_id: str) → list[dict]
+  async def acquire_ws_lock(session_id: str, ttl_sec: int) → bool
+  async def release_ws_lock(session_id: str) → None
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\services\cross_screen_context.py
@@ -663,6 +679,30 @@ class TestTokenBudgetSmoke
   def test_full_6_step_render_well_under_threshold()
 class TestRenderCap
   def test_only_last_five_steps_rendered()
+```
+
+### sena-ai\services\onboarding\tests\test_errors_endpoint.py
+```
+class TestErrorsEndpoint
+  async def test_happy_path_returns_204(async_client, fake_redis)
+  async def test_ttl_is_about_seven_days(async_client, fake_redis)
+  async def test_missing_input_method_returns_422(async_client)
+  async def test_extra_field_rejected_with_422(async_client)
+  async def test_invalid_input_method_value_returns_422(async_client)
+  async def test_missing_session_returns_404(async_client)
+  async def test_wrong_tenant_returns_403(async_client)
+  async def test_voice_input_method_accepted(async_client, fake_redis)
+class TestErrorsRepoCompanion
+  async def test_read_empty_when_no_errors(repo)
+```
+
+### sena-ai\services\onboarding\tests\test_field_apply.py
+```
+def test_envelope_includes_input_method_when_voice()
+def test_envelope_includes_input_method_when_typed()
+def test_envelope_omits_input_method_when_none()
+def test_envelope_required_keys_present()
+def test_envelope_returns_none_when_blocked_by_coverage()
 ```
 
 ### sena-ai\services\onboarding\tests\test_gemini_live.py

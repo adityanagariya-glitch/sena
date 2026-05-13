@@ -1,9 +1,13 @@
 ---
 title: Persistent Task List
-updated: 2026-05-07
+updated: 2026-05-12
 ---
 
-> Last session end-state (2026-05-11): Task #15 state-sync desync repair **COMPLETE**. 4 frontend-reported bugs fixed surgically (service-address auto-copy, cross-screen flag default, emergency-contact update loop, JSON-as-Truth prompt rule). 198/198 tests pass (+6 regression). Stale `FLUTTER_VOICE_INTEGRATION_FIXES.md` removed; `FLUTTER_DEV_HANDOFF.md` extended with Issue #28 contract.
+> Last session end-state (2026-05-12): Task #17 voice/typed validation parity (Step 1) — backend
+> **COMPLETE**, frontend implementation pending in `sena-mobile` Flutter repo per
+> `SENA_AI/flutterhandoffdev.md`. 6-agent orchestration shipped: AUDITOR → MAPPER → HANDOFF →
+> BACKEND → DOCS → QA. New POST `/v1/onboarding/session/{sid}/errors` endpoint, `FieldValue.input_method`
+> threaded through validators, per-write cross-field hook, reconciled emergency-contact strings.
 > **New session: read `.claude/SESSION_START.md` FIRST.**
 
 # SENA Task List
@@ -15,6 +19,48 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ---
 
 ## Active
+
+### #17 — Voice/typed validation parity, Step 1 client onboarding (2026-05-12)
+- **Status:** backend complete (2026-05-12); frontend pending implementation in `sena-mobile`
+  Flutter repo per `SENA_AI/flutterhandoffdev.md`
+- **Priority:** P0 (voice rollout blocker — NDIS data-quality risk if voice bypass persists)
+- **What was broken:**
+  - Voice writes bypassed every frontend validator (raw STT → controllers directly)
+  - `validation_rejection` WS events silently dropped (no consumer wired)
+  - No `input_method` ("typed"|"voice") tracking → impossible to audit which channel rejected
+  - No POST `/errors` endpoint → no way for Flutter to report typed-validation failures back to
+    the agent / training loop
+- **What shipped this run (6-agent orchestration):**
+  - `SENA_AI/flutterhandoffdev.md` (1651 lines, 91.8 KB after 2026-05-12 QA pass) — canonical
+    Flutter handoff: per-field validator contract, voice sink interception, TTS error-speak
+    + mic auto-reopen, AppStrings additions (paired on-screen / `voice*` keys where spoken
+    differs from inline), full Step-1 field map
+  - Backend `sena-ai/services/onboarding/`:
+    - New `POST /v1/onboarding/session/{session_id}/errors` (204; strict body shape; persists to
+      Redis list `sena:onboarding:errors:{sid}` with 7-day TTL)
+    - `FieldValue.input_method: Literal["typed","voice"] | None` — propagated through writers
+    - `build_envelope` (`services/field_apply.py`) now surfaces `input_method` on `field_apply`
+    - Per-write cross-field invariant check inside `_update_field` (no longer only at advance gate)
+    - Cross-field `reason_human` strings reconciled to match Flutter `AppStrings` verbatim
+      (emergency-contact phone-equals-client, duplicate-contact, plan-end-before-start)
+    - `basics.interpreter_required` → `_v_boolean_required`
+    - `basics.about_me` → `_v_text250_required`
+  - New tests: `test_errors_endpoint.py`, `test_field_apply.py`; extended `test_validators.py`
+- **Definition of done (frontend, owned by Flutter team):**
+  - Every Step-1 voice-mapped field validates-before-state for typed **and** voice input
+  - `validation_rejection` event parsed on Flutter and surfaced as inline field error
+  - TTS speaks the same on-screen string; mic auto-reopens after the speak completes
+  - POST `/errors` fires on every typed-validation failure
+  - AppStrings additions made (no inline copy)
+  - `flutter analyze` → 0 warnings; test coverage for new validator/voice paths
+- **Open blockers:**
+  - Flutter team must implement the contract in `SENA_AI/flutterhandoffdev.md` before QA sign-off
+  - Step 2-5 validation parity is **deferred** until Flutter voice schemas exist for those steps
+    (Step-1 ships first; Step 2-5 follow the same contract once mapped)
+- **Anti-recurrence guard:** any future "voice wrote bad data" report → check (a) `input_method`
+  threaded end-to-end, (b) `POST /errors` firing on typed failures, (c) `validation_rejection`
+  parsed by Flutter `VoiceEventModel.parse`. The 5 non-negotiable contract rules live in
+  `.claude/SESSION_START.md` under "Voice-Onboarding Validation Contract".
 
 ### #16 — Voice assistant UX bugs (VAD, validation, routines, amnesia) (2026-05-12)
 - **Status:** completed (2026-05-12) — commit db2ee7c

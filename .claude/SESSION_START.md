@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-05-07
+updated: 2026-05-12
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -35,6 +35,41 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 
 - `/archive/`, `.venv/`, `.vscode/` — token waste, ignored per CLAUDE.md
 - `ndis_markdown_docs/` (whole folder) — massive token cost. Read only a specific file when an NDIS compliance question requires it.
+
+---
+
+## Voice-Onboarding Validation Contract (added 2026-05-12)
+
+Canonical Flutter handoff: **`SENA_AI/flutterhandoffdev.md`** (root of SENA_AI). Backend wiring
+complete 2026-05-12 by the 6-agent orchestration (AUDITOR → MAPPER → HANDOFF → BACKEND → DOCS →
+QA). Frontend implementation pending in `sena-mobile` Flutter repo. See `.claude/tasks/TASKS.md`
+#17 for the full record.
+
+**The 5 non-negotiable rules of the contract:**
+
+1. **Validate-before-state.** A field never updates a controller/state before validation passes —
+   typed **or** voice. No "write first, validate later" allowed for either input method.
+2. **`input_method` is first-class.** Captured at intake ("typed" or "voice"), threaded through
+   every validator + error report. Backend `FieldValue.input_method` surfaces on `field_apply` WS
+   events.
+3. **POST `/v1/onboarding/session/{session_id}/errors`** fires on every validation FAIL (typed and
+   voice). Strict body shape; persists to Redis list `sena:onboarding:errors:{sid}`, 7-day TTL.
+4. **Voice failure → TTS speaks the same on-screen string + auto-reopens the mic.** No silent
+   drops. The string the user reads must match the string Sena speaks, both pulled from
+   `AppStrings`.
+5. **Voice = first-class.** Every validator, every error path, every cross-field invariant applies
+   equally to both input methods. No "voice happy-path" shortcuts.
+
+**Backend already wired (2026-05-12):** new `POST /errors` endpoint, `FieldValue.input_method`
+through writers, per-write cross-field invariant check in `_update_field` (no longer only at
+advance gate), reconciled `reason_human` strings to match Flutter `AppStrings`,
+`basics.interpreter_required` → `_v_boolean_required`, `basics.about_me` → `_v_text250_required`.
+New tests: `test_errors_endpoint.py`, `test_field_apply.py`, extended `test_validators.py`.
+
+**Frontend pending in `sena-mobile`:** every Step-1 voice-mapped field must validate-before-state
+for typed AND voice; `validation_rejection` parsed; TTS error-speak + mic auto-reopen; POST
+`/errors` fired on typed failures; AppStrings additions; `flutter analyze` 0 warnings. See
+`flutterhandoffdev.md` for the field-level contract.
 
 ---
 

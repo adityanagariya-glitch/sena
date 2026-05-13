@@ -34,14 +34,11 @@ sena-ai\services\onboarding\src\onboarding\core\logging.py ← __future__, struc
 sena-ai\services\onboarding\src\onboarding\main.py ← __future__, fastapi, onboarding
 sena-ai\services\onboarding\src\onboarding\models\cross_screen_summary.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\models\session_bootstrap.py ← __future__, pydantic
-sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py ← __future__, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\repositories\user_context_repo.py ← __future__, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\services\coverage.py ← __future__, onboarding
 sena-ai\services\onboarding\src\onboarding\services\grounding.py ← __future__, google
 sena-ai\services\onboarding\src\onboarding\services\webhook.py ← __future__, httpx, structlog
 sena-ai\services\onboarding\tests\conftest.py ← __future__, fakeredis, fastapi, httpx, onboarding
-sena-ai\services\onboarding\tests\test_errors_endpoint.py ← __future__, pytest
-sena-ai\services\onboarding\tests\test_field_apply.py ← __future__, onboarding
 sena-ai\services\onboarding\tests\test_grounding.py ← __future__, google, onboarding
 sena-ai\services\onboarding\tests\test_resumption.py ← __future__, fakeredis, onboarding, pytest, pytest_asyncio
 sena-ai\services\onboarding\tests\test_routes.py ← __future__, unittest, pytest
@@ -441,19 +438,6 @@ class CrossScreenContext(BaseModel) {model_config?, summaries?, schema_version?}
 class SessionBootstrap(BaseModel) {model_config?, mode?, current_page_values?, readonly_paths?, prior_pages?, participant_display_name?}
 ```
 
-### sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py
-```
-class FormStateRepo
-  def __init__(redis: "Redis") → None
-  async def get_bootstrap(session_id: str) → SessionBootstrap | None
-  async def get_state(session_id: str) → FormState | None
-  async def save_state(state: FormState, ttl_sec: int) → None
-  async def get_schema(session_id: str) → StepSchema | None
-  async def get_transcript(session_id: str) → list[dict]
-  async def acquire_ws_lock(session_id: str, ttl_sec: int) → bool
-  async def release_ws_lock(session_id: str) → None
-```
-
 ### sena-ai\services\onboarding\src\onboarding\repositories\user_context_repo.py
 ```
 class UserContextRepo
@@ -484,30 +468,6 @@ def medical_schema() → dict
 async def fake_redis()
 async def repo(fake_redis)
 async def async_client(fake_redis)
-```
-
-### sena-ai\services\onboarding\tests\test_errors_endpoint.py
-```
-class TestErrorsEndpoint
-  async def test_happy_path_returns_204(async_client, fake_redis)
-  async def test_ttl_is_about_seven_days(async_client, fake_redis)
-  async def test_missing_input_method_returns_422(async_client)
-  async def test_extra_field_rejected_with_422(async_client)
-  async def test_invalid_input_method_value_returns_422(async_client)
-  async def test_missing_session_returns_404(async_client)
-  async def test_wrong_tenant_returns_403(async_client)
-  async def test_voice_input_method_accepted(async_client, fake_redis)
-class TestErrorsRepoCompanion
-  async def test_read_empty_when_no_errors(repo)
-```
-
-### sena-ai\services\onboarding\tests\test_field_apply.py
-```
-def test_envelope_includes_input_method_when_voice()
-def test_envelope_includes_input_method_when_typed()
-def test_envelope_omits_input_method_when_none()
-def test_envelope_required_keys_present()
-def test_envelope_returns_none_when_blocked_by_coverage()
 ```
 
 ### sena-ai\services\onboarding\tests\test_grounding.py

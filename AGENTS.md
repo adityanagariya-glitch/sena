@@ -44,6 +44,19 @@ Guidance for agentic coding agents working in `C:\Users\Admin\Downloads\SENA`.
 
 - SENA is an AI/ML backend for Australian NDIS service providers.
 - This repo covers the AI backend layer, not the full product platform.
+
+## Voice/Typed Validation Parity Contract (added 2026-05-12)
+
+- Voice/typed validation parity work routes through `flutterhandoffdev.md` at the root of
+  `SENA_AI/`. That document is the canonical Flutter-side contract for Step-1 client onboarding:
+  per-field validators, voice-sink interception, `validation_rejection` parsing, TTS error-speak
+  + mic auto-reopen, and the `POST /v1/onboarding/session/{session_id}/errors` reporting path.
+- The 6-agent orchestration (auditor → mapper → handoff → backend → docs → QA) on 2026-05-12
+  produced this contract. Backend wiring is complete; frontend implementation pending in the
+  `sena-mobile` Flutter repo. Step 2-5 follow the same contract once Flutter voice schemas exist
+  for those steps.
+- Future field-validation contract changes update `flutterhandoffdev.md` first; never let
+  frontend and backend drift again. See TASKS.md #17 for the full record.
 <critical_constraints priority="MANDATORY" type="legal-compliance">
 - Critical constraints:
   - Multi-tenant isolation is mandatory.
