@@ -837,26 +837,6 @@ def test_turn_validation_error_empty_transcript(client, dev_headers)
 def test_turn_unknown_session(client, dev_headers)
 ```
 
-### sena-ai\shared\.github\context-cold.md
-```
-h1 Code signatures
-h2 .
-h3 pyproject.toml
-h2 .github
-h3 .github\context-cold.md
-h3 .github\copilot-instructions.md
-code-fence plain
-```
-
-### sena-ai\shared\CLAUDE.md
-```
-h2 Auto-generated signatures
-h1 Code signatures
-h2 .
-h3 CLAUDE.md
-code-fence plain
-```
-
 ### sena-ai\shared\pyproject.toml
 ```
 table [project]
