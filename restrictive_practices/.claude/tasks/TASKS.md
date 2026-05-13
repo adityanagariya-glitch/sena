@@ -1,6 +1,6 @@
 ---
 title: Restrictive Practices Detection Module — Task List
-updated: 2026-05-12
+updated: 2026-05-13
 ---
 
 ## Done
@@ -26,15 +26,22 @@ updated: 2026-05-12
 
 ## Backlog
 - [ ] Verify `rp_case_note_runs` audit rows written during demo runs (check DB)
-- [ ] Verify `gemini-3.1-pro-preview` accessibility on active provider — if 404, fallback to `gemini-3-flash-preview`
 - [ ] Auth middleware — wire `X-User-Id` / JWT header into FastAPI routes
 - [ ] Unit tests for each pipeline step (pytest + pytest-asyncio)
 - [ ] Alembic migrations — replace `create_tables()` for production DB management
-- [ ] Rate limiting + retry hardening on Gemini API calls
+- [ ] Rate limiting + retry hardening on Bedrock API calls
 - [ ] Structured logging — JSON log format for production observability
-- [ ] Ingest 5th NDIS doc (Regulated Restrictive Practices Guide) — currently falling back to download, may need manual URL refresh
 
 ## Session Fixes Log
+### 2026-05-13 (AWS Bedrock migration)
+- Migrated all LLM calls from google-genai → AWS Bedrock (Claude Haiku 4.5 triage, Sonnet 4.6 eval/draft)
+- Migrated embeddings from Gemini text-embedding → Cohere Embed English v3 (1024 dims); dropped + re-ingested 581 chunks
+- Fixed boto3 credential chain: pydantic-settings doesn't set os.environ; pass creds explicitly in all _make_client()
+- Fixed JSON parsing: Bedrock models wrap JSON in markdown fences; use `_extract_json()` with raw_decode
+- Fixed nested JSON: added explicit flat-key instruction to evaluator/drafter prompts
+- Fixed alert_required: removed `bsp_mentioned_in_note` gate — model sets True even for negative mentions; rely on cross_check SQL
+- All 8 form API scenarios verified with correct alert outcomes
+
 ### 2026-05-01 (model upgrade)
 - Upgraded triage model: `gemini-2.5-flash` → `gemini-3-flash-preview`
 - Upgraded evaluator model: `gemini-2.5-flash` (fallback) → `gemini-3.1-pro-preview`

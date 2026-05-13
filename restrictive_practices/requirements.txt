@@ -4,8 +4,8 @@ uvicorn[standard]==0.30.6
 pydantic>=2.9.0,<3.0.0
 pydantic-settings>=2.4.0
 
-# Google GenAI unified SDK (supports both AI Studio keys + Vertex AI)
-google-genai>=1.74.0
+# AWS SDK (Bedrock LLMs + embeddings)
+boto3>=1.34.0
 
 # Database (async SQLAlchemy + pgvector)
 asyncpg==0.29.0

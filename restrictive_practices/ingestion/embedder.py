@@ -1,9 +1,10 @@
-"""Embed document chunks via Gemini embeddings and upsert into pgvector."""
+"""Embed document chunks via Bedrock (Cohere Embed English v3) and upsert into pgvector."""
 
 import asyncio
+import json as _json
 import logging
 
-from google import genai
+import boto3
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,43 +15,49 @@ from models.db import NDISPolicyChunk
 logger = logging.getLogger(__name__)
 
 
-def _make_client() -> genai.Client:
-    """Build a google-genai client — Vertex AI if project set, else AI Studio."""
-    if settings.use_vertex_ai:
-        return genai.Client(
-            vertexai=True,
-            project=settings.gcp_project,
-            location=settings.gcp_location,
-        )
-    return genai.Client(api_key=settings.gemini_api_key)
+def _make_client():
+    kwargs: dict = {"region_name": settings.aws_region}
+    if settings.aws_access_key_id and settings.aws_secret_access_key:
+        kwargs["aws_access_key_id"] = settings.aws_access_key_id
+        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+    return boto3.client("bedrock-runtime", **kwargs)
 
 
-_client: genai.Client | None = None
+_client = None
 
 
-def _get_client() -> genai.Client:
+def _get_client():
     global _client
     if _client is None:
         _client = _make_client()
     return _client
 
 
-def _embed_sync(text: str) -> list[float]:
-    result = _get_client().models.embed_content(
-        model=settings.embedding_model,
-        contents=text,
+def _embed_sync(text: str, input_type: str = "search_document") -> list[float]:
+    """Synchronous Cohere embed call via Bedrock invoke_model.
+
+    input_type must be 'search_document' for ingest and 'search_query' for RAG retrieval.
+    Cohere v3 uses these to apply asymmetric embedding — mixing them degrades retrieval quality.
+    """
+    body = _json.dumps({"texts": [text], "input_type": input_type, "truncate": "END"})
+    response = _get_client().invoke_model(
+        modelId=settings.embedding_model,
+        body=body,
+        contentType="application/json",
+        accept="application/json",
     )
-    return result.embeddings[0].values
+    result = _json.loads(response["body"].read())
+    return result["embeddings"][0]
 
 
 async def embed_text(text: str) -> list[float]:
-    """Async-safe embedding: offloads the blocking SDK call to a thread."""
-    return await asyncio.to_thread(_embed_sync, text)
+    """Async-safe embedding for document ingest — offloads blocking SDK call to thread pool."""
+    return await asyncio.to_thread(_embed_sync, text, "search_document")
 
 
 async def embed_query(query: str) -> list[float]:
-    """Embed a RAG query string."""
-    return await embed_text(query)
+    """Async-safe embedding for RAG queries."""
+    return await asyncio.to_thread(_embed_sync, query, "search_query")
 
 
 async def upsert_chunks(chunks: list[DocumentChunk], db: AsyncSession) -> int:

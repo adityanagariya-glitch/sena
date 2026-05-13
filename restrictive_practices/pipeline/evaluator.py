@@ -1,6 +1,6 @@
 """Step 5 — Evaluator Agent.
 
-Gemini Pro reads the case note + retrieved NDIS policy chunks and produces a
+Claude Sonnet reads the case note + retrieved NDIS policy chunks and produces a
 structured compliance verdict. Only called when triage flagged=True.
 Uses RAG-grounded context to prevent hallucination of regulatory rules.
 """
@@ -9,8 +9,7 @@ import asyncio
 import json
 import logging
 
-from google import genai
-from google.genai import types
+import boto3
 from pydantic import BaseModel
 
 from config import settings
@@ -98,6 +97,10 @@ Determine:
    Set to true and populate "bsp_mention_excerpt" with the exact phrase if found.
 
 Be precise and evidence-based. Quote specific phrases from the case note in your reasoning.
+
+Respond with a single flat JSON object — no nested objects, no markdown, no extra text. Use exactly these top-level keys:
+incident_detected, practice_category, action_summary, policy_violation_risk, confidence, reasoning,
+trigger_phrases, suppression_factors, bsp_mentioned_in_note, bsp_mention_excerpt, reporting_required, notification_timeframe.
 """
 
 
@@ -116,14 +119,20 @@ class _EvaluatorResponse(BaseModel):
     notification_timeframe: str | None = None
 
 
-def _make_client() -> genai.Client:
-    if settings.use_vertex_ai:
-        return genai.Client(
-            vertexai=True,
-            project=settings.gcp_project,
-            location=settings.gcp_location,
-        )
-    return genai.Client(api_key=settings.gemini_api_key)
+def _extract_json(text: str) -> dict:
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("No JSON object found", text, 0)
+    obj, _ = json.JSONDecoder().raw_decode(text, start)
+    return obj
+
+
+def _make_client():
+    kwargs: dict = {"region_name": settings.aws_region}
+    if settings.aws_access_key_id and settings.aws_secret_access_key:
+        kwargs["aws_access_key_id"] = settings.aws_access_key_id
+        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+    return boto3.client("bedrock-runtime", **kwargs)
 
 
 def _format_policy_context(chunks: list[PolicyChunk]) -> str:
@@ -142,7 +151,7 @@ def _run_evaluator(
     action_summary: str,
     policy_context: str,
 ) -> EvaluatorOutput:
-    """Synchronous Gemini Pro call — offloaded to thread pool."""
+    """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
 
     prompt = _EVALUATOR_PROMPT.format(
@@ -151,27 +160,22 @@ def _run_evaluator(
         action_summary=action_summary,
     )
 
-    response = client.models.generate_content(
-        model=settings.evaluator_model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_EvaluatorResponse,
-            temperature=0.0,
-            max_output_tokens=8192,
-        ),
+    response = client.converse(
+        modelId=settings.evaluator_model,
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        inferenceConfig={"maxTokens": 8192, "temperature": 0.0},
     )
 
-    if not response.text:
+    text = response["output"]["message"]["content"][0]["text"]
+    if not text:
         raise ValueError(
-            f"Empty evaluator response. finish_reason="
-            f"{response.candidates[0].finish_reason if response.candidates else 'NO_CANDIDATES'}"
+            f"Empty evaluator response. stopReason={response.get('stopReason', 'NO_CANDIDATES')}"
         )
 
     try:
-        data = json.loads(response.text)
+        data = _extract_json(text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Evaluator response not valid JSON: {exc}. Raw: {response.text[:200]}") from exc
+        raise ValueError(f"Evaluator response not valid JSON: {exc}. Raw: {text[:200]}") from exc
     parsed = _EvaluatorResponse(**data)
 
     try:

@@ -1,6 +1,6 @@
 """Step 3 — Triage Classifier.
 
-Gemini Flash gates the pipeline: cheap YES/NO decision before any RAG or Pro call.
+Claude Haiku gates the pipeline: cheap YES/NO decision before any RAG or Sonnet call.
 Returns flagged=True + a 1-sentence action_summary only when a restrictive practice
 signal is detected, allowing ~70% of clean notes to exit early.
 """
@@ -9,8 +9,7 @@ import asyncio
 import json
 import logging
 
-from google import genai
-from google.genai import types
+import boto3
 from pydantic import BaseModel
 
 from config import settings
@@ -36,9 +35,8 @@ Case Note:
 {transcript}
 ---
 
-Respond with JSON:
-- "flagged": true if ANY restrictive practice is described or strongly implied, false otherwise
-- "action_summary": a single sentence describing what was done (only when flagged=true, otherwise null)
+Respond with a single flat JSON object only — no markdown, no extra text.
+Keys: "flagged" (bool) and "action_summary" (str or null).
 
 Be conservative — flag if uncertain. False negatives (missed incidents) are worse than false positives.
 """
@@ -49,39 +47,41 @@ class _TriageResponse(BaseModel):
     action_summary: str | None = None
 
 
-def _make_client() -> genai.Client:
-    if settings.use_vertex_ai:
-        return genai.Client(
-            vertexai=True,
-            project=settings.gcp_project,
-            location=settings.gcp_location,
-        )
-    return genai.Client(api_key=settings.gemini_api_key)
+def _extract_json(text: str) -> dict:
+    """Extract JSON object from model output, tolerating markdown fences and trailing text."""
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("No JSON object found", text, 0)
+    obj, _ = json.JSONDecoder().raw_decode(text, start)
+    return obj
+
+
+def _make_client():
+    kwargs: dict = {"region_name": settings.aws_region}
+    if settings.aws_access_key_id and settings.aws_secret_access_key:
+        kwargs["aws_access_key_id"] = settings.aws_access_key_id
+        kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+    return boto3.client("bedrock-runtime", **kwargs)
 
 
 def _run_triage(transcript: str) -> TriageResult:
-    """Synchronous Gemini Flash call — runs in a thread via asyncio.to_thread."""
+    """Synchronous Bedrock call — runs in a thread via asyncio.to_thread."""
     client = _make_client()
 
-    response = client.models.generate_content(
-        model=settings.triage_model,
-        contents=_TRIAGE_PROMPT.format(transcript=transcript),
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            # No response_schema — avoids triggering verbose thinking on a simple YES/NO task
-            temperature=0.0,
-            max_output_tokens=512,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-        ),
+    response = client.converse(
+        modelId=settings.triage_model,
+        messages=[{"role": "user", "content": [{"text": _TRIAGE_PROMPT.format(transcript=transcript)}]}],
+        inferenceConfig={"maxTokens": 512, "temperature": 0.0},
     )
 
-    if not response.text:
-        raise ValueError(f"Empty triage response. finish_reason={response.candidates[0].finish_reason if response.candidates else 'NONE'}")
+    text = response["output"]["message"]["content"][0]["text"]
+    if not text:
+        raise ValueError(f"Empty triage response. stopReason={response.get('stopReason', 'NONE')}")
 
     try:
-        data = json.loads(response.text)
+        data = _extract_json(text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Triage response not valid JSON: {exc}. Raw: {response.text[:200]}") from exc
+        raise ValueError(f"Triage response not valid JSON: {exc}. Raw: {text[:200]}") from exc
     parsed = _TriageResponse(**data)
     return TriageResult(
         flagged=parsed.flagged,

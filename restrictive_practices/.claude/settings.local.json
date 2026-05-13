@@ -46,7 +46,9 @@
       "Bash(python -m json.tool --no-ensure-ascii)",
       "Bash(docker stats *)",
       "Bash(python -c ' *)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "mcp__plugin_deploy-on-aws_awsknowledge__aws___read_documentation",
+      "Bash(del *)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -131,8 +131,8 @@ async def run_pipeline(note: CaseNoteInput, db: AsyncSession) -> PipelineResult:
         cross_check is not None
         and cross_check.authorisation_status == AuthorisationStatus.UNAUTHORISED
         and evaluator is not None
-        and evaluator.confidence == ConfidenceLevel.HIGH
-        and not evaluator.bsp_mentioned_in_note
+        and evaluator.incident_detected
+        and evaluator.confidence != ConfidenceLevel.LOW
     )
 
     # Persist audit record — every run is logged regardless of outcome
