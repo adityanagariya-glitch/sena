@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -333,3 +333,62 @@ class EvaluateResponse(BaseModel):
     reporting_obligations: _ReportingSection
     submission: _SubmissionSection
     privacy: str
+
+
+# ── Case note drafting ────────────────────────────────────────────────────────
+
+class DraftInput(BaseModel):
+    """Input for POST /draft — voice transcript + shift metadata."""
+    transcript: str = Field(..., description="Full voice transcript from the support worker's post-shift recording")
+    worker_id: str
+    client_id: str
+    case_note_id: UUID = Field(default_factory=uuid4)
+    shift_date: str | None = Field(None, description="e.g. '12 May 2025'; pass-through from caller")
+    shift_time: str | None = Field(None, description="e.g. '9:00 AM - 1:00 PM'; pass-through from caller")
+    worker_position: str | None = Field(None, description="e.g. 'Support Worker'")
+
+
+class CaseDraftResponse(BaseModel):
+    """Pre-filled case note form returned by POST /draft. All form fields are AI-extracted from the transcript.
+    Worker reviews, edits, and approves before submission."""
+    case_note_id: UUID
+    client_id: str
+    worker_id: str
+    shift_date: str | None
+    shift_time: str | None
+    worker_position: str | None
+
+    # Section 1 — Summary of Shift
+    describe: str | None = None
+
+    # Section 2 — Activities Completed & Skill-Building
+    assisted: str | None = None
+    practised_skill: str | None = None
+    participants_level_of_independence: str | None = None
+    observations: str | None = None
+
+    # Section 3 — Well-being & Behaviour
+    mood: str | None = None
+    behavioural_events: str | None = None
+    any_concerns: bool = False
+
+    # Section 4 — Outcomes & Progress
+    what_went_well: str | None = None
+    what_needs_further_support: str | None = None
+    participant_comments: str | None = None
+
+    # Section 5 — Safety / Health Monitoring
+    medication_reminders_given: bool = False
+    safety_hazards_observed: bool = False
+    any_injuries: bool = False
+    injury_description: str | None = None
+
+    # Section 6 — Notes / Additional Comments
+    carer_feedback: str | None = None
+    incident_occurred: bool = False
+
+    # Draft metadata
+    draft_note: str | None = Field(
+        None,
+        description="AI-generated note on extraction quality, gaps, or ambiguities the worker should review",
+    )

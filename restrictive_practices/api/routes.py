@@ -16,7 +16,9 @@ from models.schemas import (
     BSPCreate,
     BSPResponse,
     BSPUpdateStatus,
+    CaseDraftResponse,
     CaseNoteInput,
+    DraftInput,
     ConfidenceLevel,
     EvaluateResponse,
     PipelineResult,
@@ -28,6 +30,7 @@ from models.schemas import (
     _SubmissionSection,
     _VerdictSection,
 )
+from pipeline.drafter import run_drafter
 from pipeline.graph import run_pipeline
 
 logger = logging.getLogger(__name__)
@@ -320,6 +323,26 @@ def _bsp_to_response(bsp: BehaviourSupportPlan) -> BSPResponse:
         valid_until=bsp.valid_until,
         created_at=bsp.created_at,
     )
+
+
+@router.post("/draft", response_model=CaseDraftResponse)
+async def draft_case_note(payload: DraftInput) -> CaseDraftResponse:
+    """Extract a voice transcript into a pre-filled structured case note draft.
+
+    The worker reviews and edits the returned fields before submitting.
+    No data is stored — this is a stateless AI extraction call.
+    """
+    try:
+        return await run_drafter(payload)
+    except Exception as exc:
+        logger.error(
+            "Drafter error case_note_id=%s worker=%s: %s",
+            payload.case_note_id,
+            payload.worker_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
 
 
 @router.get("/health")
