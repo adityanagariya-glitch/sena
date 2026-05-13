@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-05-13)
 
 ## Corpus Check
-- 142 files · ~1,200,531 words
+- 142 files · ~1,201,382 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -159,10 +159,10 @@
   sena-ai\services\onboarding\src\onboarding\models\schema_spec.py → sena-ai\services\onboarding\src\onboarding\services\coverage.py
 - `StepSchema` --uses--> `field_apply envelope builder — pure module (no IO).`  [INFERRED]
   sena-ai\services\onboarding\src\onboarding\models\schema_spec.py → sena-ai\services\onboarding\src\onboarding\services\field_apply.py
-- `Build a field_apply envelope for emission to the Flutter client.      ``input_me` --uses--> `StepSchema`  [INFERRED]
-  sena-ai\services\onboarding\src\onboarding\services\field_apply.py → sena-ai\services\onboarding\src\onboarding\models\schema_spec.py
-- `Tests for services/field_apply.build_envelope.  Added 2026-05-12 (Agent 03B). Ve` --uses--> `StepSchema`  [INFERRED]
-  sena-ai\services\onboarding\tests\test_field_apply.py → sena-ai\services\onboarding\src\onboarding\models\schema_spec.py
+- `StepSchema` --uses--> `Build a field_apply envelope for emission to the Flutter client.      ``input_me`  [INFERRED]
+  sena-ai\services\onboarding\src\onboarding\models\schema_spec.py → sena-ai\services\onboarding\src\onboarding\services\field_apply.py
+- `StepSchema` --uses--> `Tests for services/field_apply.build_envelope.  Added 2026-05-12 (Agent 03B). Ve`  [INFERRED]
+  sena-ai\services\onboarding\src\onboarding\models\schema_spec.py → sena-ai\services\onboarding\tests\test_field_apply.py
 
 ## Hyperedges (group relationships)
 - **Voice Architecture Design Evolution (v1 -> Audit -> Hybrid)** — voice_arch_analysis, vaa_recommendation, sena_audit, audit_degradation_ladder, plan_hybrid_voice, flowb_implementation_guide [INFERRED 0.85]
