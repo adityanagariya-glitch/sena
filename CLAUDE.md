@@ -463,3 +463,301 @@ When the user says **"I am adding X"** (a new directory, service, file, or exter
   `[YYYY-MM-DD] [agent name or "main"] — [what was done] — [key outcome]`
 
 <!-- Last auto-updated: 2026-04-16 00:23:07 by hook -->
+
+
+## Auto-generated signatures
+<!-- Updated by gen-context.js -->
+# Code signatures
+
+## deps
+```
+sena-ai\services\onboarding\src\onboarding\api\routes.py ← __future__, fastapi, pydantic, onboarding, structlog
+sena-ai\services\onboarding\src\onboarding\core\settings.py ← __future__, pydantic_settings
+sena-ai\services\onboarding\src\onboarding\models\form_state.py ← __future__, pydantic, onboarding
+sena-ai\services\onboarding\src\onboarding\models\schema_spec.py ← __future__, pydantic
+sena-ai\services\onboarding\src\onboarding\services\cross_screen_context.py ← __future__, onboarding
+sena-ai\services\onboarding\src\onboarding\services\field_apply.py ← __future__, onboarding, structlog
+sena-ai\services\onboarding\src\onboarding\services\gemini_live.py ← __future__, fastapi, google, onboarding, structlog
+sena-ai\services\onboarding\src\onboarding\services\prompt_builder.py ← __future__, onboarding, structlog
+sena-ai\services\onboarding\src\onboarding\services\resumption.py ← __future__, structlog
+sena-ai\services\onboarding\src\onboarding\services\screen_context.py ← __future__, pydantic
+sena-ai\services\onboarding\src\onboarding\services\tools.py ← __future__, onboarding, structlog
+sena-ai\services\onboarding\src\onboarding\services\validators\base.py ← __future__, pydantic
+sena-ai\services\onboarding\src\onboarding\services\validators\cross_field.py ← __future__, base
+sena-ai\services\onboarding\src\onboarding\services\validators\field_rules.py ← __future__, base
+sena-ai\services\onboarding\src\onboarding\services\validators\sequencing.py ← __future__, base, field_rules
+sena-ai\services\onboarding\tests\test_cross_screen_context.py ← __future__, onboarding
+sena-ai\services\onboarding\tests\test_gemini_live.py ← __future__, unittest, onboarding, pytest, pytest_asyncio
+sena-ai\services\onboarding\tests\test_prompt_builder.py ← __future__, unittest, onboarding, pytest
+sena-ai\services\onboarding\tests\test_sequencing.py ← __future__, onboarding, pytest
+sena-ai\services\onboarding\tests\test_tools.py ← __future__, onboarding, pytest, pytest_asyncio
+sena-ai\services\onboarding\tests\test_validators.py ← __future__, onboarding, pytest
+```
+
+## sena-ai
+
+### sena-ai\services\onboarding\src\onboarding\api\routes.py
+```
+class CreateSessionRequest(BaseModel) {participant_id*, step*, schema*, initial_state?, bootstrap?, locale?}
+class CreateSessionResponse(BaseModel) {session_id*, ws_url*, expires_at*, resumption_handle?}
+class UpdateStateRequest(BaseModel) {values*}
+class ClientValidationErrorRequest(BaseModel) {model_config?, error_type?, error_message?, input_method*, field_id?, attempted_value?}
+async def health_live() → dict
+POST /v1/onboarding/session  →  create_session()
+GET /v1/onboarding/session/{session_id}/state  →  get_state()
+PUT /v1/onboarding/session/{session_id}/state  →  update_state()
+POST /v1/onboarding/session/{session_id}/complete  →  complete_session()
+GET /v1/onboarding/_diag/bucket  →  diag_bucket()
+GET /health/live  →  health_live()
+GET /health/ready  →  health_ready()
+```
+
+### sena-ai\services\onboarding\src\onboarding\core\settings.py
+```
+class OnboardingSettings(BaseSettings) {model_config?, service_version?, environment?, debug?, host?, onboarding_port?}
+```
+
+### sena-ai\services\onboarding\src\onboarding\models\form_state.py
+```
+class FieldSource(str, Enum)
+class FieldValue(BaseModel) {value*, source?, input_method?, confidence?, turn_id?, updated_at?}
+class EscalationRecord(BaseModel) {reason*, transcript_excerpt?, timestamp?}
+class CompletionStats(BaseModel) {required_total*, required_filled*, optional_total*, optional_filled*}
+class TranscriptEntry(BaseModel) {speaker*, text*, turn_id*, timestamp?}
+class FormState(BaseModel) {session_id*, step_id*, participant_id*, tenant_id?, locale?, started_at?}
+```
+
+### sena-ai\services\onboarding\src\onboarding\models\schema_spec.py
+```
+class FieldType(str, Enum)
+class FieldSpec(BaseModel) {id*, type*, label?, required?, options?, pattern?}
+class RepeatableConfig(BaseModel) {min?, max?}
+class SectionSpec(BaseModel) {id*, label*, fields?, item_fields?, repeatable?, copy_from_if_flagged?}
+class StepSchema(BaseModel) {version?, step_id*, step_label*, progress_percent?, sections*, voice_coverage?}
+```
+
+### sena-ai\services\onboarding\src\onboarding\prompts\onboarding_system.md
+```
+h2 DIALOGUE STATE MACHINE — STRICT ENFORCEMENT
+h3 STATES
+h3 THE LOOP
+h3 CONDITIONAL BRANCHING — DRIVEN BY THE SERVER
+h3 THE FIELD-RENDER INVARIANT (HARD RULE)
+h3 VALIDATION CONTRACT — YOU ARE BLIND, THE SERVER IS THE JUDGE
+h2 REPEATABLE SECTIONS — CANONICAL USE OF add_repeatable_row
+h3 When the user wants another row
+h3 FORBIDDEN
+h3 Parallel-field dictation (medication / allergy blocks)
+h2 OPTIONAL FIELDS — DO NOT SKIP
+h2 CONTEXT RECOVERY — WHEN THE STATE BLOCK LOOKS EMPTY
+h2 ADDRESS THE PARTICIPANT
+h1 Sena — Onboarding Voice Agent System Instruction
+h2 ABSOLUTE STATE AUTHORITY — READ CAREFULLY
+h3 JSON-as-Truth Protocol — MANDATORY pre-flight before every question
+h2 SCHEMA AND TOOLS
+h2 BEHAVIOURAL RULES (numbered to match the platform contract)
+h3 Rule 1 — Strict Session Isolation
+h3 Rule 2 — Multi-Page Handoff
+h3 Rule 3 — Pre-Filled Data Handling
+h3 Rule 4 — Exhaustive Entity Extraction (Multi-Value Capture)
+h3 Rule 5 — Proactive Optional Prompting
+h3 Rule 6 — Dynamic UI Updates
+h3 Rule 7 — Frontend Validation Loop
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\cross_screen_context.py
+```
+def build_summary(form_state: FormState, *, step_number: int, step_label: str, completed_at: datetime | None) → StepSummary  # Distil a completed FormState into a StepSummary
+def render_for_prompt(bucket: CrossScreenContext | list[StepSummary], *, now: datetime | None) → str  # Render the cross-screen context as a readable prompt block
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\field_apply.py
+```
+def build_envelope(section_id: str, field_id: str, value: object, *, row_index: int | None, confidence: float, schema: StepSchema, enforced: bool, input_method: Literal["typed", "voice"] | None) → dict | None  # Build a field_apply envelope for emission to the Flutter cli
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\gemini_live.py
+```
+class GeminiLiveSession
+  async def run() → None
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\prompt_builder.py
+```
+def build_system_prompt(schema: StepSchema, state: FormState, *, grounding_enabled: bool, screen_context_text: str | None, resume_context_text: str | None, bootstrap: SessionBootstrap | None, cross_screen_text: str | None) → str
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\resumption.py
+```
+async def issue_handle(repo: FormStateRepo, session_id: str, ttl_sec: int) → str  # Generate a UUID4 resumption handle, store it in Redis with T
+async def redeem_handle(repo: FormStateRepo, handle: str, expected_session_id: str) → bool  # Atomically validate and consume a resumption handle (single-
+def build_replay_context(transcript: list[dict], last_n: int) → str  # Format the last N transcript entries as a [RESUME] text turn
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\screen_context.py
+```
+class ScreenData(BaseModel) {model_config?, current_screen?, visible_fields?, prefilled?, app_context?}
+class ScreenStateMessage(BaseModel) {model_config?, type*, data*}
+class ScreenStateV2(BaseModel) {model_config?, step_id?, focused_section?, focused_field?, field_status?, field_errors?}
+class ScreenStateV2Message(BaseModel) {model_config?, type*, data*}
+def from_v1(msg: ScreenStateMessage, *, session_step_id: str | None) → ScreenStateV2  # Normalise a v1 ScreenStateMessage into ScreenStateV2
+def render_injection_text(state: ScreenStateV2) → str  # Produce the deterministic multi-line [SCREEN] block injected
+def payload_hash(data: dict[str, Any]) → str  # Stable SHA-256 hash of a payload dict for idempotency dedupl
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\tools.py
+```
+class PolicyBlockSignal(BaseException)
+  def __init__(question: str) → None
+class ToolDispatcher
+  def set_turn_id(turn_id: int) → None
+  async def dispatch(name: str, args: dict[str, Any]) → dict[str, Any]
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\validators\base.py
+```
+class ValidationRejection(BaseModel) {code*, reason_human*, suggested_fix?, allowed_values?}
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\validators\cross_field.py
+```
+def check_emergency_email_unique_and_differs_from_client(state_values: dict[str, Any]) → list[ValidationRejection]
+def check_emergency_phone_unique_and_differs_from_client(state_values: dict[str, Any]) → list[ValidationRejection]  # NDIS rule: emergency contact phone must not equal the partic
+def check_plan_end_after_start(state_values: dict[str, Any]) → list[ValidationRejection]
+def check_medical_history_all_or_none(state_values: dict[str, Any]) → list[ValidationRejection]
+def check_time_slot_no_overlap(slots: list[dict[str, Any]]) → list[ValidationRejection]
+def validate_cross_fields(state_values: dict[str, Any]) → list[ValidationRejection]
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\validators\field_rules.py
+```
+def validate_field(section_id: str, field_id: str, value: Any, *, repeatable_index: int | None, state: Any, field_spec: Any) → ValidationRejection | None  # Return None if valid, ValidationRejection if the rule fires
+```
+
+### sena-ai\services\onboarding\src\onboarding\services\validators\sequencing.py
+```
+def next_required_field(schema: StepSchema, state: FormState) → dict | None  # First required field with no value, walking schema sections 
+def next_optional_field(schema: StepSchema, state: FormState) → dict | None  # First optional (required=False) field with no value, in sche
+def section_min_unmet(section: SectionSpec, section_values: Any) → bool  # Return True when a repeatable section has fewer rows than it
+def validate_step_complete(schema: StepSchema, state: FormState) → list[ValidationRejection]  # Aggregate gate for /complete — returns [] only if every requ
+```
+
+### sena-ai\services\onboarding\tests\test_cross_screen_context.py
+```
+class TestAllowlistContract
+  def test_allowlist_paths_are_canonical()
+class TestVerbatimExtraction
+  def test_basics_fields_extracted_with_concept_keys()
+  def test_requirements_goals_and_hobbies_extracted()
+  def test_ndis_repeatable_goals_collected_into_list()
+class TestEmergencyContactNameIsolation
+  def test_basics_full_name_wins_over_emergency_contact_name()
+  def test_only_basics_full_name_no_emergency_contact_yields_name()
+class TestEmpty
+  def test_empty_state_yields_empty_summary()
+  def test_state_with_only_non_allowlisted_fields_yields_empty_verbatim()
+  def test_render_empty_bucket_returns_empty_string()
+class TestRenderSnapshot
+  def test_render_includes_concept_keys_only()
+class TestTokenBudgetSmoke
+  def test_full_6_step_render_well_under_threshold()
+class TestRenderCap
+  def test_only_last_five_steps_rendered()
+```
+
+### sena-ai\services\onboarding\tests\test_gemini_live.py
+```
+async def seeded_repo(fake_redis)
+async def test_v2_screen_state_with_field_errors_upserts_pending_validation_errors(seeded_repo) → None  # field_errors in v2 payload → upserted into state
+async def test_v2_screen_state_idempotent_on_repeated_same_field_error(seeded_repo) → None  # Sending the same field error twice (with a different screen 
+async def test_v2_screen_state_with_no_field_errors_does_not_touch_pending_list(seeded_repo) → None  # A v2 payload with no field_errors must not modify an existin
+```
+
+### sena-ai\services\onboarding\tests\test_prompt_builder.py
+```
+def test_participant_name_token_interpolated_when_present(monkeypatch) → None
+def test_participant_name_token_falls_back_to_unknown_when_missing(monkeypatch) → None
+def test_next_optional_field_token_interpolated(monkeypatch) → None
+def test_next_optional_field_token_empty_when_none_remain(monkeypatch) → None
+def test_section_min_unmet_morning_zero_rows() → None  # morning_routine has min=1 and 0 rows — must surface __sectio
+def test_section_min_unmet_morning_one_row_clears() → None  # One morning_routine row satisfies min=1; evening_routine (mi
+def test_section_min_unmet_both_met_falls_through_to_scalar() → None  # Both routine mins met — falls through to first required scal
+def test_render_pending_errors_includes_allowed_values() → None  # allowed_values line appears when the error entry carries the
+def test_render_pending_errors_no_allowed_values_for_non_enum() → None  # No allowed_values line when the key is absent (non-enum erro
+def test_build_system_prompt_contains_rule_13_and_14() → None  # Rules 13 and 14 must appear in the rendered system prompt
+```
+
+### sena-ai\services\onboarding\tests\test_sequencing.py
+```
+class _FakeRep
+  def __init__(min_val: int) → None
+class _FakeSection
+  def __init__(is_repeatable: bool, rep_min: int | None) → None
+def test_next_optional_field_returns_first_empty_optional_in_schema_order() → None  # With no values filled, next_optional_field points at the fir
+def test_next_optional_field_returns_none_when_all_optionals_filled() → None  # When every optional field has a value, returns None
+def test_section_min_unmet_non_repeatable() → None
+def test_section_min_unmet_min_zero() → None
+def test_section_min_unmet_min_one_no_rows() → None
+def test_section_min_unmet_min_one_one_row() → None
+def test_section_min_unmet_min_two_one_row() → None
+def test_section_min_unmet_none_values() → None
+def test_section_min_unmet_dict_values() → None
+```
+
+### sena-ai\services\onboarding\tests\test_tools.py
+```
+def personal_schema() → StepSchema
+async def seeded_repo(fake_redis, personal_schema)  # Repo with a fresh FormState + schema saved for session_id='s
+def emitted() → list[dict]  # Captures every event the dispatcher would send over the WS
+async def dispatcher(seeded_repo, personal_schema, emitted)
+def test_function_decls_cover_all_handlers() → None
+async def test_update_field_happy_path(dispatcher, seeded_repo, emitted) → None
+async def test_update_field_coerces_boolean(dispatcher, seeded_repo) → None
+async def test_update_field_unknown_section(dispatcher) → None
+async def test_update_field_unknown_field(dispatcher) → None
+async def test_update_field_repeatable_with_index(dispatcher, seeded_repo) → None
+async def test_update_field_repeatable_exceeds_max(dispatcher) → None
+async def test_get_session_context_reports_progress(dispatcher) → None
+async def test_advance_step_rejects_when_incomplete(dispatcher) → None
+async def test_advance_step_rejects_empty_confirmation_transcript(dispatcher) → None
+async def test_advance_step_rejects_short_confirmation_transcript(dispatcher) → None
+async def test_advance_step_cross_field_gate_blocks_on_rejection(dispatcher, seeded_repo, personal_schema, emitted, monkeypatch) → None
+async def test_advance_step_emits_validation_rejection_for_cross_field_violation(dispatcher, seeded_repo, personal_schema, emitted, monkeypatch) → None
+async def test_advance_step_fires_webhook_when_complete(dispatcher, seeded_repo, personal_schema, emitted, monkeypatch) → None
+async def test_escalate_incident_appends_and_emits(dispatcher, seeded_repo, emitted) → None
+async def test_add_repeatable_row_pins_focus_to_new_index(dispatcher, seeded_repo) → None
+async def test_add_repeatable_row_emits_repeatable_section_entered(dispatcher, emitted) → None
+async def test_dispatch_unknown_tool(dispatcher) → None
+async def test_service_address_auto_copies_when_flag_default_true(dispatcher, seeded_repo, emitted) → None  # service_same_as_home defaults to true in the schema; filling
+async def test_service_address_no_copy_when_flag_explicit_false(dispatcher, seeded_repo, emitted) → None  # When the user explicitly says 'service address differs from 
+async def test_service_address_copies_after_flag_flip_to_true(dispatcher, seeded_repo) → None  # Flag explicitly set to True after home_address is already po
+```
+
+### sena-ai\services\onboarding\tests\test_validators.py
+```
+class TestCrossFields
+  def test_empty_values_no_rejections()
+  def test_plan_end_after_start_passes()
+  def test_plan_end_before_start_fails()
+  def test_plan_end_same_as_start_fails()
+  def test_emergency_email_matches_client_fails()
+  def test_emergency_email_different_from_client_passes()
+  def test_emergency_email_duplicate_across_rows_fails()
+  def test_emergency_email_unique_across_rows_passes()
+class TestNextRequiredField
+  def test_empty_state_returns_dict()
+  def test_empty_state_first_section_is_basics()
+  def test_filling_basics_moves_past_basics()
+  def test_ndis_schema_empty_returns_plan_info_field()
+  def test_result_is_none_or_dict()
+class TestValidateStepComplete
+  def test_empty_state_has_rejections()
+  def test_empty_state_contains_required_field_missing()
+  def test_invalid_phone_produces_field_rejection()
+  def test_all_rejections_have_human_reason()
+  def test_ndis_empty_state_produces_rejections()
+  def test_medical_empty_state_produces_rejections()
+class _FakeFieldSpec
+  def __init__(field_type: str, options: list[str]) → None
+class TestValidateFieldEnumOptions
+```

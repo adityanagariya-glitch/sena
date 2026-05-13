@@ -116,5 +116,14 @@
         ]
       }
     ]
+  },
+  "mcpServers": {
+    "sigmap": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\Admin\\AppData\\Roaming\\npm\\node_modules\\sigmap\\gen-context.js",
+        "--mcp"
+      ]
+    }
   }
 }
