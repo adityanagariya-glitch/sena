@@ -4,6 +4,10 @@
 
 | # | File | Symptom Keywords | Date |
 |---|------|-----------------|------|
+| 0018 | [0018-bsp-mentioned-in-note-always-true-blocks-alert.md](0018-bsp-mentioned-in-note-always-true-blocks-alert.md) | alert_required False UNAUTHORISED bsp_mentioned_in_note True negative mention graph pipeline alert never fires | 2026-05-13 |
+| 0017 | [0017-bedrock-model-returns-nested-json.md](0017-bedrock-model-returns-nested-json.md) | pydantic ValidationError missing field required nested json bedrock claude evaluator drafter converse response structure | 2026-05-13 |
+| 0016 | [0016-bedrock-response-json-in-markdown-fences.md](0016-bedrock-response-json-in-markdown-fences.md) | JSONDecodeError Expecting value Extra data markdown fence backtick json.loads bedrock claude converse response text | 2026-05-13 |
+| 0015 | [0015-boto3-no-credentials-pydantic-settings-env.md](0015-boto3-no-credentials-pydantic-settings-env.md) | botocore NoCredentialsError Unable to locate credentials boto3 pydantic settings env AWS_ACCESS_KEY_ID bedrock | 2026-05-13 |
 | 0014 | [0014-dotenv-inline-comment-parsed-as-value.md](0014-dotenv-inline-comment-parsed-as-value.md) | dotenv inline comment value truthy gcp_project vertex ai mode wrong url fragment 404 | 2026-05-01 |
 | 0013 | [0013-gemini3-preview-not-available-on-vertex.md](0013-gemini3-preview-not-available-on-vertex.md) | gemini-3 flash preview pro 404 vertex ai not found provisioned preview model | 2026-05-01 |
 | 0012 | [0012-gemini-model-deprecation-upgrade.md](0012-gemini-model-deprecation-upgrade.md) | deprecated model gemini 2.5 flash pro upgrade 3 3.1 preview triage evaluator | 2026-05-01 |

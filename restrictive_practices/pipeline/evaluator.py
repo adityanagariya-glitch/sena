@@ -209,7 +209,7 @@ async def run_evaluator(
     triage: TriageResult,
     chunks: list[PolicyChunk],
 ) -> EvaluatorOutput:
-    """Async entry point — embeds policy context and calls Gemini Pro."""
+    """Async entry point — offloads blocking Bedrock call to a thread pool."""
     logger.info("evaluator start case_note_id=%s chunks=%d", note.case_note_id, len(chunks))
 
     policy_context = _format_policy_context(chunks)

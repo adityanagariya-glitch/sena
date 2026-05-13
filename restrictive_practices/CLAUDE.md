@@ -29,10 +29,10 @@ AI pipeline detecting NDIS regulated restrictive practices from support-worker c
 Five-step LangGraph pipeline with cost-saving early exit:
 
 ```
-START → triage_step (Flash, thinking_budget=0)
+START → triage_step (Haiku, Bedrock converse, maxTokens=512)
           ├─ flagged=False  → END   (≈70% of notes; no further LLM cost)
           └─ flagged=True   → rag_step  (pgvector HNSW cosine, top-K)
-                            → evaluator_step  (Pro, structured verdict)
+                            → evaluator_step  (Sonnet, structured verdict)
                             → cross_check_step  (SQL only, no LLM)
                             → END
 → CaseNoteRun audit row written for every run regardless of outcome
@@ -43,17 +43,17 @@ START → triage_step (Flash, thinking_budget=0)
 | `main.py` | FastAPI app (`app = create_app()`) + factory; `create_tables()` runs on startup (dev mode, no Alembic) |
 | `config.py` | Pydantic settings, `SENA_AI_` env prefix, `.env` loaded by absolute path |
 | `db/session.py` | Async SQLAlchemy engine + `get_db` dep; creates pgvector ext + HNSW index |
-| `models/db.py` | ORM: `NDISPolicyChunk` (HALFVEC 3072), `BehaviourSupportPlan`, `CaseNoteRun` |
+| `models/db.py` | ORM: `NDISPolicyChunk` (HALFVEC 1024), `BehaviourSupportPlan`, `CaseNoteRun` |
 | `models/schemas.py` | Pydantic IO + enums: `PolicyViolationRisk`, `AuthorisationStatus` |
-| `pipeline/triage.py` | Gemini Flash YES/NO gate; no `response_schema` (avoids verbose thinking) |
+| `pipeline/triage.py` | Claude Haiku YES/NO gate via Bedrock `converse`; JSON extracted from free text |
 | `pipeline/rag.py` | Embeds `triage.action_summary` (not full transcript), top-K cosine search |
-| `pipeline/evaluator.py` | Gemini Pro grounded verdict; `response_schema` enforced; `max_output_tokens=4096` |
+| `pipeline/evaluator.py` | Claude Sonnet grounded verdict via Bedrock `converse`; JSON extracted from free text; `maxTokens=8192` |
 | `pipeline/cross_check.py` | Pure SQL BSP lookup, case-insensitive match on `practice_type` |
 | `pipeline/drafter.py` | Stateless AI extraction: voice transcript → structured 6-section case note form; used by `POST /draft` |
 | `pipeline/graph.py` | LangGraph wiring; node names use `_step` suffix to avoid TypedDict-key clash |
 | `api/routes.py` | All routes: `/evaluate`, `/draft`, `/bsp` CRUD, `/health` — see **API Routes** below |
 | `ingestion/chunker.py` | PyMuPDF text extract + langchain text splitter |
-| `ingestion/embedder.py` | Gemini embed (3072-dim) + upsert via `ON CONFLICT DO UPDATE` |
+| `ingestion/embedder.py` | Cohere Embed English v3 (1024-dim) via Bedrock `invoke_model`; upsert via `ON CONFLICT DO UPDATE` |
 | `scripts/ingest_docs.py` | CLI: `--sample` or `--pdf <path> --category <c> --source <s>` |
 | `scripts/test_*.py` | Standalone smoke runners (not pytest); per-step verification |
 | `scripts/test_sarah_note.py` | Realistic end-to-end fixture — complex multi-practice shift note (physical + chemical + seclusion); good regression canary |
@@ -126,14 +126,6 @@ BSP match is case-insensitive on `practice_type`; `valid_from/until = NULL` mean
 - `to_text()` is called by every LLM step (triage, RAG, evaluator). It returns `transcript` directly if set; otherwise builds a structured narrative from all form sections. Never pass raw form fields to Gemini — always call `note.to_text()`.
 - `behavioural_events` is the most important field for detection — triage, RAG query, and evaluator all weight it highest via the narrative structure.
 
-### Provider toggle
-
-`google-genai` SDK supports both AI Studio and Vertex AI. Switch is automatic:
-- `SENA_AI_GCP_PROJECT` empty → AI Studio (uses `SENA_AI_GEMINI_API_KEY`)
-- `SENA_AI_GCP_PROJECT` set → Vertex AI (uses ADC, region from `SENA_AI_GCP_LOCATION`)
-
-Embedder client is module-level — no per-call construction.
-
 ## Environment Variables (key overrides)
 
 All use `SENA_AI_` prefix in `.env` at the module root.
@@ -141,6 +133,8 @@ All use `SENA_AI_` prefix in `.env` at the module root.
 | Var | Default | Notes |
 |-----|---------|-------|
 | `SENA_AI_AWS_REGION` | `ap-southeast-2` | Bedrock region — Sydney for AU data residency (APP 8) |
+| `AWS_ACCESS_KEY_ID` | `""` | Read without `SENA_AI_` prefix; leave blank to use IAM role / `~/.aws/credentials` |
+| `AWS_SECRET_ACCESS_KEY` | `""` | Same — standard boto3 env var |
 | `SENA_AI_RP_DATABASE_URL` | `postgresql+asyncpg://...@localhost:5433/sena_ai` | |
 | `SENA_AI_EMBEDDING_MODEL` | `cohere.embed-english-v3` | 1024-dim; must match at ingest AND query time |
 | `SENA_AI_TRIAGE_MODEL` | `anthropic.claude-haiku-4-5-20251001-v1:0` | Fast YES/NO gate via Bedrock `converse` |

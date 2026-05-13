@@ -1,6 +1,6 @@
 """Case Note Drafter — POST /v1/restrictive-practices/draft
 
-Takes a voice transcript and uses Gemini Pro to extract content into the
+Takes a voice transcript and uses Claude Sonnet (Bedrock) to extract content into the
 structured 6-section NDIS case note form. Returns a pre-filled CaseDraftResponse
 for worker review. No DB access — stateless extraction only.
 """
@@ -115,7 +115,7 @@ def _make_client():
 
 
 def _run_drafter(transcript: str) -> _DrafterResponse:
-    """Synchronous Gemini Pro call — runs in a thread via asyncio.to_thread."""
+    """Synchronous Bedrock call — runs in a thread via asyncio.to_thread."""
     client = _make_client()
 
     response = client.converse(
