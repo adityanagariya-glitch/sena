@@ -271,6 +271,10 @@ class SummaryOutput(BaseModel):
     potential_risks: list[str] = []
     patterns_detected: list[str] = []
     flagged_highlights: list[str] = []
+    # Quality scoring fields (populated by quality_score.score_note heuristic)
+    note_quality_score: float = Field(0.0, ge=0.0, le=1.0)
+    note_quality_label: str = "Average"   # "Premium" | "Average" | "Poor"
+    quality_gaps: list[str] = []          # Actionable suggestions for the worker
 
 
 # ── Incident draft output (internal pipeline model) ───────────────────────────
@@ -292,6 +296,13 @@ class IncidentDraftOutput(BaseModel):
     reportable: bool = False
     notification_timeframe: str | None = None
     notification_authority: str = "NDIS Quality and Safeguards Commission"
+    # Phase 1 priority fields (from client incident-form feedback)
+    severity: str = "Low"                        # "Low" | "Medium" | "High" | "Critical"
+    incident_categories: list[str] = []          # multi-select from canonical list
+    ongoing_risk_present: bool = False
+    participant_currently_safe: bool = True
+    staff_currently_safe: bool = True
+    emergency_services_required: bool = False
 
 
 # ── Final pipeline output (internal — used by graph, DB audit, webhook) ───────
@@ -363,6 +374,10 @@ class _SummarySection(BaseModel):
     flagged_highlights: list[str] = Field(
         default=[], description="Verbatim excerpts from the case note that warranted attention"
     )
+    # Quality scoring
+    note_quality_score: float = Field(0.0, description="Heuristic quality score 0.0–1.0")
+    note_quality_label: str = Field("Average", description="'Premium' | 'Average' | 'Poor'")
+    quality_gaps: list[str] = Field(default=[], description="Actionable suggestions for improving the note")
 
 
 class _IncidentReportSection(BaseModel):
@@ -382,6 +397,13 @@ class _IncidentReportSection(BaseModel):
     reportable: bool
     notification_timeframe: str | None = None
     notification_authority: str = "NDIS Quality and Safeguards Commission"
+    # Phase 1 priority fields
+    severity: str = "Low"
+    incident_categories: list[str] = []
+    ongoing_risk_present: bool = False
+    participant_currently_safe: bool = True
+    staff_currently_safe: bool = True
+    emergency_services_required: bool = False
 
 
 class EvaluateResponse(BaseModel):
@@ -467,3 +489,8 @@ class CaseDraftResponse(BaseModel):
         None,
         description="AI-generated note on extraction quality, gaps, or ambiguities the worker should review",
     )
+
+    # Quality scoring (heuristic — populated on return from /draft)
+    note_quality_score: float = Field(0.0, ge=0.0, le=1.0)
+    note_quality_label: str = "Average"
+    quality_gaps: list[str] = []

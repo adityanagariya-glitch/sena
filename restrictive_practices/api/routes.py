@@ -219,6 +219,9 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
             potential_risks=raw_summary.potential_risks,
             patterns_detected=raw_summary.patterns_detected,
             flagged_highlights=raw_summary.flagged_highlights,
+            note_quality_score=raw_summary.note_quality_score,
+            note_quality_label=raw_summary.note_quality_label,
+            quality_gaps=raw_summary.quality_gaps,
         )
     else:
         summary_section = _SummarySection(
@@ -228,6 +231,9 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
             potential_risks=[],
             patterns_detected=[],
             flagged_highlights=[],
+            note_quality_score=0.0,
+            note_quality_label="Average",
+            quality_gaps=[],
         )
 
     # ── Incident report ───────────────────────────────────────────────────────────
@@ -251,6 +257,12 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
             reportable=d.reportable,
             notification_timeframe=d.notification_timeframe,
             notification_authority=d.notification_authority,
+            severity=d.severity,
+            incident_categories=d.incident_categories,
+            ongoing_risk_present=d.ongoing_risk_present,
+            participant_currently_safe=d.participant_currently_safe,
+            staff_currently_safe=d.staff_currently_safe,
+            emergency_services_required=d.emergency_services_required,
         )
 
     return EvaluateResponse(

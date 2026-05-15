@@ -65,3 +65,53 @@ async def retrieve_policy_chunks(
     )
 
     return chunks
+
+
+async def retrieve_style_chunks(
+    query: str,
+    document_type: str,
+    db: AsyncSession,
+    top_k: int = 2,
+) -> list[PolicyChunk]:
+    """Retrieve style/example chunks filtered by document_type.
+
+    Adds a WHERE document_type = :doc_type clause on top of the cosine search
+    so style references don't bleed into policy chunk retrieval.
+    """
+    logger.info(
+        "rag style retrieve document_type=%r query=%r",
+        document_type,
+        query[:80],
+    )
+
+    query_embedding = await embed_query(query)
+
+    stmt = (
+        select(NDISPolicyChunk)
+        .where(NDISPolicyChunk.document_type == document_type)
+        .order_by(NDISPolicyChunk.embedding.op("<=>")(query_embedding))
+        .limit(top_k)
+    )
+
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    chunks = [
+        PolicyChunk(
+            chunk_id=row.chunk_id,
+            text=row.text,
+            category=row.category,
+            document_source=row.document_source,
+            risk_level=row.risk_level,
+            document_type=row.document_type,
+        )
+        for row in rows
+    ]
+
+    logger.info(
+        "rag style retrieved %d chunks document_type=%r",
+        len(chunks),
+        document_type,
+    )
+
+    return chunks

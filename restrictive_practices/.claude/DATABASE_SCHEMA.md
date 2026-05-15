@@ -1,6 +1,6 @@
 ---
 title: Restrictive Practices — Database Schema Reference
-updated: 2026-04-28
+updated: 2026-05-15
 ---
 
 ## Database
@@ -14,7 +14,7 @@ updated: 2026-04-28
 | DB name | `sena_ai` |
 | Docker container | `sena-ai-db` |
 | Extension | `pgvector` |
-| Start command | `docker-compose up -d` from `sena-ai/` |
+| Start command | `docker-compose up -d` from `restrictive_practices/` |
 
 ---
 
@@ -28,15 +28,18 @@ Stores embedded NDIS policy document chunks for RAG retrieval.
 | `id` | integer PK | auto-increment |
 | `chunk_id` | varchar(64) UNIQUE | SHA-256 of source+index — enables idempotent upserts |
 | `text` | text | raw policy chunk text |
-| `category` | varchar(100) | one of 5 practice categories (indexed) |
+| `category` | varchar(100) | practice category or style tier (indexed) |
 | `document_source` | varchar(200) | source document name |
-| `risk_level` | varchar(50) | Low / Medium / High / Critical |
-| `embedding` | `halfvec(3072)` | Gemini `gemini-embedding-2` vector, half-precision 16-bit |
+| `document_type` | varchar(100) | `Regulatory` (policy PDFs) · `Casenote Style Standard` · `Field Description Standard` · `Incident Report Standard` |
+| `risk_level` | varchar(50) | Low / Medium / High / Critical / N/A |
+| `embedding` | `halfvec(1024)` | Cohere `cohere.embed-english-v3` vector, half-precision 16-bit |
 | `created_at` | timestamp | server default |
 
 **Index:** HNSW on `embedding` using `halfvec_cosine_ops` — fast cosine similarity search.
 
-**Ingest:** `python scripts/ingest_docs.py --sample` or `--pdf <path>`
+**Ingest:**
+- Policy PDFs: `python scripts/ingest_docs.py --sample` or `--pdf <path>`
+- Gold-standard style doc (one-time): `python scripts/ingest_style_standards.py`
 
 ---
 
@@ -48,7 +51,7 @@ Pre-authorised restrictive practices per client — source of truth for cross-ch
 | `id` | UUID PK | |
 | `client_id` | varchar(100) | links to client (indexed) |
 | `practice_type` | varchar(100) | e.g. "Chemical Restraint" (case-insensitive match in pipeline) |
-| `status` | varchar(20) | `Active` / `Inactive` |
+| `status` | varchar(20) | `Active` / `Expired` / `Revoked` |
 | `approved_dosage` | varchar(200) | e.g. "Up to 5mg diazepam PRN" |
 | `approved_conditions` | text | when the practice is permitted |
 | `authorised_by` | varchar(200) | practitioner name |
@@ -96,15 +99,27 @@ FROM rp_case_note_runs
 WHERE alert_required = true
 ORDER BY created_at DESC;
 
--- Policy chunk count by category
+-- Policy chunk count by document_type (shows Regulatory + 3 style types)
+SELECT document_type, COUNT(*) AS chunks
+FROM rp_ndis_policy_chunks
+GROUP BY document_type ORDER BY document_type;
+
+-- Policy chunk count by category within Regulatory
 SELECT category, COUNT(*) AS chunks
 FROM rp_ndis_policy_chunks
+WHERE document_type = 'Regulatory'
 GROUP BY category ORDER BY category;
 
--- Check embedding dimensions
-SELECT category, ROUND(AVG(vector_dims(embedding::vector))::numeric, 0) AS dims
+-- Style chunk audit (Casenote Style Standard, Field Description Standard, Incident Report Standard)
+SELECT document_type, category, chunk_id
 FROM rp_ndis_policy_chunks
-GROUP BY category;
+WHERE document_type != 'Regulatory'
+ORDER BY document_type, category;
+
+-- Check embedding dimensions
+SELECT document_type, ROUND(AVG(vector_dims(embedding::vector))::numeric, 0) AS dims
+FROM rp_ndis_policy_chunks
+GROUP BY document_type;
 
 -- Active BSPs for a client
 SELECT practice_type, status, authorised_by, valid_until

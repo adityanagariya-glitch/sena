@@ -19,12 +19,17 @@ from models.schemas import (
     EvaluatorOutput,
     IncidentDraftOutput,
 )
+from pipeline.style_examples import FEW_SHOT_INCIDENT, STYLE_GUIDE
 
 logger = logging.getLogger(__name__)
 
 _INCIDENT_DRAFT_PROMPT = """\
 You are an NDIS compliance officer drafting an incident report for submission to the NDIS Quality \
 and Safeguards Commission.
+
+{style_guide}
+
+{few_shot_incident}
 
 NDIS REPORTABLE INCIDENT CATEGORIES (NDIS (Incident Management and Reportable Incidents) Rules 2016):
 Category 1 (notify within 24 hours):
@@ -35,6 +40,11 @@ Category 1 (notify within 24 hours):
   - Sexual misconduct committed against, or in the presence of, a person with disability
 Category 2 (notify within 5 business days):
   - Use of a restrictive practice not in accordance with an authorisation under a Behaviour Support Plan
+
+CANONICAL INCIDENT CATEGORIES (use for the incident_categories array):
+Behavioural incident | Medication issue | Restrictive practice | Injury | Absconding |
+Allegation | Abuse or neglect | Property damage | Police involvement | Hospitalisation |
+Environmental hazard | Staff misconduct
 
 ## Case Note
 {case_note_text}
@@ -47,6 +57,7 @@ Produce a structured incident report draft for the above case note.
 
 Use the NDIS reportable incident categories listed above as your authoritative reference when \
 completing the "reportable" and "notification_timeframe" fields.
+Write the incident_description in third-person clinical voice matching the style example above.
 
 Respond with a single flat JSON object — no markdown, no extra text. Use exactly these keys:
 
@@ -56,7 +67,7 @@ date_of_incident (string or null — extract from shift date if present in the c
 time_of_incident (string or null — extract from shift time if present)
 location (string or null — from shift location if mentioned)
 staff_involved (array of strings — worker IDs or names mentioned)
-incident_description (string — 2 to 4 sentences describing what occurred)
+incident_description (string — 2 to 4 sentences describing what occurred, third-person clinical voice)
 immediate_actions_taken (array of strings — 3 to 6 bullet points describing immediate responses)
 restrictive_practice_used (boolean)
 restrictive_practice_category (string or null — one of: Chemical Restraint, Physical Restraint, \
@@ -72,6 +83,12 @@ reportable (boolean — true only if the incident falls into one of the NDIS rep
 notification_timeframe (string or null — "24 hours" for Category 1, "5 business days" for Category 2, \
 null if not reportable)
 notification_authority (string — always "NDIS Quality and Safeguards Commission")
+severity (string — one of: "Low", "Medium", "High", "Critical" based on injury/risk/category)
+incident_categories (array of strings — select all applicable from the CANONICAL INCIDENT CATEGORIES list)
+ongoing_risk_present (boolean — true if an unresolved risk remains after the incident)
+participant_currently_safe (boolean — true if participant was safe at end of shift/report)
+staff_currently_safe (boolean — true if all staff were safe)
+emergency_services_required (boolean — true if police, ambulance, or emergency services were involved)
 """
 
 
@@ -92,6 +109,13 @@ class _IncidentDraftResponse(BaseModel):
     reportable: bool = False
     notification_timeframe: str | None = None
     notification_authority: str = "NDIS Quality and Safeguards Commission"
+    # Phase 1 priority fields
+    severity: str = "Low"
+    incident_categories: list[str] = []
+    ongoing_risk_present: bool = False
+    participant_currently_safe: bool = True
+    staff_currently_safe: bool = True
+    emergency_services_required: bool = False
 
 
 def _extract_json(text: str) -> dict:
@@ -136,6 +160,8 @@ def _run_incident_draft(
     client = _make_client()
 
     prompt = _INCIDENT_DRAFT_PROMPT.format(
+        style_guide=STYLE_GUIDE,
+        few_shot_incident=FEW_SHOT_INCIDENT,
         case_note_text=case_note_text,
         evaluator_findings=evaluator_findings,
     )
@@ -180,6 +206,12 @@ def _run_incident_draft(
         reportable=parsed.reportable,
         notification_timeframe=parsed.notification_timeframe,
         notification_authority=parsed.notification_authority,
+        severity=parsed.severity,
+        incident_categories=parsed.incident_categories,
+        ongoing_risk_present=parsed.ongoing_risk_present,
+        participant_currently_safe=parsed.participant_currently_safe,
+        staff_currently_safe=parsed.staff_currently_safe,
+        emergency_services_required=parsed.emergency_services_required,
     )
 
 

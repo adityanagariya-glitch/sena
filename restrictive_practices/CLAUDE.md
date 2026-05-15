@@ -47,22 +47,26 @@ START → triage_step (Haiku, Bedrock converse, maxTokens=512)
 | `db/session.py` | Async SQLAlchemy engine + `get_db` dep; creates pgvector ext + HNSW index |
 | `models/db.py` | ORM: `NDISPolicyChunk` (HALFVEC 1024), `BehaviourSupportPlan`, `CaseNoteRun` |
 | `models/schemas.py` | Pydantic IO + enums: `PolicyViolationRisk`, `AuthorisationStatus` |
-| `pipeline/triage.py` | Claude Haiku YES/NO gate via Bedrock `converse`; JSON extracted from free text |
-| `pipeline/rag.py` | Embeds `triage.action_summary` (not full transcript), top-K cosine search |
-| `pipeline/evaluator.py` | Claude Sonnet grounded verdict via Bedrock `converse`; JSON extracted from free text; `maxTokens=8192` |
+| `pipeline/triage.py` | Claude Haiku YES/NO gate via Bedrock `converse`; includes `FEW_SHOT_TRIAGE` inline; JSON extracted from free text |
+| `pipeline/rag.py` | Embeds `triage.action_summary`, top-K cosine search; also `retrieve_style_chunks(query, document_type, db, top_k)` for style-standard RAG |
+| `pipeline/evaluator.py` | Claude Sonnet grounded verdict via Bedrock `converse`; `maxTokens=8192`; includes `FEW_SHOT_EVAL_REASONING` + `STYLE_GUIDE` |
 | `pipeline/cross_check.py` | Pure SQL BSP lookup, case-insensitive match on `practice_type` |
-| `pipeline/summary.py` | Claude Haiku shift summariser; always runs; produces `SummaryOutput` (progress/risks/patterns/highlights + ai_confidence) |
-| `pipeline/incident_draft.py` | Claude Sonnet NDIS incident report drafter; conditional on `incident_occurred=True` OR `UNAUTHORISED` verdict; produces `IncidentDraftOutput` |
-| `pipeline/drafter.py` | Stateless AI extraction: voice transcript → structured 6-section case note form; used by `POST /draft` |
+| `pipeline/summary.py` | Claude Haiku shift summariser; always runs; `SummaryOutput` (progress/risks/patterns/highlights + ai_confidence + quality fields); `FEW_SHOT_SUMMARY` + heuristic quality scorer |
+| `pipeline/incident_draft.py` | Claude Sonnet NDIS incident report drafter; conditional on `incident_occurred=True` OR `UNAUTHORISED`; `IncidentDraftOutput` includes Phase 1 fields (severity, incident_categories, ongoing_risk_*) |
+| `pipeline/drafter.py` | Stateless AI extraction: transcript -> 6-section case note; `FEW_SHOT_DRAFTER` + field-description guidance + quality scoring on return |
+| `pipeline/style_examples.py` | Ultra-compact few-shot constants (`FEW_SHOT_TRIAGE`, `FEW_SHOT_SUMMARY`, `FEW_SHOT_DRAFTER`, `FEW_SHOT_INCIDENT`, `FEW_SHOT_EVAL_REASONING`, `STYLE_GUIDE`) — single source of truth for all prompt style references |
+| `pipeline/quality_score.py` | Heuristic quality scorer: `score_note(note) -> (float, str, list[str])`; completeness + richness + tone vs Premium baselines; zero LLM cost |
 | `pipeline/graph.py` | LangGraph wiring; node names use `_step` suffix to avoid TypedDict-key clash |
 | `api/routes.py` | All routes: `/evaluate`, `/draft`, `/bsp` CRUD, `/health` — see **API Routes** below |
 | `ingestion/chunker.py` | PyMuPDF text extract + langchain text splitter |
 | `ingestion/embedder.py` | Cohere Embed English v3 (1024-dim) via Bedrock `invoke_model`; upsert via `ON CONFLICT DO UPDATE` |
 | `scripts/ingest_docs.py` | CLI: `--sample` or `--pdf <path> --category <c> --source <s>` |
+| `scripts/ingest_style_standards.py` | Ingests client gold-standard doc into pgvector (15 chunks: 4 casenotes + 6 field sections + 5 incident reports, 3 new document_type values) |
+| `scripts/test_quality_score.py` | Smoke test for quality scorer — 3 fixtures (Premium/Average/Poor) |
 | `scripts/test_*.py` | Standalone smoke runners (not pytest); per-step verification |
 | `scripts/test_sarah_note.py` | Realistic end-to-end fixture — complex multi-practice shift note (physical + chemical + seclusion); good regression canary |
-| `scripts/test_form_api.py` | 8-scenario comprehensive test covering all 4 verdict outcomes and all 5 practice types using structured form fields (not transcript); real-data scenarios sourced from NDIS Commission guides |
-| `scripts/test_draft_endpoint.py` | 10-scenario smoke test for `/draft` — calls `run_drafter()` directly; covers routine shift, restraint, injury, sparse transcript (gap detection), and rich all-sections transcript |
+| `scripts/test_form_api.py` | 8-scenario comprehensive test covering all 4 verdict outcomes and all 5 practice types using structured form fields |
+| `scripts/test_draft_endpoint.py` | 10-scenario smoke test for `/draft` — calls `run_drafter()` directly |
 
 ### API Routes
 
@@ -107,23 +111,33 @@ BSP match is case-insensitive on `practice_type`; `valid_from/until = NULL` mean
 
 ### Draft endpoint
 
-`POST /draft` accepts a `DraftInput` (transcript + shift metadata) and returns a pre-filled `CaseDraftResponse` (all 6 case note sections + `draft_note` gap-detection field). Uses `evaluator_model` (Gemini Pro). Stateless — no DB reads or writes. The worker reviews and edits the returned fields before calling `/evaluate`.
+`POST /draft` accepts a `DraftInput` (transcript + shift metadata) and returns a pre-filled `CaseDraftResponse` (all 6 case note sections + `draft_note` gap-detection field). Uses `evaluator_model` (Claude Sonnet, Bedrock). Stateless — no DB reads or writes. The worker reviews and edits the returned fields before calling `/evaluate`.
 
 **`draft_note` field:** if the transcript is sparse, the model populates this with a 1–3 sentence note describing what's missing. If the transcript is comprehensive, it returns `null`.
 
 ### AI Summary
 
-Every `/evaluate` call returns a `summary` section in `EvaluateResponse`. It is generated by `pipeline/summary.py` (Claude Haiku, `maxTokens=1024`) from the case note form text.
+Every `/evaluate` call returns a `summary` section in `EvaluateResponse`. Generated by `pipeline/summary.py` (Claude Haiku, `maxTokens=1024`).
 
-Fields: `ai_confidence` (0.0–1.0), `confidence_label` (High/Medium/Low), `progress_identified`, `potential_risks`, `patterns_detected`, `flagged_highlights`.
+Fields: `ai_confidence` (0.0–1.0), `confidence_label`, `progress_identified`, `potential_risks`, `patterns_detected`, `flagged_highlights`, **`note_quality_score`** (0.0–1.0), **`note_quality_label`** (Premium/Average/Poor), **`quality_gaps`** (list of actionable suggestions).
+
+Quality scoring is heuristic — zero LLM cost. Runs via `pipeline/quality_score.score_note()`. Also returned by `/draft` in `CaseDraftResponse`.
 
 ### Incident Report Draft
 
-When `incident_occurred=True` OR the pipeline verdict is `UNAUTHORISED`, an `incident_report` section is included in `EvaluateResponse`. It is generated by `pipeline/incident_draft.py` (Claude Sonnet, `maxTokens=4096`).
+When `incident_occurred=True` OR the pipeline verdict is `UNAUTHORISED`, an `incident_report` section is included in `EvaluateResponse`. Generated by `pipeline/incident_draft.py` (Claude Sonnet, `maxTokens=4096`).
 
-Trigger condition: `note.incident_occurred == True` OR (`evaluator.confidence != LOW` AND `cross_check.authorisation_status == UNAUTHORISED`).
+Trigger: `note.incident_occurred == True` OR (`evaluator.confidence != LOW` AND `cross_check.authorisation_status == UNAUTHORISED`).
 
-Fields mirror Case Note 6.png + NDIS Commission reportable-incident categories: `incident_type`, `date_of_incident`, `immediate_actions_taken`, `restrictive_practice_used`, `contributing_factors`, `follow_up_actions`, `compliance_checks`, `reportable`, `notification_timeframe` (24 hours / 5 business days / null).
+Fields: all existing fields + Phase 1 additions: **`severity`** (Low/Medium/High/Critical), **`incident_categories`** (multi-select list), **`ongoing_risk_present`**, **`participant_currently_safe`**, **`staff_currently_safe`**, **`emergency_services_required`**.
+
+Notification timeframes: 24h (Category 1 — death/serious injury/abuse/assault/sexual misconduct), 5 business days (Category 2 — unauthorised restrictive practice).
+
+### Gold-Standard Prompts
+
+All 5 LLM prompts now include `STYLE_GUIDE` (third-person clinical register) and an ultra-compact few-shot snippet from `pipeline/style_examples.py`. Single source of truth — update `style_examples.py` when the client revises the gold standard.
+
+The gold-standard client doc is ingested into pgvector as 15 chunks (3 document_type values). Run `python scripts/ingest_style_standards.py` once after DB setup. `retrieve_style_chunks()` in `pipeline/rag.py` fetches these by document_type for RAG-grounded prompting in drafter, summary, and incident_draft.
 
 ### CaseNoteInput — Structured Form Model
 
@@ -141,7 +155,7 @@ Fields mirror Case Note 6.png + NDIS Commission reportable-incident categories: 
 
 **Key invariants:**
 - `_require_content` validator enforces that at least one of `transcript`, `describe`, `behavioural_events`, `observations`, `carer_feedback`, `assisted`, or `mood` is non-null — an all-empty payload returns HTTP 422.
-- `to_text()` is called by every LLM step (triage, RAG, evaluator). It returns `transcript` directly if set; otherwise builds a structured narrative from all form sections. Never pass raw form fields to Gemini — always call `note.to_text()`.
+- `to_text()` is called by every LLM step (triage, RAG, evaluator). It returns `transcript` directly if set; otherwise builds a structured narrative from all form sections. Never pass raw form fields to the LLM — always call `note.to_text()`.
 - `behavioural_events` is the most important field for detection — triage, RAG query, and evaluator all weight it highest via the narrative structure.
 
 ## Environment Variables (key overrides)
@@ -172,6 +186,7 @@ make demo-setup      # docker-compose up + ingest real PDFs + seed BSPs
 # Or step by step:
 docker-compose up -d                        # Postgres + pgvector on port 5433
 python scripts/ingest_ndis_policies.py      # ingest 5 official NDIS PDFs (place in pdfs/ if download blocked)
+python scripts/ingest_style_standards.py    # ingest client gold-standard doc (15 chunks, 3 document_types) — run once
 python scripts/seed_demo.py                 # seed demo BSPs
 
 # API server
@@ -228,7 +243,7 @@ docker exec -it sena-ai-db psql -U sena_ai -d sena_ai
 - `SettingsConfigDict(extra="ignore")` is intentional — the shared `.env` contains keys for other SENA modules; without it, startup raises a validation error
 - All Bedrock SDK calls are synchronous and offloaded via `asyncio.to_thread` — do not call them directly in async functions
 - **Swagger UI 422 errors**: usually caused by literal newlines in JSON string values — press Enter inside a string creates invalid JSON. Use `\n` escape or keep transcript on one line. See issues-solved 0010.
-- **Before debugging**: grep `.claude/issues-solved/INDEX.md` — 11 issues documented, saves hours of re-debugging
+- **Before debugging**: grep `.claude/issues-solved/INDEX.md` — issues documented there, saves hours of re-debugging
 - `transcript` is optional in `CaseNoteInput` — but at least one of `transcript`, `describe`, `behavioural_events`, `observations`, `carer_feedback`, `assisted`, or `mood` must be non-null (enforced by `_require_content` validator)
 - Never pass form fields directly to LLM — always call `note.to_text()` which handles both transcript-first and form-narrative rendering
 - `behavioural_events` is the highest-signal field for detection — when constructing test notes, put restrictive practice evidence there

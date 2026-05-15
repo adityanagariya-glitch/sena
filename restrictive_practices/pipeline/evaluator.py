@@ -21,11 +21,16 @@ from models.schemas import (
     PolicyViolationRisk,
     TriageResult,
 )
+from pipeline.style_examples import FEW_SHOT_EVAL_REASONING, STYLE_GUIDE
 
 logger = logging.getLogger(__name__)
 
 _EVALUATOR_PROMPT = """\
 You are a senior NDIS compliance officer reviewing a support worker case note.
+
+{style_guide}
+
+{few_shot_eval_reasoning}
 
 ## Relevant NDIS Policy Extracts
 The following excerpts are from official NDIS regulated restrictive practices documentation.
@@ -155,6 +160,8 @@ def _run_evaluator(
     client = _make_client()
 
     prompt = _EVALUATOR_PROMPT.format(
+        style_guide=STYLE_GUIDE,
+        few_shot_eval_reasoning=FEW_SHOT_EVAL_REASONING,
         policy_context=policy_context,
         transcript=transcript,
         action_summary=action_summary,

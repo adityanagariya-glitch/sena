@@ -14,6 +14,8 @@ from pydantic import BaseModel
 
 from config import settings
 from models.schemas import CaseNoteInput, SummaryOutput
+from pipeline.quality_score import score_note
+from pipeline.style_examples import FEW_SHOT_SUMMARY, STYLE_GUIDE
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +23,14 @@ _SUMMARY_PROMPT = """\
 You are summarising a single NDIS (National Disability Insurance Scheme) support shift for \
 a clinical supervisor reviewing case notes.
 
+{style_guide}
+
+{few_shot_summary}
+
 Your task: read the support worker case note below and produce a structured summary covering \
 participant progress, risk indicators, behavioural patterns, and the most noteworthy verbatim \
-excerpts from the note.
+excerpts from the note. Write summary bullets in third-person clinical voice matching the Premium \
+standard illustrated above.
 
 Case Note:
 ---
@@ -79,12 +86,18 @@ def _run_summary(text: str) -> SummaryOutput:
     """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
 
+    prompt = _SUMMARY_PROMPT.format(
+        style_guide=STYLE_GUIDE,
+        few_shot_summary=FEW_SHOT_SUMMARY,
+        transcript=text,
+    )
+
     response = client.converse(
         modelId=settings.triage_model,
         messages=[
             {
                 "role": "user",
-                "content": [{"text": _SUMMARY_PROMPT.format(transcript=text)}],
+                "content": [{"text": prompt}],
             }
         ],
         inferenceConfig={"maxTokens": 1024, "temperature": 0.0},
@@ -114,6 +127,7 @@ def _run_summary(text: str) -> SummaryOutput:
         potential_risks=parsed.potential_risks,
         patterns_detected=parsed.patterns_detected,
         flagged_highlights=parsed.flagged_highlights,
+        # Quality fields populated in run_summary after async thread returns
     )
 
 
@@ -121,9 +135,18 @@ async def run_summary(note: CaseNoteInput) -> SummaryOutput:
     """Async entry point — offloads blocking SDK call to a thread pool."""
     logger.info("summary start case_note_id=%s", note.case_note_id)
     result = await asyncio.to_thread(_run_summary, note.to_text())
+
+    # Run heuristic quality scorer on the original note (zero LLM cost)
+    quality_score, quality_label, quality_gaps = score_note(note)
+    result.note_quality_score = quality_score
+    result.note_quality_label = quality_label
+    result.quality_gaps = quality_gaps
+
     logger.info(
-        "summary done case_note_id=%s ai_confidence=%.2f",
+        "summary done case_note_id=%s ai_confidence=%.2f quality=%s score=%.3f",
         note.case_note_id,
         result.ai_confidence,
+        quality_label,
+        quality_score,
     )
     return result

@@ -13,15 +13,22 @@ import boto3
 from pydantic import BaseModel
 
 from config import settings
-from models.schemas import CaseDraftResponse, DraftInput
+from models.schemas import CaseDraftResponse, CaseNoteInput, DraftInput
+from pipeline.quality_score import score_note
+from pipeline.style_examples import FEW_SHOT_DRAFTER, STYLE_GUIDE
 
 logger = logging.getLogger(__name__)
 
 _DRAFT_PROMPT = """\
 You are an experienced NDIS case note writer assisting a support worker to complete their post-shift case note.
 
+{style_guide}
+
+{few_shot_drafter}
+
 A support worker has recorded a voice transcript after their shift. Your task is to extract relevant information
 from the transcript and map it into the six sections of the standard NDIS case note form.
+Produce field content that meets the Premium quality standard described above.
 
 FORM SECTIONS AND FIELDS:
 
@@ -118,9 +125,15 @@ def _run_drafter(transcript: str) -> _DrafterResponse:
     """Synchronous Bedrock call — runs in a thread via asyncio.to_thread."""
     client = _make_client()
 
+    prompt = _DRAFT_PROMPT.format(
+        style_guide=STYLE_GUIDE,
+        few_shot_drafter=FEW_SHOT_DRAFTER,
+        transcript=transcript,
+    )
+
     response = client.converse(
         modelId=settings.evaluator_model,
-        messages=[{"role": "user", "content": [{"text": _DRAFT_PROMPT.format(transcript=transcript)}]}],
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )
 
@@ -144,7 +157,41 @@ async def run_drafter(payload: DraftInput) -> CaseDraftResponse:
 
     extracted = await asyncio.to_thread(_run_drafter, payload.transcript)
 
-    logger.info("drafter done case_note_id=%s", payload.case_note_id)
+    # Build a temporary CaseNoteInput to run the heuristic quality scorer
+    _note_for_scoring = CaseNoteInput(
+        case_note_id=payload.case_note_id,
+        client_id=payload.client_id,
+        worker_id=payload.worker_id,
+        transcript=payload.transcript,
+        shift_date=payload.shift_date,
+        shift_time=payload.shift_time,
+        worker_position=payload.worker_position,
+        describe=extracted.describe,
+        assisted=extracted.assisted,
+        practised_skill=extracted.practised_skill,
+        participants_level_of_independence=extracted.participants_level_of_independence,
+        observations=extracted.observations,
+        mood=extracted.mood,
+        behavioural_events=extracted.behavioural_events,
+        any_concerns=extracted.any_concerns,
+        what_went_well=extracted.what_went_well,
+        what_needs_further_support=extracted.what_needs_further_support,
+        participant_comments=extracted.participant_comments,
+        medication_reminders_given=extracted.medication_reminders_given,
+        safety_hazards_observed=extracted.safety_hazards_observed,
+        any_injuries=extracted.any_injuries,
+        injury_description=extracted.injury_description,
+        carer_feedback=extracted.carer_feedback,
+        incident_occurred=extracted.incident_occurred,
+    )
+    quality_score, quality_label, quality_gaps = score_note(_note_for_scoring)
+
+    logger.info(
+        "drafter done case_note_id=%s quality=%s score=%.3f",
+        payload.case_note_id,
+        quality_label,
+        quality_score,
+    )
 
     return CaseDraftResponse(
         case_note_id=payload.case_note_id,
@@ -173,4 +220,7 @@ async def run_drafter(payload: DraftInput) -> CaseDraftResponse:
         draft_note=extracted.draft_note,
         transcript=payload.transcript,
         uploaded_documents=None,
+        note_quality_score=quality_score,
+        note_quality_label=quality_label,
+        quality_gaps=quality_gaps,
     )

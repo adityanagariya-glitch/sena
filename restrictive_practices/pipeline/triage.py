@@ -14,11 +14,14 @@ from pydantic import BaseModel
 
 from config import settings
 from models.schemas import CaseNoteInput, TriageResult
+from pipeline.style_examples import FEW_SHOT_TRIAGE
 
 logger = logging.getLogger(__name__)
 
 _TRIAGE_PROMPT = """\
 You are a compliance auditor for an Australian NDIS (National Disability Insurance Scheme) service provider.
+
+{few_shot_triage}
 
 Your task: read the support worker case note below and determine whether it contains ANY evidence of a
 regulated restrictive practice being used on a participant.
@@ -70,7 +73,19 @@ def _run_triage(transcript: str) -> TriageResult:
 
     response = client.converse(
         modelId=settings.triage_model,
-        messages=[{"role": "user", "content": [{"text": _TRIAGE_PROMPT.format(transcript=transcript)}]}],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "text": _TRIAGE_PROMPT.format(
+                            few_shot_triage=FEW_SHOT_TRIAGE,
+                            transcript=transcript,
+                        )
+                    }
+                ],
+            }
+        ],
         inferenceConfig={"maxTokens": 512, "temperature": 0.0},
     )
 
