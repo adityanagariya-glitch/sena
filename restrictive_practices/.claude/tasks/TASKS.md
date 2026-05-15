@@ -1,6 +1,6 @@
 ---
 title: Restrictive Practices Detection Module — Task List
-updated: 2026-05-13
+updated: 2026-05-14
 ---
 
 ## Done
@@ -23,6 +23,7 @@ updated: 2026-05-13
 - [x] DEMO.md — 5 curl scenarios, privacy compliance table, DB verification
 - [x] Makefile, docker-compose.yml, pyproject.toml in correct directory (`restrictive_practices/`)
 - [x] Issues-solved knowledge base — `.claude/issues-solved/` with 11 entries; hooks updated
+- [x] Add AI summary + incident report to /evaluate pipeline — `pipeline/summary.py` (Haiku, always runs), `pipeline/incident_draft.py` (Sonnet, conditional); `/evaluate` response includes `summary` always and `incident_report` when `incident_occurred=True` OR verdict is `UNAUTHORISED`
 
 ## Backlog
 - [ ] Verify `rp_case_note_runs` audit rows written during demo runs (check DB)

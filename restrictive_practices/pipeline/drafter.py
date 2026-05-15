@@ -171,4 +171,6 @@ async def run_drafter(payload: DraftInput) -> CaseDraftResponse:
         carer_feedback=extracted.carer_feedback,
         incident_occurred=extracted.incident_occurred,
         draft_note=extracted.draft_note,
+        transcript=payload.transcript,
+        uploaded_documents=None,
     )

@@ -48,7 +48,9 @@
       "Bash(python -c ' *)",
       "Bash(git check-ignore *)",
       "mcp__plugin_deploy-on-aws_awsknowledge__aws___read_documentation",
-      "Bash(del *)"
+      "Bash(del *)",
+      "Bash(python -c \"from models.schemas import EvaluateResponse, PipelineResult, CaseDraftResponse, SummaryOutput, IncidentDraftOutput; print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/ -x -q)"
     ]
   },
   "enableAllProjectMcpServers": true,

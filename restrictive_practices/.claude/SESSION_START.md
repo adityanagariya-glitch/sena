@@ -1,6 +1,6 @@
 ---
 title: Restrictive Practices Detection — Session Start Guide
-updated: 2026-05-13
+updated: 2026-05-14
 ---
 
 ## Read This First Every Session
@@ -12,7 +12,7 @@ updated: 2026-05-13
 
 ---
 
-## What Was Built (Last Session: 2026-05-13)
+## What Was Built (Last Session: 2026-05-14)
 
 **AWS Bedrock migration complete.** Pipeline migrated from google-genai/Gemini to AWS Bedrock (Claude + Cohere). All 8 form API scenarios verified end-to-end with correct alert_required logic.
 
@@ -28,15 +28,23 @@ updated: 2026-05-13
 | 8 | `pipeline/drafter.py` | Done — Claude Sonnet 4.6 case note drafter |
 | 9 | `scripts/ingest_ndis_policies.py` | Done — 581 chunks stored across 5 NDIS PDFs |
 | 10 | `scripts/seed_demo.py` | Done — BSPs seeded for all auth paths |
+| 11 | `pipeline/summary.py` | Done — Claude Haiku shift summariser; always runs; `summary` block in every `/evaluate` response |
+| 12 | `pipeline/incident_draft.py` | Done — Claude Sonnet incident report drafter; conditional on `incident_occurred=True` OR `UNAUTHORISED` verdict |
 
 ### Pipeline flow
 ```
 POST /v1/restrictive-practices/evaluate
-  → triage_step  (Flash: YES/NO, thinking_budget=0)
-      → [CLEAN]   END — no further LLM cost (≈70% of notes)
-      → [FLAGGED] rag_step → evaluator_step → cross_check_step → webhook → END
+  → triage_step  (Haiku: YES/NO)
+      → [CLEAN]   summary_step → END
+      → [FLAGGED] rag_step → evaluator_step → cross_check_step → summary_step
+                  → incident_draft_step  (when incident_occurred=True OR UNAUTHORISED)
+                  → webhook (when alert_required=True) → END
   → CaseNoteRun audit row written regardless of outcome
 ```
+
+`/evaluate` response now always includes `summary` (ai_confidence, progress_identified, potential_risks, patterns_detected, flagged_highlights). Includes `incident_report` when `incident_occurred=True` OR verdict is `UNAUTHORISED`.
+
+`/draft` response now includes `transcript` and `uploaded_documents` pass-through fields alongside the 6 case note sections.
 
 ### Demo BSPs seeded
 | client_id | practice_type | Path |

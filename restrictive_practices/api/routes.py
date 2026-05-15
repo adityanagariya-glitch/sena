@@ -26,8 +26,10 @@ from models.schemas import (
     _AuthorisationSection,
     _BehaviourSupportPlan,
     _DetectedPracticeSection,
+    _IncidentReportSection,
     _ReportingSection,
     _SubmissionSection,
+    _SummarySection,
     _VerdictSection,
 )
 from pipeline.drafter import run_drafter
@@ -200,12 +202,65 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
         screening_summary=result.triage.action_summary,
     )
 
+    # ── AI summary ────────────────────────────────────────────────────────────────
+    raw_summary = result.summary
+    if raw_summary is not None:
+        confidence = raw_summary.ai_confidence
+        if confidence >= 0.75:
+            confidence_label = "High"
+        elif confidence >= 0.5:
+            confidence_label = "Medium"
+        else:
+            confidence_label = "Low"
+        summary_section = _SummarySection(
+            ai_confidence=confidence,
+            confidence_label=confidence_label,
+            progress_identified=raw_summary.progress_identified,
+            potential_risks=raw_summary.potential_risks,
+            patterns_detected=raw_summary.patterns_detected,
+            flagged_highlights=raw_summary.flagged_highlights,
+        )
+    else:
+        summary_section = _SummarySection(
+            ai_confidence=0.0,
+            confidence_label="Low",
+            progress_identified=[],
+            potential_risks=[],
+            patterns_detected=[],
+            flagged_highlights=[],
+        )
+
+    # ── Incident report ───────────────────────────────────────────────────────────
+    incident_report_section = None
+    if result.incident_draft is not None:
+        d = result.incident_draft
+        incident_report_section = _IncidentReportSection(
+            incident_type=d.incident_type,
+            date_of_incident=d.date_of_incident,
+            time_of_incident=d.time_of_incident,
+            location=d.location,
+            staff_involved=d.staff_involved,
+            incident_description=d.incident_description,
+            immediate_actions_taken=d.immediate_actions_taken,
+            restrictive_practice_used=d.restrictive_practice_used,
+            restrictive_practice_category=d.restrictive_practice_category,
+            risk_assessment=d.risk_assessment,
+            contributing_factors=d.contributing_factors,
+            follow_up_actions=d.follow_up_actions,
+            compliance_checks=d.compliance_checks,
+            reportable=d.reportable,
+            notification_timeframe=d.notification_timeframe,
+            notification_authority=d.notification_authority,
+        )
+
     return EvaluateResponse(
         verdict=verdict,
         detected_practice=detected_practice,
         authorisation=authorisation,
         reporting_obligations=reporting,
         submission=submission,
+        summary=summary_section,
+        incident_report=incident_report_section,
         privacy=result.privacy_notice,
     )
 

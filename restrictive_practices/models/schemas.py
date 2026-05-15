@@ -263,6 +263,37 @@ class CrossCheckResult(BaseModel):
     notes: str = ""
 
 
+# ── Summary output (internal pipeline model) ─────────────────────────────────
+
+class SummaryOutput(BaseModel):
+    ai_confidence: float = Field(0.0, ge=0.0, le=1.0)
+    progress_identified: list[str] = []
+    potential_risks: list[str] = []
+    patterns_detected: list[str] = []
+    flagged_highlights: list[str] = []
+
+
+# ── Incident draft output (internal pipeline model) ───────────────────────────
+
+class IncidentDraftOutput(BaseModel):
+    incident_type: str
+    date_of_incident: str | None = None
+    time_of_incident: str | None = None
+    location: str | None = None
+    staff_involved: list[str] = []
+    incident_description: str
+    immediate_actions_taken: list[str] = []
+    restrictive_practice_used: bool = False
+    restrictive_practice_category: str | None = None
+    risk_assessment: str = "Immediate risk: Low"
+    contributing_factors: list[str] = []
+    follow_up_actions: list[str] = []
+    compliance_checks: list[dict] = []
+    reportable: bool = False
+    notification_timeframe: str | None = None
+    notification_authority: str = "NDIS Quality and Safeguards Commission"
+
+
 # ── Final pipeline output (internal — used by graph, DB audit, webhook) ───────
 
 class PipelineResult(BaseModel):
@@ -276,6 +307,8 @@ class PipelineResult(BaseModel):
         "Processed under APP 3 (Privacy Act 1988) as sensitive health information. "
         "Used solely for NDIS compliance monitoring. No personal data retained beyond this response."
     )
+    summary: SummaryOutput | None = None
+    incident_draft: IncidentDraftOutput | None = None
 
 
 # ── API response models (human-readable, returned by POST /evaluate) ──────────
@@ -321,6 +354,36 @@ class _SubmissionSection(BaseModel):
     screening_summary: str | None = None
 
 
+class _SummarySection(BaseModel):
+    ai_confidence: float = Field(description="AI confidence score 0.0–1.0")
+    confidence_label: str = Field(description="e.g. 'High', 'Medium', 'Low'")
+    progress_identified: list[str] = Field(default=[], description="Positive observations from the shift")
+    potential_risks: list[str] = Field(default=[], description="Risk indicators noted")
+    patterns_detected: list[str] = Field(default=[], description="Behavioural or situational patterns")
+    flagged_highlights: list[str] = Field(
+        default=[], description="Verbatim excerpts from the case note that warranted attention"
+    )
+
+
+class _IncidentReportSection(BaseModel):
+    incident_type: str
+    date_of_incident: str | None = None
+    time_of_incident: str | None = None
+    location: str | None = None
+    staff_involved: list[str] = []
+    incident_description: str
+    immediate_actions_taken: list[str] = []
+    restrictive_practice_used: bool = False
+    restrictive_practice_category: str | None = None
+    risk_assessment: str
+    contributing_factors: list[str] = []
+    follow_up_actions: list[str] = []
+    compliance_checks: list[dict] = Field(default=[], description="[{label: str, passed: bool}]")
+    reportable: bool
+    notification_timeframe: str | None = None
+    notification_authority: str = "NDIS Quality and Safeguards Commission"
+
+
 class EvaluateResponse(BaseModel):
     """Human-readable API response returned by POST /v1/restrictive-practices/evaluate."""
     verdict: _VerdictSection
@@ -332,6 +395,13 @@ class EvaluateResponse(BaseModel):
     )
     reporting_obligations: _ReportingSection
     submission: _SubmissionSection
+    summary: _SummarySection
+    incident_report: _IncidentReportSection | None = Field(
+        None,
+        description=(
+            "Present when incident_occurred=True or an UNAUTHORISED restrictive practice was detected"
+        ),
+    )
     privacy: str
 
 
@@ -386,6 +456,11 @@ class CaseDraftResponse(BaseModel):
     # Section 6 — Notes / Additional Comments
     carer_feedback: str | None = None
     incident_occurred: bool = False
+
+    # Pass-through — original transcript so UI can re-attach it to /evaluate
+    transcript: str | None = None
+    # Shape compatibility with CaseNoteInput.uploaded_documents; /draft always returns None
+    uploaded_documents: list[str] | None = None
 
     # Draft metadata
     draft_note: str | None = Field(
