@@ -232,6 +232,8 @@ async def test_advance_step_cross_field_gate_blocks_on_rejection(
 ) -> None:
     from onboarding.services.validators.base import ValidationRejection
 
+    # Force strict mode so cross-field violations still block (tests the non-advisory path)
+    monkeypatch.setattr(tools_module.settings, "onboarding_voice_validation_advisory", False)
     fake_rejection = ValidationRejection(
         code="emergency_email_duplicate",
         reason_human="Emergency contacts must have unique email addresses.",
@@ -277,6 +279,8 @@ async def test_advance_step_emits_validation_rejection_for_cross_field_violation
 ) -> None:
     from onboarding.services.validators.base import ValidationRejection
 
+    # Force strict mode so cross-field violations emit validation_rejection (non-advisory path)
+    monkeypatch.setattr(tools_module.settings, "onboarding_voice_validation_advisory", False)
     fake_rejection = ValidationRejection(
         code="plan_end_before_start",
         reason_human="Plan end date must be after start date.",
@@ -645,11 +649,12 @@ async def test_non_repeatable_cross_section_still_blocked_without_intent(
 
 @pytest.mark.asyncio
 async def test_field_updated_NOT_emitted_on_validation_failure(
-    dispatcher, emitted,
+    dispatcher, emitted, monkeypatch,
 ) -> None:
-    """M7 invariant — a rejected value must NEVER produce a field_updated
-    event. If it did, the Flutter UI would render an uncommitted value.
+    """M7 invariant (strict mode) — a hard-rejected value must not produce
+    field_updated. Advisory mode is opt-in; strict mode preserves the invariant.
     """
+    monkeypatch.setattr(tools_module.settings, "onboarding_voice_validation_advisory", False)
     result = await dispatcher.dispatch(
         "update_field",
         {"section": "basics", "field": "email", "value": "not-an-email", "confidence": 1.0},
@@ -659,6 +664,23 @@ async def test_field_updated_NOT_emitted_on_validation_failure(
     assert field_updates == [], (
         f"field_updated leaked on validation failure: {field_updates}"
     )
+
+
+@pytest.mark.asyncio
+async def test_field_updated_emitted_on_advisory_validation(
+    dispatcher, emitted,
+) -> None:
+    """Advisory mode (default) — a value that fails soft validation is still
+    persisted and field_updated is emitted so Flutter renders the captured value.
+    """
+    result = await dispatcher.dispatch(
+        "update_field",
+        {"section": "basics", "field": "email", "value": "not-an-email", "confidence": 1.0},
+    )
+    assert result["ok"] is True
+    assert "warning" in result
+    field_updates = [e for e in emitted if e.get("type") == "field_updated"]
+    assert len(field_updates) == 1
 
 
 @pytest.mark.asyncio
@@ -815,16 +837,57 @@ async def test_filling_forced_field_clears_directive(
     assert state.next_forced_field is None
 
 
-# ── M3: Stricter email validator ─────────────────────────────────────────────
+# ── M3: Stricter email validator — applies ONLY to `emergency_contacts.email`
+# per `client_onboarding_validations.md` spec line 47. `basics.email` uses the
+# standard (no-disposable) validator per spec line 15 since it is pre-filled
+# from auth and not user-typed; tests against basics.email were updated to
+# target the field where the strict check legitimately lives.
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_email_disposable_domain_rejected(
     dispatcher, emitted,
 ) -> None:
+    # Advisory mode (default True): disposable email is persisted with a warning
     result = await dispatcher.dispatch(
         "update_field",
-        {"section": "basics", "field": "email", "value": "foo@mailinator.com", "confidence": 1.0},
+        {
+            "section": "emergency_contacts",
+            "field": "email",
+            "value": "foo@mailinator.com",
+            "repeatable_index": 0,
+            "confidence": 1.0,
+        },
+    )
+    assert result["ok"] is True
+    assert "warning" in result
+    assert result["warning"]["code"] == "email_disposable"
+    advisory_events = [e for e in emitted if e.get("type") == "field_advisory_warning"]
+    assert len(advisory_events) == 1
+    assert advisory_events[0]["code"] == "email_disposable"
+    assert advisory_events[0]["severity"] == "advisory"
+    # field_updated being emitted proves the value was committed to FormState
+    field_updates = [e for e in emitted if e.get("type") == "field_updated"]
+    assert len(field_updates) >= 1
+    assert field_updates[0]["value"] == "foo@mailinator.com"
+
+
+@pytest.mark.asyncio
+async def test_email_disposable_domain_blocked_in_strict_mode(
+    dispatcher, emitted, monkeypatch,
+) -> None:
+    # With advisory=False the original strict behaviour is preserved
+    monkeypatch.setattr(tools_module.settings, "onboarding_voice_validation_advisory", False)
+    result = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "emergency_contacts",
+            "field": "email",
+            "value": "foo@mailinator.com",
+            "repeatable_index": 0,
+            "confidence": 1.0,
+        },
     )
     assert result["ok"] is False
     assert result["rejection"]["code"] == "email_disposable"
@@ -833,15 +896,36 @@ async def test_email_disposable_domain_rejected(
 
 
 @pytest.mark.asyncio
-async def test_email_too_many_labels_rejected(
+async def test_basics_email_allows_disposable_per_spec(
     dispatcher, emitted,
 ) -> None:
-    """M3 — domain with 4+ labels (a.b.c.d.com) must be rejected as malformed."""
+    """Spec line 15: `basics.email` uses the standard validator (no disposable
+    check). Pre-filled from auth, so we trust the upstream identity provider —
+    we don't gate it here."""
+    result = await dispatcher.dispatch(
+        "update_field",
+        {"section": "basics", "field": "email", "value": "foo@mailinator.com", "confidence": 1.0},
+    )
+    assert result["ok"] is True, (
+        f"basics.email should accept any RFC-valid address per spec; got {result}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_email_too_many_labels_rejected(
+    dispatcher, emitted, monkeypatch,
+) -> None:
+    """Domain with 5+ labels must be rejected on `emergency_contacts.email`
+    (strict regex caps at 3 subdomain labels per spec line 47). `basics.email`
+    uses the standard regex which allows any label count and is intentionally
+    NOT covered by this rule."""
+    monkeypatch.setattr(tools_module.settings, "onboarding_voice_validation_advisory", False)
     result = await dispatcher.dispatch(
         "update_field",
         {
-            "section": "basics", "field": "email",
+            "section": "emergency_contacts", "field": "email",
             "value": "x@torproject.dev.mrrobot.com.au.example",
+            "repeatable_index": 0,
             "confidence": 1.0,
         },
     )
@@ -1136,9 +1220,10 @@ async def test_update_field_sentinel_field_id_rejected(
 
 @pytest.mark.asyncio
 async def test_update_field_enum_invalid_via_field_spec(
-    requirements_dispatcher, requirements_repo, emitted,
+    requirements_dispatcher, requirements_repo, emitted, monkeypatch,
 ) -> None:
-    """update_field with a value not in multi_enum options returns enum_invalid."""
+    """update_field with a value not in multi_enum options returns enum_invalid (strict mode)."""
+    monkeypatch.setattr(tools_module.settings, "onboarding_voice_validation_advisory", False)
     result = await requirements_dispatcher.dispatch(
         "update_field",
         {

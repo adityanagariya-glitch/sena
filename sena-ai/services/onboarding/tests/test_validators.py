@@ -22,6 +22,7 @@ from onboarding.services.validators import (
     validate_field,
     validate_step_complete,
 )
+from onboarding.services.validators.sequencing import validate_required_only
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -117,9 +118,11 @@ def _load_schema(name: str) -> StepSchema:
     ("notanemail",         "basics", "email", "email_invalid"),
     ("missing@",           "basics", "email", "email_invalid"),
     ("",                   "basics", "email", "required"),
-    # RFC 5321 length guards (V2 fix — long-domain transcription artefacts)
-    ("u@" + "a" * 64 + ".com",                                              "basics", "email", "email_invalid"),  # label > 63
-    ("u@" + "a" * 63 + "." + "b" * 63 + "." + "c" * 63 + "." + "d" * 63, "basics", "email", "email_invalid"),  # domain > 253
+    # RFC 5321 length guards apply ONLY to `emergency_contacts.email` per
+    # `client_onboarding_validations.md` line 47 (strict regex). `basics.email`
+    # uses the standard regex (spec line 15) with no label/domain length cap.
+    ("u@" + "a" * 64 + ".com",                                              "emergency_contacts", "email", "email_invalid"),  # label > 63
+    ("u@" + "a" * 63 + "." + "b" * 63 + "." + "c" * 63 + "." + "d" * 63, "emergency_contacts", "email", "email_invalid"),  # domain > 253
 
     # ── Allergy description (min 5, max 250) ──────────────────────────────────
     ("Causes severe rash after contact",  "allergies", "description", None),
@@ -556,3 +559,94 @@ class TestValidateFieldEnumOptions:
         )
         assert result is not None
         assert result.code == "required"
+
+
+# ── validate_required_only ────────────────────────────────────────────────────
+
+class TestValidateRequiredOnly:
+    def test_cross_field_never_included(self):
+        """Cross-field violations from validate_cross_fields must NOT appear in output.
+
+        Uses emergency_phone_matches_client: basics.phone == emergency_contacts[0].phone.
+        This code is emitted ONLY by cross_field.check_emergency_phone_unique_and_differs_from_client
+        and never by validate_field, so its absence proves validate_cross_fields was not called.
+        All required fields are filled so required_field_missing rejections are also absent.
+        """
+        schema = _load_schema("schema_personal_information.json")
+        shared_phone = "+61412345678"
+        state = _state(step_id="step1", values={
+            "basics": {
+                "full_name":            _fv("Jane Doe"),
+                "email":                _fv("jane@example.com"),
+                "phone":                _fv(shared_phone),
+                "date_of_birth":        _fv("1985-06-15"),
+                "gender":               _fv("Female"),
+                "preferred_language":   _fv("English"),
+                "interpreter_required": _fv("No"),
+                "about_me":             _fv("I enjoy walking."),
+            },
+            "home_address": {
+                "address": _fv("123 Main St"),
+                "state":   _fv("NSW"),
+                "city":    _fv("Sydney"),
+                "zip_code": _fv("2000"),
+            },
+            "emergency_contacts": [
+                {
+                    "name":     _fv("Bob Smith"),
+                    "relation": _fv("Brother"),
+                    "email":    _fv("bob@example.com"),
+                    # Same phone as basics — cross-field violation only caught by validate_cross_fields
+                    "phone":    _fv(shared_phone),
+                }
+            ],
+        })
+        # validate_step_complete would emit emergency_phone_matches_client here
+        step_complete_codes = [r.code for r in validate_step_complete(schema, state)]
+        assert "emergency_phone_matches_client" in step_complete_codes, (
+            "precondition: validate_step_complete must catch this violation"
+        )
+        # validate_required_only must NOT emit it (cross-field gate excluded)
+        required_only_codes = [r.code for r in validate_required_only(schema, state)]
+        assert "emergency_phone_matches_client" not in required_only_codes
+
+    def test_empty_state_returns_required_rejections(self):
+        """Empty FormState with required fields must produce required_field_missing."""
+        schema = _load_schema("schema_personal_information.json")
+        state = _state(step_id="step1")
+        rejections = validate_required_only(schema, state)
+        assert len(rejections) > 0
+        codes = [r.code for r in rejections]
+        assert "required_field_missing" in codes
+
+    def test_fully_filled_required_fields_returns_empty(self):
+        """All required fields filled with valid values and no cross-field violations → []."""
+        schema = _load_schema("schema_personal_information.json")
+        state = _state(step_id="step1", values={
+            "basics": {
+                "full_name":            _fv("Jane Doe"),
+                "email":                _fv("jane@example.com"),
+                "phone":                _fv("0412345678"),
+                "date_of_birth":        _fv("1985-06-15"),
+                "gender":               _fv("Female"),
+                "preferred_language":   _fv("English"),
+                "interpreter_required": _fv("No"),
+                "about_me":             _fv("I enjoy walking and cooking."),
+            },
+            "home_address": {
+                "address":  _fv("123 Main St"),
+                "state":    _fv("NSW"),
+                "city":     _fv("Sydney"),
+                "zip_code": _fv("2000"),
+            },
+            "emergency_contacts": [
+                {
+                    "name":     _fv("Alice Smith"),
+                    "relation": _fv("Sister"),
+                    "email":    _fv("alice@example.com"),
+                    "phone":    _fv("+61487654321"),
+                }
+            ],
+        })
+        rejections = validate_required_only(schema, state)
+        assert rejections == []

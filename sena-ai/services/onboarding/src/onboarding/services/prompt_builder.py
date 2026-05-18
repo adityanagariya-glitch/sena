@@ -29,8 +29,18 @@ log = structlog.get_logger(__name__)
 _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
 
 
-def _compute_next_required_field(schema: StepSchema, state: FormState) -> dict | None:
-    """First required empty field in schema order — rendered into live-state JSON."""
+def _compute_next_required_field(
+    schema: StepSchema,
+    state: FormState,
+    *,
+    screen_field_status: dict[str, str] | None = None,
+) -> dict | None:
+    """First required empty field in schema order — rendered into live-state JSON.
+
+    `screen_field_status` (optional): dot-notation `section.field` → status from
+    latest screen_state_v2. Paths marked "filled" are skipped even when state is
+    empty — mirrors sequencing.next_required_field. Schema-agnostic.
+    """
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
         fields = section.item_fields if is_rep else (section.fields or [])
@@ -77,6 +87,13 @@ def _compute_next_required_field(schema: StepSchema, state: FormState) -> dict |
                 )
             )
             if is_empty:
+                # Honor latest screen-state — Flutter is the ground truth for
+                # what the user sees on the screen RIGHT NOW. Useful when the
+                # FormState hasn't caught up to UI pre-fill yet.
+                if screen_field_status is not None:
+                    path = f"{section.id}.{field.id}"
+                    if screen_field_status.get(path) == "filled":
+                        continue
                 return {"section_id": section.id, "field_id": field.id, "label": field.label}
     return None
 
@@ -175,6 +192,8 @@ def _build_live_state_block(
     bootstrap: SessionBootstrap | None,
     state: FormState,
     schema: StepSchema,
+    *,
+    screen_field_status: dict[str, str] | None = None,
 ) -> str:
     """Render the [LIVE_STATE_JSON] context block.
 
@@ -183,6 +202,10 @@ def _build_live_state_block(
     (mode, readonly_paths, prior_pages, display_name) plus the live FormState
     partitioned into locked_facts (readonly) and current_page_values (askable),
     plus completion stats.
+
+    `screen_field_status` is forwarded to next_required_field so that a path
+    marked "filled" in the latest screen_state_v2 is not surfaced as the next
+    question — the agent trusts what Flutter says the user already sees.
     """
     completion = state.completion.model_dump() if state.completion else None
     readonly_paths = bootstrap.readonly_paths if bootstrap else []
@@ -191,7 +214,9 @@ def _build_live_state_block(
     )
     # M5 — forced field overrides next_required when set.
     next_forced = _compute_next_forced_field(schema, state)
-    next_required = next_forced or _compute_next_required_field(schema, state)
+    next_required = next_forced or _compute_next_required_field(
+        schema, state, screen_field_status=screen_field_status,
+    )
     payload = {
         "mode": (bootstrap.mode if bootstrap else "new_user"),
         "step_id": schema.step_id,
@@ -242,6 +267,7 @@ def build_system_prompt(
     resume_context_text: str | None = None,
     bootstrap: SessionBootstrap | None = None,
     cross_screen_text: str | None = None,
+    screen_field_status: dict[str, str] | None = None,
 ) -> str:
     """
     Render the onboarding system prompt with the session schema and current state.
@@ -276,7 +302,9 @@ def build_system_prompt(
     }
     state_json = json.dumps(state_summary, default=str)
 
-    live_state_json = _build_live_state_block(bootstrap, state, schema)
+    live_state_json = _build_live_state_block(
+        bootstrap, state, schema, screen_field_status=screen_field_status,
+    )
     bootstrap_mode = bootstrap.mode if bootstrap else "new_user"
 
     grounding_section = (
@@ -311,7 +339,9 @@ def build_system_prompt(
             first_80=cross_screen_block[:80].replace("\n", " "),
         )
 
-    next_req = _compute_next_required_field(schema, state)
+    next_req = _compute_next_required_field(
+        schema, state, screen_field_status=screen_field_status,
+    )
     next_req_text = (
         f"{next_req['section_id']}.{next_req['field_id']} ({next_req['label']})"
         if next_req else ""

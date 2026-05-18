@@ -463,15 +463,18 @@ row. The tool emits a `row_added` event so the Flutter UI can render an
 empty card for the new index. Then continue collecting values for the new
 row using the returned `new_index`.
 
-### Rule 7 — Frontend Validation Loop
-When a `[SCREEN]` block lists a field as **Invalid (re-ask)**, the Flutter
-client has rejected the value you stored. Re-ask using this format:
-> "It looks like the system didn't accept that [field name] — could we try
-> that again?"
-If the [SCREEN] block includes a hint in parentheses (e.g. *"Must be 10
-digits with no spaces"*), paraphrase it gently as guidance — do not quote
-regexes or technical jargon at the user. Continue once you receive a fresh
-value, calling `update_field` again.
+### Rule 7 — Advisory Validation Feedback
+When the server emits `field_advisory_warning` for a field you just applied:
+1. Store the `{code, reason_human, suggested_fix}` payload.
+2. After finishing any current extraction burst, gently surface the issue:
+   "I've noted [value] for [field]. One thing to be aware of: [reason_human]. [suggested_fix if present]"
+3. Give the participant the choice to keep it or provide a corrected value.
+4. Do NOT block — the participant can continue to the next field and correct it later.
+5. Re-calling `update_field` with the corrected value will clear the advisory.
+
+When the server emits `field_confirmed` for a value you re-stated:
+- The field is now marked confirmed for this session.
+- No further confirmation is needed for that field unless the value changes.
 
 ### Rule 7b — Conditional Field Visibility (visible_if)
 

@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from onboarding.api.deps import get_repo
@@ -150,6 +150,7 @@ def _build_initial_values(initial_state: dict | None) -> dict:
 @router.post("/v1/onboarding/session", response_model=CreateSessionResponse, status_code=201)
 async def create_session(
     req: CreateSessionRequest,
+    request: Request,
     repo: FormStateRepo = Depends(get_repo),
 ) -> CreateSessionResponse:
     session_id = str(uuid.uuid4())
@@ -158,6 +159,23 @@ async def create_session(
     # Resolve bootstrap envelope. Explicit takes precedence; legacy initial_state
     # is wrapped into a synthesised bootstrap so older clients keep working.
     bootstrap = req.bootstrap or SessionBootstrap.from_initial_state(req.initial_state)
+
+    # TEMP DEBUG — dump raw client payload to diagnose per-screen state leak.
+    # Remove after Flutter bootstrap shape confirmed correct.
+    log.info(
+        "debug_client_bootstrap_payload",
+        session_id=session_id,
+        participant_id=req.participant_id,
+        has_explicit_bootstrap=req.bootstrap is not None,
+        has_legacy_initial_state=req.initial_state is not None,
+        bootstrap_mode=bootstrap.mode,
+        current_page_values_keys=list(bootstrap.current_page_values.keys()),
+        current_page_values_sample=dict(list(bootstrap.current_page_values.items())[:8]),
+        readonly_paths=list(bootstrap.readonly_paths),
+        prior_pages_keys=list(bootstrap.prior_pages.keys()) if bootstrap.prior_pages else [],
+        participant_display_name=bootstrap.participant_display_name,
+        legacy_initial_state_keys=list(req.initial_state.keys()) if req.initial_state else [],
+    )
 
     # Auto-hydrate `bootstrap.prior_pages` from the cross-screen context bucket
     # when the client did not supply one. Client-supplied prior_pages always
@@ -244,7 +262,8 @@ async def create_session(
         ctx_repo = UserContextRepo(repo._r)
         await ctx_repo.add_session_to_index(req.tenant_id, req.participant_id, session_id)
 
-    ws_url = f"ws://localhost:{settings.onboarding_port}/ws/onboarding/{session_id}"
+    _scheme = "wss" if request.url.scheme == "https" else "ws"
+    ws_url = f"{_scheme}://{request.url.netloc}/ws/onboarding/{session_id}"
 
     return CreateSessionResponse(
         session_id=session_id,

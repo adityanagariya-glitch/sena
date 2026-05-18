@@ -58,6 +58,8 @@ Emitted from `services/onboarding/src/onboarding/services/{tools.py, gemini_live
 | `repeatable_section_entered` | `tools.py` | `{section_id, intent, row_index}` | Highlight focused row |
 | `repeatable_section_exited` | `tools.py` | `{section_id}` | Release focus |
 | `validation_rejection` | `tools.py` / `gemini_live.py` | `{section_id, field_id?, code, reason_human, repeatable_index?}` | Inline error display |
+| `field_advisory_warning` | `tools.py` | `{section_id, field_id, repeatable_index?, code, reason_human, severity: "advisory", suggested_fix?, allowed_values?}` | Inline non-blocking hint; field written to state; agent acks once then moves on |
+| `field_confirmed` | `tools.py` | `{section_id, field_id, repeatable_index?, value, confirmation_source: "voice", turn_id}` | Mark field user-confirmed this session; trigger local screen-save; emitted ≤ once per (section, field, row) per WS session |
 | `field_skipped_warning` | `tools.py` | `{section_id, field_id, reason}` | Banner + highlight |
 | `schema_drift_detected` | `tools.py` | `{...}` | Inline notice + refresh strategy |
 | `go_away` | `gemini_live.py` | `{time_left_ms}` | Call resume endpoint within N ms |
@@ -65,7 +67,7 @@ Emitted from `services/onboarding/src/onboarding/services/{tools.py, gemini_live
 | `error` | any | `{code, message}` | Handle or close |
 
 When adding a NEW event type:
-1. Update `FLUTTER_DEV_HANDOFF.md` with an `Issue #<n>` block documenting the typed contract.
+1. Update `flutterhandoffdev.md` with a new section documenting the typed contract (payload shape, Flutter handler, AppStrings key if spoken text differs from on-screen).
 2. Add a regression test that asserts the emit fires under the trigger condition.
 3. Add the row to this table.
 4. Confirm the Flutter `default` arm of `VoiceEventModel.parse` still logs WARN, never silently returns `null`.

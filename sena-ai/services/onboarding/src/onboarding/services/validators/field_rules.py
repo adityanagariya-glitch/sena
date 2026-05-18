@@ -45,10 +45,16 @@ def _at_least(n: int) -> str:
 
 # ── Regex ────────────────────────────────────────────────────────────────────
 _AU_PHONE = re.compile(r"^(?:\+61[2-478]\d{8}|0[2-478]\d{8}|1300\d{6}|1800\d{6}|13\d{4})$")
-# M3 — Stricter email: cap domain at 3 labels max (e.g. foo@a.b.c.d is rejected).
-# Real-world emails almost never have >3 domain labels; voice transcription often
-# produces absurd hostnames (`foo@torproject.dev.mrrobot.com`) that pass RFC but
-# fail eyeball test. Pair with disposable-domain blocklist below.
+# Standard email — matches Flutter client spec `client_onboarding_validations.md`:
+# unbounded label count, no disposable-domain check. Used for `basics.email`
+# (pre-filled from auth, not user-typed) and `plan_info.contact_email` /
+# `plan_info.billing_email` (≤50 chars enforced separately).
+_EMAIL_RE_STANDARD = re.compile(
+    r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+)+$",
+    re.IGNORECASE,
+)
+# Strict email — used ONLY for `emergency_contacts.email` per spec line 47.
+# 3-label cap + disposable-domain blocklist + RFC 5321 length limits.
 _EMAIL_RE = re.compile(
     r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+){1,3}$",
     re.IGNORECASE,
@@ -102,16 +108,32 @@ def _au_phone(v: str, *, required: bool = True) -> ValidationRejection | None:
     return None
 
 
-def _email(v: str, *, required: bool = True) -> ValidationRejection | None:
+def _email(
+    v: str,
+    *,
+    required: bool = True,
+    strict: bool = True,
+    max_len: int | None = None,
+) -> ValidationRejection | None:
+    """Email validator. Three modes, matching `client_onboarding_validations.md`:
+
+    - `strict=True` (default, emergency_contacts.email): 3-label-cap regex,
+      RFC 5321 length checks, disposable-domain blocklist.
+    - `strict=False` (basics.email, plan_info emails): unbounded-label standard
+      regex, NO disposable check, NO length cap unless `max_len` is set.
+    - `max_len`: extra length cap (spec sets 50 for plan_info contact/billing).
+    """
     if not v:
         return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED) if required else None
-    if not _EMAIL_RE.match(v):
+    if max_len is not None and len(v) > max_len:
         return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
-    # M3 — block known disposable inboxes; also enforce RFC 5321 length limits
+    pattern = _EMAIL_RE if strict else _EMAIL_RE_STANDARD
+    if not pattern.match(v):
+        return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
+    if not strict:
+        return None
+    # Strict-only: RFC 5321 length checks + disposable-domain blocklist.
     domain = v.lower().rsplit("@", 1)[-1]
-    # RFC 5321: each dot-separated label ≤ 63 chars, total domain ≤ 253 chars.
-    # The regex already enforces shape (3-label cap); these guards catch
-    # long-domain transcription artefacts like foo@aaaaaa...64chars...aaa.com.
     if len(domain) > 253 or any(len(lbl) > 63 for lbl in domain.split(".")):
         return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
     if domain in _DISPOSABLE_EMAIL_DOMAINS:
@@ -147,7 +169,15 @@ def _v_full_name(raw: Any, _state: Any) -> ValidationRejection | None:
 
 
 def _v_email_required(raw: Any, _state: Any) -> ValidationRejection | None:
-    return _email(_str(raw), required=True)
+    """STRICT email — used ONLY by `emergency_contacts.email` per spec line 47.
+    Applies 3-label cap + RFC 5321 length + disposable-domain blocklist."""
+    return _email(_str(raw), required=True, strict=True)
+
+
+def _v_email_standard_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    """STANDARD email — used by `basics.email` per spec line 15. No disposable
+    check (auth-prefilled, not user-typed). Standard regex only."""
+    return _email(_str(raw), required=True, strict=False)
 
 
 def _v_phone_au_required(raw: Any, _state: Any) -> ValidationRejection | None:
@@ -298,13 +328,14 @@ def _v_plan_manager_conditional(raw: Any, state: Any) -> ValidationRejection | N
 
 
 def _v_email_conditional(raw: Any, state: Any) -> ValidationRejection | None:
-    """Required email only when plan_management = 'Plan Managed'."""
+    """Required email only when plan_management = 'Plan Managed'. Standard
+    regex + ≤50 chars per spec line 94-95 (no disposable check)."""
     if state is not None:
         mgmt_raw = ((state.values.get("plan_info") or {}).get("plan_management") or {})
         mgmt = mgmt_raw.get("value") if isinstance(mgmt_raw, dict) else mgmt_raw
         if mgmt != "Plan Managed":
-            return _email(_str(raw), required=False)
-    return _email(_str(raw), required=True)
+            return _email(_str(raw), required=False, strict=False, max_len=50)
+    return _email(_str(raw), required=True, strict=False, max_len=50)
 
 
 def _v_amount_optional(raw: Any, _state: Any) -> ValidationRejection | None:
@@ -593,7 +624,7 @@ def _v_doc_expiry_future(raw: Any, _state: Any) -> ValidationRejection | None:
 _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] = {
     # Step 1 — Personal Information
     ("basics", "full_name"):          _v_full_name,
-    ("basics", "email"):              _v_email_required,
+    ("basics", "email"):              _v_email_standard_required,
     ("basics", "phone"):              _v_phone_au_required,
     ("basics", "date_of_birth"):      _v_dob,
     ("basics", "gender"):             _v_gender_required,
@@ -640,7 +671,7 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("plan_info", "billing_email"):  _v_email_conditional,
     ("ndis_goals", "goal"):          _v_text250_required,
     ("support_coordinator", "coordinator_name"):  _v_text50_required,
-    ("support_coordinator", "coordinator_email"): _v_email_required,
+    ("support_coordinator", "coordinator_email"): _v_email_standard_required,
     ("allocated_funding", "daily_living"):          _v_amount_optional,
     ("allocated_funding", "social_community"):       _v_amount_optional,
     ("allocated_funding", "support_coordination"):   _v_amount_optional,

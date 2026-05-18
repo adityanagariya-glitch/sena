@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from onboarding.models.schema_spec import FieldSpec, SectionSpec, StepSchema
     from onboarding.models.session_bootstrap import SessionBootstrap
     from onboarding.repositories.state_repo import FormStateRepo
+
 from onboarding.services import field_apply as _fa
 from onboarding.services.coverage import is_repeatable_eligible
 from onboarding.services.validators import validate_field as _validate_field
@@ -52,7 +53,12 @@ from onboarding.services.validators.cross_field import (
 from onboarding.services.validators.cross_field import (
     check_emergency_phone_unique_and_differs_from_client as _ec_phone_check,
 )
-from onboarding.services.validators.sequencing import section_min_unmet as _section_min_unmet
+from onboarding.services.validators.sequencing import (
+    section_min_unmet as _section_min_unmet,
+)
+from onboarding.services.validators.sequencing import (
+    validate_required_only as _validate_required_only,
+)
 from onboarding.services.webhook import fire_webhook
 
 log = structlog.get_logger(__name__)
@@ -121,7 +127,8 @@ def _set_next_forced_field(
         if section.id != just_set_section:
             # visible_if dependants live in the same section as their condition.
             continue
-        fields = section.item_fields if getattr(section, "is_repeatable", False) else (section.fields or [])
+        is_rep = getattr(section, "is_repeatable", False)
+        fields = section.item_fields if is_rep else (section.fields or [])
         for f in fields:
             vif = getattr(f, "visible_if", None)
             if not vif or just_set_field not in vif:
@@ -710,15 +717,19 @@ class ToolDispatcher:
         # "voice" so envelopes emitted to Flutter carry the marker without
         # the dispatcher needing to know the channel.
         _input_method_raw = args.get("input_method", "voice")
-        input_method: Literal["typed", "voice"] | None
-        if _input_method_raw in ("typed", "voice"):
-            input_method = _input_method_raw
-        else:
-            input_method = None
+        input_method: Literal["typed", "voice"] | None = (
+            _input_method_raw
+            if _input_method_raw in ("typed", "voice")
+            else None
+        )
 
         if not section_id or not field_id:
             return {"ok": False, "error": "section and field are required"}
-        if raw_value is None:
+        if (
+            raw_value is None
+            or (isinstance(raw_value, str) and not raw_value.strip())
+            or (isinstance(raw_value, list) and not raw_value)
+        ):
             return {
                 "ok": False,
                 "error": "either 'value' (scalar) or 'values' (array) is required",
@@ -756,8 +767,8 @@ class ToolDispatcher:
                 # C2 — Buffer the call onto pending_batch; the lock-clear
                 # path will drain it. The model receives code: DEFERRED
                 # so it knows the call is queued, not lost or wrong.
-                _MAX_PENDING_BATCH = 32
-                if len(state_for_lock.pending_batch) >= _MAX_PENDING_BATCH:
+                _max_pending_batch = 32
+                if len(state_for_lock.pending_batch) >= _max_pending_batch:
                     log.warning(
                         "update_field BUFFER_FULL queue_size=%d attempted=%s.%s "
                         "blocking=%s.%s session=%s",
@@ -886,13 +897,16 @@ class ToolDispatcher:
         if section.is_repeatable and repeatable_index is None:
             repeatable_index = 0
 
-        if repeatable_index is not None and section.repeatable:
-            if repeatable_index >= section.repeatable.max:
-                return {
-                    "ok": False,
-                    "error": f"repeatable_index {repeatable_index} exceeds max "
-                             f"{section.repeatable.max}",
-                }
+        if (
+            repeatable_index is not None
+            and section.repeatable
+            and repeatable_index >= section.repeatable.max
+        ):
+            return {
+                "ok": False,
+                "error": f"repeatable_index {repeatable_index} exceeds max "
+                         f"{section.repeatable.max}",
+            }
 
         typed_value = _coerce_value(raw_value, field)
 
@@ -959,29 +973,54 @@ class ToolDispatcher:
             state=state,
             field_spec=_field_spec,
         )
+        _advisory_rej = None
         if rej is not None:
             _upsert_validation_error(state, section_id, field_id, _ri, rej)
-            await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
-            log.info(
-                "validation_rejection section=%s field=%s code=%s session=%s",
-                section_id, field_id, rej.code, self._session_id,
-            )
-            event: dict = {
-                "type": "validation_rejection",
-                "section_id": section_id,
-                "field_id": field_id,
-                "repeatable_index": _ri,
-                "code": rej.code,
-                "reason_human": rej.reason_human,
-            }
-            if rej.suggested_fix is not None:
-                event["suggested_fix"] = rej.suggested_fix
-            if rej.allowed_values is not None:
-                event["allowed_values"] = rej.allowed_values
-            await self._emit(event)
-            return {"ok": False, "rejection": rej.model_dump()}
+            if settings.onboarding_voice_validation_advisory:
+                # Advisory path — persist value anyway, emit warning, fall through
+                _advisory_rej = rej
+                log.info(
+                    "field_advisory_warning section=%s field=%s code=%s session=%s",
+                    section_id, field_id, rej.code, self._session_id,
+                )
+                _adv_event: dict[str, Any] = {
+                    "type": "field_advisory_warning",
+                    "section_id": section_id,
+                    "field_id": field_id,
+                    "repeatable_index": _ri,
+                    "code": rej.code,
+                    "reason_human": rej.reason_human,
+                    "severity": "advisory",
+                }
+                if rej.suggested_fix is not None:
+                    _adv_event["suggested_fix"] = rej.suggested_fix
+                if rej.allowed_values is not None:
+                    _adv_event["allowed_values"] = rej.allowed_values
+                await self._emit(_adv_event)
+                # Fall through to state.set_field below
+            else:
+                # Strict path — original blocking behaviour
+                await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+                log.info(
+                    "validation_rejection section=%s field=%s code=%s session=%s",
+                    section_id, field_id, rej.code, self._session_id,
+                )
+                event: dict = {
+                    "type": "validation_rejection",
+                    "section_id": section_id,
+                    "field_id": field_id,
+                    "repeatable_index": _ri,
+                    "code": rej.code,
+                    "reason_human": rej.reason_human,
+                }
+                if rej.suggested_fix is not None:
+                    event["suggested_fix"] = rej.suggested_fix
+                if rej.allowed_values is not None:
+                    event["allowed_values"] = rej.allowed_values
+                await self._emit(event)
+                return {"ok": False, "rejection": rej.model_dump()}
 
-        # Clear any prior error for this field — validation now passes
+        # Clear any prior error for this field — validation now passes (or advisory)
         _clear_validation_error(state, section_id, field_id, _ri)
 
         # C4 — Per-write cross-field pass for cross-row invariants involving
@@ -1053,8 +1092,8 @@ class ToolDispatcher:
         # Threshold: anything below 0.90 requires explicit user confirmation.
         # The model is instructed by Rule 10 to ask "Is that right?" — this
         # code gate enforces it even if the model skips the prompt.
-        _LOW_CONF_THRESHOLD = 0.90
-        if confidence < _LOW_CONF_THRESHOLD:
+        _low_conf_threshold = 0.90
+        if confidence < _low_conf_threshold:
             log.info(
                 "low_confidence_gate section=%s field=%s confidence=%.2f session=%s — "
                 "returning CONFIRM_REQUIRED, value NOT committed",
@@ -1092,12 +1131,21 @@ class ToolDispatcher:
         # full_name, log a warning. Don't reject (the user may legitimately
         # have that as a contact name) but flag the suspicious overlap so
         # post-hoc analysis catches the hallucination pattern.
-        if section_id == "emergency_contacts" and field_id == "name" and isinstance(typed_value, str):
+        if (
+            section_id == "emergency_contacts"
+            and field_id == "name"
+            and isinstance(typed_value, str)
+        ):
             participant_name_fv = (state.values.get("basics") or {}).get("full_name")
             participant_name = (
-                participant_name_fv.get("value") if isinstance(participant_name_fv, dict) else None
+                participant_name_fv.get("value")
+                if isinstance(participant_name_fv, dict)
+                else None
             )
-            if isinstance(participant_name, str) and participant_name.lower() == typed_value.lower():
+            if (
+                isinstance(participant_name, str)
+                and participant_name.lower() == typed_value.lower()
+            ):
                 import hashlib
                 value_sha8 = hashlib.sha256(typed_value.encode("utf-8")).hexdigest()[:8]
                 log.warning(
@@ -1106,6 +1154,39 @@ class ToolDispatcher:
                     "own name into the emergency-contacts section",
                     section_id, field_id, value_sha8, self._session_id,
                 )
+
+        # Capture prior committed value + confirmed flag for field_confirmed emission.
+        # Must be read BEFORE set_field so we compare against the pre-write state.
+        _sec_vals_pre = state.values.get(section_id)
+        if _ri is not None and isinstance(_sec_vals_pre, list) and _ri < len(_sec_vals_pre):
+            _prior_fv_raw: Any = (
+                _sec_vals_pre[_ri].get(field_id) if isinstance(_sec_vals_pre[_ri], dict) else None
+            )
+        elif isinstance(_sec_vals_pre, dict):
+            _prior_fv_raw = _sec_vals_pre.get(field_id)
+        else:
+            _prior_fv_raw = None
+        _prior_value: Any = (
+            _prior_fv_raw.get("value")
+            if isinstance(_prior_fv_raw, dict)
+            else None
+        )
+        _prior_confirmed: bool = (
+            bool(_prior_fv_raw.get("confirmed_in_session"))
+            if isinstance(_prior_fv_raw, dict)
+            else False
+        )
+
+        # Compute same-value BEFORE set_field so we can persist confirmed_in_session correctly.
+        # confirmed_in_session = True when value is unchanged (field stays confirmed across
+        # subsequent writes); False when value changes (confirmation resets for the new value).
+        if isinstance(typed_value, list):
+            _is_same_value = (
+                set(str(x) for x in typed_value)
+                == set(str(x) for x in (_prior_value if isinstance(_prior_value, list) else []))
+            )
+        else:
+            _is_same_value = (typed_value == _prior_value)
 
         state.set_field(
             section_id=section_id,
@@ -1116,6 +1197,7 @@ class ToolDispatcher:
             turn_id=self._turn_id,
             repeatable_index=repeatable_index if section.is_repeatable else None,
             input_method=input_method,
+            confirmed_in_session=_is_same_value,
         )
 
         # M1 — Clear the PENDING_CONFIRMATION lock if this commit satisfied
@@ -1130,6 +1212,19 @@ class ToolDispatcher:
                 )
             ):
                 state.pending_confirmation = None
+
+        # Emit field_confirmed on the first re-statement of an already-committed value.
+        # confirmed_in_session is now persisted via set_field so no dict mutation needed.
+        if _is_same_value and not _prior_confirmed:
+            await self._emit({
+                "type": "field_confirmed",
+                "section_id": section_id,
+                "field_id": field_id,
+                "repeatable_index": _ri,
+                "value": typed_value,
+                "confirmation_source": "voice",
+                "turn_id": self._turn_id,
+            })
 
         # M5 — Conditional follow-up driver. After committing a value, scan
         # the schema for any field whose `visible_if` references the field we
@@ -1251,6 +1346,8 @@ class ToolDispatcher:
             "required_total": completion.required_total if completion else 0,
             "complete": bool(completion and completion.complete),
         }
+        if _advisory_rej is not None:
+            result["warning"] = _advisory_rej.model_dump()
         if deferred_applied:
             result["deferred_applied"] = deferred_applied
         return result
@@ -1326,7 +1423,7 @@ class ToolDispatcher:
 
         # Require at least one affirmative token — prevents "no thanks" or a
         # random sentence fragment from being treated as consent.
-        _AFFIRMATIVE = frozenset({
+        _affirmative = frozenset({
             "yes", "yeah", "yep", "yup", "correct", "confirmed", "confirm",
             "right", "ok", "okay", "proceed", "go", "done", "sure",
             "absolutely", "good", "perfect", "sounds good", "that's right",
@@ -1335,7 +1432,7 @@ class ToolDispatcher:
         confirmation_words = set(confirmation.lower().split())
         # Also check for multi-word phrases in the raw string
         confirmation_lower = confirmation.lower()
-        has_affirmative = bool(confirmation_words & _AFFIRMATIVE) or any(
+        has_affirmative = bool(confirmation_words & _affirmative) or any(
             phrase in confirmation_lower
             for phrase in (
                 "that's right", "thats right", "sounds good", "all good",
@@ -1461,28 +1558,41 @@ class ToolDispatcher:
             }
 
         # N-2 fix: cross-field invariant gate (NDIS compliance).
-        # pending_validation_errors only catches per-field rejections. Cross-field
-        # rules (emergency-email-unique, plan-end-after-start, medical-history-
-        # all-or-none) only run inside validate_step_complete, which was never
-        # called at advance time. A user could hit advance with two emergency
-        # contacts sharing one email and the webhook would fire with corrupt data.
-        cross_rejections = validate_step_complete(self._schema, state)
-        if cross_rejections:
+        # In advisory mode all cross-field violations are emitted as warnings and
+        # advance proceeds — Flutter submit-button is the sole blocking gate.
+        # validate_required_only (not validate_step_complete) is used here so that
+        # cross-field rules are skipped — all 5 are intentionally advisory on voice.
+        # In strict mode (advisory=False) the original blocking behaviour is preserved.
+        if settings.onboarding_voice_validation_advisory:
+            cross_rejections = _validate_required_only(self._schema, state)
             for rej in cross_rejections:
                 await self._emit({
-                    "type": "validation_rejection",
+                    "type": "field_advisory_warning",
                     "section_id": "_aggregate",
                     "field_id": "_aggregate",
-                    "rejection": rej.model_dump(),
+                    "code": rej.code,
+                    "reason_human": rej.reason_human,
+                    "severity": "advisory",
                 })
-            return {
-                "ok": False,
-                "rejection": {
-                    "code": "cross_field_invariants_failed",
-                    "reason_human": cross_rejections[0].reason_human,
-                    "all_rejections": [r.model_dump() for r in cross_rejections],
-                },
-            }
+            # Do NOT return — advisory violations do not block advance
+        else:
+            cross_rejections = validate_step_complete(self._schema, state)
+            if cross_rejections:
+                for rej in cross_rejections:
+                    await self._emit({
+                        "type": "validation_rejection",
+                        "section_id": "_aggregate",
+                        "field_id": "_aggregate",
+                        "rejection": rej.model_dump(),
+                    })
+                return {
+                    "ok": False,
+                    "rejection": {
+                        "code": "cross_field_invariants_failed",
+                        "reason_human": cross_rejections[0].reason_human,
+                        "all_rejections": [r.model_dump() for r in cross_rejections],
+                    },
+                }
 
         state.completed = True
         state.completed_at = datetime.now(UTC)

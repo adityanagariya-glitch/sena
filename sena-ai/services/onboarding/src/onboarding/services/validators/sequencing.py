@@ -20,9 +20,7 @@ def _has_value(raw: Any) -> bool:
             return False
         if isinstance(v, str) and not v.strip():
             return False
-        if isinstance(v, list) and not v:
-            return False
-        return True
+        return not (isinstance(v, list) and not v)
     if isinstance(raw, str):
         return bool(raw.strip())
     if isinstance(raw, list):
@@ -30,18 +28,34 @@ def _has_value(raw: Any) -> bool:
     return True
 
 
-def next_required_field(schema: StepSchema, state: FormState) -> dict | None:
+def next_required_field(
+    schema: StepSchema,
+    state: FormState,
+    *,
+    screen_field_status: dict[str, str] | None = None,
+) -> dict | None:
     """First required field with no value, walking schema sections in order.
 
     Returns {"section_id", "field_id", "label"} or None when all required fields filled.
+
+    `screen_field_status` (optional): dot-notation `section.field` → status string
+    from the latest screen_state_v2 frame. Any path whose status == "filled" is
+    treated as populated even when FormState is empty for it — covers the race
+    where Flutter UI shows pre-filled values that haven't seeded into Redis yet
+    (fresh resume, slow pre-fill API, etc.). Schema-agnostic: operates on any
+    section/field IDs the schema declares.
     """
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
-        row: dict = (sec_vals[0] if isinstance(sec_vals, list) and sec_vals else {}) if is_rep else (sec_vals if isinstance(sec_vals, dict) else {})
+        row: dict = (
+            (sec_vals[0] if isinstance(sec_vals, list) and sec_vals else {})
+            if is_rep
+            else (sec_vals if isinstance(sec_vals, dict) else {})
+        )
 
-        for field in fields:
+        for field in fields or []:
             if not field.required:
                 continue
             if field.visible_if:
@@ -51,8 +65,14 @@ def next_required_field(schema: StepSchema, state: FormState) -> dict | None:
                 if actual != cond_v:
                     continue
             raw = row.get(field.id) if isinstance(row, dict) else None
-            if not _has_value(raw):
-                return {"section_id": section.id, "field_id": field.id, "label": field.label}
+            if _has_value(raw):
+                continue
+            # Honor screen-state "filled" status as effectively populated.
+            if screen_field_status is not None:
+                path = f"{section.id}.{field.id}"
+                if screen_field_status.get(path) == "filled":
+                    continue
+            return {"section_id": section.id, "field_id": field.id, "label": field.label}
     return None
 
 
@@ -67,9 +87,13 @@ def next_optional_field(schema: StepSchema, state: FormState) -> dict | None:
         is_rep = getattr(section, "is_repeatable", False)
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
-        row: dict = (sec_vals[0] if isinstance(sec_vals, list) and sec_vals else {}) if is_rep else (sec_vals if isinstance(sec_vals, dict) else {})
+        row: dict = (
+            (sec_vals[0] if isinstance(sec_vals, list) and sec_vals else {})
+            if is_rep
+            else (sec_vals if isinstance(sec_vals, dict) else {})
+        )
 
-        for field in fields:
+        for field in fields or []:
             if field.required:
                 continue
             raw = row.get(field.id) if isinstance(row, dict) else None
@@ -106,7 +130,11 @@ def validate_step_complete(schema: StepSchema, state: FormState) -> list[Validat
         is_rep = getattr(section, "is_repeatable", False)
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
-        rows = sec_vals if (is_rep and isinstance(sec_vals, list)) else ([sec_vals] if isinstance(sec_vals, dict) else [{}])
+        rows = (
+            sec_vals
+            if (is_rep and isinstance(sec_vals, list))
+            else ([sec_vals] if isinstance(sec_vals, dict) else [{}])
+        )
 
         for row_idx, row in enumerate(rows):
             if not isinstance(row, dict):
@@ -134,4 +162,46 @@ def validate_step_complete(schema: StepSchema, state: FormState) -> list[Validat
                         rejections.append(rej)
 
     rejections.extend(validate_cross_fields(state.values))
+    return rejections
+
+
+def validate_required_only(schema: StepSchema, state: FormState) -> list[ValidationRejection]:
+    """Per-field required/validation rejections only — cross-field rules excluded.
+    Used by advance_step on the voice advisory path."""
+    rejections: list[ValidationRejection] = []
+    for section in schema.sections:
+        is_rep = getattr(section, "is_repeatable", False)
+        fields = section.item_fields if is_rep else (section.fields or [])
+        sec_vals = state.values.get(section.id) or {}
+        rows = (
+            sec_vals
+            if (is_rep and isinstance(sec_vals, list))
+            else ([sec_vals] if isinstance(sec_vals, dict) else [{}])
+        )
+
+        for row_idx, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            for field in fields:
+                if field.visible_if:
+                    cond_f, cond_v = next(iter(field.visible_if.items()))
+                    actual_raw = row.get(cond_f)
+                    actual = actual_raw.get("value") if isinstance(actual_raw, dict) else actual_raw
+                    if actual != cond_v:
+                        continue
+                raw = row.get(field.id)
+                if field.required and not _has_value(raw):
+                    rejections.append(ValidationRejection(
+                        code="required_field_missing",
+                        reason_human="This field is required.",
+                        suggested_fix=f"Please provide a value for {field.label}.",
+                    ))
+                    continue
+                value = raw.get("value") if isinstance(raw, dict) else raw
+                if value is not None:
+                    rej = validate_field(section.id, field.id, value,
+                                         repeatable_index=row_idx if is_rep else None, state=state)
+                    if rej:
+                        rejections.append(rej)
+
     return rejections
