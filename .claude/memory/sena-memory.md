@@ -3,6 +3,10 @@
 One line per significant task. Format:
 `[YYYY-MM-DD] [agent name or "main"] — [what was done] — [key outcome]`
 
+[2026-05-14] main — rewired restrictive_practices/pipeline/graph.py: added summary_step and incident_draft_step nodes, updated PipelineState TypedDict, new _route_after_summary routing, clean notes now terminate via summary_step instead of END — import check passed OK
+
+[2026-05-14] [main] — Created restrictive_practices/pipeline/incident_draft.py (NDIS incident report drafter step using Claude Sonnet via Bedrock converse, mirrors evaluator.py pattern) — import clean, all helpers verified
+
 ## Log
 
 2026-05-08 main — Bootstrapped Sena Agent System (created `.claude/memory/`, `.claude/rules/`, three memory files, rules file; appended Sena Agent System section to CLAUDE.md) — Workflow + routing infrastructure now persistent across sessions; SessionStart hook already wired in `settings.json` so it was left untouched.
