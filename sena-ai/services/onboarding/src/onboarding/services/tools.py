@@ -1421,33 +1421,19 @@ class ToolDispatcher:
                 },
             }
 
-        # Require at least one affirmative token — prevents "no thanks" or a
-        # random sentence fragment from being treated as consent.
-        _affirmative = frozenset({
-            "yes", "yeah", "yep", "yup", "correct", "confirmed", "confirm",
-            "right", "ok", "okay", "proceed", "go", "done", "sure",
-            "absolutely", "good", "perfect", "sounds good", "that's right",
-            "thats right", "all good",
-        })
-        confirmation_words = set(confirmation.lower().split())
-        # Also check for multi-word phrases in the raw string
+        # Reject only explicit refusals — authority to save is on the frontend.
+        # Strip punctuation per-token so "Yes." / "Confirmed." match correctly.
+        _negatives = frozenset({"no", "nope", "nah", "cancel", "stop", "not", "don't", "dont"})
         confirmation_lower = confirmation.lower()
-        has_affirmative = bool(confirmation_words & _affirmative) or any(
-            phrase in confirmation_lower
-            for phrase in (
-                "that's right", "thats right", "sounds good", "all good",
-                "that's all", "thats all", "that's everything", "all done",
-                "i'm done", "im done", "we're done", "that's correct",
-            )
-        )
-        if not has_affirmative:
+        # Strip trailing/leading punctuation from each token before checking
+        confirmation_words = {w.strip(".,!?;:'\"") for w in confirmation_lower.split()}
+        if confirmation_words <= _negatives:
             return {
                 "ok": False,
                 "rejection": {
                     "code": "missing_confirmation",
                     "reason_human": (
-                        "I need a clear yes or confirmation before I can save and "
-                        "move on — could you say yes or confirmed to proceed?"
+                        "No problem — let me know when you're ready to save and move on."
                     ),
                 },
             }
