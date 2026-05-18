@@ -49,9 +49,22 @@ Figma
 .ruff_cache/
 .claude/
 .gemini/
-CLAUDE.md
+
+# Ignore the .claude directory in any subfolder
+**/.claude/
+
+# Ignore CLAUDE.md files in any subfolder
+**/CLAUDE.md
+
 # Added by code-review-graph
 .code-review-graph/
 .agent_memory/
 .agents/
 .mcp.json
+graphify-out/
+*.html
+*.pdf
+.remember
+*.md
+*.txt
+!requirements.txt
