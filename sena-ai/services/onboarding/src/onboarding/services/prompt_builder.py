@@ -50,13 +50,16 @@ def _compute_next_required_field(
         # inspecting any scalar field within it.
         if _section_min_unmet(section, state.values.get(section.id)):
             min_count = section.repeatable.min
+            cur_rows = len(state.values.get(section.id) or [])
             return {
                 "section_id": section.id,
-                "field_id": "__section_min__",
-                "label": (
-                    f"At least {min_count} "
-                    f"{section.label or section.id} entr"
-                    f"{'y' if min_count == 1 else 'ies'} required"
+                "action": "add_repeatable_row",
+                "rows_current": cur_rows,
+                "rows_min_required": min_count,
+                "instruction": (
+                    f"Call add_repeatable_row(section_id='{section.id}') to create"
+                    f" row {cur_rows + 1}, then fill its fields."
+                    " Do NOT call update_field before the row exists."
                 ),
             }
 
@@ -342,10 +345,17 @@ def build_system_prompt(
     next_req = _compute_next_required_field(
         schema, state, screen_field_status=screen_field_status,
     )
-    next_req_text = (
-        f"{next_req['section_id']}.{next_req['field_id']} ({next_req['label']})"
-        if next_req else ""
-    )
+    if next_req and next_req.get("action") == "add_repeatable_row":
+        next_req_text = (
+            f"ACTION_REQUIRED: call add_repeatable_row(section_id='{next_req['section_id']}')"
+            f" — {next_req['rows_current']} of {next_req['rows_min_required']} rows exist."
+            " Do NOT call update_field until the row exists."
+        )
+    else:
+        next_req_text = (
+            f"{next_req['section_id']}.{next_req['field_id']} ({next_req['label']})"
+            if next_req else ""
+        )
     pending_errors_text = _render_pending_validation_errors(
         getattr(state, "pending_validation_errors", [])
     )

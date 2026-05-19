@@ -150,16 +150,17 @@ def _make_requirements_state(extra_values: dict | None = None) -> FormState:
 
 
 def test_section_min_unmet_morning_zero_rows() -> None:
-    """morning_routine has min=1 and 0 rows — must surface __section_min__."""
+    """morning_routine has min=1 and 0 rows — must surface add_repeatable_row action."""
     schema = StepSchema(**_REQUIREMENTS_FIXTURE)
     state = _make_requirements_state()
     result = _compute_next_required_field(schema, state)
 
     assert result is not None
     assert result["section_id"] == "morning_routine"
-    assert result["field_id"] == "__section_min__"
-    assert "1" in result["label"]
-    assert "required" in result["label"]
+    assert result["action"] == "add_repeatable_row"
+    assert result["rows_current"] == 0
+    assert result["rows_min_required"] == 1
+    assert "add_repeatable_row" in result["instruction"]
 
 
 def test_section_min_unmet_morning_one_row_clears() -> None:
@@ -173,7 +174,7 @@ def test_section_min_unmet_morning_one_row_clears() -> None:
     # morning_routine min is now met; evening_routine min=1 is still unmet
     assert result is not None
     assert result["section_id"] == "evening_routine"
-    assert result["field_id"] == "__section_min__"
+    assert result["action"] == "add_repeatable_row"
 
 
 def test_section_min_unmet_both_met_falls_through_to_scalar() -> None:

@@ -133,15 +133,33 @@ def _build_initial_values(initial_state: dict | None) -> dict:
                     for field_id, fv in row.items()
                 }
                 for row in section_data
+                if isinstance(row, dict)
             ]
         elif isinstance(section_data, dict):
-            result[section_id] = {
-                field_id: (
-                    fv if isinstance(fv, dict) and "value" in fv
-                    else FieldValue(value=fv, source=FieldSource.app).model_dump(mode="json")
-                )
-                for field_id, fv in section_data.items()
-            }
+            # Flutter sends repeatable sections as flat key `section.rows: [...]`.
+            # _normalize_flat_to_nested converts that to {"rows": [...]}.
+            # Unwrap to a list so repeatable sections are stored correctly.
+            rows_val = section_data.get("rows")
+            if set(section_data.keys()) == {"rows"} and isinstance(rows_val, list):
+                result[section_id] = [
+                    {
+                        field_id: (
+                            fv if isinstance(fv, dict) and "value" in fv
+                            else FieldValue(value=fv, source=FieldSource.app).model_dump(mode="json")
+                        )
+                        for field_id, fv in row.items()
+                    }
+                    for row in rows_val
+                    if isinstance(row, dict)
+                ]
+            else:
+                result[section_id] = {
+                    field_id: (
+                        fv if isinstance(fv, dict) and "value" in fv
+                        else FieldValue(value=fv, source=FieldSource.app).model_dump(mode="json")
+                    )
+                    for field_id, fv in section_data.items()
+                }
     return result
 
 
