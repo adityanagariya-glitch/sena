@@ -149,36 +149,33 @@ def _make_requirements_state(extra_values: dict | None = None) -> FormState:
     )
 
 
-def test_section_min_unmet_morning_zero_rows() -> None:
-    """morning_routine has min=1 and 0 rows — must surface add_repeatable_row action."""
+def test_routine_sections_are_optional_with_zero_rows() -> None:
+    """morning_routine and evening_routine both have min=0 — empty is fine.
+    next_required_field must NOT surface them when scalar fields are filled.
+    """
     schema = StepSchema(**_REQUIREMENTS_FIXTURE)
     state = _make_requirements_state()
     result = _compute_next_required_field(schema, state)
 
-    assert result is not None
-    assert result["section_id"] == "morning_routine"
-    assert result["action"] == "add_repeatable_row"
-    assert result["rows_current"] == 0
-    assert result["rows_min_required"] == 1
-    assert "add_repeatable_row" in result["instruction"]
+    # Both routine sections optional (min=0); requirements scalar fields
+    # filled by _FILLED_REQUIREMENTS — no required-field gap remains.
+    assert result is None
 
 
-def test_section_min_unmet_morning_one_row_clears() -> None:
-    """One morning_routine row satisfies min=1; evening_routine (min=1, 0 rows) surfaces next."""
+def test_routine_sections_optional_one_row_still_ok() -> None:
+    """Adding one morning_routine row is fine; the optional evening_routine
+    remains empty and that is NOT a required-field gap."""
     schema = StepSchema(**_REQUIREMENTS_FIXTURE)
     state = _make_requirements_state(extra_values={
         "morning_routine": [{"description": {"value": "Wake up at 7am", "source": "voice"}}],
     })
     result = _compute_next_required_field(schema, state)
 
-    # morning_routine min is now met; evening_routine min=1 is still unmet
-    assert result is not None
-    assert result["section_id"] == "evening_routine"
-    assert result["action"] == "add_repeatable_row"
+    assert result is None
 
 
-def test_section_min_unmet_both_met_falls_through_to_scalar() -> None:
-    """Both routine mins met — falls through to first required scalar field in a row."""
+def test_routine_sections_optional_both_filled() -> None:
+    """Both routines populated — still no required gap."""
     schema = StepSchema(**_REQUIREMENTS_FIXTURE)
     state = _make_requirements_state(extra_values={
         "morning_routine": [{"description": {"value": "Wake up", "source": "voice"}}],
@@ -186,7 +183,6 @@ def test_section_min_unmet_both_met_falls_through_to_scalar() -> None:
     })
     result = _compute_next_required_field(schema, state)
 
-    # All required fields filled (mins met, row descriptions provided) — None expected
     assert result is None
 
 
@@ -260,4 +256,9 @@ def test_build_system_prompt_contains_rule_13_and_14() -> None:
     assert "enum_invalid" in prompt
     assert "allowed_values" in prompt
     assert "Rule 14" in prompt
-    assert "section_min_unmet" in prompt
+    # Rule 14 now declares routines OPTIONAL (was: section_min_unmet mandate)
+    assert "OPTIONAL" in prompt
+    # New rules from 2026-05-19 fixes
+    assert "Rule 19" in prompt  # read state before asking
+    assert "Rule 20" in prompt  # readonly fields (email)
+    assert "Rule 21" in prompt  # tone consistency

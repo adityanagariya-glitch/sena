@@ -47,6 +47,18 @@ def next_required_field(
     """
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
+        # Skip empty optional repeatable sections (min=0). Without this guard,
+        # the loop synthesises a phantom empty row and surfaces every required
+        # item_field as a gap — turning OPTIONAL routine sections into a
+        # blocking re-ask loop. (Bug: morning_routine/evening_routine kept
+        # being demanded even when min=0 made them skippable.)
+        if is_rep:
+            rep_cfg = getattr(section, "repeatable", None)
+            _min_rows = getattr(rep_cfg, "min", 0) if rep_cfg else 0
+            _sec_rows = state.values.get(section.id)
+            _row_count = len(_sec_rows) if isinstance(_sec_rows, list) else 0
+            if _min_rows == 0 and _row_count == 0:
+                continue
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
         row: dict = (
@@ -128,6 +140,17 @@ def validate_step_complete(schema: StepSchema, state: FormState) -> list[Validat
     rejections: list[ValidationRejection] = []
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
+        # Optional-repeatable guard (mirror of next_required_field): skip
+        # required-field iteration for repeatables with min=0 and no rows.
+        # Otherwise an empty optional section synthesises a phantom row that
+        # produces spurious required_field_missing rejections at advance_step.
+        if is_rep:
+            rep_cfg = getattr(section, "repeatable", None)
+            _min_rows = getattr(rep_cfg, "min", 0) if rep_cfg else 0
+            _sec_rows = state.values.get(section.id)
+            _row_count = len(_sec_rows) if isinstance(_sec_rows, list) else 0
+            if _min_rows == 0 and _row_count == 0:
+                continue
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
         rows = (
@@ -171,6 +194,17 @@ def validate_required_only(schema: StepSchema, state: FormState) -> list[Validat
     rejections: list[ValidationRejection] = []
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
+        # Optional-repeatable guard (mirror of next_required_field): skip
+        # required-field iteration for repeatables with min=0 and no rows.
+        # Otherwise an empty optional section synthesises a phantom row that
+        # produces spurious required_field_missing rejections at advance_step.
+        if is_rep:
+            rep_cfg = getattr(section, "repeatable", None)
+            _min_rows = getattr(rep_cfg, "min", 0) if rep_cfg else 0
+            _sec_rows = state.values.get(section.id)
+            _row_count = len(_sec_rows) if isinstance(_sec_rows, list) else 0
+            if _min_rows == 0 and _row_count == 0:
+                continue
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
         rows = (

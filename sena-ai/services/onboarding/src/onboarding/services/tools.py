@@ -938,6 +938,33 @@ class ToolDispatcher:
                 "error": f"field '{field_id}' not in section '{section_id}'",
             }
 
+        # Schema-level readonly enforcement. Identity-bound fields (email,
+        # externally-managed IDs) carry `readonly: true` in the schema and
+        # MUST NEVER be writable via voice. The bootstrap readonly_paths
+        # mechanism is per-session (covers app-passed paths); this is the
+        # schema-defined invariant that holds regardless of bootstrap.
+        if field.readonly:
+            log.warning(
+                "update_field REJECTED readonly_field section=%s field=%s "
+                "session=%s — schema declares this field read-only",
+                section_id, field_id, self._session_id,
+            )
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "field_readonly",
+                    "reason_human": (
+                        f"'{field.label or field_id}' is read-only — it comes "
+                        "from your account and cannot be changed here."
+                    ),
+                    "suggested_fix": (
+                        "Tell the user the value is fixed from their account "
+                        "and move on to the next field."
+                    ),
+                },
+                "readonly": True,
+            }
+
         # Repeatable sanity: index only meaningful for repeatable sections
         if section.is_repeatable and repeatable_index is None:
             repeatable_index = 0

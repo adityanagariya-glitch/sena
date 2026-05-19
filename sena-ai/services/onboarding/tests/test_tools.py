@@ -34,13 +34,23 @@ def personal_schema() -> StepSchema:
 
 @pytest_asyncio.fixture
 async def seeded_repo(fake_redis, personal_schema):
-    """Repo with a fresh FormState + schema saved for session_id='sid-1'."""
+    """Repo with a fresh FormState + schema saved for session_id='sid-1'.
+
+    Pre-seeds `basics.email` directly into state (bypassing the dispatcher)
+    because in production email is bootstrapped from the auth provider and
+    the field is now schema-level readonly — voice writes are rejected.
+    Tests that exercise advance_step rely on email being present.
+    """
     repo = FormStateRepo(fake_redis)
     state = FormState(
         session_id="sid-1",
         step_id=personal_schema.step_id,
         participant_id="p-1",
     )
+    # Mirror auth-bootstrap: seed readonly email at session create.
+    state.values["basics"] = {
+        "email": {"value": "aditya@example.com", "source": "app", "confidence": None},
+    }
     state.recompute_completion(personal_schema)
     await repo.create_session(state, personal_schema, ttl_sec=3600)
     return repo
@@ -92,12 +102,14 @@ def test_function_decls_cover_all_handlers() -> None:
 
 @pytest.mark.asyncio
 async def test_update_field_happy_path(dispatcher, seeded_repo, emitted) -> None:
+    # seeded_repo pre-fills basics.email (auth-bootstrapped). After writing
+    # full_name, required_filled = 2 (email + full_name).
     result = await dispatcher.dispatch(
         "update_field",
         {"section": "basics", "field": "full_name", "value": "Aditya Nagariya", "confidence": 0.95},
     )
     assert result["ok"] is True
-    assert result["required_filled"] == 1
+    assert result["required_filled"] == 2
 
     state = await seeded_repo.get_state("sid-1")
     assert state.values["basics"]["full_name"]["value"] == "Aditya Nagariya"
@@ -193,8 +205,11 @@ async def test_get_session_context_reports_progress(dispatcher) -> None:
     result = await dispatcher.dispatch("get_session_context", {})
     assert result["ok"] is True
     assert result["filled"]["basics.full_name"] == "Aditya Nagariya"
-    assert "basics.email" in result["missing_required"]
-    assert result["required_filled"] >= 1
+    # basics.email is auth-bootstrapped (seeded by fixture) — must NOT be
+    # in missing_required. Other required fields still are.
+    assert "basics.email" not in result["missing_required"]
+    assert "basics.phone" in result["missing_required"]
+    assert result["required_filled"] >= 2  # email + full_name
 
 
 # ── advance_step ─────────────────────────────────────────────────────────────
@@ -242,9 +257,12 @@ async def test_advance_step_cross_field_gate_blocks_on_rejection(
     monkeypatch.setattr(tools_module, "validate_step_complete", lambda s, st: [fake_rejection])
 
     # Fill all required fields so the completion gate passes
+    # NOTE: basics.email is now schema-readonly (auth-bootstrapped in
+    # production; pre-seeded by the `seeded_repo` fixture for tests).
+    # Voice writes to basics.email are rejected with code=field_readonly,
+    # so this map MUST NOT include it.
     fills = {
         ("basics", "full_name"): "Aditya Nagariya",
-        ("basics", "email"): "a@b.com",
         ("basics", "phone"): "+61400000000",
         ("basics", "date_of_birth"): "1990-01-01",
         ("basics", "gender"): "Male",
@@ -288,9 +306,12 @@ async def test_advance_step_emits_validation_rejection_for_cross_field_violation
     )
     monkeypatch.setattr(tools_module, "validate_step_complete", lambda s, st: [fake_rejection])
     # Fill all required fields so the completion check passes
+    # NOTE: basics.email is now schema-readonly (auth-bootstrapped in
+    # production; pre-seeded by the `seeded_repo` fixture for tests).
+    # Voice writes to basics.email are rejected with code=field_readonly,
+    # so this map MUST NOT include it.
     fills = {
         ("basics", "full_name"): "Aditya Nagariya",
-        ("basics", "email"): "a@b.com",
         ("basics", "phone"): "+61400000000",
         ("basics", "date_of_birth"): "1990-01-01",
         ("basics", "gender"): "Male",
@@ -328,9 +349,12 @@ async def test_advance_step_fires_webhook_when_complete(
     dispatcher, seeded_repo, personal_schema, emitted, monkeypatch
 ) -> None:
     # Fill every field visible to recompute_completion as "required"
+    # NOTE: basics.email is now schema-readonly (auth-bootstrapped in
+    # production; pre-seeded by the `seeded_repo` fixture for tests).
+    # Voice writes to basics.email are rejected with code=field_readonly,
+    # so this map MUST NOT include it.
     fills = {
         ("basics", "full_name"): "Aditya Nagariya",
-        ("basics", "email"): "a@b.com",
         ("basics", "phone"): "+61400000000",
         ("basics", "date_of_birth"): "1990-01-01",
         ("basics", "gender"): "Male",
@@ -673,10 +697,18 @@ async def test_field_updated_emitted_on_advisory_validation(
 ) -> None:
     """Advisory mode (default) — a value that fails soft validation is still
     persisted and field_updated is emitted so Flutter renders the captured value.
+    (Was: basics.email — now readonly. Use emergency_contacts.email which
+    accepts any input in advisory mode but flags disposable domains.)
     """
     result = await dispatcher.dispatch(
         "update_field",
-        {"section": "basics", "field": "email", "value": "not-an-email", "confidence": 1.0},
+        {
+            "section": "emergency_contacts",
+            "field": "email",
+            "value": "foo@mailinator.com",
+            "repeatable_index": 0,
+            "confidence": 1.0,
+        },
     )
     assert result["ok"] is True
     assert "warning" in result
@@ -798,11 +830,12 @@ async def test_pending_lock_clears_on_confirmation_commit(
 
 
 @pytest.mark.asyncio
-async def test_interpreter_required_unlocks_interpreter_language(
+async def test_interpreter_required_no_longer_forces_a_language_field(
     dispatcher, seeded_repo,
 ) -> None:
-    """M5 — Setting basics.interpreter_required=true must write
-    state.next_forced_field = {section: basics, field: interpreter_language}.
+    """interpreter_language was removed from the schema (user requested:
+    'no need to ask for language for interpreter'). Setting interpreter_required
+    must no longer set next_forced_field — there's nothing to force.
     """
     result = await dispatcher.dispatch(
         "update_field",
@@ -810,32 +843,10 @@ async def test_interpreter_required_unlocks_interpreter_language(
     )
     assert result["ok"] is True
     state = await seeded_repo.get_state("sid-1")
-    assert state.next_forced_field == {
-        "section": "basics",
-        "field": "interpreter_language",
-    }
-
-
-@pytest.mark.asyncio
-async def test_filling_forced_field_clears_directive(
-    dispatcher, seeded_repo,
-) -> None:
-    """M5 — After the forced field is filled, next_forced_field clears."""
-    # Unlock the dependent.
-    await dispatcher.dispatch(
-        "update_field",
-        {"section": "basics", "field": "interpreter_required", "value": "true", "confidence": 1.0},
+    assert state.next_forced_field is None, (
+        f"interpreter_language field was removed — no dependent should force; "
+        f"got {state.next_forced_field}"
     )
-    state = await seeded_repo.get_state("sid-1")
-    assert state.next_forced_field is not None
-
-    # Fill the forced dependent.
-    await dispatcher.dispatch(
-        "update_field",
-        {"section": "basics", "field": "interpreter_language", "value": "Gujarati", "confidence": 1.0},
-    )
-    state = await seeded_repo.get_state("sid-1")
-    assert state.next_forced_field is None
 
 
 # ── M3: Stricter email validator — applies ONLY to `emergency_contacts.email`
@@ -897,19 +908,21 @@ async def test_email_disposable_domain_blocked_in_strict_mode(
 
 
 @pytest.mark.asyncio
-async def test_basics_email_allows_disposable_per_spec(
-    dispatcher, emitted,
+async def test_basics_email_is_readonly_rejected(
+    dispatcher, seeded_repo,
 ) -> None:
-    """Spec line 15: `basics.email` uses the standard validator (no disposable
-    check). Pre-filled from auth, so we trust the upstream identity provider —
-    we don't gate it here."""
+    """basics.email is auth-bootstrapped and schema-level readonly. Voice
+    update_field calls targeting it MUST be rejected with field_readonly
+    regardless of the proposed value's validity."""
     result = await dispatcher.dispatch(
         "update_field",
         {"section": "basics", "field": "email", "value": "foo@mailinator.com", "confidence": 1.0},
     )
-    assert result["ok"] is True, (
-        f"basics.email should accept any RFC-valid address per spec; got {result}"
-    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "field_readonly"
+    # Seeded value MUST be unchanged
+    state = await seeded_repo.get_state("sid-1")
+    assert state.values["basics"]["email"]["value"] == "aditya@example.com"
 
 
 @pytest.mark.asyncio
@@ -1260,12 +1273,18 @@ async def _fill_requirements_scalar_fields(dispatcher: ToolDispatcher) -> None:
 
 
 @pytest.mark.asyncio
-async def test_advance_step_blocked_by_section_min(
+async def test_advance_step_no_longer_blocks_on_optional_routines(
     requirements_dispatcher, requirements_repo, requirements_schema, emitted, monkeypatch
 ) -> None:
-    """V4 — advance_step must block and NOT fire the webhook when morning_routine
-    and evening_routine have 0 rows (min=1 each)."""
-    monkeypatch.setattr(tools_module, "fire_webhook", None)  # must not be called
+    """Flipped V4 — morning_routine and evening_routine are now optional
+    (repeatable.min=0 per the 2026-05-19 schema change). The "section_min_unmet"
+    error path MUST NOT fire on empty routine sections. (Other gates such
+    as missing scalar fields may still block in this fixture's coverage
+    config — that is unrelated to the routines change.)"""
+    async def fake_fire_webhook(**kwargs):
+        return True
+
+    monkeypatch.setattr(tools_module, "fire_webhook", fake_fire_webhook)
 
     await _fill_requirements_scalar_fields(requirements_dispatcher)
 
@@ -1273,19 +1292,23 @@ async def test_advance_step_blocked_by_section_min(
         "advance_step", {"confirmation_transcript": "yes I'm done"}
     )
 
-    assert result["ok"] is False
-    assert result["error"] == "section_min_unmet"
-    section_ids = [s["section_id"] for s in result["sections"]]
-    assert "morning_routine" in section_ids or "evening_routine" in section_ids
-    assert requirements_dispatcher.step_completed is False
+    # Optional routines empty → section_min_unmet error code must not appear
+    assert result.get("error") != "section_min_unmet"
+    # And no section in the response should cite morning/evening routine
+    # as failing the section-min gate
+    sections = result.get("sections") or []
+    section_ids = [s.get("section_id") for s in sections]
+    assert "morning_routine" not in section_ids
+    assert "evening_routine" not in section_ids
 
-    # field_skipped_warning must have been emitted
+    # If field_skipped_warning was emitted for unrelated coverage gaps,
+    # it MUST NOT cite morning_routine / evening_routine — those sections
+    # are now optional and not "missing".
     warning_events = [e for e in emitted if e["type"] == "field_skipped_warning"]
-    assert len(warning_events) >= 1
-    warning = warning_events[-1]
-    assert warning["missing_count"] >= 1
-    section_ids_in_warning = [f["section_id"] for f in warning["missing_fields"]]
-    assert any(sid in section_ids_in_warning for sid in ("morning_routine", "evening_routine"))
+    for warning in warning_events:
+        warn_sections = [f["section_id"] for f in warning.get("missing_fields", [])]
+        assert "morning_routine" not in warn_sections
+        assert "evening_routine" not in warn_sections
 
 
 # ── S6: Sentinel field_id guard ──────────────────────────────────────────────
@@ -1596,3 +1619,71 @@ async def test_cross_section_blocked_includes_retry_with_hint(
     assert result["ok"] is False
     assert result["rejection"]["code"] == "cross_section_blocked"
     assert result["rejection"].get("retry_with") == {"cross_section_intent": True}
+
+
+@pytest.mark.asyncio
+async def test_update_field_rejects_readonly_field(
+    dispatcher, seeded_repo
+) -> None:
+    """basics.email carries readonly:true in the schema; the dispatcher
+    must reject any update attempt with code 'field_readonly' regardless
+    of confidence, value validity, or focus state.
+    """
+    result = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "basics",
+            "field": "email",
+            "value": "new@example.com",
+            "confidence": 1.0,
+        },
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "field_readonly"
+    assert result["readonly"] is True
+
+    state_after = await seeded_repo.get_state("sid-1")
+    # Seeded value must be intact — rejection guarantees no overwrite.
+    assert state_after.values["basics"]["email"]["value"] == "aditya@example.com"
+
+
+def test_gender_options_are_three_values(personal_schema) -> None:
+    """basics.gender must only offer [Male, Female, Other]."""
+    section = personal_schema.get_section("basics")
+    gender = next(f for f in section.fields if f.id == "gender")
+    assert gender.options == ["Male", "Female", "Other"]
+
+
+def test_preferred_language_is_enum_with_full_list(personal_schema) -> None:
+    """basics.preferred_language must be an enum with the agreed 10 options."""
+    section = personal_schema.get_section("basics")
+    lang = next(f for f in section.fields if f.id == "preferred_language")
+    assert lang.type.value == "enum"
+    assert lang.options == [
+        "English",
+        "Mandarin",
+        "Arabic",
+        "Vietnamese",
+        "Cantonese",
+        "Punjabi",
+        "Greek",
+        "Italian",
+        "Hindi",
+        "Spanish",
+    ]
+
+
+def test_interpreter_language_field_removed(personal_schema) -> None:
+    """No interpreter_language field — user explicitly requested removal."""
+    section = personal_schema.get_section("basics")
+    field_ids = {f.id for f in section.fields}
+    assert "interpreter_language" not in field_ids
+    # interpreter_required is still kept
+    assert "interpreter_required" in field_ids
+
+
+def test_email_field_is_readonly(personal_schema) -> None:
+    """Schema-level invariant: basics.email carries readonly:true."""
+    section = personal_schema.get_section("basics")
+    email = next(f for f in section.fields if f.id == "email")
+    assert email.readonly is True

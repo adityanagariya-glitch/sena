@@ -43,6 +43,18 @@ def _compute_next_required_field(
     """
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
+        # Optional-repeatable guard (mirror sequencing.next_required_field):
+        # for repeatables with min=0 and zero rows, the whole section is
+        # skippable — do NOT iterate required item_fields against a
+        # synthesised empty row. Otherwise routine sections marked optional
+        # would surface a phantom "Routine step" required-field gap.
+        if is_rep:
+            rep_cfg = getattr(section, "repeatable", None)
+            _min_rows = getattr(rep_cfg, "min", 0) if rep_cfg else 0
+            _sec_rows = state.values.get(section.id)
+            _row_count = len(_sec_rows) if isinstance(_sec_rows, list) else 0
+            if _min_rows == 0 and _row_count == 0:
+                continue
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
         # Section-min gate (V4): if this repeatable section has fewer rows than
