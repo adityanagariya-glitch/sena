@@ -514,6 +514,8 @@ class GeminiLiveSession:
                             turn_started = False
                             chunk_count = 0
                             self._gemini_is_speaking = False
+                            # Reset silence timer — user gets a fresh window after each agent turn
+                            self._last_audio_at = time.monotonic()
 
                             # Voice protocol — preserve the interrupted thought
                             # so the next agent turn can address the user's
@@ -563,6 +565,8 @@ class GeminiLiveSession:
                             chunk_count = 0
                             turn_started = False
                             self._gemini_is_speaking = False
+                            # Reset silence timer — user gets a fresh window after each agent turn
+                            self._last_audio_at = time.monotonic()
                             if self._tools:
                                 self._tools.set_turn_id(self._turn_id)
                             # Phase C — advance_step closed the step; end loop
