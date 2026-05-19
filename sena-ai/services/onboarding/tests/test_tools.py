@@ -1174,7 +1174,8 @@ async def test_advance_step_blocked_by_section_min(
 
     assert result["ok"] is False
     assert result["error"] == "section_min_unmet"
-    assert "morning_routine" in result["sections"] or "evening_routine" in result["sections"]
+    section_ids = [s["section_id"] for s in result["sections"]]
+    assert "morning_routine" in section_ids or "evening_routine" in section_ids
     assert requirements_dispatcher.step_completed is False
 
     # field_skipped_warning must have been emitted

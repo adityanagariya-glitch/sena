@@ -1387,12 +1387,28 @@ class ToolDispatcher:
                     elif f.required and f.visible_if is None:
                         missing_required.append(f"{section.id}.{f.id}")
 
+        # Explicitly list repeatable sections where min > committed rows — lets the
+        # model distinguish "need to commit cross-screen data via add_repeatable_row"
+        # from "need to find a completely new person".
+        section_min_unmet_sections = [
+            {
+                "section_id": s.id,
+                "label": s.label or s.id,
+                "rows_in_formstate": len(state.values.get(s.id) or []),
+                "min_required": s.repeatable.min if s.repeatable else 1,
+                "action": "call add_repeatable_row then update_field for each field",
+            }
+            for s in self._schema.sections
+            if _section_min_unmet(s, state.values.get(s.id))
+        ]
+
         completion = state.completion
         return {
             "ok": True,
             "step_id": state.step_id,
             "filled": filled,
             "missing_required": missing_required,
+            "section_min_unmet_sections": section_min_unmet_sections,
             "required_filled": completion.required_filled if completion else 0,
             "required_total": completion.required_total if completion else 0,
             "complete": bool(completion and completion.complete),
@@ -1488,9 +1504,25 @@ class ToolDispatcher:
             return {
                 "ok": False,
                 "error": "section_min_unmet",
-                "sections": [s.id for s in unmet_sections],
+                "sections": [
+                    {
+                        "section_id": s.id,
+                        "label": s.label or s.id,
+                        "rows_in_formstate": len(state.values.get(s.id) or []),
+                        "min_required": s.repeatable.min if s.repeatable else 1,
+                        "action": (
+                            "The FormState has 0 committed rows for this section. "
+                            "If the participant mentioned someone from a prior session, "
+                            "call add_repeatable_row then update_field for each field "
+                            "(name, relation, email, phone) individually. "
+                            "Do NOT ask for a new/additional person."
+                        ),
+                    }
+                    for s in unmet_sections
+                ],
                 "message": (
-                    "Please add at least one entry to: "
+                    "The following sections have no rows committed to FormState yet — "
+                    "use add_repeatable_row then update_field to commit the data: "
                     + ", ".join(s.label or s.id for s in unmet_sections)
                 ),
             }
