@@ -88,15 +88,38 @@ def next_required_field(
     return None
 
 
-def next_optional_field(schema: StepSchema, state: FormState) -> dict | None:
+def next_optional_field(
+    schema: StepSchema,
+    state: FormState,
+    *,
+    screen_field_status: dict[str, str] | None = None,
+) -> dict | None:
     """First optional (required=False) field with no value, in schema order.
 
     Rule-5 anchor: returns a deterministic next-optional pointer so the prompt
     model iterates optional fields predictably. Mirrors next_required_field shape.
     Returns None when every optional is filled (or the step has none).
+
+    Respects:
+    - `visible_if` — skips conditionally-hidden fields whose dependency is unmet.
+    - `screen_field_status` — when provided, ONLY surfaces fields whose dotted
+      path appears in the rendered-field map. Prevents the agent from naming
+      optional fields Flutter has hidden (e.g. plan_manager fields on a
+      Self Managed plan).
     """
+    rendered_paths: set[str] | None = (
+        set(screen_field_status.keys()) if screen_field_status else None
+    )
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
+        # Skip empty optional repeatables entirely (mirror next_required_field).
+        if is_rep:
+            rep_cfg = getattr(section, "repeatable", None)
+            _min_rows = getattr(rep_cfg, "min", 0) if rep_cfg else 0
+            _sec_rows = state.values.get(section.id)
+            _row_count = len(_sec_rows) if isinstance(_sec_rows, list) else 0
+            if _min_rows == 0 and _row_count == 0:
+                continue
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
         row: dict = (
@@ -108,6 +131,27 @@ def next_optional_field(schema: StepSchema, state: FormState) -> dict | None:
         for field in fields or []:
             if field.required:
                 continue
+            # visible_if guard
+            if field.visible_if:
+                cond_f, cond_v = next(iter(field.visible_if.items()))
+                actual_raw = row.get(cond_f) if isinstance(row, dict) else None
+                actual = actual_raw.get("value") if isinstance(actual_raw, dict) else actual_raw
+                if actual != cond_v:
+                    continue
+            # screen_field_status guard (Flutter is authoritative)
+            if rendered_paths is not None:
+                direct = f"{section.id}.{field.id}"
+                rep_prefix = f"{section.id}."
+                rep_suffix = f".{field.id}"
+                in_screen = (
+                    direct in rendered_paths
+                    or any(
+                        p.startswith(rep_prefix) and p.endswith(rep_suffix)
+                        for p in rendered_paths
+                    )
+                )
+                if not in_screen:
+                    continue
             raw = row.get(field.id) if isinstance(row, dict) else None
             if not _has_value(raw):
                 return {"section_id": section.id, "field_id": field.id, "label": field.label}

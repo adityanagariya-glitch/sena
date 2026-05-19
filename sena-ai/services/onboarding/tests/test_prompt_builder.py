@@ -404,6 +404,71 @@ def test_screen_field_status_is_authoritative_over_schema() -> None:
     assert "\"id\":\"goal\"" in prompt or "\"id\": \"goal\"" in prompt
 
 
+def test_next_optional_field_respects_screen_field_status() -> None:
+    """next_optional_field MUST NOT surface a field whose path isn't in
+    screen_field_status. Production regression: optional `about_me` or
+    `description` could leak via __NEXT_OPTIONAL_FIELD__ token even when
+    Flutter hadn't rendered it. With the screen filter, hidden optional
+    fields stay hidden."""
+    import json
+    from pathlib import Path
+    from onboarding.models.schema_spec import StepSchema
+    from onboarding.models.form_state import FormState
+    from onboarding.services.validators.sequencing import next_optional_field
+
+    fixtures = (
+        Path(__file__).parent.parent / "fixtures"
+        / "schema_personal_information.json"
+    )
+    schema = StepSchema.model_validate_json(fixtures.read_text())
+    state = FormState(
+        session_id="t",
+        step_id=schema.step_id,
+        participant_id="p",
+        tenant_id="t",
+    )
+    # screen_field_status omits the optional about_me field entirely
+    screen_field_status: dict[str, str] = {
+        "basics.full_name": "empty",
+        "basics.phone": "empty",
+    }
+    result = next_optional_field(
+        schema, state, screen_field_status=screen_field_status
+    )
+    # about_me is the only optional field in personal_information basics;
+    # since it's NOT in screen_field_status, the function must return None
+    # rather than surface a hidden optional.
+    assert result is None or result["field_id"] != "about_me"
+
+
+def test_no_literal_field_names_in_prompt_template() -> None:
+    """The prompt template MUST NOT carry literal field names for fields
+    that can be conditionally hidden by visible_if. Such literals leak
+    into the model's context regardless of any server-side filtering and
+    enable the model to recite them when summarising what was skipped.
+    """
+    from pathlib import Path
+
+    template_path = (
+        Path(__file__).parent.parent / "src" / "onboarding"
+        / "prompts" / "onboarding_system.md"
+    )
+    body = template_path.read_text(encoding="utf-8")
+    # These specific names were removed from the table on 2026-05-19 because
+    # they could be hidden by visible_if. Make sure they don't creep back in.
+    assert "\"contact_email\"" not in body, (
+        "contact_email leaked back into prompt template — see commit 1181fac"
+    )
+    assert "\"billing_email\"" not in body, (
+        "billing_email leaked back into prompt template — see commit 1181fac"
+    )
+    # interpreter_language was removed from the schema entirely
+    assert "interpreter_language" not in body, (
+        "interpreter_language field was removed from schema — drop all "
+        "references from the prompt template"
+    )
+
+
 def test_rule_21a_screen_source_of_truth_in_prompt() -> None:
     """Rule 21a (SCREEN is source of truth) is the explicit prompt rule
     paired with the server-side filter."""

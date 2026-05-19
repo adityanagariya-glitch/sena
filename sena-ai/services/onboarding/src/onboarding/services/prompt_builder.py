@@ -359,7 +359,9 @@ def _build_live_state_block(
         "completion": completion,
         "next_required_field": next_required,
         "next_forced_field": next_forced,
-        "next_optional_field": _next_optional_field(schema, state),
+        "next_optional_field": _next_optional_field(
+            schema, state, screen_field_status=screen_field_status,
+        ),
         "pending_validation_errors": getattr(state, "pending_validation_errors", []),
         "pending_confirmation": getattr(state, "pending_confirmation", None),
         "focused_section": getattr(state, "focused_section", None),
@@ -508,7 +510,11 @@ def build_system_prompt(
 
     # AP-2 fix: Rule-5 anchor. Gives the model a deterministic next-optional
     # pointer so it iterates optional fields in schema order, not randomly.
-    next_opt = _next_optional_field(schema, state)
+    # Honour screen_field_status so hidden optional fields aren't surfaced
+    # to the model via this token (Rule 21a anti-leak).
+    next_opt = _next_optional_field(
+        schema, state, screen_field_status=screen_field_status,
+    )
     next_opt_text = (
         f"{next_opt['section_id']}.{next_opt['field_id']} ({next_opt['label']})"
         if next_opt else ""
