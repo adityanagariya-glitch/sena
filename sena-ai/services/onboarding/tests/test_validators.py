@@ -101,16 +101,18 @@ def _load_schema(name: str) -> StepSchema:
     ("",     "home_address", "zip_code", "required"),
 
     # ── Duration (schedule of supports) ──────────────────────────────────────
+    # New ceiling is 99 (per 2026-05-19 spec: max 2 digits, 1-99 positive int).
+    # duration_hours is now REQUIRED — empty no longer passes.
     ("1",    "schedule_of_supports", "duration_hours", None),
     ("12",   "schedule_of_supports", "duration_hours", None),
     ("24",   "schedule_of_supports", "duration_hours", None),
-    ("24.0", "schedule_of_supports", "duration_hours", None),   # whole number as float string
+    ("99",   "schedule_of_supports", "duration_hours", None),
+    ("99.0", "schedule_of_supports", "duration_hours", None),
     ("0",    "schedule_of_supports", "duration_hours", "duration_too_short"),
-    ("25",   "schedule_of_supports", "duration_hours", "duration_too_long"),
-    ("1.5",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),  # fails regex before float check
+    ("100",  "schedule_of_supports", "duration_hours", "duration_too_long"),
+    ("1.5",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),
     ("abc",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),
-    # Schema marks duration_hours as required: false — empty must PASS.
-    ("",     "schedule_of_supports", "duration_hours", None),
+    ("",     "schedule_of_supports", "duration_hours", "required"),
 
     # ── Email ─────────────────────────────────────────────────────────────────
     ("user@example.com",   "basics", "email", None),
@@ -650,3 +652,159 @@ class TestValidateRequiredOnly:
         })
         rejections = validate_required_only(schema, state)
         assert rejections == []
+
+
+# ── 2026-05-19 user-feedback validations ────────────────────────────────────
+
+
+class TestEmergencyRelationOptions:
+    """Emergency contact relation must offer the 8 specified options
+    (per user feedback 2026-05-19)."""
+
+    def test_relation_options_are_eight_values(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_personal_information.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        emergency = next(
+            s for s in schema.sections if s.id == "emergency_contacts"
+        )
+        relation = next(f for f in emergency.item_fields if f.id == "relation")
+        assert relation.options == [
+            "Father", "Mother", "Sibling", "Spouse",
+            "Friend", "Guardian", "Carer", "Other",
+        ]
+
+
+class TestPlanManagerConditional:
+    """Plan manager / contact email / billing email visible_if guards
+    must be set so they're only required when plan_management=Plan Managed."""
+
+    def test_visible_if_plan_managed(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        plan_info = next(s for s in schema.sections if s.id == "plan_info")
+        for fid in ("plan_manager", "contact_email", "billing_email"):
+            field = next(f for f in plan_info.fields if f.id == fid)
+            assert field.visible_if == {"plan_management": "Plan Managed"}, (
+                f"{fid} missing/incorrect visible_if guard"
+            )
+
+
+class TestSupportScheduleConstraints:
+    """Schedule of supports now caps at 5 rows; duration is required and
+    accepts 1-99; start_time/end_time are required."""
+
+    def test_max_repeatable_is_five(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        sched = next(s for s in schema.sections if s.id == "schedule_of_supports")
+        assert sched.repeatable.min == 1
+        assert sched.repeatable.max == 5
+
+    def test_frequency_includes_once_off(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        sched = next(s for s in schema.sections if s.id == "schedule_of_supports")
+        freq = next(f for f in sched.item_fields if f.id == "frequency")
+        assert "Once Off" in freq.options
+
+    def test_required_fields(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        sched = next(s for s in schema.sections if s.id == "schedule_of_supports")
+        for fid in ("duration_hours", "start_time", "end_time"):
+            field = next(f for f in sched.item_fields if f.id == fid)
+            assert field.required, f"{fid} must be required"
+
+
+class TestSupportScheduleTimeOrder:
+    """end_time must be strictly greater than start_time per row."""
+
+    def test_end_before_start_rejected(self) -> None:
+        from onboarding.services.validators.cross_field import (
+            check_support_schedule_time_order,
+        )
+        state = {
+            "schedule_of_supports": [
+                {"start_time": {"value": "10:00"}, "end_time": {"value": "09:00"}}
+            ]
+        }
+        rejections = check_support_schedule_time_order(state)
+        assert len(rejections) == 1
+        assert rejections[0].code == "time_slot_end_before_start"
+
+    def test_end_equals_start_rejected(self) -> None:
+        from onboarding.services.validators.cross_field import (
+            check_support_schedule_time_order,
+        )
+        state = {
+            "schedule_of_supports": [
+                {"start_time": {"value": "10:00"}, "end_time": {"value": "10:00"}}
+            ]
+        }
+        rejections = check_support_schedule_time_order(state)
+        assert len(rejections) == 1
+
+    def test_end_after_start_passes(self) -> None:
+        from onboarding.services.validators.cross_field import (
+            check_support_schedule_time_order,
+        )
+        state = {
+            "schedule_of_supports": [
+                {"start_time": {"value": "09:00"}, "end_time": {"value": "17:00"}}
+            ]
+        }
+        assert check_support_schedule_time_order(state) == []
+
+
+class TestFundingNineDigitCap:
+    """Funding amount integer-part must be ≤ 9 digits (≤ 999,999,999)."""
+
+    def test_ten_digit_amount_rejected(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        rej = _v_amount_optional("1000000000", None)
+        assert rej is not None
+        assert rej.code == "amount_too_large"
+
+    def test_nine_digit_amount_passes(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        assert _v_amount_optional("999999999", None) is None
+
+    def test_with_commas_passes(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        assert _v_amount_optional("999,999,999", None) is None
+
+    def test_with_decimal_still_caps_integer_part(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        assert _v_amount_optional("999999999.50", None) is None
+        rej = _v_amount_optional("1000000000.50", None)
+        assert rej is not None and rej.code == "amount_too_large"

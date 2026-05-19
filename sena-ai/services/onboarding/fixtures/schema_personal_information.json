@@ -114,7 +114,7 @@
           "type": "enum",
           "label": "Relationship",
           "required": true,
-          "options": ["Parent", "Sibling", "Partner", "Friend", "Carer", "Other"]
+          "options": ["Father", "Mother", "Sibling", "Spouse", "Friend", "Guardian", "Carer", "Other"]
         },
         {"id": "email", "type": "email", "label": "Contact Email", "required": true},
         {"id": "phone", "type": "phone", "label": "Contact Phone", "format": "+61", "required": true}

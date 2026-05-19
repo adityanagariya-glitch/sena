@@ -170,10 +170,44 @@ def check_time_slot_no_overlap(slots: list[dict[str, Any]]) -> list[ValidationRe
     return []
 
 
+def check_support_schedule_time_order(
+    state_values: dict[str, Any],
+) -> list[ValidationRejection]:
+    """schedule_of_supports[*]: end_time MUST be strictly greater than
+    start_time. No zero-duration, no cross-midnight slots."""
+    rejections: list[ValidationRejection] = []
+    rows = state_values.get("schedule_of_supports") or []
+    if not isinstance(rows, list):
+        return rejections
+
+    def _hm(s: str) -> int | None:
+        m = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", (s or "").strip())
+        return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        start = _hm(_s(row.get("start_time")))
+        end = _hm(_s(row.get("end_time")))
+        if start is None or end is None:
+            continue
+        if end <= start:
+            rejections.append(ValidationRejection(
+                code="time_slot_end_before_start",
+                reason_human="Start time must be before end time",
+                suggested_fix=(
+                    "End time must be strictly greater than start time — "
+                    "no zero-duration or cross-midnight slots."
+                ),
+            ))
+    return rejections
+
+
 def validate_cross_fields(state_values: dict[str, Any]) -> list[ValidationRejection]:
     results: list[ValidationRejection] = []
     results.extend(check_emergency_email_unique_and_differs_from_client(state_values))
     results.extend(check_emergency_phone_unique_and_differs_from_client(state_values))
     results.extend(check_plan_end_after_start(state_values))
     results.extend(check_medical_history_all_or_none(state_values))
+    results.extend(check_support_schedule_time_order(state_values))
     return results

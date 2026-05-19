@@ -25,7 +25,7 @@ _DATE_MIN_18 = "You must be at least 18 years old"
 _AMOUNT_POSITIVE = "Amount must be greater than zero"
 _DURATION_MIN_1 = "Duration must be at least 1 hour when provided"
 _DURATION_NUMBERS_ONLY = "Duration must contain numbers only"
-_DURATION_MAX_24 = "Duration must be less than or equal to 24 hours"
+_DURATION_MAX_99 = "Duration must be less than or equal to 99 hours"
 _TIME_SLOTS_OVERLAP = "Time slots must not overlap"
 _TIME_INVALID_RANGE = "Start time must be before end time"
 _TIME_HM_INVALID = "Use 24-hour time as HH:mm (e.g. 09:30)."
@@ -342,12 +342,23 @@ def _v_amount_optional(raw: Any, _state: Any) -> ValidationRejection | None:
     v = _str(raw)
     if not v:
         return None
+    normalised = v.replace(",", "").strip()
     try:
-        n = float(v.replace(",", ""))
+        n = float(normalised)
         if n <= 0:
             return ValidationRejection(code="amount_not_positive", reason_human=_AMOUNT_POSITIVE)
     except ValueError:
         return ValidationRejection(code="amount_invalid", reason_human=_AMOUNT_POSITIVE)
+    # 9-digit integer-part cap per spec — funding allocation MUST NOT exceed
+    # 999,999,999. Strip leading sign and decimal portion before counting.
+    int_part = normalised.lstrip("+-").split(".")[0]
+    # Strip leading zeros so "000000000123" doesn't count as 12 digits.
+    int_part_significant = int_part.lstrip("0") or "0"
+    if len(int_part_significant) > 9:
+        return ValidationRejection(
+            code="amount_too_large",
+            reason_human="Amount must be at most 9 digits (i.e. up to 999,999,999).",
+        )
     return None
 
 
@@ -363,8 +374,8 @@ def _v_duration_required(raw: Any, _state: Any) -> ValidationRejection | None:
     i = int(n)
     if i < 1:
         return ValidationRejection(code="duration_too_short", reason_human=_DURATION_MIN_1)
-    if i > 24:
-        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_24)
+    if i > 99:
+        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_99)
     return None
 
 
@@ -385,8 +396,8 @@ def _v_duration_optional(raw: Any, _state: Any) -> ValidationRejection | None:
     i = int(n)
     if i < 1:
         return ValidationRejection(code="duration_too_short", reason_human=_DURATION_MIN_1)
-    if i > 24:
-        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_24)
+    if i > 99:
+        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_99)
     return None
 
 
@@ -394,6 +405,16 @@ def _v_time_hm24_optional(raw: Any, _state: Any) -> ValidationRejection | None:
     v = _str(raw)
     if not v:
         return None
+    if not _HM24.match(v):
+        return ValidationRejection(code="time_hm_invalid", reason_human=_TIME_HM_INVALID,
+                                   suggested_fix="Use HH:mm format, e.g. 09:30 or 14:00.")
+    return None
+
+
+def _v_time_hm24_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _str(raw)
+    if not v:
+        return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
     if not _HM24.match(v):
         return ValidationRejection(code="time_hm_invalid", reason_human=_TIME_HM_INVALID,
                                    suggested_fix="Use HH:mm format, e.g. 09:30 or 14:00.")
@@ -681,10 +702,10 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("schedule_of_supports", "description"):        _v_support_description,
     ("schedule_of_supports", "frequency"):          _v_text_required,
     # Schema declares duration_hours as required: false — use the optional variant.
-    ("schedule_of_supports", "duration_hours"):     _v_duration_optional,
+    ("schedule_of_supports", "duration_hours"):     _v_duration_required,
     ("schedule_of_supports", "days"):               _v_multi_enum_required,
-    ("schedule_of_supports", "start_time"):         _v_time_hm24_optional,
-    ("schedule_of_supports", "end_time"):           _v_time_hm24_optional,
+    ("schedule_of_supports", "start_time"):         _v_time_hm24_required,
+    ("schedule_of_supports", "end_time"):           _v_time_hm24_required,
 
     # ── Staff Step 1 — Basic Profile (section_id: staff_basics) ─────────────────
     ("staff_basics", "full_name"):               _v_full_name,
