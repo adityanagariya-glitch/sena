@@ -45,6 +45,7 @@ sena-ai\services\onboarding\tests\test_resumption.py ← __future__, fakeredis, 
 sena-ai\services\onboarding\tests\test_routes.py ← __future__, unittest, pytest
 sena-ai\services\onboarding\tests\test_schema.py ← __future__, pydantic, onboarding, pytest
 sena-ai\services\onboarding\tests\test_screen_context.py ← __future__, pydantic, onboarding, pytest
+sena-ai\services\onboarding\tests\test_screen_state_skip.py ← __future__, onboarding, pytest
 sena-ai\services\onboarding\tests\test_state_repo.py ← __future__, onboarding, pytest
 sena-ai\services\onboarding\tests\test_webhook.py ← __future__, unittest, onboarding, pytest
 sena-ai\services\voice\src\voice\api\deps.py ← __future__, redis, sqlalchemy, voice
@@ -558,6 +559,14 @@ def test_payload_hash_different_input_different_hash()
 def test_payload_hash_key_order_independent()
 ```
 
+### sena-ai\services\onboarding\tests\test_screen_state_skip.py
+```
+def test_seeded_state_skips_filled_required_fields(schema_file: Path) → None  # Pipeline #1 — bootstrap
+def test_screen_field_status_filled_overrides_empty_state(schema_file: Path) → None  # Pipeline #2 — when FormState is empty but `screen_field_stat
+def test_bootstrap_value_appears_in_rendered_system_prompt(schema_file: Path) → None  # Pipeline #3 — end-to-end smoke
+def test_screen_field_status_does_not_affect_unrelated_paths() → None  # Negative control — marking one path "filled" must NOT cause 
+```
+
 ### sena-ai\services\onboarding\tests\test_state_repo.py
 ```
 class TestCreateAndGet
@@ -586,35 +595,6 @@ class TestFireWebhook
   async def test_retries_on_failure_then_succeeds()
   async def test_returns_false_after_all_retries()
   async def test_handles_connection_error()
-```
-
-### sena-ai\services\onboarding\test_harness.html
-```
-title: SENA — Voice Onboarding Test Harness
-button#darkModeBtn
-input#topbarSessionInput
-button#topbarResumeBtn
-select#schemaSelect
-input#participantId
-input#tenantId
-button#createBtn
-button#freshTestBtn
-button#getStateBtn
-button#completeBtn
-button#nextStepBtn
-input#resumeSessionInput
-button#resumeSessionBtn
-div#sessionStatus
-code#sidDisplay
-code#wsUrlDisplay
-div#coverageSection
-div#coveragePills
-div#handleBox
-span#handleLabel
-code#handleDisplay
-span#handleTtl
-button#reconnectBtn
-button#clearHandleBtn
 ```
 
 ### sena-ai\services\voice\Dockerfile

@@ -21,7 +21,6 @@ Monorepo at `sena-ai/` with Python microservices. Active services: voice (8082),
 **Root-level files:**
 ```
 SENA/
-├── AGENTS.md           # Guidance for agentic coding agents in this repo
 ├── sena-ai/            # Monorepo — all AI/ML services
 └── graphify-out/       # Auto-generated knowledge graph
 ```
@@ -38,220 +37,41 @@ sena-ai/
 ├── migrations/         # Alembic DB migrations + init SQL + RLS setup scripts
 ├── scripts/            # Dev/ops scripts
 ├── Makefile            # Stub only — comment header, no targets implemented yet
-├── docker-compose.yml  # Redis + 2x PostgreSQL (ai-db with pgvector, shared-db)
-├── .env.example        # All env vars with SENA_AI_ prefix
-└── pyproject.toml      # Workspace root — ruff, mypy, pytest config
+├── docker-compose.yml         # Redis + 2x PostgreSQL (ai-db with pgvector, shared-db) — local dev only
+├── docker-compose.deploy.yml  # EC2 production deploy — onboarding + Redis, no local DBs
+├── .env.example               # All env vars with SENA_AI_ prefix
+├── .env.deploy.example        # Minimal env vars needed for EC2 deploy
+├── DEPLOY_EC2_CHECKLIST.md    # Step-by-step EC2 deployment guide (demo-grade shortcuts documented)
+└── pyproject.toml             # Workspace root — ruff, mypy, pytest config
 ```
 
-### Onboarding Service — voice-driven participant onboarding
-
-API-first service at `sena-ai/services/onboarding/src/onboarding/`. Mobile app integrates; no frontend shipped.
-
-| Layer | Path | Purpose |
-|-------|------|---------|
-| API | `api/routes.py` | REST: session lifecycle, state, webhook fire |
-| API | `api/ws_routes.py` | WebSocket: start handshake, WS lock, Gemini bridge, error close codes (Phase B ✓) |
-| Services | `services/gemini_live.py` | Gemini Live bridge: b2g/g2b tasks, transcript events, WS↔Gemini audio, screen_state inject (Phase B/D ✓) |
-| Services | `services/prompt_builder.py` | System prompt renderer: injects schema + FormState + grounding/resume context (Phase B/E ✓) |
-| Services | `services/tools.py` | Tool dispatcher: update_field, get_session_context, advance_step (idempotent), escalate_incident (Phase C ✓) |
-| Services | `services/screen_context.py` | Pure: ScreenStateMessage validation + render_injection_text + payload_hash (Phase D ✓) |
-| Services | `services/grounding.py` | Pure: build_live_tools — assembles function_declarations + optional GoogleSearch tool (Phase E ✓) |
-| Services | `services/resumption.py` | Redis-backed: issue_handle, redeem_handle (GETDEL single-use), build_replay_context (Phase E ✓) |
-| Services | `services/webhook.py` | Outbound webhook to app backend, 3-retry exp backoff |
-| Services | `services/cross_screen_context.py` | Pure: build_summary, compress_residual/decompress (lossless), render_for_prompt — feeds the EARLIER IN THIS ONBOARDING block |
-| Services | `services/coverage.py` | Pure: voice coverage eligibility — `is_eligible`, `is_repeatable_eligible`, `coverage_paths` against `schema.voice_coverage` |
-| Services | `services/field_apply.py` | Pure: `build_envelope` — wraps field updates with coverage check, confidence score, and row_index for repeatable sections |
-| Services | `services/validators/` | Pure, no-IO validators: `field_rules` (per-field), `cross_field` (invariants), `sequencing` (next required/optional field, step-complete gate); raises `ValidationRejection` |
-| Repositories | `repositories/state_repo.py` | Redis only — no Postgres. FormState, transcript, WS lock, resumption handles. Plus `assert_session_owner` for cross-tenant isolation. |
-| Repositories | `repositories/user_context_repo.py` | Redis only. Per-(tenant_id, participant_id) cross-screen bucket: step summaries (Hash) + session-id index (Set), 7-day TTL refreshed on every write |
-| Models | `models/schema_spec.py` | StepSchema, SectionSpec, FieldSpec (incl. visible_if, repeatable) |
-| Models | `models/form_state.py` | FormState, FieldValue, CompletionStats |
-| Models | `models/session_bootstrap.py` | SessionBootstrap envelope (Rule 1+2 hygiene contract — mode, current_page_values, readonly_paths, prior_pages); rendered into prompt as `[LIVE_STATE_JSON]` |
-| Models | `models/cross_screen_summary.py` | StepSummary + CrossScreenContext; verbatim (warmth fields) vs compressed (lossless key-shortened) split for cross-step prompt injection |
-| Fixtures | `fixtures/schema_*.json` | 5 step schemas from real app screens |
-
-**Key routes:**
-- `POST /v1/onboarding/session` — create session (app sends schema inline)
-- `GET/PUT /v1/onboarding/session/{id}/state` — read/write FormState (PUT blocked when WS active)
-- `POST /v1/onboarding/session/{id}/complete` — finalize + fire webhook
-- `WSS /ws/onboarding/{session_id}` — voice stream (Phase B)
-
-**WS server→client events (Flutter must handle all):**
-| Event | Payload | Action required |
-|-------|---------|----------------|
-| `ready` | `{state, prompt_version, coverage}` | Session live, start mic |
-| `turn_start` | — | Gemini began speaking, start playback |
-| `turn_complete` | — | Gemini finished turn |
-| `interrupted` | — | User barged in, clear audio queue |
-| `user_said` | `{text}` | Input transcript |
-| `agent_said` | `{text}` | Output transcript |
-| `go_away` | `{time_left_ms}` | **Gemini session closing in N ms — call resume endpoint before expiry to avoid silent drop** |
-| `resumable` | `{handle, ttl_sec}` | App-level resume handle issued on close |
-| `error` | `{code, message}` | Handle or close |
-
-**Design decisions:**
-- One WS session = one onboarding step (clean resumption semantics)
-- App backend owns schema + final DB; we own ephemeral Redis state
-- Voice holds write lock during WS; app PUTs only when WS closed
-- No Postgres — Redis TTL only; app backend is DB of record
-
-**Run:**
-```bash
-cd sena-ai/services/onboarding
-uvicorn src.onboarding.main:create_app --factory --reload --port 8083
-```
-
-**Env vars (prefix `SENA_AI_`):** `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL_ID`, `ONBOARDING_PORT`, `APP_WEBHOOK_URL`, `APP_WEBHOOK_SECRET`, `REDIS_URL`, `ONBOARDING_GROUNDING_ENABLED` (default false), `ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED` (default true — controls per-(tenant_id, participant_id) shared-context bucket reads/writes; rollback flag), `SCREEN_STATE_MAX_BYTES` (default 8192), `RESUMPTION_HANDLE_TTL_SEC` (default 600), `RESUMPTION_REPLAY_TURNS` (default 4)
-
----
-
-### Voice Service (Flow B) — the primary active service
-
-Layered architecture at `sena-ai/services/voice/src/voice/`:
-
-| Layer | Path | Purpose |
-|-------|------|---------|
-| API | `api/routes.py` | FastAPI endpoints, request orchestration |
-| API | `api/deps.py` | Dependency injection (DB sessions, Redis client) |
-| Services | `services/` | Business logic (dictation, approval, personal details, auth, transcription, Bedrock LLM, LiveKit, Redis state, SNS events) |
-| Repositories | `repositories/voice_repo.py` | All database queries via SQLAlchemy async |
-| Models | `models/db.py` | SQLAlchemy ORM entities |
-| Models | `models/schemas.py` | Pydantic request/response models |
-| Prompts | `prompts/` | LLM prompt templates for dictation and personal details |
-| Config | `core/settings.py` | Pydantic-settings with `SENA_AI_` env prefix |
-
-### Key API routes (all require auth)
-
-- `POST /v1/voice/session` — start dictation session (creates LiveKit token)
-- `POST /v1/voice/session/turn` — process a voice turn (transcript → Bedrock → draft update)
-- `POST /v1/voice/session/end` — compile case note, create approval item, publish SNS event
-- `GET /v1/voice/session/{id}` — session status
-- `POST /v1/voice/personal-details/session[/turn|/end]` — parallel personal details flow
-- `POST /v1/approval/decision` — approve/reject case note (manager/admin only)
-- `GET /health/live`, `GET /health/ready` — health checks
-
-### External dependencies
-
-- **AWS Bedrock** (Claude 3.5 Sonnet) — LLM for case note generation (Flow B dictation)
-- **Google Gemini** (`gemini-3-flash-preview`) — LLM for case review (summarise, classify, review); Live API (`gemini-3.1-flash-live-preview`) for onboarding voice stream
-- **AWS SNS** — event publishing for case note lifecycle
-- **LiveKit** — real-time voice conferencing
-- **Redis** — session state, rate limiting, distributed locks
-- **PostgreSQL + pgvector** (ai-db, port 5433) — voice session/case note data + case review tables
-- **PostgreSQL** (shared-db, port 5434) — cross-service platform data
-- **Other engineer's drafting service** (port 8085, stub in Phase A) — source of past case notes for context
-
-### LLM split
+### LLM split (cross-service reference)
 
 | Flow | Provider | Model | Env var |
 |------|----------|-------|---------|
-| Flow B — case note dictation | AWS Bedrock | Claude 3.5 Sonnet | `SENA_AI_BEDROCK_MODEL_ID` |
-| Onboarding voice (Live API) | Google Gemini Live | `gemini-3.1-flash-live-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_LIVE_MODEL_ID` |
-| Case review (summarise/classify/review) | Google Gemini | `gemini-3-flash-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_MODEL_ID` |
+| Case note dictation (Flow B) | AWS Bedrock | Claude 3.5 Sonnet | `SENA_AI_BEDROCK_MODEL_ID` |
+| Onboarding + personal-details voice (Live API) | Google Gemini Live | `gemini-3.1-flash-live-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_LIVE_MODEL_ID` |
+| Case review summarise/classify/review | Google Gemini Flash | `gemini-3-flash-preview` | `SENA_AI_GEMINI_API_KEY` + `SENA_AI_GEMINI_MODEL_ID` |
 
-### Case Review Service — AI intelligence layer around case notes
+### Per-service detail (autoload when editing that service)
 
-At `sena-ai/services/case_review/src/case_review/`. Port 8084, ai-db (pgvector).
-
-| Layer | Path | Purpose |
-|-------|------|---------|
-| API | `api/routes.py` | 6 REST endpoints (context, classify, review, incident/*, submit) + health |
-| API | `api/deps.py` | DI: AsyncSession, ReviewRepo, CaseNoteClient, AuthContext (dev_header) |
-| Models | `models/db.py` | 4 ORM tables: RollingSummary, ReviewSession, IncidentDraft, ReviewAuditLog |
-| Models | `models/schemas.py` | Pydantic DTOs for all endpoints |
-| Repositories | `repositories/review_repo.py` | CRUD + upsert (rolling summary) + audit append |
-| Clients | `clients/case_note_client.py` | Stub (fixtures) + real HTTP client (future) |
-| Fixtures | `fixtures/sample_notes.json` | 3 fake case notes for stub client |
-| Migrations | `migrations/versions/0001_*.py` | Creates 4 tables + RLS policies on tenant_id |
-
-**Key routes (all 501 in Phase A — implemented progressively):**
-- `POST /v1/case-review/context` — fetch + rolling summary (Phase B)
-- `POST /v1/case-review/classify` — paragraph → fields + reask prompts (Phase C)
-- `POST /v1/case-review/review` — risk/restrictive-practice/anomaly flags (Phase D)
-- `POST /v1/case-review/incident/detect` + `/draft` + `PATCH .../confirm` (Phase E)
-- `POST /v1/case-review/submit` — final gate (Phase F, BLOCKED)
-
-<non_negotiables service="case_review" priority="MANDATORY" type="legal-compliance">
-**Non-negotiables:**
-- `tenant_id` on every DB row + RLS enforced (legal mandate)
-- Staff must acknowledge every AI flag — no auto-submit
-- Audit log entry for every AI action + staff decision
-- `GEMINI_REGION=australia-southeast1` (data residency)
-</non_negotiables>
-
-**Run:**
-```bash
-cd sena-ai/services/case_review
-uvicorn src.case_review.main:create_app --factory --reload --port 8084
-# Alembic: alembic upgrade head  (requires ai-db running)
-# Install once via the per-service Setup block in Build & Run Commands.
-```
-
-**Env vars (prefix `SENA_AI_`):** `CASE_REVIEW_PORT`, `AI_DB_URL`, `GEMINI_API_KEY`, `GEMINI_MODEL_ID`, `GEMINI_REGION`, `DRAFTING_SERVICE_URL`, `DRAFTING_SERVICE_API_KEY`, `CASE_NOTE_FETCH_LIMIT`
+| Topic | Rule file | Autoloads on |
+|-------|-----------|--------------|
+| Onboarding internals (Redis state, WS events, voice coverage, tools, validators) | `.claude/rules/service-onboarding.md` | `services/onboarding/**` |
+| Voice internals (Bedrock, LiveKit, approval flow, SNS events) | `.claude/rules/service-voice.md` | `services/voice/**` |
+| Case Review internals (pgvector, RLS, 4 ORM tables, audit log) | `.claude/rules/service-case-review.md` | `services/case_review/**` |
+| Gemini API rules (current models, patterns, forbidden patterns) — hook-gated | `.claude/rules/gemini.md` | `**/gemini*.py`, `**/demo_live*` |
+| Build / run / test commands per service | `.claude/rules/build-and-run.md` | `pyproject.toml`, `docker-compose*.yml`, `Makefile` |
+| EC2 deployment (Docker) | `.claude/rules/deployment.md` | `Dockerfile`, `docker-compose.deploy.yml`, `.env.deploy*` |
+| Demo stack (standalone Gemini Live testbed) | `.claude/rules/demo-stack.md` | `demo_live*.py`, `demo_live*.html` |
 
 ---
 
 ## Build & Run Commands
 
-```bash
-# Setup — install per service (matches CI; root pyproject has no dev extra)
-cd sena-ai
-cp .env.example .env                       # configure env vars
-pip install -e "services/voice[dev]"       # voice service (also pulls shared lib)
-pip install -e "services/onboarding[dev]"  # onboarding service
-pip install -e "services/case_review[dev]" # case review service
+**Reference:** `.claude/rules/build-and-run.md` — autoloads when editing `pyproject.toml`, `Makefile`, `docker-compose*.yml`, or any service Dockerfile. Contains per-service install/run/test commands, lint/typecheck flow, PowerShell variant.
 
-# Infrastructure
-docker-compose up -d                       # Redis + both Postgres DBs
-
-# Run voice service
-cd services/voice
-uvicorn src.voice.main:create_app --factory --reload --port 8082
-
-# Run onboarding service
-cd services/onboarding
-uvicorn src.onboarding.main:create_app --factory --reload --port 8083
-
-# Run case review service (install once via Setup block above)
-cd services/case_review
-uvicorn src.case_review.main:create_app --factory --reload --port 8084
-
-# Tests — always pass an explicit path; root pytest testpaths excludes active services
-pytest services/voice/tests/               # voice service
-pytest services/onboarding/tests/          # onboarding service
-pytest services/case_review/tests/         # case review service
-pytest services/voice/tests/test_file.py   # single file
-pytest services/voice/tests -k "test_name" # single test by name
-
-# Lint & Format
-ruff check src/                            # lint
-ruff check --fix src/                      # autofix
-ruff format src/                           # format
-mypy src/voice/                            # type check
-
-# Pre-commit
-pre-commit install                         # one-time setup
-```
-
-### Windows / PowerShell variant
-
-POSIX `cd A && cmd` does NOT work in PowerShell 5.1 (no `&&` operator). Use `;` + `$?` check, or run each line separately:
-
-```powershell
-# Setup (run from repo root)
-Set-Location sena-ai
-Copy-Item .env.example .env
-pip install -e "services/voice[dev]"
-pip install -e "services/onboarding[dev]"
-pip install -e "services/case_review[dev]"
-
-# Run a service
-Set-Location services\voice; if ($?) { uvicorn src.voice.main:create_app --factory --reload --port 8082 }
-
-# Tests
-pytest services\voice\tests\
-pre-commit run --all-files                 # manual run
-```
+**Quick:** `pip install -e "services/<svc>[dev]"` from `sena-ai/` root; `uvicorn src.<svc>.main:create_app --factory --reload --port <8082|8083|8084>`; tests via `pytest services/<svc>/tests/` (always pass explicit path).
 
 ## Code Style
 
@@ -355,48 +175,17 @@ The canonical, session-persistent task list lives at `.claude/tasks/TASKS.md`. R
 - For all browser-based tasks, prioritize using the Playwright MCP server to execute the workflow rather than asking me to do it in the browser.
 </setup_rules>
 
-## Gemini API Rules (MANDATORY)
+## Gemini API Rules
 
-<gemini_rules priority="MANDATORY" scope="any-gemini-code">
-<applies_to>
-For ANY code touching Gemini API or Gemini Live API:
-</applies_to>
+**Hook-gated, MANDATORY** — `.claude/rules/gemini.md` autoloads on any `gemini*` / `demo_live*` file edit. Contains current models (`gemini-3.1-flash-live-preview` Live + `gemini-3-flash-preview` Flash), current API patterns (`send_realtime_input`), deprecated patterns (`session.send(input=...)`, `LiveClientRealtimeInput`, `send_client_content` for new messages), capability limits (no proactive audio, 15-min audio-only, 2-min audio+video), and the **NEVER gate mic on `_agent_speaking`** rule. Before editing Gemini code: invoke `Skill: gemini-live-api-dev` + call Context7 for `google-genai`.
 
-<rule id="1" type="prerequisite">
-1. **Invoke the skill first** — before writing/editing any Gemini code, run `Skill: gemini-live-api-dev` (Live API) or `Skill: gemini-api-dev` (general). Do NOT rely on training data — it is stale.
-</rule>
-<rule id="2" type="prerequisite">
-2. **Query the MCP** — use `search_documentation` from `gemini-api-docs-mcp` MCP server for method signatures and configuration details.
-</rule>
-<rule id="3" type="model-selection">
-3. **Current models (2026-04):**
-   - Gemini Live (personal details voice flow): `gemini-3.1-flash-live-preview`
-   - Deprecated (do NOT use): `gemini-2.5-flash-native-audio-latest`, `gemini-2.5-flash-native-audio-preview-*`, `gemini-live-2.5-flash-preview`, `gemini-2.0-flash-live-001`
-</rule>
-<rule id="4" type="api-pattern">
-4. **Current Live API patterns:**
-   - Send audio: `await session.send_realtime_input(audio=types.Blob(data=raw, mime_type="audio/pcm;rate=16000"))`
-   - Send text: `await session.send_realtime_input(text="...")`
-   - Signal end-of-speech: `await session.send_realtime_input(audio_stream_end=True)`
-   - Do NOT use: `session.send(input=..., end_of_turn=True)` (old API, misroutes to `send_client_content`)
-   - Do NOT use: `LiveClientRealtimeInput(media_chunks=[...])` (old wire format)
-</rule>
-<rule id="5" type="capability-limit">
-5. **Proactive audio NOT supported** on `gemini-3.1-flash-live-preview` — model will NOT speak first without user audio input. Greeting must be triggered by user speaking first (system prompt handles the actual greeting content).
-</rule>
-<rule id="6" type="forbidden-pattern" severity="critical">
-6. **NEVER gate mic audio in server Python (`_browser_to_gemini`).** A server-side `_agent_speaking` flag causes VAD to silently stop after 2-4 turns: model audio for turn N+1 arrives before `turn_complete` of turn N fires, keeping the gate closed when the user tries to speak. Always forward audio unconditionally in `_browser_to_gemini`; rely on `activity_handling=START_OF_ACTIVITY_INTERRUPTS` for barge-in. Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise.
-   **Flutter client MUST mute mic during agent speech (echo fix):** set `_agentSpeaking=true` on `turn_start`, `false` on `turn_complete`/`interrupted`. Gate in the mic stream listener (`if (!_agentSpeaking) _sendAudio(chunk)`), not in the recorder itself. Server also calls `send_realtime_input(audio_stream_end=True)` on `turn_start` to flush Gemini's VAD buffer of any echo frames already in flight.
-</rule>
-</gemini_rules>
+## Demo stack
 
-## Demo Stack
+**Reference:** `.claude/rules/demo-stack.md` — autoloads when editing `sena-ai/demo_live_server.py` or `sena-ai/demo_client.html`. Standalone Gemini Live testbed at port 8082 (separate from production voice service).
 
-Standalone Gemini Live demo (separate from the production voice service):
-- `sena-ai/demo_live_server.py` — FastAPI server bridging browser WebSocket ↔ Gemini Live
-- `sena-ai/demo_client.html` — browser UI with mic capture + audio playback + file upload mode
-- Run: `cd sena-ai && uvicorn demo_live_server:app --reload --port 8082`
-- Env required: `SENA_AI_GEMINI_API_KEY`, `SENA_AI_GEMINI_LIVE_MODEL_ID`
+## Deployment (EC2 — Docker)
+
+**Reference:** `.claude/rules/deployment.md` — autoloads when editing `Dockerfile`, `docker-compose.deploy.yml`, or `.env.deploy*`. Full checklist: `sena-ai/DEPLOY_EC2_CHECKLIST.md`. Voice + onboarding deployed to EC2 (2026-05-14); case review shelved.
 
 <cleanup_rule priority="MANDATORY" trigger="dead-code-removal">
 ## Cleanup Rule
@@ -416,31 +205,134 @@ When removing "dead code", ALWAYS grep the full codebase for the file/symbol nam
 </exception>
 </ignored_folders>
 
-<add_component_protocol priority="MANDATORY" trigger="user-says-I-am-adding-X">
-## Adding New Project Components (MANDATORY PROTOCOL)
+## Adding new project components
 
-<trigger_phrase>
-When the user says **"I am adding X"** (a new directory, service, file, or external resource), you MUST update ALL of the following before doing anything else:
-</trigger_phrase>
-
-<update_sweep>
-| File | What to update |
-|------|---------------|
-| `CLAUDE.md` (this file) | Add to root-level file tree + add a dedicated section describing the component |
-| `.claude/SESSION_START.md` | Add to the READ-IF-RELEVANT table under the appropriate task area |
-| `.claude/tasks/TASKS.md` | Update any blocked tasks that are now unblocked by the new component |
-| `~/.claude/projects/.../memory/MEMORY.md` | Add an index entry pointing to a new memory file |
-| Create `memory/project_<name>.md` | Describe what the component is and how to use it |
-</update_sweep>
-
-<blocking_rule>
-**Rule:** Do NOT start any other work until this update sweep is complete. The sweep ensures future sessions land in the correct state.
-</blocking_rule>
-</add_component_protocol>
+**Protocol:** `.claude/rules/add-component.md` — loads when user says "I am adding X." Mandates a documentation sweep across `CLAUDE.md` / `SESSION_START.md` / `TASKS.md` / `MEMORY.md` / `memory/project_<name>.md` BEFORE any code work begins.
 
 ## Paused Features
 
 (none — see `.claude/tasks/TASKS.md` for the live work queue)
+
+## Agent Routing Mandate (MANDATORY — added 2026-05-14)
+
+<agent_routing priority="MANDATORY" type="cross-agent" enforcement="check-before-reply">
+
+**BEFORE replying to ANY task in this repo, check if it maps to an agent in `.claude/agents/`. If yes, route via the Task tool — do NOT handle the work in the main thread.**
+
+This rule fires when the request matches ANY of the rows below. The full pipeline order (planner → task-breaker → implementer → business-reviewer → security-reviewer → bug-fixer if FAIL → optimization-reviewer → cleaner → git-committer) lives in `.claude/rules/sena-rules.md` — follow it for non-trivial work.
+
+| Trigger | Route to |
+|---------|----------|
+| Multi-file refactor / new feature spanning 3+ files / architecture decision | `@agent-sena-planner` (plan + DAG) then `@agent-sena-task-breaker` (atomic JSON tasks) |
+| "Deep dive" / contract-first audit / multi-subsystem investigation / long debugging session | `@agent-sena-engineering-collaborator` |
+| Greenfield Python coding (new file or full implementation from spec) | `@agent-sena-implementer` |
+| Reviewer FAIL with hand-back contract (surgical patch needed) | `@agent-sena-bug-fixer` |
+| NDIS / FormState / validator / advance_step / participant-facing code review | `@agent-sena-business-reviewer` |
+| Tenant isolation / Redis key / Gemini-bridge / auth / webhook code review | `@agent-sena-security-reviewer` |
+| Hot path (audio bridge, Redis loop, large JSON) optimisation | `@agent-sena-optimization-reviewer` |
+| Final lint + artifact gate before commit | `@agent-sena-cleaner` |
+| Conventional Commit generation (NEVER push) | `@agent-sena-git-committer` |
+| Crash log / stack trace / pytest failure dump | `@agent-sena-log-analyzer` FIRST |
+| Current third-party docs / library API / framework upgrade research | `@agent-sena-researcher` |
+| Writing/updating CLAUDE.md / TASKS.md / SESSION_START.md / FLUTTER docs / README / handoff docs | `@agent-sena-doc-writer` |
+| Ad-hoc external diff or non-SENA-path PR review (SHIP/FIX/BLOCK) | `@agent-sena-code-reviewer` |
+
+**Exception:** trivial single-line edits, status questions, follow-ups on already-routed work, or direct-conversation requests may stay in the main thread.
+
+**Failure mode (your action when the user corrects you):** If you reply in the main thread to a task that should have been routed, the user will say so. After ANY such correction, append a row to `.claude/memory/lessons.md` (format in that file) and tighten this table.
+
+</agent_routing>
+
+## Workflow Orchestration (MANDATORY — added 2026-05-14)
+
+<orchestration priority="MANDATORY" type="cross-agent">
+
+You operate as a Senior Orchestrator. Keep your main context window clean by delegating heavily.
+
+### Plan-first default
+- Enter plan mode for ANY task requiring 3+ steps or architectural decisions.
+- Write detailed specs upfront in `.claude/tasks/TASKS.md` to reduce ambiguity.
+- If execution goes sideways, STOP and re-plan immediately. Dynamic recalibration beats grinding through a bad plan.
+- Use plan mode for verification steps too, not just building.
+
+### Subagent delegation
+- Spawn when: task needs 4+ file reads just for context; multiple independent searches can run in parallel; task produces large intermediate output you only need the conclusion of; task is 60%+ exploratory.
+- Do NOT spawn: single edit or 2-step sequential change; context already loaded; spawning costs more than doing it directly.
+- One focused task per sub-agent — never stuff multiple subtasks into one invocation.
+- Specify output shape explicitly ("Return JSON list of {file, line, symbol}") — not "investigate and report back."
+- Budget the agent: "Read at most 10 files. Report what you found if you can't answer in budget."
+- Never let sub-agents modify the same file in parallel — edits serialize through you.
+- After return: discard raw dumps, extract signal only. Never paste full sub-agent output — synthesize.
+
+### Plan mode triggers
+- Enter plan mode when: change touches 3+ files; architectural choice (new dep, schema change, public API); high blast radius (auth, migrations, deletions); ambiguous request with materially different paths.
+- Skip for: typo fixes, single-line bugs, isolated test additions, formatting.
+- Plan must include: Goal · Files to touch (create/edit/delete) · Files NOT to touch · Deps to add/remove + justification · Steps · Verification commands · Rollback plan.
+
+### Dynamic recalibration
+- Stop and replan when: step fails twice; plan was built on a wrong assumption; scope grew; about to touch a file not in the plan.
+- Re-planning is not failure. Drifting silently from the plan IS failure.
+
+### Root cause over symptom
+- Understand WHY a test fails before changing anything.
+- Never delete or `.skip()` a test to make it green.
+- Never wrap failing calls in try/except to swallow the error.
+- If the test is wrong, say so and fix it with justification.
+
+### Elegance check (before finalizing any non-trivial change)
+1. Is there an existing dep / utility that already does this?
+2. Am I writing 40 lines where 8 would do?
+3. Am I adding an abstraction with exactly one caller?
+4. Would deleting code solve this better than adding code?
+
+### Minimal blast radius
+- Touch only what the task requires — no "while I'm here" refactors, no dep upgrades as side effects.
+- Out-of-scope observations → `.claude/tasks/followups.md`, never the current diff.
+
+### Verification gate
+- Never mark a task complete without proving it works. Run tests, check logs, diff behaviours.
+- Ask: "Would a Staff Engineer approve this?"
+- Definition of Done lives in `.claude/rules/principal-engineer.md` — every checkbox must be true.
+
+### Autonomous execution
+- Bug report → point at logs / failing tests, find root cause, fix it. No permission-asking.
+- Make every change as simple as possible — touch only what is absolutely necessary.
+
+### Self-improvement loop
+- After ANY user correction: append a pattern entry to `.claude/memory/lessons.md` (failure → user correction → explicit testable rule → scope).
+- Read `.claude/memory/lessons.md` at session start to drop your mistake rate to zero.
+- Same lesson 3× → promote from `lessons.md` into `CLAUDE.md` as a permanent rule.
+- Lessons are about HOW Claude approaches work; technical bug recipes go to `.claude/issues-solved/INDEX.md` instead.
+
+### Task management micro-loop
+1. **Plan first** — write the plan to `.claude/tasks/TASKS.md` Active section with checkable items.
+2. **Verify plan** — get user explicit approval before non-trivial implementation starts.
+3. **Track progress** — mark items complete as you go.
+4. **Explain changes** — high-level summary at each step.
+5. **Document results** — add a review section to `TASKS.md` (or move the entry to `ARCHIVE.md` when the feature ships).
+6. **Capture lessons** — update `lessons.md` after any user correction.
+
+</orchestration>
+
+## Principal Engineer Operating Mode (MANDATORY — added 2026-05-14)
+
+<principal_engineer priority="MANDATORY" type="cross-agent">
+
+All `.claude/agents/*.md` and the main session operate under the Principal Engineer rules. **Canonical file:** `.claude/rules/principal-engineer.md` (read it once; agents embed a `<principal_engineer_mode>` block that points back to it).
+
+**Five pinned rules:**
+
+1. **No reinvention.** Before writing custom code, `Grep` the repo + check installed deps (`pyproject.toml`, `services/<svc>/pyproject.toml`). Mature library beats hand-rolled — `pydantic`, `httpx`, `structlog`, `redis.asyncio`, `tenacity`, `pendulum`, `aiolimiter` are first-choice.
+2. **No bloat.** Every new file requires a one-line justification (why an existing file can't hold this code). No unprompted `types.py` / `constants.py` / `utils.py` / barrel `__init__.py` re-exports.
+3. **No stubs.** Working code or one sharp clarifying question — never TODOs, `pass`-bodies, or `raise NotImplementedError` outside abstract bases. (Exception: `# TODO(#123)` with a real ticket reference is fine.)
+4. **Stay in scope.** Minimal diff. No opportunistic refactors of code unrelated to the task.
+5. **Optimization is default.** `asyncio.gather` for parallel awaits, `redis.asyncio.pipeline` for batch ops, `set`/`dict` for O(1) lookups, guard clauses over nested `if`s.
+
+**Instant-fail anti-patterns:** new file when an existing one would do; rebuilding what an installed dep provides; `Any` / `# type: ignore` / `# noqa` to silence tooling; refactoring "while you're there"; handing back a red build.
+
+**One-line reminder:** *Search the repo. Check the deps. Use the library. Edit, don't write. Justify every file. Ship working code.*
+
+</principal_engineer>
 
 ## Hard Limits (added 2026-05-11)
 
@@ -464,6 +356,10 @@ When the user says **"I am adding X"** (a new directory, service, file, or exter
 
 <!-- Last auto-updated: 2026-04-16 00:23:07 by hook -->
 
+
+## External tools (gstack + companion CLIs)
+
+**Reference:** `.claude/rules/external-tools.md` — loads on demand when gstack / `/qa` / `/browse` / `/design-*` / `/investigate` / `/office-hours` / `agent-browser` / `specify` / `hivemind` are invoked. Key facts: gstack is user-global at `~/.claude/skills/gstack` (47 skills + native CLIs `browse`/`design`/`pdf`); SENA agents take precedence over gstack for tenant-isolation-critical code (don't use gstack `/review` or `/ship` for SENA paths); `hivemind install` is HELD pending NDIS APP 8/11 data-residency decision; `agent-browser` is Chromium-only (no Firefox).
 
 ## Auto-generated signatures
 <!-- Updated by gen-context.js -->
@@ -498,12 +394,46 @@ sena-ai\services\onboarding\tests\test_validators.py ← __future__, onboarding,
 
 ## sena-ai
 
+### sena-ai\DEPLOY_EC2_CHECKLIST.md
+```
+h1 EC2 Demo Deployment — Onboarding Service
+h2 0. Prereqs (one-time, on the EC2 box)
+h2 1. Get code onto the box
+h2 2. Configure env
+h2 3. Build + run
+h2 4. Smoke test
+h1 from EC2
+h1 from your laptop (replace public DNS)
+h2 5. Hand off to client team
+h2 6. If something breaks (1-min triage)
+h2 7. Demo-only shortcuts taken (fix before any real env)
+code-fence bash
+code-fence plain
+code-fence ---
+```
+
+### sena-ai\docker-compose.deploy.yml
+```
+keys: [version, services, volumes]
+service: sena-onboarding
+service: redis
+```
+
+### sena-ai\services\onboarding\Dockerfile
+```
+FROM python:3.12-slim
+EXPOSE 8083
+CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8083"]
+ENV PYTHONDONTWRITEBYTECODE
+ENV PYTHONPATH
+```
+
 ### sena-ai\services\onboarding\src\onboarding\api\routes.py
 ```
-class CreateSessionRequest(BaseModel) {participant_id*, step*, schema*, initial_state?, bootstrap?, locale?}
-class CreateSessionResponse(BaseModel) {session_id*, ws_url*, expires_at*, resumption_handle?}
+class CreateSessionRequest(BaseModel) {participant_id*, step*, schema*}
+class CreateSessionResponse(BaseModel) {session_id*, ws_url*, expires_at*}
 class UpdateStateRequest(BaseModel) {values*}
-class ClientValidationErrorRequest(BaseModel) {model_config?, error_type?, error_message?, input_method*, field_id?, attempted_value?}
+class ClientValidationErrorRequest(BaseModel) {input_method*, ts*}
 async def health_live() → dict
 POST /v1/onboarding/session  →  create_session()
 GET /v1/onboarding/session/{session_id}/state  →  get_state()
@@ -564,7 +494,7 @@ h3 Rule 3 — Pre-Filled Data Handling
 h3 Rule 4 — Exhaustive Entity Extraction (Multi-Value Capture)
 h3 Rule 5 — Proactive Optional Prompting
 h3 Rule 6 — Dynamic UI Updates
-h3 Rule 7 — Frontend Validation Loop
+h3 Rule 7 — Advisory Validation Feedback
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py
@@ -599,7 +529,7 @@ class GeminiLiveSession
 
 ### sena-ai\services\onboarding\src\onboarding\services\prompt_builder.py
 ```
-def build_system_prompt(schema: StepSchema, state: FormState, *, grounding_enabled: bool, screen_context_text: str | None, resume_context_text: str | None, bootstrap: SessionBootstrap | None, cross_screen_text: str | None) → str
+def build_system_prompt(schema: StepSchema, state: FormState, *, grounding_enabled: bool, screen_context_text: str | None, resume_context_text: str | None, bootstrap: SessionBootstrap | None, cross_screen_text: str | None, screen_field_status: dict[str, str] | None) → str
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\services\resumption.py
@@ -651,10 +581,11 @@ def validate_field(section_id: str, field_id: str, value: Any, *, repeatable_ind
 
 ### sena-ai\services\onboarding\src\onboarding\services\validators\sequencing.py
 ```
-def next_required_field(schema: StepSchema, state: FormState) → dict | None  # First required field with no value, walking schema sections 
+def next_required_field(schema: StepSchema, state: FormState, *, screen_field_status: dict[str, str] | None) → dict | None
 def next_optional_field(schema: StepSchema, state: FormState) → dict | None  # First optional (required=False) field with no value, in sche
 def section_min_unmet(section: SectionSpec, section_values: Any) → bool  # Return True when a repeatable section has fewer rows than it
 def validate_step_complete(schema: StepSchema, state: FormState) → list[ValidationRejection]  # Aggregate gate for /complete — returns [] only if every requ
+def validate_required_only(schema: StepSchema, state: FormState) → list[ValidationRejection]  # Per-field required/validation rejections only — cross-field 
 ```
 
 ### sena-ai\services\onboarding\tests\test_cross_screen_context.py
@@ -791,6 +722,18 @@ class TestValidateStepComplete
 class _FakeFieldSpec
   def __init__(field_type: str, options: list[str]) → None
 class TestValidateFieldEnumOptions
+```
+
+### sena-ai\services\onboarding\test_harness.html
+```
+title: SENA Voice Onboarding
+div#hdot
+span#hlabel
+div#orb
+canvas#waveform
+div#timer
+div#vstatus
+div#transcript
 ```
 
 ### sena-ai\shared\.github\context-cold.md
