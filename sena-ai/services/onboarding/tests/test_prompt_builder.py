@@ -262,3 +262,83 @@ def test_build_system_prompt_contains_rule_13_and_14() -> None:
     assert "Rule 19" in prompt  # read state before asking
     assert "Rule 20" in prompt  # readonly fields (email)
     assert "Rule 21" in prompt  # tone consistency
+
+
+# ── visible_if pre-filter (regression: plan_manager bug 2026-05-19) ──────────
+
+
+def test_visible_if_hidden_fields_removed_from_prompt_schema() -> None:
+    """When plan_management != 'Plan Managed', the plan_manager /
+    contact_email / billing_email fields MUST NOT appear in the schema
+    section of the rendered system prompt. Without this filter, the agent
+    asks for them even though the Flutter UI hides them. Confirmed by
+    session 8431a840 (2026-05-19 19:08) where the agent asked
+    'Would you like to add your plan manager's name now?' on a Self Managed
+    plan.
+    """
+    import json
+    from pathlib import Path
+    from onboarding.models.schema_spec import StepSchema
+    from onboarding.models.form_state import FormState
+    from onboarding.services.prompt_builder import build_system_prompt
+
+    fixtures = (
+        Path(__file__).parent.parent / "fixtures"
+        / "schema_ndis_plan_details.json"
+    )
+    schema = StepSchema.model_validate_json(fixtures.read_text())
+    # State: plan_management is "Self Managed" — the conditional fields
+    # must be hidden.
+    state = FormState(
+        session_id="t",
+        step_id=schema.step_id,
+        participant_id="p",
+        tenant_id="t",
+        values={"plan_info": {"plan_management": {"value": "Self Managed"}}},
+    )
+    prompt = build_system_prompt(schema, state)
+
+    # Field IDs hidden by visible_if must NOT appear as a schema field
+    # declaration (i.e. inside `"id": "..."`). Other mentions in prompt
+    # examples are unavoidable but harmless — the model uses the schema
+    # JSON section to know what fields exist.
+    assert "\"id\":\"plan_manager\"" not in prompt and "\"id\": \"plan_manager\"" not in prompt, (
+        "plan_manager field leaked into schema JSON despite Self Managed visible_if"
+    )
+    assert "\"id\":\"contact_email\"" not in prompt and "\"id\": \"contact_email\"" not in prompt, (
+        "contact_email field leaked into schema JSON despite Self Managed visible_if"
+    )
+    assert "\"id\":\"billing_email\"" not in prompt and "\"id\": \"billing_email\"" not in prompt, (
+        "billing_email field leaked into schema JSON despite Self Managed visible_if"
+    )
+    # Sanity: a non-hidden field IS present in the schema JSON
+    assert "\"id\":\"ndis_number\"" in prompt or "\"id\": \"ndis_number\"" in prompt
+
+
+def test_visible_if_fields_present_when_condition_satisfied() -> None:
+    """Inverse: when plan_management == 'Plan Managed', the conditional
+    fields MUST appear (so the agent CAN ask for them)."""
+    import json
+    from pathlib import Path
+    from onboarding.models.schema_spec import StepSchema
+    from onboarding.models.form_state import FormState
+    from onboarding.services.prompt_builder import build_system_prompt
+
+    fixtures = (
+        Path(__file__).parent.parent / "fixtures"
+        / "schema_ndis_plan_details.json"
+    )
+    schema = StepSchema.model_validate_json(fixtures.read_text())
+    state = FormState(
+        session_id="t",
+        step_id=schema.step_id,
+        participant_id="p",
+        tenant_id="t",
+        values={"plan_info": {"plan_management": {"value": "Plan Managed"}}},
+    )
+    prompt = build_system_prompt(schema, state)
+
+    # Now the fields SHOULD appear in the schema JSON so the agent can ask.
+    assert "\"id\":\"plan_manager\"" in prompt or "\"id\": \"plan_manager\"" in prompt
+    assert "\"id\":\"contact_email\"" in prompt or "\"id\": \"contact_email\"" in prompt
+    assert "\"id\":\"billing_email\"" in prompt or "\"id\": \"billing_email\"" in prompt

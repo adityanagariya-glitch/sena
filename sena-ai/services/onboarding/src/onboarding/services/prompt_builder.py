@@ -29,6 +29,69 @@ log = structlog.get_logger(__name__)
 _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
 
 
+def _render_schema_filtering_hidden_fields(
+    schema: StepSchema, state: FormState
+) -> str:
+    """Serialize the schema to JSON for the prompt, dropping fields whose
+    `visible_if` condition is NOT satisfied by the current state values.
+
+    Background (2026-05-19 regression): plan_manager / contact_email /
+    billing_email carry `visible_if: {plan_management: "Plan Managed"}`.
+    When plan_management != "Plan Managed" the Flutter screen hides them —
+    but the schema JSON inlined in the system prompt still listed them,
+    so the agent asked "Would you like to add your plan manager's name?"
+    despite the field not being rendered. Pre-filtering the schema before
+    serialisation is the only place where the model genuinely cannot see
+    these fields.
+    """
+    def _evaluate_visible_if(
+        visible_if: dict | None, row_values: dict, section_values: dict
+    ) -> bool:
+        if not visible_if:
+            return True
+        cond_field, cond_value = next(iter(visible_if.items()))
+        # Look up the conditional field value: first in the same row
+        # (repeatable item-level visible_if), then in the parent section
+        # (scalar field referencing a sibling), then None if neither set.
+        actual_raw = row_values.get(cond_field)
+        if actual_raw is None:
+            actual_raw = section_values.get(cond_field)
+        actual = actual_raw.get("value") if isinstance(actual_raw, dict) else actual_raw
+        return actual == cond_value
+
+    raw = schema.model_dump(mode="json")
+    sections_out = []
+    for section_spec in raw.get("sections", []):
+        section_id = section_spec.get("id")
+        section_state = state.values.get(section_id) or {}
+        is_rep = section_spec.get("repeatable") is not None
+        # Pick the parent context for visible_if evaluation. For repeatable
+        # sections we evaluate against the FIRST row (the agent only asks
+        # one row at a time anyway). For scalar sections, the section itself.
+        if is_rep:
+            row_ctx = (
+                section_state[0]
+                if isinstance(section_state, list) and section_state
+                else {}
+            )
+            scalar_ctx: dict = row_ctx if isinstance(row_ctx, dict) else {}
+        else:
+            scalar_ctx = section_state if isinstance(section_state, dict) else {}
+        # Filter both fields and item_fields lists.
+        for key in ("fields", "item_fields"):
+            if key not in section_spec or section_spec[key] is None:
+                continue
+            kept = []
+            for fld in section_spec[key]:
+                vis_if = fld.get("visible_if")
+                if _evaluate_visible_if(vis_if, scalar_ctx, scalar_ctx):
+                    kept.append(fld)
+            section_spec[key] = kept
+        sections_out.append(section_spec)
+    raw["sections"] = sections_out
+    return json.dumps(raw, default=str)
+
+
 def _compute_next_required_field(
     schema: StepSchema,
     state: FormState,
@@ -308,7 +371,11 @@ def build_system_prompt(
     """
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
 
-    schema_json = schema.model_dump_json()
+    # Filter out conditional-visibility fields whose condition is NOT met by
+    # the current state. Without this, the model sees the field listed in
+    # the schema JSON and proactively asks for it even though the Flutter UI
+    # has hidden it (see plan_manager bug 2026-05-19).
+    schema_json = _render_schema_filtering_hidden_fields(schema, state)
 
     # Compact state snapshot — only what the model needs to skip already-filled fields
     state_summary = {
