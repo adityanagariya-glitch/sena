@@ -22,6 +22,7 @@ Key implementation notes:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import time
@@ -93,6 +94,9 @@ class GeminiLiveSession:
         # the first "still there?" check-in; the second timeout then summarises
         # pending fields. Reset to False on any new user audio.
         self._silence_warned: bool = False
+        # Set True after the summary step fires; no further watchdog cues until
+        # a real user utterance arrives. Prevents the "keeps speaking" loop.
+        self._silence_exhausted: bool = False
         # Diagnostic — proves the system_instruction is unique per session.
         # If two consecutive sessions log the same sha8, the prompt builder
         # is leaking state across requests; that would be the cross-screen
@@ -104,8 +108,8 @@ class GeminiLiveSession:
             session_id,
             _instruction_sha8,
             len(system_instruction),
-            len(FUNCTION_DECLS) if tool_dispatcher else 0,
-            "yes" if replay_context else "no",
+            (len(FUNCTION_DECLS) if tool_dispatcher else 0),
+            ("yes" if replay_context else "no"),
         )
 
     # ── Public ────────────────────────────────────────────────────────────────
@@ -186,7 +190,11 @@ class GeminiLiveSession:
         async with client.aio.live.connect(
             model=settings.gemini_live_model_id, config=config
         ) as session:
-            log.info("gemini_connected session=%s model=%s", self._session_id, settings.gemini_live_model_id)
+            log.info(
+                "gemini_connected session=%s model=%s",
+                self._session_id,
+                settings.gemini_live_model_id,
+            )
             # Phase E — inject replay context so model continues without reintroducing
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
@@ -223,10 +231,10 @@ class GeminiLiveSession:
 
                 if raw_bytes:
                     self._last_audio_at = time.monotonic()
-                    # User is talking — clear the silence watchdog state so a
-                    # later silence triggers the FIRST-step warn again, not the
-                    # SECOND-step summary.
+                    # User is talking — clear silence watchdog state so the next
+                    # silence period restarts the full warn → summary cycle.
                     self._silence_warned = False
+                    self._silence_exhausted = False
                     # Send all audio unconditionally — Gemini's VAD + START_OF_ACTIVITY_INTERRUPTS
                     # handles barge-in natively. The old _agent_speaking echo gate blocked user
                     # audio after turn N+1 model audio arrived, causing VAD to stop firing.
@@ -235,7 +243,11 @@ class GeminiLiveSession:
                     )
                     total_chunks += 1
                     if total_chunks % 50 == 0:
-                        log.info("audio_streaming chunks=%d session=%s", total_chunks, self._session_id)
+                        log.info(
+                            "audio_streaming chunks=%d session=%s",
+                            total_chunks,
+                            self._session_id,
+                        )
 
                 elif raw_text:
                     stop_requested = await self._handle_control(session, raw_text)
@@ -255,7 +267,9 @@ class GeminiLiveSession:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            log.warning("invalid_json_from_client session=%s", self._session_id)
+            log.warning(
+                "invalid_json_from_client session=%s", self._session_id
+            )
             return False
 
         msg_type = data.get("type")
@@ -300,7 +314,10 @@ class GeminiLiveSession:
         code = data.get("code", "client_validation_failed")
 
         if not section_id or not field_id:
-            log.warning("validation_failed missing section/field session=%s", self._session_id)
+            log.warning(
+                "validation_failed missing section/field session=%s",
+                self._session_id,
+            )
             return
 
         state = await self._repo.get_state(self._session_id)
@@ -309,16 +326,24 @@ class GeminiLiveSession:
 
         key = (section_id, field_id, repeatable_index)
         state.pending_validation_errors = [
-            e for e in state.pending_validation_errors
-            if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+            e
+            for e in state.pending_validation_errors
+            if (
+                e.get("section_id"),
+                e.get("field_id"),
+                e.get("repeatable_index"),
+            )
+            != key
         ]
-        state.pending_validation_errors.append({
-            "section_id": section_id,
-            "field_id": field_id,
-            "repeatable_index": repeatable_index,
-            "code": code,
-            "reason_human": reason_human,
-        })
+        state.pending_validation_errors.append(
+            {
+                "section_id": section_id,
+                "field_id": field_id,
+                "repeatable_index": repeatable_index,
+                "code": code,
+                "reason_human": reason_human,
+            }
+        )
         await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
 
         loc = f"{section_id}.{field_id}"
@@ -335,7 +360,9 @@ class GeminiLiveSession:
         await session.send_realtime_input(text=injection)
         log.info(
             "validation_failed_injected session=%s loc=%s code=%s",
-            self._session_id, loc, code,
+            self._session_id,
+            loc,
+            code,
         )
 
     async def _handle_validation_cleared(self, data: dict) -> None:
@@ -353,13 +380,21 @@ class GeminiLiveSession:
 
         key = (section_id, field_id, repeatable_index)
         state.pending_validation_errors = [
-            e for e in state.pending_validation_errors
-            if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+            e
+            for e in state.pending_validation_errors
+            if (
+                e.get("section_id"),
+                e.get("field_id"),
+                e.get("repeatable_index"),
+            )
+            != key
         ]
         await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
         log.info(
             "validation_cleared session=%s section=%s field=%s",
-            self._session_id, section_id, field_id,
+            self._session_id,
+            section_id,
+            field_id,
         )
 
     async def _handle_screen_state(
@@ -375,7 +410,11 @@ class GeminiLiveSession:
         raw_data = data.get("data", {})
         h = payload_hash(raw_data)
         if h == self._last_screen_hash:
-            log.debug("screen_state_duplicate_dropped session=%s version=%d", self._session_id, version)
+            log.debug(
+                "screen_state_duplicate_dropped session=%s version=%d",
+                self._session_id,
+                version,
+            )
             return
 
         try:
@@ -386,17 +425,30 @@ class GeminiLiveSession:
                 v1_msg = ScreenStateMessage(type="screen_state", data=raw_data)
                 state_v2 = from_v1(v1_msg, session_step_id=None)
         except ValidationError as exc:
-            log.warning("screen_state_invalid session=%s version=%d error=%s",
-                        self._session_id, version, exc)
+            log.warning(
+                "screen_state_invalid session=%s version=%d error=%s",
+                self._session_id,
+                version,
+                exc,
+            )
             await self._ws.send_text(
-                json.dumps({"type": "error", "code": "screen_state_invalid",
-                            "message": str(exc)})
+                json.dumps(
+                    {
+                        "type": "error",
+                        "code": "screen_state_invalid",
+                        "message": str(exc),
+                    }
+                )
             )
             return
 
         self._last_screen_hash = h
         injection = render_injection_text(state_v2)
-        log.debug("screen_state_inject session=%s version=%d", self._session_id, version)
+        log.debug(
+            "screen_state_inject session=%s version=%d",
+            self._session_id,
+            version,
+        )
         await session.send_realtime_input(text=injection)
 
         # N-4 fix: mirror v2 field_errors into state.pending_validation_errors so
@@ -414,20 +466,36 @@ class GeminiLiveSession:
                     sec, fld = parts
                     key = (sec, fld, None)
                     state_fv.pending_validation_errors = [
-                        e for e in state_fv.pending_validation_errors
-                        if (e.get("section_id"), e.get("field_id"), e.get("repeatable_index")) != key
+                        e
+                        for e in state_fv.pending_validation_errors
+                        if (
+                            e.get("section_id"),
+                            e.get("field_id"),
+                            e.get("repeatable_index"),
+                        )
+                        != key
                     ]
-                    state_fv.pending_validation_errors.append({
-                        "section_id": sec,
-                        "field_id": fld,
-                        "repeatable_index": None,
-                        "code": "client_validation",
-                        "reason_human": reason_human,
-                    })
+                    state_fv.pending_validation_errors.append(
+                        {
+                            "section_id": sec,
+                            "field_id": fld,
+                            "repeatable_index": None,
+                            "code": "client_validation",
+                            "reason_human": reason_human,
+                        }
+                    )
                 await self._repo.save_state(state_fv, ttl_sec=settings.session_max_sec)
 
         if settings.debug:
-            await self._ws.send_text(json.dumps({"type": "screen_state_ack", "accepted": True, "version": version}))
+            await self._ws.send_text(
+                json.dumps(
+                    {
+                        "type": "screen_state_ack",
+                        "accepted": True,
+                        "version": version,
+                    }
+                )
+            )
 
     # ── Private: Gemini → client ──────────────────────────────────────────────
 
@@ -461,8 +529,12 @@ class GeminiLiveSession:
                         # ── Input transcription (user speech → text) ───────────
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = sc.input_transcription.text
-                            log.info("USER_SAID %r session=%s", txt, self._session_id)
-                            await self._ws.send_text(json.dumps({"type": "user_said", "text": txt}))
+                            log.info(
+                                "USER_SAID %r session=%s", txt, self._session_id
+                            )
+                            await self._ws.send_text(
+                                json.dumps({"type": "user_said", "text": txt})
+                            )
                             await self._repo.append_transcript(
                                 self._session_id,
                                 {"speaker": "user", "text": txt, "turn_id": self._turn_id},
@@ -480,7 +552,9 @@ class GeminiLiveSession:
                             for part in sc.model_turn.parts:
                                 if part.inline_data:
                                     if not turn_started:
-                                        await self._ws.send_text(json.dumps({"type": "turn_start"}))
+                                        await self._ws.send_text(
+                                            json.dumps({"type": "turn_start"})
+                                        )
                                         turn_started = True
                                         self._gemini_is_speaking = True
                                         # NOTE: Do NOT send audio_stream_end=True here.
@@ -496,21 +570,42 @@ class GeminiLiveSession:
 
                         # ── Interruption (user spoke over the agent) ───────────
                         if sc.interrupted:
-                            log.info("interrupted turn=%d chunks_before=%d session=%s",
-                                     self._turn_id, chunk_count, self._session_id)
+                            log.info(
+                                "interrupted turn=%d chunks_before=%d session=%s",
+                                self._turn_id,
+                                chunk_count,
+                                self._session_id,
+                            )
                             interrupted_intent: str | None = None
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
                                 interrupted_intent = full_text.strip() or None
-                                log.info("AGENT_SAID(interrupted) %r session=%s", full_text, self._session_id)
-                                await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
+                                log.info(
+                                    "AGENT_SAID(interrupted) %r session=%s",
+                                    full_text,
+                                    self._session_id,
+                                )
+                                await self._ws.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "agent_said",
+                                            "text": full_text,
+                                        }
+                                    )
+                                )
                                 await self._repo.append_transcript(
                                     self._session_id,
-                                    {"speaker": "agent", "text": full_text, "turn_id": self._turn_id},
+                                    {
+                                        "speaker": "agent",
+                                        "text": full_text,
+                                        "turn_id": self._turn_id,
+                                    },
                                     ttl_sec=settings.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
-                            await self._ws.send_text(json.dumps({"type": "interrupted"}))
+                            await self._ws.send_text(
+                                json.dumps({"type": "interrupted"})
+                            )
                             turn_started = False
                             chunk_count = 0
                             self._gemini_is_speaking = False
@@ -550,17 +645,38 @@ class GeminiLiveSession:
                         if sc.turn_complete:
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
-                                log.info("AGENT_SAID %r session=%s", full_text, self._session_id)
-                                await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
+                                log.info(
+                                    "AGENT_SAID %r session=%s",
+                                    full_text,
+                                    self._session_id,
+                                )
+                                await self._ws.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "agent_said",
+                                            "text": full_text,
+                                        }
+                                    )
+                                )
                                 await self._repo.append_transcript(
                                     self._session_id,
-                                    {"speaker": "agent", "text": full_text, "turn_id": self._turn_id},
+                                    {
+                                        "speaker": "agent",
+                                        "text": full_text,
+                                        "turn_id": self._turn_id,
+                                    },
                                     ttl_sec=settings.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
-                            await self._ws.send_text(json.dumps({"type": "turn_complete"}))
-                            log.info("turn_complete chunks=%d turn=%d session=%s",
-                                     chunk_count, self._turn_id, self._session_id)
+                            await self._ws.send_text(
+                                json.dumps({"type": "turn_complete"})
+                            )
+                            log.info(
+                                "turn_complete chunks=%d turn=%d session=%s",
+                                chunk_count,
+                                self._turn_id,
+                                self._session_id,
+                            )
                             self._turn_id += 1
                             chunk_count = 0
                             turn_started = False
@@ -581,11 +697,14 @@ class GeminiLiveSession:
                     # to enable Gemini-native reconnect (faster than app-level replay).
                     resumption_update = getattr(msg, "session_resumption_update", None)
                     if resumption_update:
-                        gemini_handle = getattr(resumption_update, "resumable_session_handle", None)
+                        gemini_handle = getattr(
+                            resumption_update, "resumable_session_handle", None
+                        )
                         if gemini_handle:
                             log.debug(
                                 "gemini_session_handle_updated session=%s handle=%.12s…",
-                                self._session_id, gemini_handle,
+                                self._session_id,
+                                gemini_handle,
                             )
 
                     # ── GoAway — Gemini about to close the connection ──────────
@@ -595,24 +714,31 @@ class GeminiLiveSession:
                     # gap with no indication a reconnect is needed.
                     if msg.go_away:
                         time_left = msg.go_away.time_left
-                        log.warning("go_away time_left=%s session=%s",
-                                    time_left, self._session_id)
-                        try:
+                        log.warning(
+                            "go_away time_left=%s session=%s",
+                            time_left,
+                            self._session_id,
+                        )
+                        with contextlib.suppress(Exception):
                             ms: int = 0
                             if time_left is not None:
-                                try:
+                                with contextlib.suppress(Exception):
                                     ms = int(time_left.total_seconds() * 1000)
-                                except Exception:
-                                    pass
-                            await self._ws.send_text(json.dumps({
-                                "type": "go_away",
-                                "time_left_ms": ms,
-                            }))
-                        except Exception:
-                            pass
+                            await self._ws.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "go_away",
+                                        "time_left_ms": ms,
+                                    }
+                                )
+                            )
 
                 # receive() iterator exhausted — re-enter for next turn
-                log.debug("g2b_recv_iter_end loop=%d session=%s", loop_iter, self._session_id)
+                log.debug(
+                    "g2b_recv_iter_end loop=%d session=%s",
+                    loop_iter,
+                    self._session_id,
+                )
                 await asyncio.sleep(0.01)
                 continue
 
@@ -648,14 +774,19 @@ class GeminiLiveSession:
             while True:
                 await asyncio.sleep(_SILENCE_POLL_SEC)
                 elapsed = time.monotonic() - self._last_audio_at
-                if elapsed < settings.onboarding_silence_timeout_sec or self._gemini_is_speaking:
+                if (
+                    elapsed < settings.onboarding_silence_timeout_sec
+                    or self._gemini_is_speaking
+                    or self._silence_exhausted
+                ):
                     continue
 
                 if not self._silence_warned:
                     # First fire — gentle "are you still there?" cue.
                     log.info(
                         "silence_watchdog fired threshold=%.0fs step=warn session=%s",
-                        elapsed, self._session_id,
+                        elapsed,
+                        self._session_id,
                     )
                     cue = (
                         "[SILENCE TIMEOUT] The participant has been silent. "
@@ -671,7 +802,9 @@ class GeminiLiveSession:
                     log.info(
                         "silence_watchdog fired threshold=%.0fs step=summary "
                         "pending=%d session=%s",
-                        elapsed, len(pending_labels), self._session_id,
+                        elapsed,
+                        len(pending_labels),
+                        self._session_id,
                     )
                     if pending_labels:
                         joined = ", ".join(pending_labels[:6])
@@ -688,10 +821,9 @@ class GeminiLiveSession:
                             "silent. Reassure them you're here whenever they're "
                             "ready, in Australian English."
                         )
-                try:
+                    self._silence_exhausted = True
+                with contextlib.suppress(Exception):
                     await session.send_realtime_input(text=cue)
-                except Exception:
-                    pass
                 # Reset the audio-at timestamp so the watchdog doesn't fire
                 # again immediately. _silence_warned stays True until a real
                 # user utterance arrives in _browser_to_gemini.
@@ -711,7 +843,8 @@ class GeminiLiveSession:
                 return []
             pending: list[str] = []
             for section in schema.sections:
-                section_values = state.values.get(section.id) or ({} if not section.is_repeatable else [])
+                default_val = {} if not section.is_repeatable else []
+                section_values = state.values.get(section.id) or default_val
                 for f in section.all_fields():
                     if not f.required or f.visible_if is not None:
                         continue
@@ -755,15 +888,23 @@ class GeminiLiveSession:
             try:
                 result = await self._tools.dispatch(call.name, args_dict)
             except PolicyBlockSignal as exc:
-                log.info("policy_block_signal question=%r session=%s", exc.question, self._session_id)
-                await self._ws.send_text(json.dumps({
-                    "type": "error",
-                    "code": "policy_block",
-                    "message": (
-                        "This question requires current NDIS policy data. "
-                        "Please re-ask with Google Search grounding enabled."
-                    ),
-                }))
+                log.info(
+                    "policy_block_signal question=%r session=%s",
+                    exc.question,
+                    self._session_id,
+                )
+                await self._ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "code": "policy_block",
+                            "message": (
+                                "This question requires current NDIS policy data. "
+                                "Please re-ask with Google Search grounding enabled."
+                            ),
+                        }
+                    )
+                )
                 await self._ws.close(4011)
                 return
             responses.append(
