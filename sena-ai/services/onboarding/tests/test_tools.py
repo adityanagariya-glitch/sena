@@ -77,6 +77,7 @@ def test_function_decls_cover_all_handlers() -> None:
         "advance_step",
         "escalate_incident",
         "add_repeatable_row",
+        "delete_repeatable_row",
         "enter_repeatable_section",
         "exit_repeatable_section",
         "request_unknown_section",
@@ -931,6 +932,106 @@ async def test_email_too_many_labels_rejected(
     )
     assert result["ok"] is False
     assert result["rejection"]["code"] == "email_invalid"
+
+
+# ── delete_repeatable_row ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_delete_repeatable_row_removes_row_and_emits(
+    dispatcher, seeded_repo, emitted
+) -> None:
+    """Happy path — add two rows then delete the first; second becomes index 0."""
+    # Add two contacts
+    for idx in range(2):
+        await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+        for field, value in [
+            ("name", f"Contact {idx}"),
+            ("relation", "Friend"),
+            ("email", f"c{idx}@example.com"),
+            ("phone", f"+6140000000{idx}"),
+        ]:
+            await dispatcher.dispatch(
+                "update_field",
+                {
+                    "section": "emergency_contacts",
+                    "field": field,
+                    "value": value,
+                    "repeatable_index": idx,
+                },
+            )
+
+    state_before = await seeded_repo.get_state("sid-1")
+    assert len(state_before.values["emergency_contacts"]) == 2
+
+    result = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "emergency_contacts", "row_index": 0},
+    )
+    assert result["ok"] is True
+    assert result["deleted_index"] == 0
+    assert result["remaining_rows"] == 1
+
+    state_after = await seeded_repo.get_state("sid-1")
+    assert len(state_after.values["emergency_contacts"]) == 1
+    # The survivor is what was row 1 (Contact 1)
+    assert state_after.values["emergency_contacts"][0]["name"]["value"] == "Contact 1"
+
+    deleted_events = [e for e in emitted if e.get("type") == "row_deleted"]
+    assert len(deleted_events) == 1
+    assert deleted_events[0]["section_id"] == "emergency_contacts"
+    assert deleted_events[0]["deleted_index"] == 0
+    assert deleted_events[0]["remaining_rows"] == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_repeatable_row_out_of_range_rejected(
+    dispatcher, seeded_repo
+) -> None:
+    """Deleting a row_index that doesn't exist must return ok=False."""
+    result = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "emergency_contacts", "row_index": 5},
+    )
+    assert result["ok"] is False
+    assert "out of range" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_delete_repeatable_row_adjusts_focus(
+    dispatcher, seeded_repo
+) -> None:
+    """When focused_repeatable_index points at the deleted row, focus moves
+    to the last surviving row."""
+    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+
+    # Manually set focus to row 1
+    state = await seeded_repo.get_state("sid-1")
+    state.focused_section = "emergency_contacts"
+    state.focused_repeatable_index = 1
+    await seeded_repo.save_state(state, ttl_sec=3600)
+
+    # Delete row 1 (the focused row)
+    result = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "emergency_contacts", "row_index": 1},
+    )
+    assert result["ok"] is True
+
+    state_after = await seeded_repo.get_state("sid-1")
+    # Focus should shift to the only remaining row (index 0)
+    assert state_after.focused_repeatable_index == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_repeatable_row_unknown_section_rejected(dispatcher) -> None:
+    result = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "does_not_exist", "row_index": 0},
+    )
+    assert result["ok"] is False
+    assert "unknown section" in result["error"]
 
 
 # ── C1: Same-row sibling bypass for PENDING_CONFIRMATION lock ────────────────

@@ -309,6 +309,30 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "delete_repeatable_row",
+        "description": (
+            "Remove a specific row from a repeatable section. "
+            "Call when the participant says 'remove that', 'delete that one', "
+            "'I made a mistake — remove contact 1', 'take that entry out', etc. "
+            "Pass the zero-based row_index of the row to delete. "
+            "The server blocks deletion below the section's declared minimum row count."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "Repeatable section id (e.g. 'emergency_contacts').",
+                },
+                "row_index": {
+                    "type": "integer",
+                    "description": "Zero-based index of the row to remove.",
+                },
+            },
+            "required": ["section_id", "row_index"],
+        },
+    },
+    {
         "name": "enter_repeatable_section",
         "description": (
             "Pin focus to a repeatable section before collecting values. "
@@ -656,6 +680,7 @@ class ToolDispatcher:
             "advance_step": self._advance_step,
             "escalate_incident": self._escalate_incident,
             "add_repeatable_row": self._add_repeatable_row,
+            "delete_repeatable_row": self._delete_repeatable_row,
             "enter_repeatable_section": self._enter_repeatable_section,
             "exit_repeatable_section": self._exit_repeatable_section,
             "request_unknown_section": self._request_unknown_section,
@@ -1725,6 +1750,98 @@ class ToolDispatcher:
         })
 
         return {"ok": True, "section_id": section_id, "new_index": new_index}
+
+    # ── Handler: delete_repeatable_row ───────────────────────────────────────
+
+    async def _delete_repeatable_row(self, args: dict[str, Any]) -> dict[str, Any]:
+        section_id = args.get("section_id", "").strip()
+        row_index = args.get("row_index")
+
+        if not section_id:
+            return {"ok": False, "error": "section_id required"}
+        if row_index is None or not isinstance(row_index, int):
+            return {"ok": False, "error": "row_index required (integer)"}
+
+        section = self._schema.get_section(section_id)
+        if section is None:
+            return {"ok": False, "error": f"unknown section: {section_id}"}
+        if not section.is_repeatable:
+            return {"ok": False, "error": f"not repeatable: {section_id}"}
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return {"ok": False, "error": "session state not found"}
+
+        # Authoritative row count: repeatable_rows counter (incremented by
+        # add_repeatable_row) is the declared count. state.values[section_id]
+        # may be None or a shorter list when no update_field calls were made yet.
+        rep_count = state.repeatable_rows.get(section_id, 0)
+        rows = state.values.get(section_id)
+        value_count = len(rows) if isinstance(rows, list) else 0
+        current_count = max(rep_count, value_count)
+
+        if current_count == 0 or row_index >= current_count or row_index < 0:
+            return {
+                "ok": False,
+                "error": (
+                    f"row_index {row_index} out of range "
+                    f"(section '{section_id}' has {current_count} row(s))"
+                ),
+            }
+
+        min_rows = section.repeatable.min if section.repeatable else 0
+        if current_count <= min_rows:
+            return {
+                "ok": False,
+                "error": (
+                    f"cannot delete — '{section_id}' requires at least "
+                    f"{min_rows} row(s) and currently has {current_count}"
+                ),
+            }
+
+        # Splice from state.values only when that row exists there.
+        if isinstance(rows, list) and row_index < value_count:
+            state.values[section_id] = [r for i, r in enumerate(rows) if i != row_index]
+
+        # Decrement the repeatable_rows counter.
+        if rep_count > 0:
+            state.repeatable_rows[section_id] = rep_count - 1
+
+        remaining = state.repeatable_rows.get(section_id, 0)
+
+        # Adjust focus pointer if it was on the deleted row or beyond it.
+        if state.focused_section == section_id:
+            if remaining == 0:
+                state.focused_section = None
+                state.focused_repeatable_index = None
+            elif state.focused_repeatable_index is not None:
+                if state.focused_repeatable_index >= remaining:
+                    state.focused_repeatable_index = remaining - 1
+                elif state.focused_repeatable_index > row_index:
+                    state.focused_repeatable_index -= 1
+
+        state.recompute_completion(self._schema)
+        state.touch()
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        log.info(
+            "delete_repeatable_row section=%s deleted_index=%d remaining=%d session=%s",
+            section_id, row_index, remaining, self._session_id,
+        )
+        await self._emit({
+            "type": "row_deleted",
+            "section_id": section_id,
+            "deleted_index": row_index,
+            "remaining_rows": remaining,
+        })
+        await self._emit({"type": "state", "state": state.model_dump(mode="json")})
+
+        return {
+            "ok": True,
+            "section_id": section_id,
+            "deleted_index": row_index,
+            "remaining_rows": remaining,
+        }
 
     # ── Handler: policy_block ────────────────────────────────────────────────
 
