@@ -1413,3 +1413,186 @@ async def test_advance_step_passes_when_routines_filled(
     )
     # Webhook must have been called
     assert fired.get("event") == "onboarding.session.completed"
+
+
+# ── Bug fixes from 2026-05-19 session log analysis ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_confirm_required_followup_at_confidence_1_commits_not_deferred(
+    dispatcher, seeded_repo
+) -> None:
+    """Bug from session 72044008 (documents step, 2026-05-19 @ 13:23:43):
+    initial low-confidence write on a REPEATABLE section auto-pinned focus
+    and stored pending_confirmation with repeatable_index=0. The retry from
+    the model omitted repeatable_index entirely. Without index inference at
+    the lock-check, `pc.repeatable_index=0 != retry.repeatable_index=None`
+    made same_target False and the retry got DEFERRED → silently dropped.
+    The fix infers repeatable_index from state.focused_repeatable_index when
+    the retry omits it AND the section matches the locked one.
+    """
+    # First call — low confidence on a repeatable section, no explicit
+    # repeatable_index (mirrors model behaviour in session 72044008).
+    r1 = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "emergency_contacts",
+            "field": "name",
+            "value": "Ethan Hunt",
+            "confidence": 0.85,
+        },
+    )
+    assert r1["ok"] is False
+    assert r1["rejection"]["code"] == "CONFIRM_REQUIRED"
+
+    state = await seeded_repo.get_state("sid-1")
+    assert state.focused_section == "emergency_contacts"
+    assert state.focused_repeatable_index == 0
+    assert state.pending_confirmation is not None
+    assert state.pending_confirmation.get("repeatable_index") == 0
+
+    # Second call — same section + field, confidence=1.0, repeatable_index
+    # still omitted. MUST commit, NOT DEFER. This is the regression guard.
+    r2 = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "emergency_contacts",
+            "field": "name",
+            "value": "Ethan Hunt",
+            "confidence": 1.0,
+        },
+    )
+    assert r2["ok"] is True, (
+        f"Expected commit on confidence=1 retry; got: {r2}"
+    )
+
+    state_after = await seeded_repo.get_state("sid-1")
+    # Pending lock cleared
+    assert state_after.pending_confirmation is None
+    # Value actually committed
+    assert state_after.values["emergency_contacts"][0]["name"]["value"] == "Ethan Hunt"
+
+
+@pytest.mark.asyncio
+async def test_enter_repeatable_section_rejected_on_greeting_turn_0(
+    dispatcher, seeded_repo
+) -> None:
+    """Bug from session 0382aaed (medical step, 2026-05-19 @ 13:24:18):
+    model fired enter_repeatable_section(allergies) 75ms after the user said
+    "Hi, let's start." — pinning focus before any agent turn. Rule 9 guard
+    must reject this with PREMATURE_REPEATABLE_ENTRY so the model
+    self-corrects.
+    """
+    # Seed a user-greeting transcript
+    await seeded_repo.append_transcript(
+        "sid-1",
+        {"speaker": "user", "text": "Hi, let's start.", "turn_id": 0},
+        ttl_sec=3600,
+    )
+    # turn_id stays 0 (agent has not responded yet)
+    dispatcher.set_turn_id(0)
+
+    result = await dispatcher.dispatch(
+        "enter_repeatable_section",
+        {"section_id": "emergency_contacts", "intent": "first"},
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "PREMATURE_REPEATABLE_ENTRY"
+
+    # Focus must NOT have been pinned
+    state = await seeded_repo.get_state("sid-1")
+    assert state.focused_section is None
+    assert state.focused_repeatable_index is None
+
+
+@pytest.mark.asyncio
+async def test_enter_repeatable_section_allowed_when_user_named_value(
+    dispatcher, seeded_repo
+) -> None:
+    """Negative control for the Rule 9 guard. If the user's last utterance
+    is a meaningful directive (not a greeting), enter_repeatable_section
+    must still succeed even on turn 0 — the guard is greeting-specific.
+    """
+    await seeded_repo.append_transcript(
+        "sid-1",
+        {"speaker": "user", "text": "Add an emergency contact: Sarah", "turn_id": 0},
+        ttl_sec=3600,
+    )
+    dispatcher.set_turn_id(0)
+
+    result = await dispatcher.dispatch(
+        "enter_repeatable_section",
+        {"section_id": "emergency_contacts", "intent": "first"},
+    )
+    assert result["ok"] is True, (
+        f"Greeting guard misfired on a value-carrying utterance: {result}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cross_section_auto_promoted_when_focus_is_repeatable(
+    dispatcher, seeded_repo
+) -> None:
+    """Bug from session 5a1265be (ndis_plan, 2026-05-19 @ 13:19:45–13:22:20):
+    while focus was pinned to support_items[0] (repeatable), user dictated
+    funding amounts (non-repeatable scalar). 12 cross_section_blocked
+    rejections caused the model to fabricate "I can't save funding" three
+    times. Fix: when target is non-repeatable AND focus is repeatable,
+    auto-promote cross_section_intent silently.
+    """
+    # Pin focus to a repeatable section (emergency_contacts in personal
+    # schema mirrors the support_items repeatable in ndis_plan).
+    state = await seeded_repo.get_state("sid-1")
+    state.focused_section = "emergency_contacts"
+    state.focused_repeatable_index = 0
+    await seeded_repo.save_state(state, ttl_sec=3600)
+
+    # Write to a NON-REPEATABLE scalar section WITHOUT cross_section_intent.
+    # Must auto-promote and commit.
+    result = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "basics",
+            "field": "full_name",
+            "value": "Aditya Nagariya",
+            "confidence": 1.0,
+        },
+    )
+    assert result["ok"] is True, (
+        f"Auto-promote failed; non-repeatable cross-section write should "
+        f"succeed when focus is on a repeatable: {result}"
+    )
+
+    state_after = await seeded_repo.get_state("sid-1")
+    # Focus pin preserved (the auto-promote does NOT change focus)
+    assert state_after.focused_section == "emergency_contacts"
+    assert state_after.focused_repeatable_index == 0
+    # Scalar value actually committed
+    assert state_after.values["basics"]["full_name"]["value"] == "Aditya Nagariya"
+
+
+@pytest.mark.asyncio
+async def test_cross_section_blocked_includes_retry_with_hint(
+    dispatcher, seeded_repo
+) -> None:
+    """When a write IS rejected as cross_section_blocked (focus is
+    non-repeatable, target is non-repeatable), the rejection payload must
+    include `retry_with: {cross_section_intent: True}` so the model has an
+    unambiguous next action.
+    """
+    state = await seeded_repo.get_state("sid-1")
+    state.focused_section = "basics"
+    state.focused_repeatable_index = None
+    await seeded_repo.save_state(state, ttl_sec=3600)
+
+    result = await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "home_address",
+            "field": "address",
+            "value": "1 Example St",
+        },
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "cross_section_blocked"
+    assert result["rejection"].get("retry_with") == {"cross_section_intent": True}

@@ -23,6 +23,7 @@ Design notes:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
@@ -771,10 +772,29 @@ class ToolDispatcher:
         state_for_lock = await self._repo.get_state(self._session_id)
         if state_for_lock and state_for_lock.pending_confirmation:
             pc = state_for_lock.pending_confirmation
+            # M1.b — Index inference for the lock-comparison ONLY.
+            # The original call that set pending_confirmation may have
+            # auto-pinned to row 0 (line 950) and stored repeatable_index=0,
+            # while the retry from the model often omits repeatable_index
+            # entirely. Without inference here, `0 != None` makes the
+            # same-target check fail and the retry gets buffered as
+            # DEFERRED — silently dropping the user's "yes, confirm" intent
+            # on every CONFIRM_REQUIRED flow for repeatable sections (e.g.
+            # documents step `other_documents.title`). Infer the row index
+            # from the focused-repeatable state so the retry matches the
+            # locked target.
+            _ri_for_lock = repeatable_index
+            if (
+                _ri_for_lock is None
+                and pc.get("section") == section_id
+                and state_for_lock.focused_section == section_id
+                and state_for_lock.focused_repeatable_index is not None
+            ):
+                _ri_for_lock = state_for_lock.focused_repeatable_index
             same_target = (
                 pc.get("section") == section_id
                 and pc.get("field") == field_id
-                and pc.get("repeatable_index") == repeatable_index
+                and pc.get("repeatable_index") == _ri_for_lock
             )
             # C1 — same (section, row), different field is a sibling of the
             # locked field. Allow it through for REPEATABLE sections only.
@@ -785,7 +805,7 @@ class ToolDispatcher:
             same_row_sibling = (
                 pc.get("repeatable_index") is not None
                 and pc.get("section") == section_id
-                and pc.get("repeatable_index") == repeatable_index
+                and pc.get("repeatable_index") == _ri_for_lock
                 and pc.get("field") != field_id
             )
             if not (same_target or same_row_sibling):
@@ -965,6 +985,40 @@ class ToolDispatcher:
                 "row_index": state.focused_repeatable_index,
             })
 
+        # Auto-promote cross_section_intent when target is a NON-REPEATABLE
+        # scalar section AND current focus is a repeatable. Rationale: the
+        # model cannot "race ahead" inside a non-repeatable scalar section
+        # — there is no row state to corrupt. Observed in session 5a1265be
+        # (2026-05-19 @ 13:19:45 – 13:22:20): user dictated funding amounts
+        # while focus was pinned to support_items[0]; all 12 writes were
+        # rejected as cross_section_blocked, the model dutifully reported
+        # "I can't save those funding amounts" three times despite each
+        # individual call succeeding on later retry with the flag. Blocking
+        # non-repeatable scalar writes when focus is on a repeatable is a
+        # net loss — the user is directing the flow, and the protection
+        # the pin offers (preventing in-row corruption) does not apply.
+        _focused_section_spec = (
+            self._schema.get_section(state.focused_section)
+            if state.focused_section else None
+        )
+        _focus_is_repeatable = bool(
+            _focused_section_spec and _focused_section_spec.is_repeatable
+        )
+        if (
+            state.focused_section
+            and section_id != state.focused_section
+            and not cross_section_intent
+            and not section.is_repeatable
+            and _focus_is_repeatable
+        ):
+            log.info(
+                "cross_section_intent AUTO_PROMOTED non_repeatable_target=%s "
+                "focused_section=%s session=%s — non-repeatable scalar "
+                "write is safe regardless of repeatable focus pin",
+                section_id, state.focused_section, self._session_id,
+            )
+            cross_section_intent = True
+
         # Cross-section guard — reject writes to OTHER non-repeatable sections
         # without explicit intent. The repeatable case was handled above by
         # auto-pin so the guard never fires for it.
@@ -985,6 +1039,7 @@ class ToolDispatcher:
                         f"Finish '{state.focused_section}' first, or set "
                         "cross_section_intent=true if this is intentional."
                     ),
+                    "retry_with": {"cross_section_intent": True},
                 },
             }
 
@@ -1866,6 +1921,75 @@ class ToolDispatcher:
         state = await self._repo.get_state(self._session_id)
         if state is None:
             return {"ok": False, "error": "session state not found"}
+
+        # Rule 9 server-side enforcement — PREMATURE_REPEATABLE_ENTRY guard.
+        # Observed regression (session 0382aaed @ 13:24:18): the model fired
+        # `enter_repeatable_section(allergies)` 75ms after the user said
+        # "Hi, let's start." — pinning focus before the agent had even
+        # responded with a greeting. This corrupts downstream cross-section
+        # writes (everything looks "blocked by allergies") and is the
+        # mechanism behind multiple bugs in the 2026-05-19 dump. The prompt
+        # rule alone is insufficient — the model still violates it, so
+        # enforce it server-side.
+        #
+        # Trigger conditions (ALL must hold):
+        #   • turn_id == 0   (agent has not yet responded with anything)
+        #   • the target section has zero existing rows
+        #   • the user's last utterance is a greeting-only phrase
+        if self._turn_id == 0 and (
+            not isinstance(state.values.get(section_id), list)
+            or len(state.values.get(section_id) or []) == 0
+        ):
+            try:
+                _transcript = await self._repo.get_transcript(self._session_id)
+            except Exception:  # noqa: BLE001 — best-effort guard, do not break on Redis blip
+                _transcript = []
+            _last_user_text = ""
+            for _entry in reversed(_transcript):
+                if isinstance(_entry, dict) and _entry.get("speaker") == "user":
+                    _last_user_text = (_entry.get("text") or "").strip().lower()
+                    break
+            if _last_user_text:
+                # Token-set check: the whole utterance must be composed only
+                # of greeting tokens (handles compound greetings like
+                # "Hi, let's start." or "Hello there ready let's begin").
+                _greeting_tokens = {
+                    "hi", "hello", "hey", "yo", "hiya",
+                    "good", "morning", "afternoon", "evening",
+                    "lets", "let's", "start", "begin", "go", "start.",
+                    "ready", "okay", "ok", "yes", "yep", "sure", "yeah",
+                    "sena", "there", "you", "we", "now",
+                }
+                _tokens = re.findall(r"[a-z']+", _last_user_text)
+                _all_greeting = bool(_tokens) and all(
+                    t in _greeting_tokens for t in _tokens
+                )
+                if _all_greeting:
+                    log.info(
+                        "enter_repeatable_section REJECTED PREMATURE turn=%d "
+                        "section=%s last_user_text=%r session=%s — Rule 9",
+                        self._turn_id,
+                        section_id,
+                        _last_user_text[:80],
+                        self._session_id,
+                    )
+                    return {
+                        "ok": False,
+                        "rejection": {
+                            "code": "PREMATURE_REPEATABLE_ENTRY",
+                            "reason_human": (
+                                "Greet the participant and orient them before "
+                                "entering a repeatable section. Wait for them "
+                                "to name a value for this section."
+                            ),
+                            "suggested_fix": (
+                                "Respond to the user's greeting first, then "
+                                "ask them what they want to add — do NOT pin "
+                                "focus to a section until the user has named "
+                                "a value."
+                            ),
+                        },
+                    }
 
         current_rows = state.values.get(section_id)
         existing_count = len(current_rows) if isinstance(current_rows, list) else 0
