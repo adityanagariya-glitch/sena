@@ -30,20 +30,46 @@ _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.m
 
 
 def _render_schema_filtering_hidden_fields(
-    schema: StepSchema, state: FormState
+    schema: StepSchema,
+    state: FormState,
+    *,
+    screen_field_status: dict[str, str] | None = None,
 ) -> str:
-    """Serialize the schema to JSON for the prompt, dropping fields whose
-    `visible_if` condition is NOT satisfied by the current state values.
+    """Serialize the schema to JSON for the prompt, dropping fields the
+    user cannot see on their screen RIGHT NOW.
 
-    Background (2026-05-19 regression): plan_manager / contact_email /
-    billing_email carry `visible_if: {plan_management: "Plan Managed"}`.
-    When plan_management != "Plan Managed" the Flutter screen hides them —
-    but the schema JSON inlined in the system prompt still listed them,
-    so the agent asked "Would you like to add your plan manager's name?"
-    despite the field not being rendered. Pre-filtering the schema before
-    serialisation is the only place where the model genuinely cannot see
-    these fields.
+    Two filtering layers (in order of authority):
+
+    1. **Flutter screen state** — when `screen_field_status` is provided
+       (a dict of `section.field` paths Flutter has rendered), it is the
+       AUTHORITATIVE list of askable fields. Any schema field whose dotted
+       path is absent from `screen_field_status` is stripped. This is the
+       fix for the production "agent asks for plan_manager on a Self
+       Managed plan" bug: Flutter only sends `screen_field_status` keys
+       for fields it actually renders, so hidden fields are invisible to
+       the model regardless of what the schema declares.
+
+    2. **Schema visible_if fallback** — when no screen state has arrived
+       (first turn, before Flutter has sent any screen_state_v2 frame),
+       evaluate each field's `visible_if` against current state.values
+       as a best-effort guard.
+
+    Background (2026-05-19 production regression — session 8431a840):
+    Schema fixtures may carry `visible_if`, but the schema sent dynamically
+    by Flutter at session-create may not. Layer 1 makes the guard work
+    even when the schema is missing visible_if metadata, because Flutter
+    just doesn't include hidden fields in screen_field_status.
     """
+    def _normalize_enum(s: object) -> str:
+        """Canonicalise enum values so display strings ('Plan Managed') and
+        wire constants ('PLAN_MANAGED', 'plan_managed') compare equal.
+        Bootstrap may deliver values in either form depending on which
+        screen/route generates them — normalising here makes visible_if
+        robust to both shapes."""
+        if s is None:
+            return ""
+        return str(s).lower().replace("_", "").replace(" ", "").replace("-", "")
+
     def _evaluate_visible_if(
         visible_if: dict | None, row_values: dict, section_values: dict
     ) -> bool:
@@ -57,7 +83,12 @@ def _render_schema_filtering_hidden_fields(
         if actual_raw is None:
             actual_raw = section_values.get(cond_field)
         actual = actual_raw.get("value") if isinstance(actual_raw, dict) else actual_raw
-        return actual == cond_value
+        return _normalize_enum(actual) == _normalize_enum(cond_value)
+
+    # Layer 1: Flutter screen state is authoritative when present.
+    rendered_paths: set[str] | None = None
+    if screen_field_status:
+        rendered_paths = set(screen_field_status.keys())
 
     raw = schema.model_dump(mode="json")
     sections_out = []
@@ -83,6 +114,27 @@ def _render_schema_filtering_hidden_fields(
                 continue
             kept = []
             for fld in section_spec[key]:
+                # Layer 1 — Flutter authoritative: if screen state was
+                # provided AND this field's path isn't in the rendered list,
+                # drop it. Repeatable item_fields: keep when ANY path
+                # `<section>.<idx>.<field>` or `<section>.<field>` appears
+                # in screen_field_status (Flutter may key them either way).
+                if rendered_paths is not None:
+                    fid = fld.get("id")
+                    direct = f"{section_id}.{fid}"
+                    rep_prefix = f"{section_id}."  # e.g. ndis_goals.0.goal
+                    rep_suffix = f".{fid}"
+                    in_screen = (
+                        direct in rendered_paths
+                        or any(
+                            p.startswith(rep_prefix) and p.endswith(rep_suffix)
+                            for p in rendered_paths
+                        )
+                    )
+                    if not in_screen:
+                        continue
+                # Layer 2 — visible_if fallback (used on turn 0 before any
+                # screen_state_v2 frame arrives).
                 vis_if = fld.get("visible_if")
                 if _evaluate_visible_if(vis_if, scalar_ctx, scalar_ctx):
                     kept.append(fld)
@@ -371,11 +423,16 @@ def build_system_prompt(
     """
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
 
-    # Filter out conditional-visibility fields whose condition is NOT met by
-    # the current state. Without this, the model sees the field listed in
-    # the schema JSON and proactively asks for it even though the Flutter UI
-    # has hidden it (see plan_manager bug 2026-05-19).
-    schema_json = _render_schema_filtering_hidden_fields(schema, state)
+    # Filter out fields the user cannot currently see on their screen.
+    # Layer 1: when Flutter has sent a screen_state_v2 frame, its
+    # `screen_field_status` map is the authoritative list of rendered
+    # fields — anything absent is hidden. Layer 2: fall back to evaluating
+    # the schema's `visible_if` clauses when no screen state has arrived
+    # yet. Either way the agent literally cannot see hidden fields in the
+    # schema JSON section of the prompt.
+    schema_json = _render_schema_filtering_hidden_fields(
+        schema, state, screen_field_status=screen_field_status,
+    )
 
     # Compact state snapshot — only what the model needs to skip already-filled fields
     state_summary = {

@@ -342,3 +342,88 @@ def test_visible_if_fields_present_when_condition_satisfied() -> None:
     assert "\"id\":\"plan_manager\"" in prompt or "\"id\": \"plan_manager\"" in prompt
     assert "\"id\":\"contact_email\"" in prompt or "\"id\": \"contact_email\"" in prompt
     assert "\"id\":\"billing_email\"" in prompt or "\"id\": \"billing_email\"" in prompt
+
+
+def test_screen_field_status_is_authoritative_over_schema() -> None:
+    """When Flutter sends screen_field_status, ONLY fields whose dotted
+    path is in that map appear in the rendered schema JSON. The schema may
+    list more fields (universe of possibilities) but Flutter is the source
+    of truth for what the participant actually sees on screen.
+
+    Regression for production session a5b16b96 (2026-05-19 19:27):
+    Flutter rendered plan_management but NOT plan_manager/contact_email/
+    billing_email (hidden because plan_management = SELF_MANAGED). The
+    agent asked for plan_manager anyway because the dynamically-supplied
+    schema still listed them and lacked visible_if guards. Screen-state
+    filtering eliminates this regardless of schema content.
+    """
+    import json
+    from pathlib import Path
+    from onboarding.models.schema_spec import StepSchema
+    from onboarding.models.form_state import FormState
+    from onboarding.services.prompt_builder import build_system_prompt
+
+    fixtures = (
+        Path(__file__).parent.parent / "fixtures"
+        / "schema_ndis_plan_details.json"
+    )
+    schema = StepSchema.model_validate_json(fixtures.read_text())
+    state = FormState(
+        session_id="t",
+        step_id=schema.step_id,
+        participant_id="p",
+        tenant_id="t",
+    )
+    # Flutter only rendered these fields (NDIS Plan Details on a Self
+    # Managed plan). plan_manager / contact_email / billing_email are
+    # absent — the agent must not see them either.
+    screen_field_status = {
+        "plan_info.ndis_number": "filled",
+        "plan_info.plan_start": "filled",
+        "plan_info.plan_end": "filled",
+        "plan_info.plan_management": "filled",
+        "ndis_goals.0.goal": "filled",
+        "support_coordinator.coordinator_name": "filled",
+        "support_coordinator.coordinator_email": "filled",
+    }
+    prompt = build_system_prompt(
+        schema, state, screen_field_status=screen_field_status
+    )
+
+    # Fields absent from screen_field_status MUST be stripped from schema JSON
+    assert "\"id\":\"plan_manager\"" not in prompt and "\"id\": \"plan_manager\"" not in prompt
+    assert "\"id\":\"contact_email\"" not in prompt and "\"id\": \"contact_email\"" not in prompt
+    assert "\"id\":\"billing_email\"" not in prompt and "\"id\": \"billing_email\"" not in prompt
+    # And funding rows (also not in screen state) must be hidden
+    assert "\"id\":\"daily_living\"" not in prompt and "\"id\": \"daily_living\"" not in prompt
+
+    # But fields that ARE rendered MUST be present
+    assert "\"id\":\"ndis_number\"" in prompt or "\"id\": \"ndis_number\"" in prompt
+    assert "\"id\":\"plan_management\"" in prompt or "\"id\": \"plan_management\"" in prompt
+    # Repeatable item_field matched by suffix
+    assert "\"id\":\"goal\"" in prompt or "\"id\": \"goal\"" in prompt
+
+
+def test_rule_21a_screen_source_of_truth_in_prompt() -> None:
+    """Rule 21a (SCREEN is source of truth) is the explicit prompt rule
+    paired with the server-side filter."""
+    import json
+    from pathlib import Path
+    from onboarding.models.schema_spec import StepSchema
+    from onboarding.models.form_state import FormState
+    from onboarding.services.prompt_builder import build_system_prompt
+
+    fixtures = (
+        Path(__file__).parent.parent / "fixtures"
+        / "schema_personal_information.json"
+    )
+    schema = StepSchema.model_validate_json(fixtures.read_text())
+    state = FormState(
+        session_id="t",
+        step_id=schema.step_id,
+        participant_id="p",
+        tenant_id="t",
+    )
+    prompt = build_system_prompt(schema, state)
+    assert "Rule 21a" in prompt
+    assert "SCREEN" in prompt
