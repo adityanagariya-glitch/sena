@@ -224,18 +224,29 @@ async def create_session(
                 }
                 for s in bucket.summaries
             }
-            # Auto-hydrate participant_display_name from the earliest
-            # summary that captured a name, but only when the client didn't
-            # already send one. Without this, step 2+ falls back to
-            # "Hi there" even though we know the participant's name.
-            hydrated_name = bootstrap.participant_display_name
+            # Resolve participant_display_name with voice-update freshness.
+            # Priority order (highest → lowest):
+            #   1. Most-recent summary that captured a name via voice
+            #      (voice updates flow into the cross-screen bucket and the
+            #      latest one is the user's current preference)
+            #   2. The bootstrap-supplied display name from Flutter
+            #   3. Empty (greeting falls back to "Hi there" downstream)
+            #
+            # Regression context (2026-05-20): user said "my name is John"
+            # in a prior session; Flutter's local cache still held the old
+            # name and posted it as participant_display_name; the agent
+            # kept greeting the user by the pre-update name. The voice
+            # update lives in the bucket — promote it above the bootstrap.
+            hydrated_name: str | None = None
+            for s in sorted(
+                bucket.summaries, key=lambda x: x.step_number, reverse=True,
+            ):
+                candidate = s.verbatim.get("name")
+                if isinstance(candidate, str) and candidate.strip():
+                    hydrated_name = candidate.strip().split()[0]
+                    break
             if not hydrated_name:
-                for s in sorted(bucket.summaries, key=lambda x: x.step_number):
-                    candidate = s.verbatim.get("name")
-                    if isinstance(candidate, str) and candidate.strip():
-                        # Use first token as the display/greeting name.
-                        hydrated_name = candidate.strip().split()[0]
-                        break
+                hydrated_name = bootstrap.participant_display_name
             bootstrap = bootstrap.model_copy(update={
                 "mode": "page_handoff",
                 "prior_pages": hydrated_prior,

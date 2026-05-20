@@ -88,6 +88,7 @@ def test_function_decls_cover_all_handlers() -> None:
         "escalate_incident",
         "add_repeatable_row",
         "delete_repeatable_row",
+        "clear_field",
         "enter_repeatable_section",
         "exit_repeatable_section",
         "request_unknown_section",
@@ -1016,11 +1017,11 @@ async def test_delete_repeatable_row_adjusts_focus(
 ) -> None:
     """When focused_repeatable_index points at the deleted row, focus moves
     to the last surviving row."""
-    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
-    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
-
-    # Manually set focus to row 1
+    # Seed 2 rows by mutating state directly (bypasses the new
+    # incomplete_current_row guard on add_repeatable_row). The guard is
+    # tested separately; here we're testing delete focus adjustment.
     state = await seeded_repo.get_state("sid-1")
+    state.repeatable_rows["emergency_contacts"] = 2
     state.focused_section = "emergency_contacts"
     state.focused_repeatable_index = 1
     await seeded_repo.save_state(state, ttl_sec=3600)
@@ -1061,9 +1062,11 @@ async def test_delete_repeatable_row_infers_row_index_when_single_row(
     delete attempt at the boundary — first delete at row_count=2 needs
     explicit index (ambiguous), then at row_count=1 the inference fires.
     """
-    # Seed 2 rows.
-    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
-    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+    # Seed 2 rows directly (bypass the incomplete_current_row guard on
+    # add_repeatable_row — that guard is tested separately).
+    state = await seeded_repo.get_state("sid-1")
+    state.repeatable_rows["emergency_contacts"] = 2
+    await seeded_repo.save_state(state, ttl_sec=3600)
 
     # First delete with explicit row_index brings count to 1.
     first = await dispatcher.dispatch(
@@ -1095,9 +1098,10 @@ async def test_delete_repeatable_row_ambiguous_when_multiple_rows(
 ) -> None:
     """When multiple rows exist and row_index is omitted, return
     row_index_ambiguous so the model knows to ask the user which one."""
-    # Seed 2 rows via add_repeatable_row.
-    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
-    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+    # Seed 2 rows directly (bypass the add_repeatable_row guard).
+    state = await seeded_repo.get_state("sid-1")
+    state.repeatable_rows["emergency_contacts"] = 2
+    await seeded_repo.save_state(state, ttl_sec=3600)
 
     result = await dispatcher.dispatch(
         "delete_repeatable_row",
@@ -1760,3 +1764,142 @@ def test_email_field_is_readonly(personal_schema) -> None:
     section = personal_schema.get_section("basics")
     email = next(f for f in section.fields if f.id == "email")
     assert email.readonly is True
+
+
+# ── 2026-05-20 user-feedback: clear_field + incomplete_current_row ──────────
+
+
+@pytest.mark.asyncio
+async def test_clear_field_blanks_a_scalar(
+    dispatcher, seeded_repo, emitted
+) -> None:
+    """User says 'remove the about-me'. clear_field must blank the field
+    in FormState and emit field_cleared so Flutter can clear the input."""
+    await dispatcher.dispatch(
+        "update_field",
+        {"section": "basics", "field": "about_me", "value": "Hi there"},
+    )
+    state = await seeded_repo.get_state("sid-1")
+    assert state.values["basics"]["about_me"]["value"] == "Hi there"
+
+    result = await dispatcher.dispatch(
+        "clear_field", {"section": "basics", "field": "about_me"}
+    )
+    assert result["ok"] is True
+
+    state_after = await seeded_repo.get_state("sid-1")
+    assert "about_me" not in state_after.values.get("basics", {})
+
+    # Emit contract
+    cleared_events = [e for e in emitted if e.get("type") == "field_cleared"]
+    assert len(cleared_events) == 1
+    assert cleared_events[0]["section_id"] == "basics"
+    assert cleared_events[0]["field_id"] == "about_me"
+
+
+@pytest.mark.asyncio
+async def test_clear_field_rejects_readonly_field(
+    dispatcher, seeded_repo
+) -> None:
+    """basics.email is schema-level readonly. clear_field must refuse
+    just like update_field does."""
+    result = await dispatcher.dispatch(
+        "clear_field", {"section": "basics", "field": "email"}
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "field_readonly"
+    # Seeded value must be intact
+    state = await seeded_repo.get_state("sid-1")
+    assert state.values["basics"]["email"]["value"] == "aditya@example.com"
+
+
+@pytest.mark.asyncio
+async def test_clear_field_repeatable_requires_row_index(
+    dispatcher, seeded_repo
+) -> None:
+    """For a repeatable section, repeatable_index is required to know
+    which row's field to clear."""
+    result = await dispatcher.dispatch(
+        "clear_field", {"section": "emergency_contacts", "field": "name"},
+    )
+    assert result["ok"] is False
+    assert "repeatable_index required" in result.get("error", "")
+
+
+@pytest.mark.asyncio
+async def test_clear_field_unknown_section(dispatcher) -> None:
+    result = await dispatcher.dispatch(
+        "clear_field", {"section": "nope", "field": "x"}
+    )
+    assert result["ok"] is False
+    assert "unknown section" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_add_repeatable_row_blocked_when_last_row_incomplete(
+    dispatcher, seeded_repo
+) -> None:
+    """Production bug 2026-05-20: a half-filled emergency_contacts row,
+    user says 'continue', agent calls add_repeatable_row, two broken
+    rows result. The server must reject the call with
+    incomplete_current_row so the agent finishes the existing row
+    first."""
+    # Add a row and fill ONLY the name (3 other required fields missing).
+    await dispatcher.dispatch(
+        "add_repeatable_row", {"section_id": "emergency_contacts"}
+    )
+    await dispatcher.dispatch(
+        "update_field",
+        {
+            "section": "emergency_contacts",
+            "field": "name",
+            "value": "Sarah",
+            "repeatable_index": 0,
+            "confidence": 1.0,
+        },
+    )
+
+    # Now attempt to add a SECOND row before completing the first.
+    result = await dispatcher.dispatch(
+        "add_repeatable_row", {"section_id": "emergency_contacts"}
+    )
+    assert result["ok"] is False
+    rejection = result["rejection"]
+    assert rejection["code"] == "incomplete_current_row"
+    assert rejection["section_id"] == "emergency_contacts"
+    assert rejection["row_index"] == 0
+    # Must list AT LEAST one missing required field
+    assert len(rejection["missing_fields"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_add_repeatable_row_succeeds_when_last_row_complete(
+    dispatcher, seeded_repo
+) -> None:
+    """Positive control: when the last row has all required item_fields
+    filled, add_repeatable_row succeeds normally."""
+    await dispatcher.dispatch(
+        "add_repeatable_row", {"section_id": "emergency_contacts"}
+    )
+    for fid, val in [
+        ("name", "Sarah"),
+        ("relation", "Friend"),
+        ("email", "s@example.com"),
+        ("phone", "+61400000001"),
+    ]:
+        await dispatcher.dispatch(
+            "update_field",
+            {
+                "section": "emergency_contacts",
+                "field": fid,
+                "value": val,
+                "repeatable_index": 0,
+                "confidence": 1.0,
+            },
+        )
+
+    result = await dispatcher.dispatch(
+        "add_repeatable_row", {"section_id": "emergency_contacts"}
+    )
+    assert result["ok"] is True
+    assert result["new_index"] == 1

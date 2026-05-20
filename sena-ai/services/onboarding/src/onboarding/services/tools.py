@@ -342,6 +342,42 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "clear_field",
+        "description": (
+            "Clear (blank out) a previously-filled field. Call when the "
+            "participant says 'remove the service address', 'clear my email', "
+            "'delete that — start over', 'erase the about-me', etc. — "
+            "BEFORE acknowledging removal verbally. This sets the field's "
+            "value to empty in FormState and emits field_cleared so the "
+            "screen blanks the input. For removing an entire row of a "
+            "repeatable section, use delete_repeatable_row instead. The "
+            "server rejects clear_field on readonly fields. repeatable_index "
+            "is required when the target field belongs to a repeatable "
+            "section."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "description": "Section id (e.g. 'basics', 'home_address').",
+                },
+                "field": {
+                    "type": "string",
+                    "description": "Field id within the section.",
+                },
+                "repeatable_index": {
+                    "type": "integer",
+                    "description": (
+                        "Zero-based row index. Required when the section is "
+                        "repeatable (e.g. 'emergency_contacts')."
+                    ),
+                },
+            },
+            "required": ["section", "field"],
+        },
+    },
+    {
         "name": "enter_repeatable_section",
         "description": (
             "Pin focus to a repeatable section before collecting values. "
@@ -690,6 +726,7 @@ class ToolDispatcher:
             "escalate_incident": self._escalate_incident,
             "add_repeatable_row": self._add_repeatable_row,
             "delete_repeatable_row": self._delete_repeatable_row,
+            "clear_field": self._clear_field,
             "enter_repeatable_section": self._enter_repeatable_section,
             "exit_repeatable_section": self._exit_repeatable_section,
             "request_unknown_section": self._request_unknown_section,
@@ -1818,6 +1855,76 @@ class ToolDispatcher:
                 "error": f"max rows ({section.repeatable.max}) reached for {section_id}",
             }
 
+        # Incomplete-current-row guard.
+        # Observed regression (2026-05-20): emergency_contacts had ONE row
+        # with only a name filled. Agent asked the user "want to continue
+        # or add another?". User said "yes". Agent called add_repeatable_row
+        # and ended up with TWO broken rows (the original half-filled and
+        # a brand-new empty one). The user could no longer advance_step.
+        #
+        # Block the call when the most-recent row of the SAME section has
+        # any required field empty. The model receives a clean rejection
+        # and prompt Rule 23 tells it to finish the current row first.
+        rep_count = state.repeatable_rows.get(section_id, 0)
+        rows = state.values.get(section_id)
+        last_idx: int | None = None
+        if isinstance(rows, list) and rows:
+            last_idx = len(rows) - 1
+        elif rep_count > 0:
+            last_idx = rep_count - 1
+        if last_idx is not None and last_idx >= 0:
+            last_row = rows[last_idx] if isinstance(rows, list) and last_idx < len(rows) else {}
+            if isinstance(last_row, dict):
+                missing_required: list[str] = []
+                for fspec in section.item_fields or []:
+                    if not fspec.required:
+                        continue
+                    # Honour visible_if so we only count fields that are
+                    # actually rendered for this row.
+                    if fspec.visible_if:
+                        cond_f, cond_v = next(iter(fspec.visible_if.items()))
+                        raw_cond = last_row.get(cond_f)
+                        actual = (
+                            raw_cond.get("value")
+                            if isinstance(raw_cond, dict) else raw_cond
+                        )
+                        if actual != cond_v:
+                            continue
+                    raw = last_row.get(fspec.id)
+                    value = raw.get("value") if isinstance(raw, dict) else raw
+                    is_empty = (
+                        value is None
+                        or (isinstance(value, str) and not value.strip())
+                        or (isinstance(value, list) and not value)
+                    )
+                    if is_empty:
+                        missing_required.append(fspec.id)
+                if missing_required:
+                    log.info(
+                        "add_repeatable_row REJECTED incomplete_current_row "
+                        "section=%s last_row=%d missing=%s session=%s",
+                        section_id, last_idx, missing_required, self._session_id,
+                    )
+                    return {
+                        "ok": False,
+                        "rejection": {
+                            "code": "incomplete_current_row",
+                            "reason_human": (
+                                f"Row {last_idx + 1} of '{section_id}' is "
+                                f"still missing: {', '.join(missing_required)}. "
+                                "Finish that row before adding another."
+                            ),
+                            "section_id": section_id,
+                            "row_index": last_idx,
+                            "missing_fields": missing_required,
+                            "suggested_fix": (
+                                "Ask the participant for the missing field(s) "
+                                "in the current row, OR call delete_repeatable_row "
+                                "if they want to discard the current row instead."
+                            ),
+                        },
+                    }
+
         new_index = state.increment_repeatable_row(section_id)
         # Auto-pin focus to the new row so any immediate update_field call
         # doesn't hit cross_section_blocked — agent doesn't need a separate
@@ -1968,6 +2075,135 @@ class ToolDispatcher:
             "section_id": section_id,
             "deleted_index": row_index,
             "remaining_rows": remaining,
+        }
+
+    # ── Handler: clear_field ─────────────────────────────────────────────────
+
+    async def _clear_field(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Blank out a previously-filled field.
+
+        Reproduces user complaints from session 2026-05-20: "I would like
+        to remove the service address" — agent had no way to clear a
+        scalar field via voice (update_field rejects empty value). This
+        tool sets the field to None in FormState and emits field_cleared
+        so the Flutter input UI blanks.
+
+        For removing a row of a repeatable section, use
+        delete_repeatable_row instead.
+        """
+        section_id = args.get("section", "").strip()
+        field_id = args.get("field", "").strip()
+        repeatable_index = args.get("repeatable_index")
+
+        if not section_id or not field_id:
+            return {"ok": False, "error": "section and field are required"}
+
+        section = self._schema.get_section(section_id)
+        if section is None:
+            return {"ok": False, "error": f"unknown section: {section_id}"}
+
+        field_spec = next(
+            (f for f in section.all_fields() if f.id == field_id), None
+        )
+        if field_spec is None:
+            return {
+                "ok": False,
+                "error": f"field '{field_id}' not in section '{section_id}'",
+            }
+
+        # Readonly guard mirrors update_field — cannot clear identity-bound
+        # values either.
+        if field_spec.readonly:
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "field_readonly",
+                    "reason_human": (
+                        f"'{field_spec.label or field_id}' is read-only — "
+                        "it comes from your account and cannot be cleared."
+                    ),
+                },
+                "readonly": True,
+            }
+
+        # Readonly_paths (per-session bootstrap) also blocks clearing.
+        path = f"{section_id}.{field_id}"
+        if path in self._readonly_paths:
+            log.info(
+                "clear_field REJECTED readonly path=%s session=%s",
+                path, self._session_id,
+            )
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "field_readonly",
+                    "reason_human": (
+                        f"'{field_spec.label or field_id}' is read-only here."
+                    ),
+                },
+                "readonly": True,
+            }
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return {"ok": False, "error": "session state not found"}
+
+        # Repeatable section: repeatable_index is required.
+        if section.is_repeatable:
+            if repeatable_index is None or not isinstance(repeatable_index, int):
+                return {
+                    "ok": False,
+                    "error": (
+                        "repeatable_index required for clear_field on a "
+                        "repeatable section"
+                    ),
+                }
+            rows = state.values.get(section_id)
+            if not isinstance(rows, list) or repeatable_index >= len(rows):
+                return {
+                    "ok": False,
+                    "error": (
+                        f"row_index {repeatable_index} out of range for "
+                        f"'{section_id}'"
+                    ),
+                }
+            target_row = rows[repeatable_index]
+            if isinstance(target_row, dict) and field_id in target_row:
+                target_row.pop(field_id)
+        else:
+            sec_values = state.values.get(section_id)
+            if isinstance(sec_values, dict) and field_id in sec_values:
+                sec_values.pop(field_id)
+
+        # Drop any pending validation error pinned to this target.
+        _clear_validation_error(
+            state, section_id, field_id,
+            repeatable_index if section.is_repeatable else None,
+        )
+
+        state.recompute_completion(self._schema)
+        state.touch()
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        log.info(
+            "clear_field section=%s field=%s repeatable_index=%s session=%s",
+            section_id, field_id, repeatable_index, self._session_id,
+        )
+        event: dict[str, Any] = {
+            "type": "field_cleared",
+            "section_id": section_id,
+            "field_id": field_id,
+        }
+        if section.is_repeatable:
+            event["repeatable_index"] = repeatable_index
+        await self._emit(event)
+        await self._emit({"type": "state", "state": state.model_dump(mode="json")})
+
+        return {
+            "ok": True,
+            "section_id": section_id,
+            "field_id": field_id,
+            "repeatable_index": repeatable_index if section.is_repeatable else None,
         }
 
     # ── Handler: policy_block ────────────────────────────────────────────────
