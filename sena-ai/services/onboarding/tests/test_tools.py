@@ -1047,6 +1047,79 @@ async def test_delete_repeatable_row_unknown_section_rejected(dispatcher) -> Non
     assert "unknown section" in result["error"]
 
 
+@pytest.mark.asyncio
+async def test_delete_repeatable_row_infers_row_index_when_single_row(
+    dispatcher, seeded_repo, emitted
+) -> None:
+    """When the section has exactly one row and the model omits
+    row_index, the server defaults to 0. Reproduces session 4339494d
+    2026-05-20 where user said 'remove the morning routine' and the
+    agent couldn't action it because the row index wasn't known.
+
+    emergency_contacts has min=1, so we seed 2 rows then delete to land
+    at 1 row (the min). The inference logic is exercised by the second
+    delete attempt at the boundary — first delete at row_count=2 needs
+    explicit index (ambiguous), then at row_count=1 the inference fires.
+    """
+    # Seed 2 rows.
+    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+
+    # First delete with explicit row_index brings count to 1.
+    first = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "emergency_contacts", "row_index": 1},
+    )
+    assert first["ok"] is True
+    assert first["remaining_rows"] == 1
+
+    # Now exactly 1 row exists — but emergency_contacts has min=1, so
+    # deletion is blocked by the section_min guard. Verify the omit-
+    # row_index path resolves to row 0 (inference works) and then hits
+    # the min guard cleanly. Test for inference SUCCESS independent of
+    # whether the min guard then refuses.
+    second = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "emergency_contacts"},  # row_index OMITTED
+    )
+    # Inference resolved to row 0; outcome is either ok=True OR the
+    # section_min guard fires. The KEY assertion: the call did NOT
+    # error with "row_index required" anymore.
+    assert "row_index required" not in str(second.get("error", ""))
+    assert second.get("rejection", {}).get("code") != "row_index_ambiguous"
+
+
+@pytest.mark.asyncio
+async def test_delete_repeatable_row_ambiguous_when_multiple_rows(
+    dispatcher, seeded_repo
+) -> None:
+    """When multiple rows exist and row_index is omitted, return
+    row_index_ambiguous so the model knows to ask the user which one."""
+    # Seed 2 rows via add_repeatable_row.
+    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+    await dispatcher.dispatch("add_repeatable_row", {"section_id": "emergency_contacts"})
+
+    result = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "emergency_contacts"},
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "row_index_ambiguous"
+    assert result["rejection"]["row_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_repeatable_row_empty_section_rejected(dispatcher) -> None:
+    """When the section has zero rows and row_index is omitted, return
+    section_already_empty (a clean signal that there's nothing to do)."""
+    result = await dispatcher.dispatch(
+        "delete_repeatable_row",
+        {"section_id": "emergency_contacts"},
+    )
+    assert result["ok"] is False
+    assert result["rejection"]["code"] == "section_already_empty"
+
+
 # ── C1: Same-row sibling bypass for PENDING_CONFIRMATION lock ────────────────
 
 

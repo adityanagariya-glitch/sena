@@ -312,11 +312,16 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
     {
         "name": "delete_repeatable_row",
         "description": (
-            "Remove a specific row from a repeatable section. "
-            "Call when the participant says 'remove that', 'delete that one', "
-            "'I made a mistake — remove contact 1', 'take that entry out', etc. "
-            "Pass the zero-based row_index of the row to delete. "
-            "The server blocks deletion below the section's declared minimum row count."
+            "Remove a row from a repeatable section. Call IMMEDIATELY when "
+            "the participant says 'remove that', 'delete that one', "
+            "'remove the morning routine', 'take that entry out', etc — "
+            "BEFORE acknowledging removal verbally. Pass the zero-based "
+            "row_index of the row to delete. row_index may be OMITTED only "
+            "when the section has exactly one row; the server will default "
+            "to row 0. If the section has multiple rows and row_index is "
+            "ambiguous, the server returns row_index_ambiguous and you must "
+            "ask the user which numbered row they mean. The server blocks "
+            "deletion below the section's declared minimum row count."
         ),
         "parameters": {
             "type": "object",
@@ -327,10 +332,13 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
                 },
                 "row_index": {
                     "type": "integer",
-                    "description": "Zero-based index of the row to remove.",
+                    "description": (
+                        "Zero-based index of the row to remove. "
+                        "OPTIONAL when section has exactly one row."
+                    ),
                 },
             },
-            "required": ["section_id", "row_index"],
+            "required": ["section_id"],
         },
     },
     {
@@ -1841,8 +1849,6 @@ class ToolDispatcher:
 
         if not section_id:
             return {"ok": False, "error": "section_id required"}
-        if row_index is None or not isinstance(row_index, int):
-            return {"ok": False, "error": "row_index required (integer)"}
 
         section = self._schema.get_section(section_id)
         if section is None:
@@ -1861,6 +1867,45 @@ class ToolDispatcher:
         rows = state.values.get(section_id)
         value_count = len(rows) if isinstance(rows, list) else 0
         current_count = max(rep_count, value_count)
+
+        # Row-index inference. When the user says "remove the morning routine"
+        # without specifying which row, the model often omits row_index. If
+        # there is exactly one row, default to row 0. If there are multiple
+        # rows, we need an explicit index to avoid ambiguity. Without this
+        # inference the model could not action "remove X" requests at all
+        # (observed session 4339494d 2026-05-20: agent verbally confirmed
+        # removal but never called the tool because row_index was unknown).
+        if row_index is None:
+            if current_count == 1:
+                row_index = 0
+            elif current_count == 0:
+                return {
+                    "ok": False,
+                    "rejection": {
+                        "code": "section_already_empty",
+                        "reason_human": (
+                            f"There are no rows to delete in '{section_id}'."
+                        ),
+                    },
+                }
+            else:
+                return {
+                    "ok": False,
+                    "rejection": {
+                        "code": "row_index_ambiguous",
+                        "reason_human": (
+                            f"'{section_id}' has {current_count} rows — please "
+                            "tell me which one to delete by position."
+                        ),
+                        "row_count": current_count,
+                        "suggested_fix": (
+                            "Ask the user which numbered row they mean, then "
+                            "retry with the explicit row_index argument."
+                        ),
+                    },
+                }
+        if not isinstance(row_index, int):
+            return {"ok": False, "error": "row_index must be an integer"}
 
         if current_count == 0 or row_index >= current_count or row_index < 0:
             return {
