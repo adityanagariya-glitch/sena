@@ -3,12 +3,14 @@ import os
 import secrets
 import uuid
 from typing import Optional
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from db.session import get_db
 from models.db import BehaviourSupportPlan
 from models.schemas import (
@@ -34,6 +36,7 @@ from models.schemas import (
 )
 from pipeline.drafter import run_drafter
 from pipeline.graph import run_pipeline
+from pipeline.transcription import resolve_media_format, run_transcription
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/restrictive-practices", tags=["restrictive-practices"])
@@ -410,6 +413,76 @@ async def draft_case_note(payload: DraftInput) -> CaseDraftResponse:
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+
+
+@router.post("/draft/audio", response_model=CaseDraftResponse)
+async def draft_case_note_audio(
+    audio: UploadFile = File(..., description="Audio recording (mp3, mp4/m4a, wav, flac, ogg, webm)"),
+    worker_id: str = Form(...),
+    client_id: str = Form(...),
+    case_note_id: str = Form(default=""),
+    shift_date: str = Form(default=""),
+    shift_time: str = Form(default=""),
+    worker_position: str = Form(default=""),
+) -> CaseDraftResponse:
+    """Transcribe an audio recording then extract it into a pre-filled case note draft.
+
+    Accepts multipart/form-data with an audio file + shift metadata form fields.
+    Transcription uses Amazon Transcribe (en-AU). No data is stored — stateless.
+    Requires SENA_AI_TRANSCRIPTION_BUCKET to be set.
+    """
+    if not (settings.s3_bucket or settings.transcription_bucket):
+        raise HTTPException(
+            status_code=503,
+            detail="Audio transcription not configured. Set S3_BUCKET (or SENA_AI_TRANSCRIPTION_BUCKET).",
+        )
+
+    content_type = audio.content_type or ""
+    filename = audio.filename or ""
+    try:
+        media_format = resolve_media_format(content_type, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    audio_bytes = await audio.read()
+    job_name = f"sena-{uuid4()}"
+
+    logger.info(
+        "draft/audio: transcription start job=%s format=%s size=%d worker=%s client=%s",
+        job_name, media_format, len(audio_bytes), worker_id, client_id,
+    )
+
+    try:
+        transcript = await run_transcription(audio_bytes, media_format, job_name=job_name)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("draft/audio: transcription failed job=%s: %s", job_name, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+
+    resolved_id = case_note_id.strip() or str(uuid4())
+    payload = DraftInput(
+        transcript=transcript,
+        worker_id=worker_id,
+        client_id=client_id,
+        case_note_id=resolved_id,  # type: ignore[arg-type]
+        shift_date=shift_date or None,
+        shift_time=shift_time or None,
+        worker_position=worker_position or None,
+    )
+
+    try:
+        result = await run_drafter(payload)
+    except Exception as exc:
+        logger.error(
+            "draft/audio: drafter failed case_note_id=%s: %s", resolved_id, exc, exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+
+    logger.info("draft/audio: done job=%s case_note_id=%s", job_name, resolved_id)
+    return result
 
 
 @router.get("/health")

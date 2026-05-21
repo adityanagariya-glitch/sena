@@ -40,9 +40,14 @@ START → triage_step (Haiku, Bedrock converse, maxTokens=512)
 → CaseNoteRun audit row written for every run regardless of outcome
 ```
 
+**Parallelism inside `run_pipeline()` (see `pipeline/graph.py`):**
+- **Opt A:** `run_summary` fires as `asyncio.create_task()` at request start — runs in parallel with the full triage → rag → eval → cross_check graph traversal
+- **Opt B:** when an incident is needed, `run_incident_draft` joins via `asyncio.gather()` with the already-running summary task
+- **Opt C:** `fire_webhook` detaches via `asyncio.create_task()` on alert — caller gets response without waiting
+
 | File | Role |
 |------|------|
-| `main.py` | FastAPI app (`app = create_app()`) + factory; `create_tables()` runs on startup (dev mode, no Alembic) |
+| `main.py` | FastAPI app (`app = create_app()`) + factory; `create_tables()` runs on startup (dev mode, no Alembic); serves `GET /demo` → `demo_ui.html` (auth-protected) |
 | `config.py` | Pydantic settings, `SENA_AI_` env prefix, `.env` loaded by absolute path |
 | `db/session.py` | Async SQLAlchemy engine + `get_db` dep; creates pgvector ext + HNSW index |
 | `models/db.py` | ORM: `NDISPolicyChunk` (HALFVEC 1024), `BehaviourSupportPlan`, `CaseNoteRun` |
@@ -54,9 +59,10 @@ START → triage_step (Haiku, Bedrock converse, maxTokens=512)
 | `pipeline/summary.py` | Claude Haiku shift summariser; always runs; `SummaryOutput` (progress/risks/patterns/highlights + ai_confidence + quality fields); `FEW_SHOT_SUMMARY` + heuristic quality scorer |
 | `pipeline/incident_draft.py` | Claude Sonnet NDIS incident report drafter; conditional on `incident_occurred=True` OR `UNAUTHORISED`; `IncidentDraftOutput` includes Phase 1 fields (severity, incident_categories, ongoing_risk_*) |
 | `pipeline/drafter.py` | Stateless AI extraction: transcript -> 6-section case note; `FEW_SHOT_DRAFTER` + field-description guidance + quality scoring on return |
-| `pipeline/style_examples.py` | Ultra-compact few-shot constants (`FEW_SHOT_TRIAGE`, `FEW_SHOT_SUMMARY`, `FEW_SHOT_DRAFTER`, `FEW_SHOT_INCIDENT`, `FEW_SHOT_EVAL_REASONING`, `STYLE_GUIDE`) — single source of truth for all prompt style references |
+| `pipeline/style_examples.py` | Ultra-compact few-shot constants (`FEW_SHOT_TRIAGE`, `FEW_SHOT_SUMMARY`, `FEW_SHOT_DRAFTER`, `FEW_SHOT_INCIDENT`, `FEW_SHOT_EVAL_REASONING`, `STYLE_GUIDE`) — **single source of truth** for all prompt style. Update here when the client revises the gold standard. |
 | `pipeline/quality_score.py` | Heuristic quality scorer: `score_note(note) -> (float, str, list[str])`; completeness + richness + tone vs Premium baselines; zero LLM cost |
-| `pipeline/graph.py` | LangGraph wiring; node names use `_step` suffix to avoid TypedDict-key clash |
+| `pipeline/graph.py` | LangGraph wiring + `run_pipeline()` entry point; Opt A/B/C parallelism; node names use `_step` suffix to avoid TypedDict-key clash |
+| `pipeline/transcription.py` | Amazon Transcribe batch STT: `run_transcription(audio_bytes, media_format, *, job_name) -> str`; also `resolve_media_format(content_type, filename) -> str`; S3 temp key deleted in finally |
 | `api/routes.py` | All routes: `/evaluate`, `/draft`, `/bsp` CRUD, `/health` — see **API Routes** below |
 | `ingestion/chunker.py` | PyMuPDF text extract + langchain text splitter |
 | `ingestion/embedder.py` | Cohere Embed English v3 (1024-dim) via Bedrock `invoke_model`; upsert via `ON CONFLICT DO UPDATE` |
@@ -80,6 +86,8 @@ All routes under prefix `/v1/restrictive-practices`:
 | `GET` | `/bsp/{client_id}` | List all BSP records for a client, ordered newest-first. |
 | `PATCH` | `/bsp/{bsp_id}/status` | Update BSP status — valid values: `Active`, `Expired`, `Revoked`. |
 | `GET` | `/health` | Health check. |
+| `GET` | `/demo` | Serves `demo_ui.html` browser UI. Auth-protected (same Basic auth as `/evaluate`). |
+| `POST` | `/draft/audio` | Transcribe audio → extract into pre-filled case note. `multipart/form-data`: `audio` file + form fields (`worker_id`, `client_id`, `shift_date`, `shift_time`, `worker_position`, `case_note_id`). Requires `SENA_AI_TRANSCRIPTION_BUCKET`. Returns same shape as `/draft`. |
 
 **Privacy response headers** (set on every `/evaluate` response):
 - `X-Privacy-Classification: Sensitive-Health-Information-APP3`
@@ -88,9 +96,10 @@ All routes under prefix `/v1/restrictive-practices`:
 ### DB conventions
 
 - Tables prefixed `rp_` for module isolation: `rp_ndis_policy_chunks`, `rp_case_note_runs`. (`behaviour_support_plans` is unprefixed — shared with the wider platform.)
-- Lives in the SENA `sena-ai-db` instance, port **5433** (started via `docker-compose up -d` from `restrictive_practices/`).
+- Lives in the SENA `sena-ai-db` instance, port **5433** (started via `docker-compose -f docker-compose_db.yml up -d` from `restrictive_practices/`).
 - HNSW index uses `halfvec_cosine_ops` (matches the `HALFVEC` column type).
 - `create_tables()` runs on FastAPI startup — replace with Alembic before production.
+- Production compose file: `docker-compose.prod.yml` (adds environment-specific overrides).
 
 ### Verdict outcomes and authorisation
 
@@ -171,8 +180,12 @@ All use `SENA_AI_` prefix in `.env` at the module root.
 | `SENA_AI_EMBEDDING_MODEL` | `cohere.embed-english-v3` | 1024-dim; must match at ingest AND query time |
 | `SENA_AI_TRIAGE_MODEL` | `anthropic.claude-haiku-4-5-20251001-v1:0` | Fast YES/NO gate via Bedrock `converse` |
 | `SENA_AI_EVALUATOR_MODEL` | `anthropic.claude-sonnet-4-6-v1:0` | Compliance verdicts + case note drafting; also used by `/draft` |
-| `SENA_AI_BASIC_AUTH_USER` | `""` | Optional — if set (with PASSWORD), `/evaluate` requires HTTP Basic auth |
+| `SENA_AI_BASIC_AUTH_USER` | `""` | Optional — if set (with PASSWORD), `/evaluate` and `/demo` require HTTP Basic auth |
 | `SENA_AI_BASIC_AUTH_PASSWORD` | `""` | Optional — must be set together with USER; passthrough if either is empty |
+| `SENA_AI_DEMO_HOST` | `""` | Optional — sets CORS `allow_origins`; defaults to `["*"]` when empty |
+| `SENA_AI_TRANSCRIPTION_BUCKET` | `""` | S3 bucket for temp audio files; **required** for `POST /draft/audio`; returns 503 if blank |
+| `SENA_AI_TRANSCRIPTION_LANGUAGE` | `"en-AU"` | Amazon Transcribe language code |
+| `SENA_AI_TRANSCRIPTION_VOCAB_NAME` | `""` | Custom Transcribe vocabulary name — create once via `python scripts/setup_transcribe_vocab.py` |
 
 ## Run Commands
 
@@ -181,17 +194,21 @@ All use `SENA_AI_` prefix in `.env` at the module root.
 conda activate sena_env
 
 # Full demo setup (one command)
+# Note: Makefile's `make up` calls `docker-compose up -d` — if no docker-compose.yml
+# exists here, run the DB step manually first (see below)
 make demo-setup      # docker-compose up + ingest real PDFs + seed BSPs
 
 # Or step by step:
-docker-compose up -d                        # Postgres + pgvector on port 5433
-python scripts/ingest_ndis_policies.py      # ingest 5 official NDIS PDFs (place in pdfs/ if download blocked)
-python scripts/ingest_style_standards.py    # ingest client gold-standard doc (15 chunks, 3 document_types) — run once
-python scripts/seed_demo.py                 # seed demo BSPs
+docker-compose -f docker-compose_db.yml up -d   # Postgres + pgvector on port 5433
+python scripts/ingest_ndis_policies.py           # ingest 5 official NDIS PDFs (place in pdfs/ if download blocked)
+python scripts/ingest_style_standards.py         # ingest client gold-standard doc (15 chunks, 3 document_types) — run once
+python scripts/setup_transcribe_vocab.py         # create NDIS custom vocabulary in Transcribe — run once; set SENA_AI_TRANSCRIPTION_VOCAB_NAME after
+python scripts/seed_demo.py                      # seed demo BSPs
 
 # API server
 uvicorn main:app --reload --port 8084
 # → Swagger UI at http://localhost:8084/docs
+# → Demo UI at http://localhost:8084/demo (Basic auth required if BASIC_AUTH_USER set)
 
 # Ingest sample NDIS policies (no PDF required — for quick testing)
 python scripts/ingest_docs.py --sample
@@ -228,10 +245,14 @@ make audit-chunks    # chunk counts by document type
 docker exec -it sena-ai-db psql -U sena_ai -d sena_ai
 ```
 
+**Note on pytest:** `pyproject.toml` declares `testpaths = ["tests"]` but the `tests/` directory does not yet exist — all testing is via standalone smoke runners in `scripts/`. Adding pytest unit tests is a backlog item.
+
 ## Critical Rules
 
 - `HALFVEC(1024)` (uppercase, DDL type) in `mapped_column()` — `HalfVector` is the runtime value class, wrong here
 - `json.loads(response["output"]["message"]["content"][0]["text"])` — Bedrock `converse` response path; never use `response.text` (that was Gemini)
+- Bedrock models often wrap JSON in markdown fences — use `_extract_json()` with `json.JSONDecoder().raw_decode(text, text.find("{"))` — handles fences + trailing text; see issues-solved 0016
+- Bedrock models may return nested JSON — add explicit flat-key instruction to prompt: "Respond with a single flat JSON object — no nested objects"; see issues-solved 0017
 - `temperature=0.0` on every LLM call — compliance decisions must be deterministic
 - LangGraph node names must NOT collide with `TypedDict` state keys (`_step` suffix convention)
 - Triage uses `maxTokens=512` via Bedrock — no thinking_budget concept; Claude Haiku is fast without it
@@ -242,8 +263,10 @@ docker exec -it sena-ai-db psql -U sena_ai -d sena_ai
 - **AU data residency**: Bedrock region `ap-southeast-2` (Sydney) for APP 8. Verify Claude 4.x model availability there before prod; fallback `us-east-1` breaks residency
 - `SettingsConfigDict(extra="ignore")` is intentional — the shared `.env` contains keys for other SENA modules; without it, startup raises a validation error
 - All Bedrock SDK calls are synchronous and offloaded via `asyncio.to_thread` — do not call them directly in async functions
+- boto3 credentials: pydantic-settings does NOT inject into `os.environ`; always pass creds explicitly: `boto3.client(..., aws_access_key_id=settings.aws_access_key_id, ...)` — see issues-solved 0015
 - **Swagger UI 422 errors**: usually caused by literal newlines in JSON string values — press Enter inside a string creates invalid JSON. Use `\n` escape or keep transcript on one line. See issues-solved 0010.
 - **Before debugging**: grep `.claude/issues-solved/INDEX.md` — issues documented there, saves hours of re-debugging
 - `transcript` is optional in `CaseNoteInput` — but at least one of `transcript`, `describe`, `behavioural_events`, `observations`, `carer_feedback`, `assisted`, or `mood` must be non-null (enforced by `_require_content` validator)
 - Never pass form fields directly to LLM — always call `note.to_text()` which handles both transcript-first and form-narrative rendering
 - `behavioural_events` is the highest-signal field for detection — when constructing test notes, put restrictive practice evidence there
+- `bsp_mentioned_in_note` must NOT gate `alert_required` — model sets it True even for negative mentions; rely on cross_check SQL only. See issues-solved 0018.

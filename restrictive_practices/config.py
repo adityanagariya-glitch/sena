@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     aws_access_key_id: str = Field(default="", validation_alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(default="", validation_alias="AWS_SECRET_ACCESS_KEY")
 
+    # S3 credentials — separate key pair for S3 + Transcribe (different account/role from Bedrock)
+    # Read without SENA_AI_ prefix. Leave blank to fall back to Bedrock creds above.
+    s3_region: str = Field(default="", validation_alias="S3_REGION")
+    s3_access_key_id: str = Field(default="", validation_alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: str = Field(default="", validation_alias="S3_SECRET_ACCESS_KEY")
+    s3_bucket: str = Field(default="", validation_alias="S3_BUCKET")
+    s3_public_base_url: str = Field(default="", validation_alias="S3_PUBLIC_BASE_URL")
+
     # Database
     rp_database_url: str = "postgresql+asyncpg://sena_ai:sena_ai@localhost:5433/sena_ai"
 
@@ -43,6 +51,11 @@ class Settings(BaseSettings):
     # Webhook
     rp_webhook_url: str = ""
     rp_webhook_secret: str = ""  # HMAC-SHA256 signing key; leave blank to skip signing
+
+    # Speech-to-text (Amazon Transcribe — used by POST /draft/audio)
+    transcription_bucket: str = ""        # S3 bucket for temp audio; required for /draft/audio
+    transcription_language: str = "en-AU" # Transcribe language code
+    transcription_vocab_name: str = ""    # Custom vocabulary name (optional; blank = omit)
 
 
 settings = Settings()
