@@ -41,6 +41,7 @@ sena-ai\services\onboarding\src\onboarding\repositories\user_context_repo.py ←
 sena-ai\services\onboarding\src\onboarding\services\coverage.py ← __future__, onboarding
 sena-ai\services\onboarding\src\onboarding\services\cross_screen_context.py ← __future__, onboarding
 sena-ai\services\onboarding\src\onboarding\services\field_apply.py ← __future__, onboarding, structlog
+sena-ai\services\onboarding\src\onboarding\services\gemini_live.py ← __future__, fastapi, google, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\services\grounding.py ← __future__, google
 sena-ai\services\onboarding\src\onboarding\services\resumption.py ← __future__, structlog
 sena-ai\services\onboarding\src\onboarding\services\screen_context.py ← __future__, pydantic
@@ -149,31 +150,6 @@ service: redis
 service: ai-db
 service: sena-case-review
 service: shared-db
-```
-
-### sena-ai\ONBOARDING_WEBHOOK.md
-```
-h1 Onboarding Voice Session — Webhook Contract
-h2 Trigger flow
-h2 Webhook request
-h3 Headers
-h3 Signature verification
-h2 Payload shape
-h2 FormState — the data you need to save
-h3 Scalar section (one set of fields)
-h3 Repeatable section (list of rows, e.g. emergency contacts)
-h3 FieldValue fields
-h3 Completion stats
-h2 Minimal persistence logic (pseudocode)
-h2 Fallback: REST polling
-h2 Flutter `step_completed` event (parallel notification)
-h2 Environment variables to configure
-h2 Step IDs → your onboarding step mapping
-code-fence plain
-code-fence ---
-code-fence python
-code-fence jsonc
-code-fence json
 ```
 
 ### sena-ai\pyproject.toml
@@ -526,35 +502,6 @@ class FormState(BaseModel) {session_id*, step_id*, participant_id*, tenant_id?, 
 class SessionBootstrap(BaseModel) {model_config?, mode?, current_page_values?, readonly_paths?, prior_pages?, participant_display_name?}
 ```
 
-### sena-ai\services\onboarding\src\onboarding\prompts\onboarding_system copy.md
-```
-h2 DIALOGUE STATE MACHINE — STRICT ENFORCEMENT
-h3 STATES
-h3 THE LOOP
-h3 CONDITIONAL BRANCHING — DRIVEN BY THE SERVER
-h3 THE FIELD-RENDER INVARIANT (HARD RULE)
-h3 VALIDATION CONTRACT — YOU ARE BLIND, THE SERVER IS THE JUDGE
-h2 REPEATABLE SECTIONS — CANONICAL USE OF add_repeatable_row
-h3 When the user wants another row
-h3 FORBIDDEN
-h3 Parallel-field dictation (medication / allergy blocks)
-h2 OPTIONAL FIELDS — DO NOT SKIP
-h2 CONTEXT RECOVERY — WHEN THE STATE BLOCK LOOKS EMPTY
-h2 ADDRESS THE PARTICIPANT
-h1 Sena — Onboarding Voice Agent System Instruction
-h2 ABSOLUTE STATE AUTHORITY — READ CAREFULLY
-h3 JSON-as-Truth Protocol — MANDATORY pre-flight before every question
-h2 SCHEMA AND TOOLS
-h2 BEHAVIOURAL RULES (numbered to match the platform contract)
-h3 Rule 1 — Strict Session Isolation
-h3 Rule 2 — Multi-Page Handoff
-h3 Rule 3 — Pre-Filled Data Handling
-h3 Rule 4 — Exhaustive Entity Extraction (Multi-Value Capture)
-h3 Rule 5 — Proactive Optional Prompting
-h3 Rule 6 — Dynamic UI Updates
-h3 Rule 7 — Advisory Validation Feedback
-```
-
 ### sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py
 ```
 class FormStateRepo
@@ -592,6 +539,12 @@ def render_for_prompt(bucket: CrossScreenContext | list[StepSummary], *, now: da
 def build_envelope(section_id: str, field_id: str, value: object, *, row_index: int | None, confidence: float, schema: StepSchema, enforced: bool, input_method: Literal["typed", "voice"] | None) → dict | None  # Build a field_apply envelope for emission to the Flutter cli
 ```
 
+### sena-ai\services\onboarding\src\onboarding\services\gemini_live.py
+```
+class GeminiLiveSession
+  async def run() → None
+```
+
 ### sena-ai\services\onboarding\src\onboarding\services\grounding.py
 ```
 def build_live_tools(function_decls: list[dict[str, Any]], *, grounding_enabled: bool) → list[types.Tool]  # Returns the tools list to attach to LiveConnectConfig
@@ -623,30 +576,6 @@ class ValidationRejection(BaseModel) {code*, reason_human*, suggested_fix?, allo
 ### sena-ai\services\onboarding\src\onboarding\services\webhook.py
 ```
 async def fire_webhook(url: str, event: str, payload: dict, secret: str, max_retries: int) → bool  # POST payload to url with retry
-```
-
-### sena-ai\services\onboarding\SYSTEM_OVERVIEW.html
-```
-title: SENA Onboarding — System Overview
-section#overview
-section#architecture
-marker#arrow
-section#lifecycle
-section#json
-section#tools
-section#events
-section#webhook
-section#fsm
-section#validation
-section#prompt
-section#rules
-section#bucket
-section#silence
-section#redis
-section#errors
-section#env
-section#timeline
-section#flutter
 ```
 
 ### sena-ai\services\onboarding\tests\conftest.py
@@ -857,28 +786,6 @@ canvas#waveform
 div#timer
 div#vstatus
 div#transcript
-```
-
-### sena-ai\services\onboarding\WEBHOOK_INTEGRATION.md
-```
-h1 SENA Onboarding — Webhook Integration Guide
-h2 When the webhook fires
-h2 Configuration (server-side env vars)
-h2 HTTP request
-h2 Payload shape
-h3 `state` — full FormState snapshot
-h3 `transcript` — conversation turns
-h2 Signature verification
-h2 Your endpoint contract
-h2 What NOT to do
-h2 Testing locally
-h2 Environment variable quick-reference
-code-fence plain
-code-fence json
-code-fence ---
-code-fence python
-code-fence typescript
-code-fence env
 ```
 
 ### sena-ai\services\voice\Dockerfile
