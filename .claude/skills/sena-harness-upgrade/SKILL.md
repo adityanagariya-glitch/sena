@@ -103,10 +103,10 @@ Then run the phases below in order. Use plan mode for any phase that touches >3 
 
 ### Phase 5.5 — Slash commands inventory
 - [ ] List `.claude/commands/*.md`. Two required sets:
-  - **Workflow commands (5):** `sena-harness-upgrade.md`, `sena-plan.md`, `sena-feature-ship.md`, `sena-audit.md`, `sena-status.md`.
+  - **Workflow commands (6):** `sena-harness-upgrade.md`, `sena-plan.md`, `sena-feature-ship.md`, `sena-audit.md`, `sena-status.md`, `sena-learn.md` (session reflection — captures Claude's mistakes to lessons.md).
   - **Direct-agent shortcuts (14, one per agent):** `sena-planner.md`, `sena-task-breaker.md`, `sena-implementer.md`, `sena-business-reviewer.md`, `sena-security-reviewer.md`, `sena-bug-fixer.md`, `sena-optimization-reviewer.md`, `sena-cleaner.md`, `sena-git-committer.md`, `sena-log-analyzer.md`, `sena-researcher.md`, `sena-doc-writer.md`, `sena-code-reviewer.md`, `sena-engineering-collaborator.md`.
   - **Pre-existing (preserve, do not auto-recreate):** `solve.md`.
-- [ ] Total expected: 20 files. Missing any → recreate from `REFERENCE.md` §16.
+- [ ] Total expected: 21 files (6 workflow + 14 direct-agent + 1 generic `solve`). Missing any → recreate from `REFERENCE.md` §16.
 - [ ] For each command file, verify frontmatter has `description:` field. Verify `allowed-tools:` is scoped (`Agent` for direct shortcuts; `Skill, Read, Edit, Write, ...` for workflow commands).
 - [ ] Verify each direct-agent shortcut routes to its matching `subagent_type: sena-<agent>` via the Agent tool.
 - [ ] Verify each command references current agent names (`@agent-sena-*`, NOT pre-prefix names).
@@ -123,6 +123,21 @@ Then run the phases below in order. Use plan mode for any phase that touches >3 
 - [ ] Update the "Current Inventory" table at the bottom of `.claude/rules/sena-rules.md` if any counts changed (agents/skills/commands/rules/memory files/tasks files). Bump the audit date line in the routing-table header to today.
 - [ ] Confirm `.claude/SESSION_START.md` DO-NOT-READ list still includes `ARCHIVE.md`.
 - [ ] Show user `git status` + `git diff --stat`. ASK before staging. Never auto-commit.
+
+### Phase 8 — Self-improvement (lessons capture, ALWAYS RUNS LAST)
+- [ ] Invoke `/sena-learn` (or run the Skill directly if no slash-command available). This is the reflection step — Claude reviews THIS session for its own mistakes, dedupes against `lessons.md`, and promotes 3×-recurring lessons to CLAUDE.md as permanent rules.
+- [ ] Use `mcp__plugin_context-mode_context-mode__ctx_search(queries: [<correction patterns>], source: "session-events")` to scan the session efficiently — see full pattern list in `commands/sena-learn.md` Step 1.
+- [ ] For each correction found, draft a structured entry (Failure pattern / User correction / Rule / Scope / Occurrences) — see template in `commands/sena-learn.md` Step 2 and `REFERENCE.md` §6.
+- [ ] De-duplicate against `lessons.md` `## Log` section. Same `Rule:` (semantic match) → increment `Occurrences:`. Different `Rule:` → new entry.
+- [ ] Append new entries to `lessons.md` `## Log`. Increment counts on existing matches.
+- [ ] Promotion check: any lesson at `Occurrences: 3+` graduates to CLAUDE.md. Route by scope:
+  - Project-wide → append to `## Hard Limits`
+  - Scope-specific → append to matching `rules/<scope>.md`
+  - Mark the lessons.md entry with `[PROMOTED to <target>] YYYY-MM-DD` (do NOT delete — audit trail).
+- [ ] Report: N corrections found / M lessons added / P incremented / K promoted. List the K promoted explicitly.
+- [ ] If 0 corrections found this session: write a single line "No user corrections detected this session — clean cycle" to the report. Do NOT touch lessons.md.
+
+**Why this is the LAST phase:** earlier phases may themselves produce corrections (e.g. user says "no, don't trim that section"). Phase 8 captures those too, including any from the current harness run.
 
 ## What this skill will NOT do
 
