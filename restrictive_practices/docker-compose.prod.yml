@@ -1,0 +1,37 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: sena_ai
+      POSTGRES_PASSWORD: sena_ai
+      POSTGRES_DB: sena_ai
+    volumes:
+      - rp_pgdata:/var/lib/postgresql/data
+    networks:
+      - rp_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sena_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8084:8084"
+    env_file: .env
+    environment:
+      SENA_AI_RP_DATABASE_URL: postgresql+asyncpg://sena_ai:sena_ai@db:5432/sena_ai
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - rp_net
+    restart: unless-stopped
+
+volumes:
+  rp_pgdata:
+
+networks:
+  rp_net:
+    driver: bridge

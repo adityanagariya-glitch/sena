@@ -29,10 +29,147 @@ log = structlog.get_logger(__name__)
 _TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
 
 
-def _compute_next_required_field(schema: StepSchema, state: FormState) -> dict | None:
-    """First required empty field in schema order — rendered into live-state JSON."""
+def _render_schema_filtering_hidden_fields(
+    schema: StepSchema,
+    state: FormState,
+    *,
+    screen_field_status: dict[str, str] | None = None,
+) -> str:
+    """Serialize the schema to JSON for the prompt, dropping fields the
+    user cannot see on their screen RIGHT NOW.
+
+    Two filtering layers (in order of authority):
+
+    1. **Flutter screen state** — when `screen_field_status` is provided
+       (a dict of `section.field` paths Flutter has rendered), it is the
+       AUTHORITATIVE list of askable fields. Any schema field whose dotted
+       path is absent from `screen_field_status` is stripped. This is the
+       fix for the production "agent asks for plan_manager on a Self
+       Managed plan" bug: Flutter only sends `screen_field_status` keys
+       for fields it actually renders, so hidden fields are invisible to
+       the model regardless of what the schema declares.
+
+    2. **Schema visible_if fallback** — when no screen state has arrived
+       (first turn, before Flutter has sent any screen_state_v2 frame),
+       evaluate each field's `visible_if` against current state.values
+       as a best-effort guard.
+
+    Background (2026-05-19 production regression — session 8431a840):
+    Schema fixtures may carry `visible_if`, but the schema sent dynamically
+    by Flutter at session-create may not. Layer 1 makes the guard work
+    even when the schema is missing visible_if metadata, because Flutter
+    just doesn't include hidden fields in screen_field_status.
+    """
+    def _normalize_enum(s: object) -> str:
+        """Canonicalise enum values so display strings ('Plan Managed') and
+        wire constants ('PLAN_MANAGED', 'plan_managed') compare equal.
+        Bootstrap may deliver values in either form depending on which
+        screen/route generates them — normalising here makes visible_if
+        robust to both shapes."""
+        if s is None:
+            return ""
+        return str(s).lower().replace("_", "").replace(" ", "").replace("-", "")
+
+    def _evaluate_visible_if(
+        visible_if: dict | None, row_values: dict, section_values: dict
+    ) -> bool:
+        if not visible_if:
+            return True
+        cond_field, cond_value = next(iter(visible_if.items()))
+        # Look up the conditional field value: first in the same row
+        # (repeatable item-level visible_if), then in the parent section
+        # (scalar field referencing a sibling), then None if neither set.
+        actual_raw = row_values.get(cond_field)
+        if actual_raw is None:
+            actual_raw = section_values.get(cond_field)
+        actual = actual_raw.get("value") if isinstance(actual_raw, dict) else actual_raw
+        return _normalize_enum(actual) == _normalize_enum(cond_value)
+
+    # Layer 1: Flutter screen state is authoritative when present.
+    rendered_paths: set[str] | None = None
+    if screen_field_status:
+        rendered_paths = set(screen_field_status.keys())
+
+    raw = schema.model_dump(mode="json")
+    sections_out = []
+    for section_spec in raw.get("sections", []):
+        section_id = section_spec.get("id")
+        section_state = state.values.get(section_id) or {}
+        is_rep = section_spec.get("repeatable") is not None
+        # Pick the parent context for visible_if evaluation. For repeatable
+        # sections we evaluate against the FIRST row (the agent only asks
+        # one row at a time anyway). For scalar sections, the section itself.
+        if is_rep:
+            row_ctx = (
+                section_state[0]
+                if isinstance(section_state, list) and section_state
+                else {}
+            )
+            scalar_ctx: dict = row_ctx if isinstance(row_ctx, dict) else {}
+        else:
+            scalar_ctx = section_state if isinstance(section_state, dict) else {}
+        # Filter both fields and item_fields lists.
+        for key in ("fields", "item_fields"):
+            if key not in section_spec or section_spec[key] is None:
+                continue
+            kept = []
+            for fld in section_spec[key]:
+                # Layer 1 — Flutter authoritative: if screen state was
+                # provided AND this field's path isn't in the rendered list,
+                # drop it. Repeatable item_fields: keep when ANY path
+                # `<section>.<idx>.<field>` or `<section>.<field>` appears
+                # in screen_field_status (Flutter may key them either way).
+                if rendered_paths is not None:
+                    fid = fld.get("id")
+                    direct = f"{section_id}.{fid}"
+                    rep_prefix = f"{section_id}."  # e.g. ndis_goals.0.goal
+                    rep_suffix = f".{fid}"
+                    in_screen = (
+                        direct in rendered_paths
+                        or any(
+                            p.startswith(rep_prefix) and p.endswith(rep_suffix)
+                            for p in rendered_paths
+                        )
+                    )
+                    if not in_screen:
+                        continue
+                # Layer 2 — visible_if fallback (used on turn 0 before any
+                # screen_state_v2 frame arrives).
+                vis_if = fld.get("visible_if")
+                if _evaluate_visible_if(vis_if, scalar_ctx, scalar_ctx):
+                    kept.append(fld)
+            section_spec[key] = kept
+        sections_out.append(section_spec)
+    raw["sections"] = sections_out
+    return json.dumps(raw, default=str)
+
+
+def _compute_next_required_field(
+    schema: StepSchema,
+    state: FormState,
+    *,
+    screen_field_status: dict[str, str] | None = None,
+) -> dict | None:
+    """First required empty field in schema order — rendered into live-state JSON.
+
+    `screen_field_status` (optional): dot-notation `section.field` → status from
+    latest screen_state_v2. Paths marked "filled" are skipped even when state is
+    empty — mirrors sequencing.next_required_field. Schema-agnostic.
+    """
     for section in schema.sections:
         is_rep = getattr(section, "is_repeatable", False)
+        # Optional-repeatable guard (mirror sequencing.next_required_field):
+        # for repeatables with min=0 and zero rows, the whole section is
+        # skippable — do NOT iterate required item_fields against a
+        # synthesised empty row. Otherwise routine sections marked optional
+        # would surface a phantom "Routine step" required-field gap.
+        if is_rep:
+            rep_cfg = getattr(section, "repeatable", None)
+            _min_rows = getattr(rep_cfg, "min", 0) if rep_cfg else 0
+            _sec_rows = state.values.get(section.id)
+            _row_count = len(_sec_rows) if isinstance(_sec_rows, list) else 0
+            if _min_rows == 0 and _row_count == 0:
+                continue
         fields = section.item_fields if is_rep else (section.fields or [])
         sec_vals = state.values.get(section.id) or {}
         # Section-min gate (V4): if this repeatable section has fewer rows than
@@ -40,13 +177,16 @@ def _compute_next_required_field(schema: StepSchema, state: FormState) -> dict |
         # inspecting any scalar field within it.
         if _section_min_unmet(section, state.values.get(section.id)):
             min_count = section.repeatable.min
+            cur_rows = len(state.values.get(section.id) or [])
             return {
                 "section_id": section.id,
-                "field_id": "__section_min__",
-                "label": (
-                    f"At least {min_count} "
-                    f"{section.label or section.id} entr"
-                    f"{'y' if min_count == 1 else 'ies'} required"
+                "action": "add_repeatable_row",
+                "rows_current": cur_rows,
+                "rows_min_required": min_count,
+                "instruction": (
+                    f"Call add_repeatable_row(section_id='{section.id}') to create"
+                    f" row {cur_rows + 1}, then fill its fields."
+                    " Do NOT call update_field before the row exists."
                 ),
             }
 
@@ -77,6 +217,13 @@ def _compute_next_required_field(schema: StepSchema, state: FormState) -> dict |
                 )
             )
             if is_empty:
+                # Honor latest screen-state — Flutter is the ground truth for
+                # what the user sees on the screen RIGHT NOW. Useful when the
+                # FormState hasn't caught up to UI pre-fill yet.
+                if screen_field_status is not None:
+                    path = f"{section.id}.{field.id}"
+                    if screen_field_status.get(path) == "filled":
+                        continue
                 return {"section_id": section.id, "field_id": field.id, "label": field.label}
     return None
 
@@ -175,6 +322,8 @@ def _build_live_state_block(
     bootstrap: SessionBootstrap | None,
     state: FormState,
     schema: StepSchema,
+    *,
+    screen_field_status: dict[str, str] | None = None,
 ) -> str:
     """Render the [LIVE_STATE_JSON] context block.
 
@@ -183,6 +332,10 @@ def _build_live_state_block(
     (mode, readonly_paths, prior_pages, display_name) plus the live FormState
     partitioned into locked_facts (readonly) and current_page_values (askable),
     plus completion stats.
+
+    `screen_field_status` is forwarded to next_required_field so that a path
+    marked "filled" in the latest screen_state_v2 is not surfaced as the next
+    question — the agent trusts what Flutter says the user already sees.
     """
     completion = state.completion.model_dump() if state.completion else None
     readonly_paths = bootstrap.readonly_paths if bootstrap else []
@@ -191,7 +344,9 @@ def _build_live_state_block(
     )
     # M5 — forced field overrides next_required when set.
     next_forced = _compute_next_forced_field(schema, state)
-    next_required = next_forced or _compute_next_required_field(schema, state)
+    next_required = next_forced or _compute_next_required_field(
+        schema, state, screen_field_status=screen_field_status,
+    )
     payload = {
         "mode": (bootstrap.mode if bootstrap else "new_user"),
         "step_id": schema.step_id,
@@ -204,7 +359,9 @@ def _build_live_state_block(
         "completion": completion,
         "next_required_field": next_required,
         "next_forced_field": next_forced,
-        "next_optional_field": _next_optional_field(schema, state),
+        "next_optional_field": _next_optional_field(
+            schema, state, screen_field_status=screen_field_status,
+        ),
         "pending_validation_errors": getattr(state, "pending_validation_errors", []),
         "pending_confirmation": getattr(state, "pending_confirmation", None),
         "focused_section": getattr(state, "focused_section", None),
@@ -242,6 +399,7 @@ def build_system_prompt(
     resume_context_text: str | None = None,
     bootstrap: SessionBootstrap | None = None,
     cross_screen_text: str | None = None,
+    screen_field_status: dict[str, str] | None = None,
 ) -> str:
     """
     Render the onboarding system prompt with the session schema and current state.
@@ -267,7 +425,16 @@ def build_system_prompt(
     """
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
 
-    schema_json = schema.model_dump_json()
+    # Filter out fields the user cannot currently see on their screen.
+    # Layer 1: when Flutter has sent a screen_state_v2 frame, its
+    # `screen_field_status` map is the authoritative list of rendered
+    # fields — anything absent is hidden. Layer 2: fall back to evaluating
+    # the schema's `visible_if` clauses when no screen state has arrived
+    # yet. Either way the agent literally cannot see hidden fields in the
+    # schema JSON section of the prompt.
+    schema_json = _render_schema_filtering_hidden_fields(
+        schema, state, screen_field_status=screen_field_status,
+    )
 
     # Compact state snapshot — only what the model needs to skip already-filled fields
     state_summary = {
@@ -276,7 +443,9 @@ def build_system_prompt(
     }
     state_json = json.dumps(state_summary, default=str)
 
-    live_state_json = _build_live_state_block(bootstrap, state, schema)
+    live_state_json = _build_live_state_block(
+        bootstrap, state, schema, screen_field_status=screen_field_status,
+    )
     bootstrap_mode = bootstrap.mode if bootstrap else "new_user"
 
     grounding_section = (
@@ -311,11 +480,20 @@ def build_system_prompt(
             first_80=cross_screen_block[:80].replace("\n", " "),
         )
 
-    next_req = _compute_next_required_field(schema, state)
-    next_req_text = (
-        f"{next_req['section_id']}.{next_req['field_id']} ({next_req['label']})"
-        if next_req else ""
+    next_req = _compute_next_required_field(
+        schema, state, screen_field_status=screen_field_status,
     )
+    if next_req and next_req.get("action") == "add_repeatable_row":
+        next_req_text = (
+            f"ACTION_REQUIRED: call add_repeatable_row(section_id='{next_req['section_id']}')"
+            f" — {next_req['rows_current']} of {next_req['rows_min_required']} rows exist."
+            " Do NOT call update_field until the row exists."
+        )
+    else:
+        next_req_text = (
+            f"{next_req['section_id']}.{next_req['field_id']} ({next_req['label']})"
+            if next_req else ""
+        )
     pending_errors_text = _render_pending_validation_errors(
         getattr(state, "pending_validation_errors", [])
     )
@@ -332,7 +510,11 @@ def build_system_prompt(
 
     # AP-2 fix: Rule-5 anchor. Gives the model a deterministic next-optional
     # pointer so it iterates optional fields in schema order, not randomly.
-    next_opt = _next_optional_field(schema, state)
+    # Honour screen_field_status so hidden optional fields aren't surfaced
+    # to the model via this token (Rule 21a anti-leak).
+    next_opt = _next_optional_field(
+        schema, state, screen_field_status=screen_field_status,
+    )
     next_opt_text = (
         f"{next_opt['section_id']}.{next_opt['field_id']} ({next_opt['label']})"
         if next_opt else ""

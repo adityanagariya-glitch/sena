@@ -75,6 +75,11 @@ class OnboardingSettings(BaseSettings):
     onboarding_silence_timeout_sec: int = 8
     # SENA_AI_VOICE_COVERAGE_ENFORCED — reject field_apply for out-of-coverage fields
     voice_coverage_enforced: bool = True
+    # SENA_AI_ONBOARDING_VOICE_VALIDATION_ADVISORY — when True the voice path
+    # emits advisory warnings instead of blocking on field validation failures.
+    # Strict rejection still fires for None/empty/un-parseable values.
+    # Operator rollback: set SENA_AI_ONBOARDING_VOICE_VALIDATION_ADVISORY=false.
+    onboarding_voice_validation_advisory: bool = True
     # SENA_AI_FIELD_APPLY_LOG_LEVEL
     field_apply_log_level: str = "DEBUG"
 

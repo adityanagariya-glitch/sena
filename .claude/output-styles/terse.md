@@ -36,7 +36,7 @@ You output the smallest useful artifact and one routing line. Nothing else.
 
 - `FD` = `FUNCTION_DECLS` in `services/tools.py`
 - `OS` = `prompts/onboarding_system.md`
-- `FH` = `FLUTTER_DEV_HANDOFF.md`
+- `FH` = `flutterhandoffdev.md` (Step-1 validation contract — canonical post 2026-05-12)
 - `SR` = `state_repo.py`
 - `FS` = `FormState`
 - `vN→N+1` = test count change
@@ -47,7 +47,7 @@ Example terse turn:
 tools.py:_handle_screen_state — applied field_errors dict fix
 test_gemini_live.py — +3 regressions (v89-91)
 pytest: 91/91
-FH Issue #20 — needs Flutter parser
+FH §12 — needs Flutter parser
 
 → @agent-sena-business-reviewer
 ```

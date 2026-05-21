@@ -22,6 +22,7 @@ from onboarding.services.validators import (
     validate_field,
     validate_step_complete,
 )
+from onboarding.services.validators.sequencing import validate_required_only
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -100,16 +101,18 @@ def _load_schema(name: str) -> StepSchema:
     ("",     "home_address", "zip_code", "required"),
 
     # ── Duration (schedule of supports) ──────────────────────────────────────
+    # New ceiling is 99 (per 2026-05-19 spec: max 2 digits, 1-99 positive int).
+    # duration_hours is now REQUIRED — empty no longer passes.
     ("1",    "schedule_of_supports", "duration_hours", None),
     ("12",   "schedule_of_supports", "duration_hours", None),
     ("24",   "schedule_of_supports", "duration_hours", None),
-    ("24.0", "schedule_of_supports", "duration_hours", None),   # whole number as float string
+    ("99",   "schedule_of_supports", "duration_hours", None),
+    ("99.0", "schedule_of_supports", "duration_hours", None),
     ("0",    "schedule_of_supports", "duration_hours", "duration_too_short"),
-    ("25",   "schedule_of_supports", "duration_hours", "duration_too_long"),
-    ("1.5",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),  # fails regex before float check
+    ("100",  "schedule_of_supports", "duration_hours", "duration_too_long"),
+    ("1.5",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),
     ("abc",  "schedule_of_supports", "duration_hours", "duration_not_a_number"),
-    # Schema marks duration_hours as required: false — empty must PASS.
-    ("",     "schedule_of_supports", "duration_hours", None),
+    ("",     "schedule_of_supports", "duration_hours", "required"),
 
     # ── Email ─────────────────────────────────────────────────────────────────
     ("user@example.com",   "basics", "email", None),
@@ -117,9 +120,11 @@ def _load_schema(name: str) -> StepSchema:
     ("notanemail",         "basics", "email", "email_invalid"),
     ("missing@",           "basics", "email", "email_invalid"),
     ("",                   "basics", "email", "required"),
-    # RFC 5321 length guards (V2 fix — long-domain transcription artefacts)
-    ("u@" + "a" * 64 + ".com",                                              "basics", "email", "email_invalid"),  # label > 63
-    ("u@" + "a" * 63 + "." + "b" * 63 + "." + "c" * 63 + "." + "d" * 63, "basics", "email", "email_invalid"),  # domain > 253
+    # RFC 5321 length guards apply ONLY to `emergency_contacts.email` per
+    # `client_onboarding_validations.md` line 47 (strict regex). `basics.email`
+    # uses the standard regex (spec line 15) with no label/domain length cap.
+    ("u@" + "a" * 64 + ".com",                                              "emergency_contacts", "email", "email_invalid"),  # label > 63
+    ("u@" + "a" * 63 + "." + "b" * 63 + "." + "c" * 63 + "." + "d" * 63, "emergency_contacts", "email", "email_invalid"),  # domain > 253
 
     # ── Allergy description (min 5, max 250) ──────────────────────────────────
     ("Causes severe rash after contact",  "allergies", "description", None),
@@ -556,3 +561,250 @@ class TestValidateFieldEnumOptions:
         )
         assert result is not None
         assert result.code == "required"
+
+
+# ── validate_required_only ────────────────────────────────────────────────────
+
+class TestValidateRequiredOnly:
+    def test_cross_field_never_included(self):
+        """Cross-field violations from validate_cross_fields must NOT appear in output.
+
+        Uses emergency_phone_matches_client: basics.phone == emergency_contacts[0].phone.
+        This code is emitted ONLY by cross_field.check_emergency_phone_unique_and_differs_from_client
+        and never by validate_field, so its absence proves validate_cross_fields was not called.
+        All required fields are filled so required_field_missing rejections are also absent.
+        """
+        schema = _load_schema("schema_personal_information.json")
+        shared_phone = "+61412345678"
+        state = _state(step_id="step1", values={
+            "basics": {
+                "full_name":            _fv("Jane Doe"),
+                "email":                _fv("jane@example.com"),
+                "phone":                _fv(shared_phone),
+                "date_of_birth":        _fv("1985-06-15"),
+                "gender":               _fv("Female"),
+                "preferred_language":   _fv("English"),
+                "interpreter_required": _fv("No"),
+                "about_me":             _fv("I enjoy walking."),
+            },
+            "home_address": {
+                "address": _fv("123 Main St"),
+                "state":   _fv("NSW"),
+                "city":    _fv("Sydney"),
+                "zip_code": _fv("2000"),
+            },
+            "emergency_contacts": [
+                {
+                    "name":     _fv("Bob Smith"),
+                    "relation": _fv("Brother"),
+                    "email":    _fv("bob@example.com"),
+                    # Same phone as basics — cross-field violation only caught by validate_cross_fields
+                    "phone":    _fv(shared_phone),
+                }
+            ],
+        })
+        # validate_step_complete would emit emergency_phone_matches_client here
+        step_complete_codes = [r.code for r in validate_step_complete(schema, state)]
+        assert "emergency_phone_matches_client" in step_complete_codes, (
+            "precondition: validate_step_complete must catch this violation"
+        )
+        # validate_required_only must NOT emit it (cross-field gate excluded)
+        required_only_codes = [r.code for r in validate_required_only(schema, state)]
+        assert "emergency_phone_matches_client" not in required_only_codes
+
+    def test_empty_state_returns_required_rejections(self):
+        """Empty FormState with required fields must produce required_field_missing."""
+        schema = _load_schema("schema_personal_information.json")
+        state = _state(step_id="step1")
+        rejections = validate_required_only(schema, state)
+        assert len(rejections) > 0
+        codes = [r.code for r in rejections]
+        assert "required_field_missing" in codes
+
+    def test_fully_filled_required_fields_returns_empty(self):
+        """All required fields filled with valid values and no cross-field violations → []."""
+        schema = _load_schema("schema_personal_information.json")
+        state = _state(step_id="step1", values={
+            "basics": {
+                "full_name":            _fv("Jane Doe"),
+                "email":                _fv("jane@example.com"),
+                "phone":                _fv("0412345678"),
+                "date_of_birth":        _fv("1985-06-15"),
+                "gender":               _fv("Female"),
+                "preferred_language":   _fv("English"),
+                "interpreter_required": _fv("No"),
+                "about_me":             _fv("I enjoy walking and cooking."),
+            },
+            "home_address": {
+                "address":  _fv("123 Main St"),
+                "state":    _fv("NSW"),
+                "city":     _fv("Sydney"),
+                "zip_code": _fv("2000"),
+            },
+            "emergency_contacts": [
+                {
+                    "name":     _fv("Alice Smith"),
+                    "relation": _fv("Sister"),
+                    "email":    _fv("alice@example.com"),
+                    "phone":    _fv("+61487654321"),
+                }
+            ],
+        })
+        rejections = validate_required_only(schema, state)
+        assert rejections == []
+
+
+# ── 2026-05-19 user-feedback validations ────────────────────────────────────
+
+
+class TestEmergencyRelationOptions:
+    """Emergency contact relation must offer the 8 specified options
+    (per user feedback 2026-05-19)."""
+
+    def test_relation_options_are_eight_values(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_personal_information.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        emergency = next(
+            s for s in schema.sections if s.id == "emergency_contacts"
+        )
+        relation = next(f for f in emergency.item_fields if f.id == "relation")
+        assert relation.options == [
+            "Father", "Mother", "Sibling", "Spouse",
+            "Friend", "Guardian", "Carer", "Other",
+        ]
+
+
+class TestPlanManagerConditional:
+    """Plan manager / contact email / billing email visible_if guards
+    must be set so they're only required when plan_management=Plan Managed."""
+
+    def test_visible_if_plan_managed(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        plan_info = next(s for s in schema.sections if s.id == "plan_info")
+        for fid in ("plan_manager", "contact_email", "billing_email"):
+            field = next(f for f in plan_info.fields if f.id == fid)
+            assert field.visible_if == {"plan_management": "Plan Managed"}, (
+                f"{fid} missing/incorrect visible_if guard"
+            )
+
+
+class TestSupportScheduleConstraints:
+    """Schedule of supports now caps at 5 rows; duration is required and
+    accepts 1-99; start_time/end_time are required."""
+
+    def test_max_repeatable_is_five(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        sched = next(s for s in schema.sections if s.id == "schedule_of_supports")
+        assert sched.repeatable.min == 1
+        assert sched.repeatable.max == 5
+
+    def test_frequency_includes_once_off(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        sched = next(s for s in schema.sections if s.id == "schedule_of_supports")
+        freq = next(f for f in sched.item_fields if f.id == "frequency")
+        assert "Once Off" in freq.options
+
+    def test_required_fields(self) -> None:
+        import json
+        from pathlib import Path
+        from onboarding.models.schema_spec import StepSchema
+        fixtures = (
+            Path(__file__).parent.parent / "fixtures"
+            / "schema_ndis_plan_details.json"
+        )
+        schema = StepSchema.model_validate_json(fixtures.read_text())
+        sched = next(s for s in schema.sections if s.id == "schedule_of_supports")
+        for fid in ("duration_hours", "start_time", "end_time"):
+            field = next(f for f in sched.item_fields if f.id == fid)
+            assert field.required, f"{fid} must be required"
+
+
+class TestSupportScheduleTimeOrder:
+    """end_time must be strictly greater than start_time per row."""
+
+    def test_end_before_start_rejected(self) -> None:
+        from onboarding.services.validators.cross_field import (
+            check_support_schedule_time_order,
+        )
+        state = {
+            "schedule_of_supports": [
+                {"start_time": {"value": "10:00"}, "end_time": {"value": "09:00"}}
+            ]
+        }
+        rejections = check_support_schedule_time_order(state)
+        assert len(rejections) == 1
+        assert rejections[0].code == "time_slot_end_before_start"
+
+    def test_end_equals_start_rejected(self) -> None:
+        from onboarding.services.validators.cross_field import (
+            check_support_schedule_time_order,
+        )
+        state = {
+            "schedule_of_supports": [
+                {"start_time": {"value": "10:00"}, "end_time": {"value": "10:00"}}
+            ]
+        }
+        rejections = check_support_schedule_time_order(state)
+        assert len(rejections) == 1
+
+    def test_end_after_start_passes(self) -> None:
+        from onboarding.services.validators.cross_field import (
+            check_support_schedule_time_order,
+        )
+        state = {
+            "schedule_of_supports": [
+                {"start_time": {"value": "09:00"}, "end_time": {"value": "17:00"}}
+            ]
+        }
+        assert check_support_schedule_time_order(state) == []
+
+
+class TestFundingNineDigitCap:
+    """Funding amount integer-part must be ≤ 9 digits (≤ 999,999,999)."""
+
+    def test_ten_digit_amount_rejected(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        rej = _v_amount_optional("1000000000", None)
+        assert rej is not None
+        assert rej.code == "amount_too_large"
+
+    def test_nine_digit_amount_passes(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        assert _v_amount_optional("999999999", None) is None
+
+    def test_with_commas_passes(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        assert _v_amount_optional("999,999,999", None) is None
+
+    def test_with_decimal_still_caps_integer_part(self) -> None:
+        from onboarding.services.validators.field_rules import _v_amount_optional
+        assert _v_amount_optional("999999999.50", None) is None
+        rej = _v_amount_optional("1000000000.50", None)
+        assert rej is not None and rej.code == "amount_too_large"

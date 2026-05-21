@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SENA — NDIS Compliance Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --navy:       #0F172A;
+      --navy-2:     #1E293B;
+      --navy-3:     #334155;
+      --slate:      #64748B;
+      --slate-l:    #94A3B8;
+      --border:     #E2E8F0;
+      --bg:         #F1F5F9;
+      --white:      #FFFFFF;
+      --blue:       #2563EB;
+      --blue-l:     #EFF6FF;
+      --blue-m:     #BFDBFE;
+      --green:      #16A34A;
+      --green-l:    #F0FDF4;
+      --amber:      #D97706;
+      --amber-l:    #FFFBEB;
+      --red:        #DC2626;
+      --red-l:      #FEF2F2;
+      --orange-l:   #FFF7ED;
+      --purple:     #7C3AED;
+      --font-h:     'Bricolage Grotesque', sans-serif;
+      --font-b:     'Figtree', sans-serif;
+      --font-m:     'JetBrains Mono', monospace;
+      --shadow:     0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --radius:     10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-b); background: var(--bg); color: var(--navy-2); min-height: 100vh; font-size: 14px; line-height: 1.6; }
+
+    /* Header */
+    header { background: var(--navy); color: #fff; padding: 13px 28px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 100; }
+    .logo { font-family: var(--font-h); font-size: 17px; font-weight: 700; letter-spacing: -.3px; display: flex; align-items: center; gap: 10px; }
+    .logo-div { opacity: .3; }
+    .logo-sub { font-weight: 400; opacity: .7; font-size: 13px; }
+    .badge-demo { background: #E63946; color: #fff; font-family: var(--font-m); font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px; letter-spacing: .6px; }
+    .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94A3B8; }
+    .api-input { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #CBD5E1; font-family: var(--font-m); font-size: 11px; padding: 4px 10px; width: 230px; outline: none; }
+    .api-input:focus { border-color: var(--blue); }
+
+    /* Tabs */
+    .tab-nav { background: var(--white); border-bottom: 1px solid var(--border); padding: 0 28px; display: flex; position: sticky; top: 47px; z-index: 99; }
+    .tab-btn { display: flex; align-items: center; gap: 7px; padding: 13px 18px; border: none; background: transparent; font-family: var(--font-b); font-size: 13.5px; font-weight: 500; color: var(--slate); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; white-space: nowrap; }
+    .tab-btn:hover { color: var(--navy-2); }
+    .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+    .tb-icon { font-size: 15px; }
+    .tb-badge { background: var(--red); color: #fff; font-family: var(--font-m); font-size: 9px; font-weight: 700; min-width: 15px; height: 15px; border-radius: 8px; display: none; align-items: center; justify-content: center; padding: 0 4px; }
+    .tb-badge.on { display: inline-flex; }
+
+    /* Layout */
+    .page { max-width: 1260px; margin: 0 auto; padding: 24px 24px 48px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .two-col { display: grid; grid-template-columns: 420px 1fr; gap: 20px; align-items: start; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+    .single-col { max-width: 880px; margin: 0 auto; }
+
+    /* Card */
+    .card { background: var(--white); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; }
+    .card-hdr { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .card-title { font-family: var(--font-h); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--slate); }
+    .card-body { padding: 20px; }
+
+    /* Form */
+    .fg { margin-bottom: 13px; }
+    .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 13px; }
+    label { display: block; font-size: 11.5px; font-weight: 600; color: var(--slate); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .3px; }
+    input[type=text], input[type=date], select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 8px 11px; font-family: var(--font-b); font-size: 13.5px; color: var(--navy-2); background: #FAFAFA; outline: none; transition: border-color .15s, background .15s, box-shadow .15s; }
+    input:focus, select:focus, textarea:focus { border-color: var(--blue); background: var(--white); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+    textarea { resize: vertical; line-height: 1.6; }
+    select { cursor: pointer; }
+    .chk-row { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; background: #FAFAFA; cursor: pointer; margin-bottom: 13px; }
+    .chk-row input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--blue); flex-shrink: 0; }
+    .chk-row label { margin: 0; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--navy-2); text-transform: none; letter-spacing: 0; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border: none; border-radius: 7px; font-family: var(--font-b); font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all .15s; }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: #1D4ED8; }
+    .btn-primary:disabled { background: #93C5FD; cursor: not-allowed; }
+    .btn-full { width: 100%; justify-content: center; }
+    .btn-ghost { background: var(--bg); color: var(--navy-2); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--border); }
+    .btn-blue-soft { background: var(--blue-l); color: var(--blue); border: 1px solid var(--blue-m); }
+    .btn-blue-soft:hover { background: #DBEAFE; }
+    .btn-sm { padding: 6px 11px; font-size: 12px; }
+
+    /* Samples */
+    .samples-wrap { margin-bottom: 13px; }
+    .samples-lbl { font-size: 10.5px; font-weight: 700; color: var(--slate-l); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip { padding: 3px 10px; border: 1px solid var(--border); border-radius: 20px; font-size: 11.5px; cursor: pointer; color: var(--slate); background: var(--white); transition: all .12s; font-weight: 500; }
+    .chip:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+    /* Mode toggle */
+    .mode-toggle { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 3px; margin-bottom: 14px; }
+    .mode-btn { flex: 1; padding: 7px; text-align: center; border: none; background: transparent; border-radius: 5px; font-family: var(--font-b); font-size: 12.5px; font-weight: 500; color: var(--slate); cursor: pointer; transition: all .15s; }
+    .mode-btn.active { background: var(--white); color: var(--navy-2); box-shadow: var(--shadow); font-weight: 600; }
+
+    /* Form section accordion */
+    .fs-wrap { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+    .fs-hdr { padding: 9px 13px; background: var(--bg); font-size: 11.5px; font-weight: 700; color: var(--slate); cursor: pointer; display: flex; align-items: center; justify-content: space-between; user-select: none; text-transform: uppercase; letter-spacing: .3px; }
+    .fs-hdr:hover { background: #E8EEF5; }
+    .fs-body { padding: 13px; display: none; }
+    .fs-wrap.open .fs-body { display: block; }
+    .fs-arrow { transition: transform .2s; font-size: 11px; }
+    .fs-wrap.open .fs-arrow { transform: rotate(90deg); }
+
+    /* Spinner */
+    .spin-wrap { display: none; align-items: center; gap: 9px; padding: 11px 0; color: var(--slate); font-size: 13px; }
+    .spin-wrap.on { display: flex; }
+    .spinner { width: 17px; height: 17px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    .err-box { background: var(--red-l); color: var(--red); padding: 11px 13px; border-radius: 7px; font-size: 13px; border: 1px solid #FECACA; display: none; margin-top: 10px; }
+    .err-box.on { display: block; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 48px 20px; color: var(--slate-l); }
+    .empty-icon { font-size: 38px; margin-bottom: 10px; }
+    .empty-title { font-family: var(--font-h); font-size: 15px; font-weight: 600; color: var(--slate); margin-bottom: 5px; }
+    .empty-sub { font-size: 13px; line-height: 1.5; max-width: 320px; margin: 0 auto; }
+
+    /* Quality bar */
+    .q-wrap { margin-bottom: 16px; }
+    .q-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+    .q-badge { font-family: var(--font-m); font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 20px; }
+    .qb-Premium { background: #D1FAE5; color: #065F46; }
+    .qb-Average { background: #FEF3C7; color: #92400E; }
+    .qb-Poor    { background: #FEE2E2; color: #991B1B; }
+    .q-score-txt { font-family: var(--font-m); font-size: 12px; color: var(--slate); }
+    .q-track { height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; }
+    .q-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+    .qf-Premium { background: linear-gradient(90deg, #10B981, #059669); }
+    .qf-Average { background: linear-gradient(90deg, #F59E0B, #D97706); }
+    .qf-Poor    { background: linear-gradient(90deg, #EF4444, #DC2626); }
+
+    /* Gap list */
+    .gap-list { list-style: none; }
+    .gap-list li { display: flex; align-items: flex-start; gap: 7px; padding: 6px 0; font-size: 12.5px; color: var(--navy-3); border-bottom: 1px solid var(--border); }
+    .gap-list li:last-child { border-bottom: none; }
+    .gap-list li::before { content: '\26A0'; color: var(--amber); flex-shrink: 0; }
+
+    /* Draft section cards */
+    .ds-card { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 9px; overflow: hidden; }
+    .ds-lbl { padding: 7px 13px; background: var(--bg); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--slate); border-bottom: 1px solid var(--border); }
+    .ds-val { padding: 10px 13px; font-size: 13px; color: var(--navy-2); line-height: 1.65; }
+    .ds-field-lbl { font-size: 10.5px; font-weight: 700; color: var(--slate-l); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px; }
+    .ds-empty { padding: 10px 13px; font-size: 12px; color: var(--slate-l); font-style: italic; }
+
+    /* Verdict banner */
+    .verdict { border-radius: 9px; padding: 17px 19px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 13px; border: 1px solid transparent; }
+    .v-icon { font-size: 30px; flex-shrink: 0; line-height: 1; }
+    .v-outcome { font-family: var(--font-h); font-size: 16px; font-weight: 700; line-height: 1.3; margin-bottom: 4px; }
+    .v-action { font-size: 13px; line-height: 1.55; opacity: .9; }
+    .vc-CLEAR        { background: var(--green-l);  color: #14532D; border-color: #BBF7D0; }
+    .vc-NO_INCIDENT  { background: var(--blue-l);   color: #1E3A5F; border-color: var(--blue-m); }
+    .vc-AUTHORISED   { background: var(--amber-l);  color: #78350F; border-color: #FDE68A; }
+    .vc-POSSIBLE     { background: var(--orange-l); color: #7C2D12; border-color: #FED7AA; }
+    .vc-ADMIN        { background: #F5F3FF;          color: #4C1D95; border-color: #DDD6FE; }
+    .vc-UNAUTHORISED { background: var(--red-l);    color: #7F1D1D; border-color: #FECACA; }
+
+    /* Result sections */
+    .rs { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 11px; overflow: hidden; }
+    .rs-title { padding: 9px 15px; background: var(--bg); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--slate); border-bottom: 1px solid var(--border); }
+    .rs-body { padding: 13px 15px; }
+    .kv { display: flex; gap: 10px; margin-bottom: 8px; font-size: 13px; align-items: flex-start; }
+    .kv:last-child { margin-bottom: 0; }
+    .kk { font-weight: 600; color: var(--slate); min-width: 125px; flex-shrink: 0; font-size: 12px; }
+    .kv-v { color: var(--navy-2); line-height: 1.55; }
+
+    /* Badges */
+    .risk-b { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 20px; font-family: var(--font-m); font-size: 11px; font-weight: 600; }
+    .rb-Low      { background: var(--green-l); color: #166534; }
+    .rb-Medium   { background: var(--amber-l); color: #92400E; }
+    .rb-High     { background: #FFF7ED;         color: #9A3412; }
+    .rb-Critical { background: var(--red-l);    color: #991B1B; }
+    .rb-NA       { background: var(--bg);       color: var(--slate); }
+    .alert-p { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 20px; font-family: var(--font-m); font-size: 11px; font-weight: 600; }
+    .ap-t { background: #FEE2E2; color: #991B1B; }
+    .ap-f { background: var(--green-l); color: #166534; }
+
+    /* Phrase chips */
+    .p-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+    .pc { padding: 3px 9px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+    .pc-t { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+    .pc-s { background: var(--green-l); color: #166534; border: 1px solid #BBF7D0; }
+
+    /* Reasoning box */
+    .rbox { background: var(--blue-l); border-left: 3px solid var(--blue); padding: 10px 13px; font-size: 13px; line-height: 1.65; color: #1E3A5F; border-radius: 0 6px 6px 0; margin-top: 7px; }
+
+    /* Next steps list */
+    .steps-list { list-style: none; }
+    .steps-list li { padding: 6px 0 6px 20px; position: relative; font-size: 13px; line-height: 1.5; border-bottom: 1px solid var(--border); }
+    .steps-list li:last-child { border-bottom: none; }
+    .steps-list li::before { content: '\2192'; position: absolute; left: 3px; color: var(--blue); font-weight: 700; }
+
+    /* Nav between tabs */
+    .result-nav { display: flex; gap: 7px; margin-top: 14px; flex-wrap: wrap; }
+
+    /* ── Summary tab ── */
+    .sum-top { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    @media (max-width: 680px) { .sum-top { grid-template-columns: 1fr; } }
+    .sum-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 680px) { .sum-lists { grid-template-columns: 1fr; } }
+    .conf-wrap { text-align: center; padding: 20px 16px; border: 1px solid var(--border); border-radius: 9px; background: var(--white); }
+    .conf-arc { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 96px; height: 96px; margin-bottom: 8px; }
+    .conf-num { position: absolute; font-family: var(--font-m); font-size: 19px; font-weight: 700; color: var(--navy-2); }
+    .conf-label { font-size: 12px; font-weight: 600; }
+    .bullet-list { list-style: none; }
+    .bullet-list li { display: flex; align-items: flex-start; gap: 7px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); line-height: 1.55; }
+    .bullet-list li:last-child { border-bottom: none; }
+    .bdot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+    .bd-g { background: var(--green); }
+    .bd-r { background: var(--red); }
+    .bd-a { background: var(--amber); }
+    .bd-p { background: var(--purple); }
+    .hl-quote { background: var(--amber-l); border-left: 3px solid var(--amber); padding: 9px 13px; font-size: 13px; font-style: italic; color: var(--navy-3); border-radius: 0 6px 6px 0; margin: 4px 0; }
+
+    /* ── Incident tab ── */
+    .inc-hdr { background: var(--red-l); border: 1px solid #FECACA; border-radius: 9px; padding: 17px 19px; margin-bottom: 14px; display: flex; align-items: center; gap: 15px; }
+    .inc-icon { font-size: 30px; }
+    .inc-type { font-family: var(--font-h); font-size: 15px; font-weight: 700; color: #7F1D1D; margin-bottom: 5px; }
+    .sev-cats { display: flex; gap: 5px; flex-wrap: wrap; }
+    .cat-pill { padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--red-l); color: #991B1B; border: 1px solid #FECACA; }
+    .safety-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 10px; }
+    .si { border: 1px solid var(--border); border-radius: 8px; padding: 11px; text-align: center; }
+    .si-icon { font-size: 20px; margin-bottom: 3px; }
+    .si-lbl { font-size: 10.5px; font-weight: 600; color: var(--slate); text-transform: uppercase; letter-spacing: .3px; }
+    .si-val { font-size: 12px; font-weight: 700; margin-top: 3px; }
+    .si-ok   { border-color: #BBF7D0; background: var(--green-l); }
+    .si-warn { border-color: #FECACA; background: var(--red-l); }
+    .comp-list { list-style: none; }
+    .comp-item { display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+    .comp-item:last-child { border-bottom: none; }
+    .ci-pass { color: var(--green); }
+    .ci-fail { color: var(--red); }
+    .fu-list { }
+    .fu-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; font-size: 13px; line-height: 1.5; border-bottom: 1px solid var(--border); }
+    .fu-item:last-child { border-bottom: none; }
+    .fu-num { width: 19px; height: 19px; border-radius: 50%; background: var(--navy); color: #fff; font-family: var(--font-m); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .timeframe-pill { display: inline-flex; align-items: center; gap: 4px; background: var(--red-l); color: #991B1B; padding: 3px 10px; border-radius: 20px; font-family: var(--font-m); font-size: 11px; font-weight: 700; }
+    .authority-txt { font-family: var(--font-m); font-size: 12px; color: var(--blue); }
+    .sec-lbl { font-family: var(--font-h); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--slate); margin-bottom: 7px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span>SENA</span>
+    <span class="logo-div">/</span>
+    <span class="logo-sub">NDIS Compliance Suite</span>
+  </div>
+  <div class="badge-demo">DEMO</div>
+  <div class="hdr-right">
+    <span>API</span>
+    <input class="api-input" id="api-base" type="text" />
+  </div>
+</header>
+
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="draft"><span class="tb-icon">📝</span> Draft Note</button>
+  <button class="tab-btn" data-tab="evaluate"><span class="tb-icon">🔍</span> Restrictive Practices</button>
+  <button class="tab-btn" data-tab="summary"><span class="tb-icon">📊</span> AI Summary <span class="tb-badge" id="bdg-summary">1</span></button>
+  <button class="tab-btn" data-tab="incident"><span class="tb-icon">🚨</span> Incident Report <span class="tb-badge" id="bdg-incident">1</span></button>
+</nav>
+
+<div class="page">
+
+<!-- ══════════════════════════════════════════════════════
+     TAB 1 — DRAFT
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-draft">
+  <div class="two-col">
+    <div>
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">Voice Transcript &rarr; Case Note</span></div>
+        <div class="card-body">
+          <div class="frow">
+            <div style="margin:0"><label>Client ID</label><input type="text" id="d-client" value="client-demo-001" /></div>
+            <div style="margin:0"><label>Worker ID</label><input type="text" id="d-worker" value="worker-demo-001" /></div>
+          </div>
+          <div class="frow">
+            <div style="margin:0"><label>Shift Date</label><input type="date" id="d-date" /></div>
+            <div style="margin:0"><label>Shift Time</label><input type="text" id="d-time" placeholder="2:00 PM - 6:00 PM" /></div>
+          </div>
+          <div class="fg"><label>Worker Position</label><input type="text" id="d-pos" value="Support Worker" /></div>
+          <div class="samples-wrap">
+            <div class="samples-lbl">Sample transcripts</div>
+            <div class="chips">
+              <span class="chip" data-ds="community">Community access</span>
+              <span class="chip" data-ds="household">Household support</span>
+              <span class="chip" data-ds="incident">Incident shift</span>
+            </div>
+          </div>
+          <div class="fg"><label>Voice Transcript</label><textarea id="d-transcript" rows="10" placeholder="Paste the support worker's voice transcript here..."></textarea></div>
+          <button class="btn btn-primary btn-full" id="d-btn">Draft Case Note</button>
+          <div class="spin-wrap" id="d-spin"><div class="spinner"></div><span>Extracting case note from transcript...</span></div>
+          <div class="err-box" id="d-err"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">Draft Output</span><span id="d-use-btn-wrap"></span></div>
+        <div class="card-body" id="d-out">
+          <div class="empty"><div class="empty-icon">📝</div><div class="empty-title">Draft output will appear here</div><div class="empty-sub">Paste a voice transcript and click Draft Case Note</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     TAB 2 — EVALUATE
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-evaluate">
+  <div class="two-col">
+    <div>
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">Restrictive Practice Detection</span></div>
+        <div class="card-body">
+          <div class="fg">
+            <label>Client ID — determines auth path</label>
+            <select id="e-client">
+              <option value="client-demo-unauth">client-demo-unauth — No BSP &rarr; UNAUTHORISED</option>
+              <option value="client-demo-auth">client-demo-auth — Physical Restraint BSP &rarr; AUTHORISED</option>
+              <option value="client-demo-chem">client-demo-chem — Chemical Restraint BSP &rarr; AUTHORISED</option>
+              <option value="client-demo-mech">client-demo-mech — Mechanical Restraint BSP &rarr; AUTHORISED</option>
+              <option value="client-demo-001">client-demo-001 — Generic (no BSP)</option>
+            </select>
+          </div>
+          <div class="fg"><label>Worker ID</label><input type="text" id="e-worker" value="worker-demo-001" /></div>
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="m-quick">Quick (Transcript)</button>
+            <button class="mode-btn" id="m-form">Full Form Fields</button>
+          </div>
+          <!-- Quick mode -->
+          <div id="e-quick-mode">
+            <div class="samples-wrap">
+              <div class="samples-lbl">Quick-load samples</div>
+              <div class="chips">
+                <span class="chip" data-es="clean">Clean shift</span>
+                <span class="chip" data-es="chemical">Chemical restraint</span>
+                <span class="chip" data-es="physical">Physical restraint</span>
+                <span class="chip" data-es="seclusion">Seclusion</span>
+                <span class="chip" data-es="environmental">Environmental</span>
+                <span class="chip" data-es="seizure">Seizure med (clear)</span>
+              </div>
+            </div>
+            <div class="fg"><label>Case Note / Transcript</label><textarea id="e-transcript" rows="10" placeholder="Paste case note or voice transcript here..."></textarea></div>
+          </div>
+          <!-- Form mode -->
+          <div id="e-form-mode" style="display:none">
+            <div id="e-form-sections"></div>
+          </div>
+          <div class="chk-row"><input type="checkbox" id="e-incident" /><label for="e-incident">incident_occurred — worker flags an incident happened this shift</label></div>
+          <button class="btn btn-primary btn-full" id="e-btn">Analyse Case Note</button>
+          <div class="spin-wrap" id="e-spin"><div class="spinner"></div><span>Running: triage &rarr; RAG &rarr; evaluator &rarr; cross-check...</span></div>
+          <div class="err-box" id="e-err"></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">Detection Result</span></div>
+        <div class="card-body" id="e-out">
+          <div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Results will appear here</div><div class="empty-sub">Enter a case note and click Analyse to run the full 5-step pipeline</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     TAB 3 — AI SUMMARY
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-summary">
+  <div class="single-col">
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">AI Summary</span></div>
+      <div class="card-body" id="sum-out">
+        <div class="empty"><div class="empty-icon">📊</div><div class="empty-title">No evaluation run yet</div><div class="empty-sub">Run an evaluation on the Evaluate tab — the AI summary will appear here automatically</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     TAB 4 — INCIDENT REPORT
+══════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-incident">
+  <div class="single-col">
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Incident Report</span></div>
+      <div class="card-body" id="inc-out">
+        <div class="empty"><div class="empty-icon">🚨</div><div class="empty-title">No incident report generated</div><div class="empty-sub">Generated when incident_occurred is checked OR the pipeline detects an UNAUTHORISED restrictive practice</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /.page -->
+
+</div><!-- /.page -->
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let lastEval = null;
+let lastDraft = null;
+
+function api() { return (document.getElementById('api-base').value || window.location.origin).replace(/\/+$/, ''); }
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+// ── Sample data ───────────────────────────────────────────────────────────────
+const DS = {
+  community: `Hey, it's Sarah. Today I supported Marcus with community access. We went to Woolworths and Marcus chose his own groceries completely independently — he was really confident at the checkout and chatted warmly with the staff. Then we headed to the library where he spent about 45 minutes browsing. Really positive mood the whole shift, no distress or agitation. I gave him his midday medication reminder as scheduled. No incidents. He's definitely building independence in community settings.`,
+  household: `This is Dave. Today I supported Olivia with household tasks. We did some cleaning in the morning — she helped with vacuuming and wiping down the kitchen, needed a bit of prompting to stay on task but did well overall. We made lunch together. Mood was a bit low at the start of the shift but improved after lunch. No behavioural events to report. No incidents. House is clean and tidy.`,
+  incident: `Hi, this is Jordan. Today's shift with Kevin — around 3pm Kevin became really agitated and was trying to leave the property without support. I tried verbal de-escalation for about 5 minutes but it wasn't working. I then held Kevin's arms to stop him from leaving and guided him back inside. He struggled quite a bit. Kevin calmed down after about 10 minutes once inside. There's been a few similar incidents recently. No behaviour support plan on site. Kevin had a small red mark on his left wrist after the incident. No emergency services called.`,
+};
+
+const ES = {
+  clean: `Supported Marcus with community access today — attended weekly grocery shopping at Woolworths and visited the local library. Marcus chose his own groceries independently and interacted warmly with library staff. He was engaged and communicative throughout the shift with no signs of distress. Medication reminders given as scheduled. No incidents.`,
+  chemical: `John was becoming increasingly agitated during the group activity and started hitting the table repeatedly. Verbal de-escalation was attempted for approximately 10 minutes without effect. I gave him 5mg of diazepam to calm him down before the activity continued. He settled after about 20 minutes. No behaviour support plan was available on site.`,
+  physical: `At approximately 4:45 PM Tom became extremely agitated — shouting and attempting to overturn the coffee table. Verbal de-escalation was attempted for five minutes without effect. I then placed both hands on Tom's shoulders and guided him firmly to the floor into a prone position, keeping him restrained for approximately three minutes until he stopped struggling. No behaviour support plan was available on site. Tom had a red mark on his left forearm after the hold.`,
+  seclusion: `Kevin became disruptive during shared TV time and started shouting at his housemate. To protect the other participant I guided Kevin to his bedroom and stood outside the door holding it closed so he could not leave for approximately 45 minutes until he had calmed down. Kevin knocked on the door repeatedly asking to come out but I told him he needed to stay in there until he was calm. No behaviour support plan authorising this was in place.`,
+  environmental: `Jake has been repeatedly accessing the kitchen pantry and consuming large quantities of food unsafely throughout the shift. After the fourth attempt I locked the pantry door and the fridge using the padlocks to prevent Jake from accessing food between meals. The fridge and pantry remained locked for the remainder of the four-hour shift. There is no behaviour support plan in place authorising restriction of Jake's access to food storage areas.`,
+  seizure: `Robert experienced a mild focal seizure at 10:15 AM lasting approximately 90 seconds. Per his epilepsy management plan, I administered 5mg midazolam buccally as prescribed by his neurologist for seizure management. Robert recovered within 10 minutes and we proceeded to the GP appointment as planned. GP was informed of the seizure on arrival and reviewed the management plan.`,
+};
+
+document.querySelectorAll('[data-ds]').forEach(c => c.addEventListener('click', () => { document.getElementById('d-transcript').value = DS[c.dataset.ds] || ''; }));
+document.querySelectorAll('[data-es]').forEach(c => c.addEventListener('click', () => { document.getElementById('e-transcript').value = ES[c.dataset.es] || ''; }));
+
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+document.getElementById('m-quick').addEventListener('click', () => {
+  document.getElementById('m-quick').classList.add('active');
+  document.getElementById('m-form').classList.remove('active');
+  document.getElementById('e-quick-mode').style.display = '';
+  document.getElementById('e-form-mode').style.display = 'none';
+});
+document.getElementById('m-form').addEventListener('click', () => {
+  document.getElementById('m-form').classList.add('active');
+  document.getElementById('m-quick').classList.remove('active');
+  document.getElementById('e-quick-mode').style.display = 'none';
+  document.getElementById('e-form-mode').style.display = '';
+});
+
+// ── Evaluate form sections ────────────────────────────────────────────────────
+const FORM_SECS = [
+  { id: 's1', label: 'Section 1 — Shift Summary', fields: [
+    { id: 'describe', label: 'Describe the shift', rows: 4, ph: 'Describe the overall shift, focus and activities...' },
+  ]},
+  { id: 's2', label: 'Section 2 — Activities', fields: [
+    { id: 'assisted', label: 'Assisted with', rows: 2, ph: 'Tasks the worker assisted with...' },
+    { id: 'practised_skill', label: 'Practised skill', rows: 2, ph: 'Skills practised during the shift...' },
+    { id: 'participants_level_of_independence', label: 'Level of independence', rows: 2, ph: 'How independently did the participant complete tasks?' },
+    { id: 'observations', label: 'Observations', rows: 3, ph: 'Clinical observations about the participant...' },
+  ]},
+  { id: 's3', label: 'Section 3 — Wellbeing & Behaviour', fields: [
+    { id: 'mood', label: 'Mood', rows: 2, ph: 'Participant mood and emotional state...' },
+    { id: 'behavioural_events', label: 'Behavioural events (highest-signal field)', rows: 4, ph: 'Document any behaviours, restraints, or incidents here...' },
+  ]},
+  { id: 's4', label: 'Section 4 — Outcomes', fields: [
+    { id: 'what_went_well', label: 'What went well', rows: 2, ph: 'Positive outcomes from the shift...' },
+    { id: 'what_needs_further_support', label: 'Needs further support', rows: 2, ph: 'Areas for ongoing support...' },
+    { id: 'participant_comments', label: 'Participant comments', rows: 2, ph: 'Direct quotes or comments from participant...' },
+  ]},
+  { id: 's5', label: 'Section 5 — Safety & Health', fields: [
+    { id: 'medication_reminders_given', label: 'Medication reminders', rows: 1, ph: 'e.g. Medication reminders given as scheduled' },
+    { id: 'safety_hazards_observed', label: 'Safety hazards', rows: 1, ph: 'Any hazards identified...' },
+    { id: 'injury_description', label: 'Injury description', rows: 2, ph: 'If any injuries occurred, describe them...' },
+  ]},
+  { id: 's6', label: 'Section 6 — Notes', fields: [
+    { id: 'carer_feedback', label: 'Carer/family feedback', rows: 2, ph: 'Family or carer feedback or updates...' },
+  ]},
+];
+
+(function buildFormSecs() {
+  let html = '';
+  for (const sec of FORM_SECS) {
+    html += `<div class="fs-wrap" id="fsw-${sec.id}">
+      <div class="fs-hdr" onclick="toggleFS('fsw-${sec.id}')"><span>${sec.label}</span><span class="fs-arrow">&#9654;</span></div>
+      <div class="fs-body">`;
+    for (const f of sec.fields) {
+      html += `<div class="fg"><label for="ef-${f.id}">${f.label}</label><textarea id="ef-${f.id}" rows="${f.rows}" placeholder="${f.ph}"></textarea></div>`;
+    }
+    html += `</div></div>`;
+  }
+  document.getElementById('e-form-sections').innerHTML = html;
+  document.getElementById('fsw-s1').classList.add('open');
+})();
+
+function toggleFS(id) { document.getElementById(id).classList.toggle('open'); }
+
+// ── Draft submit ──────────────────────────────────────────────────────────────
+document.getElementById('d-btn').addEventListener('click', async () => {
+  const transcript = document.getElementById('d-transcript').value.trim();
+  if (!transcript) { showErr('d-err', 'Please enter a voice transcript.'); return; }
+  clearErr('d-err');
+  setLoad('d', true);
+  const payload = {
+    case_note_id: crypto.randomUUID(),
+    worker_id: document.getElementById('d-worker').value.trim() || 'worker-demo-001',
+    client_id: document.getElementById('d-client').value.trim() || 'client-demo-001',
+    shift_date: document.getElementById('d-date').value || null,
+    shift_time: document.getElementById('d-time').value.trim() || null,
+    worker_position: document.getElementById('d-pos').value.trim() || null,
+    transcript,
+  };
+  try {
+    const res = await fetch(`${api()}/v1/restrictive-practices/draft`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) { showErr('d-err', `API ${res.status}: ${data.detail || JSON.stringify(data)}`); return; }
+    lastDraft = data;
+    renderDraft(data);
+  } catch (e) {
+    showErr('d-err', `Network error: ${e.message}. Is the server running at ${api()}?`);
+  } finally {
+    setLoad('d', false);
+  }
+});
+
+function renderDraft(d) {
+  const lbl = d.note_quality_label || 'Average';
+  const pct = Math.round((d.note_quality_score || 0) * 100);
+  const gaps = d.quality_gaps || [];
+
+  let html = `<div class="q-wrap">
+    <div class="q-hdr">
+      <span class="sec-lbl" style="margin:0">Note Quality</span>
+      <div style="display:flex;align-items:center;gap:7px">
+        <span class="q-score-txt">${pct}%</span>
+        <span class="q-badge qb-${lbl}">${lbl}</span>
+      </div>
+    </div>
+    <div class="q-track"><div class="q-fill qf-${lbl}" style="width:${pct}%"></div></div>
+  </div>`;
+
+  if (gaps.length) {
+    html += `<div style="margin-bottom:14px"><div class="sec-lbl">Quality Gaps</div><ul class="gap-list">${gaps.map(g => `<li>${g}</li>`).join('')}</ul></div>`;
+  }
+
+  if (d.draft_note) {
+    html += `<div class="rbox" style="margin-bottom:14px"><strong style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">AI Note</strong>${d.draft_note}</div>`;
+  }
+
+  html += `<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">`;
+
+  const SECTIONS = [
+    ['Section 1 — Shift Summary',      [['describe','Describe']]],
+    ['Section 2 — Activities',          [['assisted','Assisted'],['practised_skill','Practised Skill'],['participants_level_of_independence','Independence Level'],['observations','Observations']]],
+    ['Section 3 — Wellbeing & Behaviour',[['mood','Mood'],['behavioural_events','Behavioural Events']]],
+    ['Section 4 — Outcomes',            [['what_went_well','What Went Well'],['what_needs_further_support','Needs Further Support'],['participant_comments','Participant Comments']]],
+    ['Section 5 — Safety',              [['medication_reminders_given','Medication'],['safety_hazards_observed','Hazards'],['injury_description','Injury']]],
+    ['Section 6 — Notes',               [['carer_feedback','Carer Feedback']]],
+  ];
+
+  for (const [secLbl, fields] of SECTIONS) {
+    const hasAny = fields.some(([k]) => d[k]);
+    html += `<div class="ds-card"><div class="ds-lbl">${secLbl}</div>`;
+    if (hasAny) {
+      for (const [key, lbl] of fields) {
+        if (d[key]) html += `<div class="ds-val"><div class="ds-field-lbl">${lbl}</div>${d[key]}</div>`;
+      }
+    } else {
+      html += `<div class="ds-empty">No content extracted for this section</div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `<div style="margin-top:14px"><button class="btn btn-blue-soft btn-full" onclick="fillFromDraft()">Use in Evaluate &rarr;</button></div>`;
+
+  document.getElementById('d-out').innerHTML = html;
+}
+
+function fillFromDraft() {
+  if (!lastDraft) return;
+  document.getElementById('m-form').click();
+  const fields = ['describe','assisted','practised_skill','participants_level_of_independence','observations','mood','behavioural_events','what_went_well','what_needs_further_support','participant_comments','medication_reminders_given','safety_hazards_observed','injury_description','carer_feedback'];
+  for (const f of fields) {
+    const el = document.getElementById('ef-' + f);
+    if (el && lastDraft[f]) el.value = lastDraft[f];
+  }
+  if (lastDraft.incident_occurred) document.getElementById('e-incident').checked = true;
+  document.getElementById('e-worker').value = document.getElementById('d-worker').value;
+  document.querySelectorAll('.fs-wrap').forEach(s => s.classList.add('open'));
+  switchTab('evaluate');
+}
+
+// ── Evaluate submit ───────────────────────────────────────────────────────────
+document.getElementById('e-btn').addEventListener('click', async () => {
+  clearErr('e-err');
+  const isForm = document.getElementById('m-form').classList.contains('active');
+  const clientId = document.getElementById('e-client').value;
+  const workerId = document.getElementById('e-worker').value.trim() || 'worker-demo-001';
+  const incident = document.getElementById('e-incident').checked;
+  let payload;
+
+  if (isForm) {
+    payload = { case_note_id: crypto.randomUUID(), client_id: clientId, worker_id: workerId, incident_occurred: incident };
+    for (const f of ['describe','assisted','practised_skill','participants_level_of_independence','observations','mood','behavioural_events','what_went_well','what_needs_further_support','participant_comments','medication_reminders_given','safety_hazards_observed','injury_description','carer_feedback']) {
+      const el = document.getElementById('ef-' + f);
+      if (el && el.value.trim()) payload[f] = el.value.trim();
+    }
+    const needsContent = ['describe','behavioural_events','observations','assisted','mood','carer_feedback'];
+    if (!needsContent.some(f => payload[f])) { showErr('e-err', 'Fill in at least one section (Describe, Behavioural Events, or Observations).'); return; }
+  } else {
+    const t = document.getElementById('e-transcript').value.trim();
+    if (!t) { showErr('e-err', 'Please enter a case note or transcript.'); return; }
+    payload = { case_note_id: crypto.randomUUID(), client_id: clientId, worker_id: workerId, transcript: t, incident_occurred: incident };
+  }
+
+  setLoad('e', true);
+  try {
+    const res = await fetch(`${api()}/v1/restrictive-practices/evaluate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) { showErr('e-err', `API ${res.status}: ${data.detail || JSON.stringify(data)}`); return; }
+    lastEval = data;
+    renderEval(data);
+    renderSummary(data.summary);
+    renderIncident(data.incident_report);
+    if (data.summary)         document.getElementById('bdg-summary').classList.add('on');
+    if (data.incident_report) document.getElementById('bdg-incident').classList.add('on');
+    else                      document.getElementById('bdg-incident').classList.remove('on');
+  } catch (e) {
+    showErr('e-err', `Network error: ${e.message}. Is the server running at ${api()}?`);
+  } finally {
+    setLoad('e', false);
+  }
+});
+
+// ── Render evaluate result ────────────────────────────────────────────────────
+function vClass(o) {
+  if (o.includes('CLEAR'))        return 'vc-CLEAR';
+  if (o.includes('NO INCIDENT'))  return 'vc-NO_INCIDENT';
+  if (o.includes('UNAUTHORISED')) return 'vc-UNAUTHORISED';
+  if (o.includes('POSSIBLE'))     return 'vc-POSSIBLE';
+  if (o.includes('ADMINISTRATIVE'))return 'vc-ADMIN';
+  if (o.includes('AUTHORISED'))   return 'vc-AUTHORISED';
+  return 'vc-UNAUTHORISED';
+}
+function vIcon(o) {
+  if (o.includes('CLEAR'))        return '&#x2705;';
+  if (o.includes('NO INCIDENT'))  return '&#x2139;&#xFE0F;';
+  if (o.includes('UNAUTHORISED')) return '&#x1F6A8;';
+  if (o.includes('POSSIBLE'))     return '&#x26A0;&#xFE0F;';
+  if (o.includes('ADMINISTRATIVE'))return '&#x1F50D;';
+  if (o.includes('AUTHORISED'))   return '&#x26A0;&#xFE0F;';
+  return '&#x1F6A8;';
+}
+function rClass(r) { return 'rb-' + (r||'NA').replace(/\s/g,''); }
+
+function renderEval(d) {
+  const v = d.verdict, dp = d.detected_practice, au = d.authorisation, rp = d.reporting_obligations;
+  let html = '';
+
+  html += `<div class="verdict ${vClass(v.outcome)}">
+    <div class="v-icon">${vIcon(v.outcome)}</div>
+    <div>
+      <div class="v-outcome">${v.outcome}</div>
+      <div class="v-action">${v.action_required}</div>
+    </div>
+  </div>`;
+
+  html += `<div class="rs"><div class="rs-body">
+    <div class="kv"><span class="kk">Risk Level</span><span class="kv-v"><span class="risk-b ${rClass(v.risk_level)}">${v.risk_level}</span></span></div>
+    <div class="kv"><span class="kk">Alert Required</span><span class="kv-v"><span class="alert-p ${v.alert_required?'ap-t':'ap-f'}">${v.alert_required?'&#x1F6A8; YES &mdash; webhook fired':'&#x2705; NO'}</span></span></div>
+    ${d.submission ? `<div class="kv"><span class="kk">Screening</span><span class="kv-v">${d.submission.screening_result}${d.submission.screening_summary?`<br><span style="color:var(--slate);font-size:12px">${d.submission.screening_summary}</span>`:''}</span></div>` : ''}
+  </div></div>`;
+
+  if (dp) {
+    html += `<div class="rs"><div class="rs-title">Detected Practice</div><div class="rs-body">
+      <div class="kv"><span class="kk">Category</span><span class="kv-v"><strong>${dp.category}</strong></span></div>
+      <div class="kv"><span class="kk">What Happened</span><span class="kv-v">${dp.what_happened||'&mdash;'}</span></div>
+      ${dp.trigger_phrases?.length ? `<div class="kv" style="flex-direction:column;gap:5px"><span class="kk">Trigger Phrases</span><div class="p-chips">${dp.trigger_phrases.map(p=>`<span class="pc pc-t">${p}</span>`).join('')}</div></div>` : ''}
+      ${dp.suppression_factors?.length ? `<div class="kv" style="flex-direction:column;gap:5px;margin-top:8px"><span class="kk">Suppression Factors</span><div class="p-chips">${dp.suppression_factors.map(p=>`<span class="pc pc-s">${p}</span>`).join('')}</div></div>` : ''}
+      ${dp.reasoning ? `<div class="rbox" style="margin-top:9px">${dp.reasoning}</div>` : ''}
+    </div></div>`;
+  }
+
+  if (au) {
+    html += `<div class="rs"><div class="rs-title">Authorisation</div><div class="rs-body">
+      <div class="kv"><span class="kk">Status</span><span class="kv-v">${au.status}</span></div>
+      <div class="kv"><span class="kk">BSP on File</span><span class="kv-v">${au.behaviour_support_plan.on_file?'&#x2705; Yes &mdash; active BSP found':'&#x274C; No active BSP found'}</span></div>
+      <div class="kv"><span class="kk">Details</span><span class="kv-v">${au.behaviour_support_plan.details}</span></div>
+    </div></div>`;
+  }
+
+  if (rp?.must_report) {
+    html += `<div class="rs"><div class="rs-title">Reporting Obligations</div><div class="rs-body">
+      <div class="kv"><span class="kk">Must Report</span><span class="kv-v"><strong style="color:var(--red)">YES</strong></span></div>
+      <div class="kv"><span class="kk">Notify Within</span><span class="kv-v"><strong>${rp.notify_within||'5 business days'}</strong></span></div>
+      <div class="kv"><span class="kk">Authority</span><span class="kv-v">${rp.notify_authority||'NDIS Quality and Safeguards Commission'}</span></div>
+    </div></div>`;
+  }
+
+  if (v.next_steps?.length) {
+    html += `<div class="rs"><div class="rs-title">Recommended Next Steps</div><div class="rs-body"><ul class="steps-list">${v.next_steps.map(s=>`<li>${s}</li>`).join('')}</ul></div></div>`;
+  }
+
+  html += `<div class="result-nav">
+    <button class="btn btn-ghost btn-sm" onclick="switchTab('summary')">&#x1F4CA; View AI Summary</button>
+    ${lastEval?.incident_report ? `<button class="btn btn-ghost btn-sm" onclick="switchTab('incident')">&#x1F6A8; View Incident Report</button>` : ''}
+  </div>`;
+
+  document.getElementById('e-out').innerHTML = html;
+}
+
+// ── Render Summary ────────────────────────────────────────────────────────────
+function renderSummary(s) {
+  if (!s) {
+    document.getElementById('sum-out').innerHTML = `<div class="empty"><div class="empty-icon">&#x1F4CA;</div><div class="empty-title">No summary available</div><div class="empty-sub">Run an evaluation to generate an AI summary</div></div>`;
+    return;
+  }
+  const conf = s.ai_confidence ?? 0;
+  const confPct = Math.round(conf * 100);
+  const R = 38, circ = +(2 * Math.PI * R).toFixed(2), dash = +(conf * circ).toFixed(2);
+  const confColor = conf >= 0.75 ? '#16A34A' : conf >= 0.5 ? '#D97706' : '#DC2626';
+  const scoreLbl = s.note_quality_label || 'Average';
+  const scorePct = Math.round((s.note_quality_score || 0) * 100);
+
+  let html = `<div class="sum-top">
+    <div class="conf-wrap">
+      <div class="samples-lbl">AI Confidence</div>
+      <div class="conf-arc" style="margin-top:10px">
+        <svg width="96" height="96" viewBox="0 0 96 96">
+          <circle cx="48" cy="48" r="${R}" fill="none" stroke="var(--border)" stroke-width="8"/>
+          <circle cx="48" cy="48" r="${R}" fill="none" stroke="${confColor}" stroke-width="8" stroke-linecap="round"
+            stroke-dasharray="${dash} ${circ}" transform="rotate(-90,48,48)"/>
+        </svg>
+        <div class="conf-num">${confPct}%</div>
+      </div>
+      <div class="conf-label" style="color:${confColor};margin-top:4px">${s.confidence_label||'Medium'}</div>
+    </div>
+    <div style="border:1px solid var(--border);border-radius:9px;background:var(--white);padding:18px">
+      <div class="sec-lbl">Note Quality</div>
+      <div class="q-hdr" style="margin-bottom:7px"><span class="q-score-txt">${scorePct}%</span><span class="q-badge qb-${scoreLbl}">${scoreLbl}</span></div>
+      <div class="q-track"><div class="q-fill qf-${scoreLbl}" style="width:${scorePct}%"></div></div>
+      ${s.quality_gaps?.length ? `<div style="margin-top:12px"><div class="sec-lbl">Gaps</div><ul class="gap-list">${s.quality_gaps.map(g=>`<li>${g}</li>`).join('')}</ul></div>` : `<p style="font-size:12px;color:var(--green);margin-top:10px">&#x2705; No quality gaps</p>`}
+    </div>
+  </div>`;
+
+  const LISTS = [
+    { key:'progress_identified', label:'Progress Identified',  dot:'bd-g', empty:'No specific progress identified', quote:false },
+    { key:'potential_risks',     label:'Potential Risks',       dot:'bd-r', empty:'No significant risks flagged',    quote:false },
+    { key:'patterns_detected',   label:'Patterns Detected',     dot:'bd-a', empty:'No patterns detected',           quote:false },
+    { key:'flagged_highlights',  label:'Flagged Highlights',    dot:'bd-p', empty:'No highlights flagged',          quote:true  },
+  ];
+
+  html += `<div class="sum-lists">`;
+  for (const L of LISTS) {
+    const items = s[L.key] || [];
+    html += `<div class="rs"><div class="rs-title">${L.label}</div><div class="rs-body">
+      ${items.length ? `<ul class="bullet-list">${items.map(item => `<li><span class="bdot ${L.dot}"></span>${L.quote ? `<em style="font-size:12.5px">"${item}"</em>` : `<span>${item}</span>`}</li>`).join('')}</ul>` : `<p style="font-size:12.5px;color:var(--slate-l);font-style:italic">${L.empty}</p>`}
+    </div></div>`;
+  }
+  html += `</div>`;
+
+  document.getElementById('sum-out').innerHTML = html;
+}
+
+// ── Render Incident Report ────────────────────────────────────────────────────
+function renderIncident(inc) {
+  if (!inc) {
+    document.getElementById('inc-out').innerHTML = `<div class="empty"><div class="empty-icon">&#x1F6A8;</div><div class="empty-title">No incident report generated</div><div class="empty-sub">Generated when incident_occurred is checked OR the pipeline detects an UNAUTHORISED restrictive practice with HIGH confidence</div></div>`;
+    document.getElementById('bdg-incident').classList.remove('on');
+    return;
+  }
+  const sevMap = { Low:'rb-Low', Medium:'rb-Medium', High:'rb-High', Critical:'rb-Critical' };
+  const sevC = sevMap[inc.severity] || 'rb-Medium';
+
+  let html = `<div class="inc-hdr">
+    <div class="inc-icon">&#x1F6A8;</div>
+    <div>
+      <div class="inc-type">${inc.incident_type || 'Incident Report'}</div>
+      <div class="sev-cats">
+        <span class="risk-b ${sevC}">${inc.severity || 'Medium'}</span>
+        ${(inc.incident_categories||[]).map(c=>`<span class="cat-pill">${c}</span>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+  // Details
+  html += `<div class="rs"><div class="rs-title">Incident Details</div><div class="rs-body">
+    ${inc.date_of_incident?`<div class="kv"><span class="kk">Date</span><span class="kv-v">${inc.date_of_incident}</span></div>`:''}
+    ${inc.time_of_incident?`<div class="kv"><span class="kk">Time</span><span class="kv-v">${inc.time_of_incident}</span></div>`:''}
+    ${inc.location?`<div class="kv"><span class="kk">Location</span><span class="kv-v">${inc.location}</span></div>`:''}
+    ${inc.staff_involved?.length?`<div class="kv"><span class="kk">Staff Involved</span><span class="kv-v">${inc.staff_involved.join(', ')}</span></div>`:''}
+    ${inc.restrictive_practice_category?`<div class="kv"><span class="kk">RP Category</span><span class="kv-v"><strong>${inc.restrictive_practice_category}</strong></span></div>`:''}
+  </div></div>`;
+
+  if (inc.incident_description) {
+    html += `<div class="rs"><div class="rs-title">Incident Description</div><div class="rs-body"><p style="font-size:13px;line-height:1.65">${inc.incident_description}</p></div></div>`;
+  }
+
+  // Safety status
+  html += `<div class="rs"><div class="rs-title">Safety Status</div><div class="rs-body">
+    <div class="safety-grid">
+      <div class="si ${inc.participant_currently_safe?'si-ok':'si-warn'}">
+        <div class="si-icon">${inc.participant_currently_safe?'&#x1F7E2;':'&#x1F534;'}</div>
+        <div class="si-lbl">Participant</div>
+        <div class="si-val" style="color:${inc.participant_currently_safe?'var(--green)':'var(--red)'}">${inc.participant_currently_safe?'Safe':'At Risk'}</div>
+      </div>
+      <div class="si ${inc.staff_currently_safe?'si-ok':'si-warn'}">
+        <div class="si-icon">${inc.staff_currently_safe?'&#x1F7E2;':'&#x1F534;'}</div>
+        <div class="si-lbl">Staff</div>
+        <div class="si-val" style="color:${inc.staff_currently_safe?'var(--green)':'var(--red)'}">${inc.staff_currently_safe?'Safe':'At Risk'}</div>
+      </div>
+      <div class="si ${inc.emergency_services_required?'si-warn':'si-ok'}">
+        <div class="si-icon">${inc.emergency_services_required?'&#x1F691;':'&#x2705;'}</div>
+        <div class="si-lbl">Emergency Svcs</div>
+        <div class="si-val" style="color:${inc.emergency_services_required?'var(--red)':'var(--green)'}">${inc.emergency_services_required?'Required':'Not Required'}</div>
+      </div>
+    </div>
+    ${inc.ongoing_risk_present?`<div style="background:var(--red-l);border:1px solid #FECACA;border-radius:6px;padding:10px 13px;font-size:13px;color:var(--red)">&#x26A0;&#xFE0F; <strong>Ongoing risk present</strong> &mdash; immediate follow-up required</div>`:''}
+  </div></div>`;
+
+  if (inc.immediate_actions_taken?.length) {
+    html += `<div class="rs"><div class="rs-title">Immediate Actions Taken</div><div class="rs-body"><ul class="bullet-list">${inc.immediate_actions_taken.map(a=>`<li><span class="bdot bd-g"></span><span>${a}</span></li>`).join('')}</ul></div></div>`;
+  }
+
+  if (inc.compliance_checks?.length) {
+    html += `<div class="rs"><div class="rs-title">Compliance Checks</div><div class="rs-body"><ul class="comp-list">${inc.compliance_checks.map(c=>`<li class="comp-item"><span class="${c.passed?'ci-pass':'ci-fail'}">${c.passed?'&#x2705;':'&#x274C;'}</span><span>${c.label}</span></li>`).join('')}</ul></div></div>`;
+  }
+
+  if (inc.reportable) {
+    html += `<div class="rs"><div class="rs-title">Reporting Obligations</div><div class="rs-body">
+      <div class="kv"><span class="kk">Must Report</span><span class="kv-v"><strong style="color:var(--red)">YES</strong></span></div>
+      ${inc.notification_timeframe?`<div class="kv"><span class="kk">Notify Within</span><span class="kv-v"><span class="timeframe-pill">&#x23F1; ${inc.notification_timeframe}</span></span></div>`:''}
+      ${inc.notification_authority?`<div class="kv"><span class="kk">Authority</span><span class="kv-v"><span class="authority-txt">${inc.notification_authority}</span></span></div>`:''}
+    </div></div>`;
+  }
+
+  if (inc.follow_up_actions?.length) {
+    html += `<div class="rs"><div class="rs-title">Follow-up Actions</div><div class="rs-body"><div class="fu-list">${inc.follow_up_actions.map((a,i)=>`<div class="fu-item"><div class="fu-num">${i+1}</div><span>${a}</span></div>`).join('')}</div></div></div>`;
+  }
+
+  if (inc.contributing_factors?.length) {
+    html += `<div class="rs"><div class="rs-title">Contributing Factors</div><div class="rs-body"><ul class="bullet-list">${inc.contributing_factors.map(f=>`<li><span class="bdot bd-a"></span><span>${f}</span></li>`).join('')}</ul></div></div>`;
+  }
+
+  if (inc.risk_assessment) {
+    html += `<div class="rs"><div class="rs-title">Risk Assessment</div><div class="rs-body"><p style="font-size:13px;line-height:1.65">${inc.risk_assessment}</p></div></div>`;
+  }
+
+  document.getElementById('inc-out').innerHTML = html;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setLoad(scope, on) {
+  if (scope === 'd') {
+    document.getElementById('d-btn').disabled = on;
+    document.getElementById('d-btn').textContent = on ? 'Drafting...' : 'Draft Case Note';
+    document.getElementById('d-spin').classList.toggle('on', on);
+  } else {
+    document.getElementById('e-btn').disabled = on;
+    document.getElementById('e-btn').textContent = on ? 'Analysing...' : 'Analyse Case Note';
+    document.getElementById('e-spin').classList.toggle('on', on);
+  }
+}
+function showErr(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.classList.add('on'); }
+function clearErr(id) { document.getElementById(id).classList.remove('on'); }
+
+// Set today's date
+document.getElementById('d-date').value = new Date().toISOString().split('T')[0];
+// Default API base to current origin so deployed environments work without manual config
+document.getElementById('api-base').value = window.location.origin;
+</script>
+</body>
+</html>

@@ -21,9 +21,27 @@
           "options": ["Plan Managed", "Self Managed", "Agency Managed"],
           "default": "Plan Managed"
         },
-        {"id": "plan_manager", "type": "text", "label": "Plan Manager Name", "required": true},
-        {"id": "contact_email", "type": "email", "label": "Plan Manager Contact Email", "required": true},
-        {"id": "billing_email", "type": "email", "label": "Billing Email", "required": true}
+        {
+          "id": "plan_manager",
+          "type": "text",
+          "label": "Plan Manager Name",
+          "required": true,
+          "visible_if": {"plan_management": "Plan Managed"}
+        },
+        {
+          "id": "contact_email",
+          "type": "email",
+          "label": "Plan Manager Contact Email",
+          "required": true,
+          "visible_if": {"plan_management": "Plan Managed"}
+        },
+        {
+          "id": "billing_email",
+          "type": "email",
+          "label": "Billing Email",
+          "required": true,
+          "visible_if": {"plan_management": "Plan Managed"}
+        }
       ]
     },
     {
@@ -55,7 +73,7 @@
     {
       "id": "schedule_of_supports",
       "label": "Schedule of Supports",
-      "repeatable": {"min": 1, "max": 20},
+      "repeatable": {"min": 1, "max": 5},
       "item_fields": [
         {"id": "support_name", "type": "text", "label": "Support Name", "required": true},
         {
@@ -79,9 +97,15 @@
           "type": "enum",
           "label": "Frequency",
           "required": true,
-          "options": ["As Required", "Daily", "Weekly", "Fortnightly", "Monthly"]
+          "options": ["As Required", "Daily", "Weekly", "Fortnightly", "Monthly", "Once Off"]
         },
-        {"id": "duration_hours", "type": "number", "label": "Duration (hours)", "required": false},
+        {
+          "id": "duration_hours",
+          "type": "number",
+          "label": "Duration (hours)",
+          "required": true,
+          "pattern": "^[1-9][0-9]?$"
+        },
         {
           "id": "days",
           "type": "multi_enum",
@@ -89,8 +113,8 @@
           "required": true,
           "options": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         },
-        {"id": "start_time", "type": "time", "label": "Start time", "required": false},
-        {"id": "end_time", "type": "time", "label": "End time", "required": false}
+        {"id": "start_time", "type": "time", "label": "Start time", "required": true},
+        {"id": "end_time", "type": "time", "label": "End time", "required": true}
       ]
     }
   ]

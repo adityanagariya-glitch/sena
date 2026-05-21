@@ -1,0 +1,93 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/test_triage.py)",
+      "Bash(python scripts/test_rag.py)",
+      "Bash(python scripts/test_evaluator.py)",
+      "Bash(python scripts/test_cross_check.py)",
+      "Bash(python scripts/test_pipeline.py)",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+      "Bash(docker model skills *)",
+      "Bash(python scripts/test_sarah_note.py)",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" scripts/test_sarah_note.py)",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "Bash(/c/Users/Admin/anaconda3/envs/sena_env/python.exe *)",
+      "Bash(/c/Users/Admin/anaconda3/envs/sena_env/Scripts/uvicorn.exe main:app *)",
+      "Bash(curl -sf http://127.0.0.1:8084/v1/restrictive-practices/health)",
+      "Bash(curl *)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:docs.cloud.google.com)",
+      "Bash(grep -r \"^from\\\\|^import\" \"C:\\\\Users\\\\Admin\\\\Documents\\\\SENA\\\\restrictive_practices\" --include=\"*.py\" -not -path \"*/.claude/*\" -not -path \"*/__pycache__/*\")",
+      "Bash(grep -rn \"^\\\\s*pass\\\\s*$\" \"C:\\\\Users\\\\Admin\\\\Documents\\\\SENA\\\\restrictive_practices\" --include=\"*.py\")",
+      "Bash(grep -rn \"note\\\\\\\\.case_note_id\\\\|note\\\\\\\\.client_id\\\\|note\\\\\\\\.worker_id\\\\|note\\\\\\\\.transcript\" \"C:\\\\Users\\\\Admin\\\\Documents\\\\SENA\\\\restrictive_practices\" --include=\"*.py\")",
+      "Bash(docker exec sena-ai-db *)",
+      "PowerShell(docker exec sena-ai-db *)",
+      "PowerShell(docker info *)",
+      "WebFetch(domain:www.ndiscommission.gov.au)",
+      "WebFetch(domain:www.oaic.gov.au)",
+      "WebSearch",
+      "Bash(conda run *)",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" scripts/_debug_pipeline.py)",
+      "Bash('C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe' -c ' *)",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" -c \"import fastapi, starlette, pydantic; print\\('fastapi', fastapi.__version__\\); print\\('starlette', starlette.__version__\\); print\\('pydantic', pydantic.__version__\\)\")",
+      "Bash(\"C:\\\\Users\\\\Admin\\\\anaconda3\\\\envs\\\\sena_env\\\\python.exe\" -c \"import main; print\\('main.py import OK'\\)\")",
+      "Bash(pkill -f \"uvicorn main:app\")",
+      "Bash(taskkill /F /IM python.exe /FI \"WINDOWTITLE eq uvicorn*\")",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(python -m json.tool)",
+      "WebFetch(domain:nds.org.au)",
+      "WebFetch(domain:www.ausmed.com)",
+      "WebFetch(domain:www.outcomesconnect.com.au)",
+      "WebFetch(domain:www.cliniccomply.com.au)",
+      "WebFetch(domain:shiftcare.com)",
+      "Bash(docker compose *)",
+      "Bash(python -m json.tool --no-ensure-ascii)",
+      "Bash(docker stats *)",
+      "Bash(python -c ' *)",
+      "Bash(git check-ignore *)",
+      "mcp__plugin_deploy-on-aws_awsknowledge__aws___read_documentation",
+      "Bash(del *)",
+      "Bash(python -c \"from models.schemas import EvaluateResponse, PipelineResult, CaseDraftResponse, SummaryOutput, IncidentDraftOutput; print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(python -m ruff check pipeline/graph.py models/db.py scripts/test_perf_baseline.py)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "axon"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/session-start.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/post-tool-use.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/stop.py"
+          }
+        ]
+      }
+    ]
+  }
+}

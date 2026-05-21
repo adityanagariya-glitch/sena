@@ -1,0 +1,34 @@
+Verify DB chunks     
+docker exec sena-ai-db psql -U sena_ai -d sena_ai -c "SELECT document_type, COUNT(*) AS chunks FROM rp_ndis_policy_chunks GROUP BY document_type ORDER BY chunks DESC;" 
+
+docker exec sena-ai-db psql -U sena_ai -d sena_ai -c "SELECT document_source,COUNT(*) AS chunks FROM rp_ndis_policy_chunks GROUP BY document_source ORDER BY chunks DESC;"
+
+Test case notes
+curl -s -X POST http://localhost:8084/v1/restrictive-practices/evaluate -H "Content-Type: application/json" -d "{\"case_note_id\":\"00000000-0000-0000-0000-000000000001\",\"client_id\":\"clie  nt-demo-unauth\",\"worker_id\":\"w-001\",\"transcript\":\"Had a great session with James today. We went to the park and made lunch. No incidents.\"}" | python   -m json.tool
+
+curl -s -X POST http://localhost:8084/v1/restrictive-practices/evaluate -H "Content-Type: application/json" -d "{\"case_note_id\":\"00000000-0000-0000-0000-000000000002\",\"client_id\":\"clie  nt-demo-unauth\",\"worker_id\":\"w-001\",\"transcript\":\"Tom became agitated and started hitting himself. I grabbed his wrists and held his arms tightly against his sides for about three minutes until he calmed down.\"}" | python -m json.tool
+
+curl -s -X POST http://localhost:8084/v1/restrictive-practices/evaluate -H "Content-Type: application/json" -d "{\"case_note_id\":\"00000000-0000-0000-0000-000000000003\",\"client_id\":\"clie  nt-demo-chem\",\"worker_id\":\"w-001\",\"transcript\":\"Maria became severely agitated and started banging her head. After verbal de-escalation failed I administered 5mg Diazepam PRN as per her behaviour support plan. She settled within 20 minutes.\"}" | python -m json.tool 
+
+Verify audit rows
+docker exec sena-ai-db psql -U sena_ai -d sena_ai -c "SELECT case_note_id, triage_flagged, authorisation_status, alert_required, processing_time_ms FROM rp_case_note_runs ORDER BY created_at DESC LIMIT 5;"
+
+
+    "case_note_id": "d0000004-0000-0000-0000-000000000004",
+    "client_id": "client-demo-auth",
+    "worker_id": "worker-nina-004",
+    "shift_date": "8 May 2025",
+    "shift_time": "10:00 AM - 4:00 PM",
+    "worker_position": "Support Worker",
+"transcript": (
+    "I supported Lisa with her morning routine and a trip to the community garden. The shift "
+    "started well — she was in a positive mood and keen to do some planting. At around 11am, "
+    "while walking through the kitchen to get her gardening gloves, Lisa slipped on a wet patch "
+    "near the sink. She fell and landed on her right knee. I helped her up straight away. "
+    "She had a graze on her right knee — I cleaned it with antiseptic and applied a bandage "
+    "from the first aid kit. I documented it and notified my supervisor by phone within the "
+    "hour. Lisa said she was fine and wanted to continue, so we went to the garden as planned. "
+    "She was a bit shaken at first but her mood recovered quickly once she was gardening. "
+    "I made sure the wet floor was dried and reported the hazard to the facility manager. "
+    "No further incidents for the rest of the shift."
+),
