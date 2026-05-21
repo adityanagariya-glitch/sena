@@ -23,6 +23,7 @@ Design notes:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
     from onboarding.models.schema_spec import FieldSpec, SectionSpec, StepSchema
     from onboarding.models.session_bootstrap import SessionBootstrap
     from onboarding.repositories.state_repo import FormStateRepo
+
 from onboarding.services import field_apply as _fa
 from onboarding.services.coverage import is_repeatable_eligible
 from onboarding.services.validators import validate_field as _validate_field
@@ -52,7 +54,12 @@ from onboarding.services.validators.cross_field import (
 from onboarding.services.validators.cross_field import (
     check_emergency_phone_unique_and_differs_from_client as _ec_phone_check,
 )
-from onboarding.services.validators.sequencing import section_min_unmet as _section_min_unmet
+from onboarding.services.validators.sequencing import (
+    section_min_unmet as _section_min_unmet,
+)
+from onboarding.services.validators.sequencing import (
+    validate_required_only as _validate_required_only,
+)
 from onboarding.services.webhook import fire_webhook
 
 log = structlog.get_logger(__name__)
@@ -121,7 +128,8 @@ def _set_next_forced_field(
         if section.id != just_set_section:
             # visible_if dependants live in the same section as their condition.
             continue
-        fields = section.item_fields if getattr(section, "is_repeatable", False) else (section.fields or [])
+        is_rep = getattr(section, "is_repeatable", False)
+        fields = section.item_fields if is_rep else (section.fields or [])
         for f in fields:
             vif = getattr(f, "visible_if", None)
             if not vif or just_set_field not in vif:
@@ -299,6 +307,74 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["section_id"],
+        },
+    },
+    {
+        "name": "delete_repeatable_row",
+        "description": (
+            "Remove a row from a repeatable section. Call IMMEDIATELY when "
+            "the participant says 'remove that', 'delete that one', "
+            "'remove the morning routine', 'take that entry out', etc — "
+            "BEFORE acknowledging removal verbally. Pass the zero-based "
+            "row_index of the row to delete. row_index may be OMITTED only "
+            "when the section has exactly one row; the server will default "
+            "to row 0. If the section has multiple rows and row_index is "
+            "ambiguous, the server returns row_index_ambiguous and you must "
+            "ask the user which numbered row they mean. The server blocks "
+            "deletion below the section's declared minimum row count."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section_id": {
+                    "type": "string",
+                    "description": "Repeatable section id (e.g. 'emergency_contacts').",
+                },
+                "row_index": {
+                    "type": "integer",
+                    "description": (
+                        "Zero-based index of the row to remove. "
+                        "OPTIONAL when section has exactly one row."
+                    ),
+                },
+            },
+            "required": ["section_id"],
+        },
+    },
+    {
+        "name": "clear_field",
+        "description": (
+            "Clear (blank out) a previously-filled field. Call when the "
+            "participant says 'remove the service address', 'clear my email', "
+            "'delete that — start over', 'erase the about-me', etc. — "
+            "BEFORE acknowledging removal verbally. This sets the field's "
+            "value to empty in FormState and emits field_cleared so the "
+            "screen blanks the input. For removing an entire row of a "
+            "repeatable section, use delete_repeatable_row instead. The "
+            "server rejects clear_field on readonly fields. repeatable_index "
+            "is required when the target field belongs to a repeatable "
+            "section."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "description": "Section id (e.g. 'basics', 'home_address').",
+                },
+                "field": {
+                    "type": "string",
+                    "description": "Field id within the section.",
+                },
+                "repeatable_index": {
+                    "type": "integer",
+                    "description": (
+                        "Zero-based row index. Required when the section is "
+                        "repeatable (e.g. 'emergency_contacts')."
+                    ),
+                },
+            },
+            "required": ["section", "field"],
         },
     },
     {
@@ -649,6 +725,8 @@ class ToolDispatcher:
             "advance_step": self._advance_step,
             "escalate_incident": self._escalate_incident,
             "add_repeatable_row": self._add_repeatable_row,
+            "delete_repeatable_row": self._delete_repeatable_row,
+            "clear_field": self._clear_field,
             "enter_repeatable_section": self._enter_repeatable_section,
             "exit_repeatable_section": self._exit_repeatable_section,
             "request_unknown_section": self._request_unknown_section,
@@ -710,15 +788,19 @@ class ToolDispatcher:
         # "voice" so envelopes emitted to Flutter carry the marker without
         # the dispatcher needing to know the channel.
         _input_method_raw = args.get("input_method", "voice")
-        input_method: Literal["typed", "voice"] | None
-        if _input_method_raw in ("typed", "voice"):
-            input_method = _input_method_raw
-        else:
-            input_method = None
+        input_method: Literal["typed", "voice"] | None = (
+            _input_method_raw
+            if _input_method_raw in ("typed", "voice")
+            else None
+        )
 
         if not section_id or not field_id:
             return {"ok": False, "error": "section and field are required"}
-        if raw_value is None:
+        if (
+            raw_value is None
+            or (isinstance(raw_value, str) and not raw_value.strip())
+            or (isinstance(raw_value, list) and not raw_value)
+        ):
             return {
                 "ok": False,
                 "error": "either 'value' (scalar) or 'values' (array) is required",
@@ -735,10 +817,29 @@ class ToolDispatcher:
         state_for_lock = await self._repo.get_state(self._session_id)
         if state_for_lock and state_for_lock.pending_confirmation:
             pc = state_for_lock.pending_confirmation
+            # M1.b — Index inference for the lock-comparison ONLY.
+            # The original call that set pending_confirmation may have
+            # auto-pinned to row 0 (line 950) and stored repeatable_index=0,
+            # while the retry from the model often omits repeatable_index
+            # entirely. Without inference here, `0 != None` makes the
+            # same-target check fail and the retry gets buffered as
+            # DEFERRED — silently dropping the user's "yes, confirm" intent
+            # on every CONFIRM_REQUIRED flow for repeatable sections (e.g.
+            # documents step `other_documents.title`). Infer the row index
+            # from the focused-repeatable state so the retry matches the
+            # locked target.
+            _ri_for_lock = repeatable_index
+            if (
+                _ri_for_lock is None
+                and pc.get("section") == section_id
+                and state_for_lock.focused_section == section_id
+                and state_for_lock.focused_repeatable_index is not None
+            ):
+                _ri_for_lock = state_for_lock.focused_repeatable_index
             same_target = (
                 pc.get("section") == section_id
                 and pc.get("field") == field_id
-                and pc.get("repeatable_index") == repeatable_index
+                and pc.get("repeatable_index") == _ri_for_lock
             )
             # C1 — same (section, row), different field is a sibling of the
             # locked field. Allow it through for REPEATABLE sections only.
@@ -749,15 +850,15 @@ class ToolDispatcher:
             same_row_sibling = (
                 pc.get("repeatable_index") is not None
                 and pc.get("section") == section_id
-                and pc.get("repeatable_index") == repeatable_index
+                and pc.get("repeatable_index") == _ri_for_lock
                 and pc.get("field") != field_id
             )
             if not (same_target or same_row_sibling):
                 # C2 — Buffer the call onto pending_batch; the lock-clear
                 # path will drain it. The model receives code: DEFERRED
                 # so it knows the call is queued, not lost or wrong.
-                _MAX_PENDING_BATCH = 32
-                if len(state_for_lock.pending_batch) >= _MAX_PENDING_BATCH:
+                _max_pending_batch = 32
+                if len(state_for_lock.pending_batch) >= _max_pending_batch:
                     log.warning(
                         "update_field BUFFER_FULL queue_size=%d attempted=%s.%s "
                         "blocking=%s.%s session=%s",
@@ -882,17 +983,47 @@ class ToolDispatcher:
                 "error": f"field '{field_id}' not in section '{section_id}'",
             }
 
+        # Schema-level readonly enforcement. Identity-bound fields (email,
+        # externally-managed IDs) carry `readonly: true` in the schema and
+        # MUST NEVER be writable via voice. The bootstrap readonly_paths
+        # mechanism is per-session (covers app-passed paths); this is the
+        # schema-defined invariant that holds regardless of bootstrap.
+        if field.readonly:
+            log.warning(
+                "update_field REJECTED readonly_field section=%s field=%s "
+                "session=%s — schema declares this field read-only",
+                section_id, field_id, self._session_id,
+            )
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "field_readonly",
+                    "reason_human": (
+                        f"'{field.label or field_id}' is read-only — it comes "
+                        "from your account and cannot be changed here."
+                    ),
+                    "suggested_fix": (
+                        "Tell the user the value is fixed from their account "
+                        "and move on to the next field."
+                    ),
+                },
+                "readonly": True,
+            }
+
         # Repeatable sanity: index only meaningful for repeatable sections
         if section.is_repeatable and repeatable_index is None:
             repeatable_index = 0
 
-        if repeatable_index is not None and section.repeatable:
-            if repeatable_index >= section.repeatable.max:
-                return {
-                    "ok": False,
-                    "error": f"repeatable_index {repeatable_index} exceeds max "
-                             f"{section.repeatable.max}",
-                }
+        if (
+            repeatable_index is not None
+            and section.repeatable
+            and repeatable_index >= section.repeatable.max
+        ):
+            return {
+                "ok": False,
+                "error": f"repeatable_index {repeatable_index} exceeds max "
+                         f"{section.repeatable.max}",
+            }
 
         typed_value = _coerce_value(raw_value, field)
 
@@ -926,6 +1057,40 @@ class ToolDispatcher:
                 "row_index": state.focused_repeatable_index,
             })
 
+        # Auto-promote cross_section_intent when target is a NON-REPEATABLE
+        # scalar section AND current focus is a repeatable. Rationale: the
+        # model cannot "race ahead" inside a non-repeatable scalar section
+        # — there is no row state to corrupt. Observed in session 5a1265be
+        # (2026-05-19 @ 13:19:45 – 13:22:20): user dictated funding amounts
+        # while focus was pinned to support_items[0]; all 12 writes were
+        # rejected as cross_section_blocked, the model dutifully reported
+        # "I can't save those funding amounts" three times despite each
+        # individual call succeeding on later retry with the flag. Blocking
+        # non-repeatable scalar writes when focus is on a repeatable is a
+        # net loss — the user is directing the flow, and the protection
+        # the pin offers (preventing in-row corruption) does not apply.
+        _focused_section_spec = (
+            self._schema.get_section(state.focused_section)
+            if state.focused_section else None
+        )
+        _focus_is_repeatable = bool(
+            _focused_section_spec and _focused_section_spec.is_repeatable
+        )
+        if (
+            state.focused_section
+            and section_id != state.focused_section
+            and not cross_section_intent
+            and not section.is_repeatable
+            and _focus_is_repeatable
+        ):
+            log.info(
+                "cross_section_intent AUTO_PROMOTED non_repeatable_target=%s "
+                "focused_section=%s session=%s — non-repeatable scalar "
+                "write is safe regardless of repeatable focus pin",
+                section_id, state.focused_section, self._session_id,
+            )
+            cross_section_intent = True
+
         # Cross-section guard — reject writes to OTHER non-repeatable sections
         # without explicit intent. The repeatable case was handled above by
         # auto-pin so the guard never fires for it.
@@ -946,6 +1111,7 @@ class ToolDispatcher:
                         f"Finish '{state.focused_section}' first, or set "
                         "cross_section_intent=true if this is intentional."
                     ),
+                    "retry_with": {"cross_section_intent": True},
                 },
             }
 
@@ -959,29 +1125,54 @@ class ToolDispatcher:
             state=state,
             field_spec=_field_spec,
         )
+        _advisory_rej = None
         if rej is not None:
             _upsert_validation_error(state, section_id, field_id, _ri, rej)
-            await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
-            log.info(
-                "validation_rejection section=%s field=%s code=%s session=%s",
-                section_id, field_id, rej.code, self._session_id,
-            )
-            event: dict = {
-                "type": "validation_rejection",
-                "section_id": section_id,
-                "field_id": field_id,
-                "repeatable_index": _ri,
-                "code": rej.code,
-                "reason_human": rej.reason_human,
-            }
-            if rej.suggested_fix is not None:
-                event["suggested_fix"] = rej.suggested_fix
-            if rej.allowed_values is not None:
-                event["allowed_values"] = rej.allowed_values
-            await self._emit(event)
-            return {"ok": False, "rejection": rej.model_dump()}
+            if settings.onboarding_voice_validation_advisory:
+                # Advisory path — persist value anyway, emit warning, fall through
+                _advisory_rej = rej
+                log.info(
+                    "field_advisory_warning section=%s field=%s code=%s session=%s",
+                    section_id, field_id, rej.code, self._session_id,
+                )
+                _adv_event: dict[str, Any] = {
+                    "type": "field_advisory_warning",
+                    "section_id": section_id,
+                    "field_id": field_id,
+                    "repeatable_index": _ri,
+                    "code": rej.code,
+                    "reason_human": rej.reason_human,
+                    "severity": "advisory",
+                }
+                if rej.suggested_fix is not None:
+                    _adv_event["suggested_fix"] = rej.suggested_fix
+                if rej.allowed_values is not None:
+                    _adv_event["allowed_values"] = rej.allowed_values
+                await self._emit(_adv_event)
+                # Fall through to state.set_field below
+            else:
+                # Strict path — original blocking behaviour
+                await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+                log.info(
+                    "validation_rejection section=%s field=%s code=%s session=%s",
+                    section_id, field_id, rej.code, self._session_id,
+                )
+                event: dict = {
+                    "type": "validation_rejection",
+                    "section_id": section_id,
+                    "field_id": field_id,
+                    "repeatable_index": _ri,
+                    "code": rej.code,
+                    "reason_human": rej.reason_human,
+                }
+                if rej.suggested_fix is not None:
+                    event["suggested_fix"] = rej.suggested_fix
+                if rej.allowed_values is not None:
+                    event["allowed_values"] = rej.allowed_values
+                await self._emit(event)
+                return {"ok": False, "rejection": rej.model_dump()}
 
-        # Clear any prior error for this field — validation now passes
+        # Clear any prior error for this field — validation now passes (or advisory)
         _clear_validation_error(state, section_id, field_id, _ri)
 
         # C4 — Per-write cross-field pass for cross-row invariants involving
@@ -1053,8 +1244,8 @@ class ToolDispatcher:
         # Threshold: anything below 0.90 requires explicit user confirmation.
         # The model is instructed by Rule 10 to ask "Is that right?" — this
         # code gate enforces it even if the model skips the prompt.
-        _LOW_CONF_THRESHOLD = 0.90
-        if confidence < _LOW_CONF_THRESHOLD:
+        _low_conf_threshold = 0.90
+        if confidence < _low_conf_threshold:
             log.info(
                 "low_confidence_gate section=%s field=%s confidence=%.2f session=%s — "
                 "returning CONFIRM_REQUIRED, value NOT committed",
@@ -1092,12 +1283,21 @@ class ToolDispatcher:
         # full_name, log a warning. Don't reject (the user may legitimately
         # have that as a contact name) but flag the suspicious overlap so
         # post-hoc analysis catches the hallucination pattern.
-        if section_id == "emergency_contacts" and field_id == "name" and isinstance(typed_value, str):
+        if (
+            section_id == "emergency_contacts"
+            and field_id == "name"
+            and isinstance(typed_value, str)
+        ):
             participant_name_fv = (state.values.get("basics") or {}).get("full_name")
             participant_name = (
-                participant_name_fv.get("value") if isinstance(participant_name_fv, dict) else None
+                participant_name_fv.get("value")
+                if isinstance(participant_name_fv, dict)
+                else None
             )
-            if isinstance(participant_name, str) and participant_name.lower() == typed_value.lower():
+            if (
+                isinstance(participant_name, str)
+                and participant_name.lower() == typed_value.lower()
+            ):
                 import hashlib
                 value_sha8 = hashlib.sha256(typed_value.encode("utf-8")).hexdigest()[:8]
                 log.warning(
@@ -1106,6 +1306,39 @@ class ToolDispatcher:
                     "own name into the emergency-contacts section",
                     section_id, field_id, value_sha8, self._session_id,
                 )
+
+        # Capture prior committed value + confirmed flag for field_confirmed emission.
+        # Must be read BEFORE set_field so we compare against the pre-write state.
+        _sec_vals_pre = state.values.get(section_id)
+        if _ri is not None and isinstance(_sec_vals_pre, list) and _ri < len(_sec_vals_pre):
+            _prior_fv_raw: Any = (
+                _sec_vals_pre[_ri].get(field_id) if isinstance(_sec_vals_pre[_ri], dict) else None
+            )
+        elif isinstance(_sec_vals_pre, dict):
+            _prior_fv_raw = _sec_vals_pre.get(field_id)
+        else:
+            _prior_fv_raw = None
+        _prior_value: Any = (
+            _prior_fv_raw.get("value")
+            if isinstance(_prior_fv_raw, dict)
+            else None
+        )
+        _prior_confirmed: bool = (
+            bool(_prior_fv_raw.get("confirmed_in_session"))
+            if isinstance(_prior_fv_raw, dict)
+            else False
+        )
+
+        # Compute same-value BEFORE set_field so we can persist confirmed_in_session correctly.
+        # confirmed_in_session = True when value is unchanged (field stays confirmed across
+        # subsequent writes); False when value changes (confirmation resets for the new value).
+        if isinstance(typed_value, list):
+            _is_same_value = (
+                set(str(x) for x in typed_value)
+                == set(str(x) for x in (_prior_value if isinstance(_prior_value, list) else []))
+            )
+        else:
+            _is_same_value = (typed_value == _prior_value)
 
         state.set_field(
             section_id=section_id,
@@ -1116,6 +1349,7 @@ class ToolDispatcher:
             turn_id=self._turn_id,
             repeatable_index=repeatable_index if section.is_repeatable else None,
             input_method=input_method,
+            confirmed_in_session=_is_same_value,
         )
 
         # M1 — Clear the PENDING_CONFIRMATION lock if this commit satisfied
@@ -1130,6 +1364,19 @@ class ToolDispatcher:
                 )
             ):
                 state.pending_confirmation = None
+
+        # Emit field_confirmed on the first re-statement of an already-committed value.
+        # confirmed_in_session is now persisted via set_field so no dict mutation needed.
+        if _is_same_value and not _prior_confirmed:
+            await self._emit({
+                "type": "field_confirmed",
+                "section_id": section_id,
+                "field_id": field_id,
+                "repeatable_index": _ri,
+                "value": typed_value,
+                "confirmation_source": "voice",
+                "turn_id": self._turn_id,
+            })
 
         # M5 — Conditional follow-up driver. After committing a value, scan
         # the schema for any field whose `visible_if` references the field we
@@ -1251,6 +1498,8 @@ class ToolDispatcher:
             "required_total": completion.required_total if completion else 0,
             "complete": bool(completion and completion.complete),
         }
+        if _advisory_rej is not None:
+            result["warning"] = _advisory_rej.model_dump()
         if deferred_applied:
             result["deferred_applied"] = deferred_applied
         return result
@@ -1290,12 +1539,28 @@ class ToolDispatcher:
                     elif f.required and f.visible_if is None:
                         missing_required.append(f"{section.id}.{f.id}")
 
+        # Explicitly list repeatable sections where min > committed rows — lets the
+        # model distinguish "need to commit cross-screen data via add_repeatable_row"
+        # from "need to find a completely new person".
+        section_min_unmet_sections = [
+            {
+                "section_id": s.id,
+                "label": s.label or s.id,
+                "rows_in_formstate": len(state.values.get(s.id) or []),
+                "min_required": s.repeatable.min if s.repeatable else 1,
+                "action": "call add_repeatable_row then update_field for each field",
+            }
+            for s in self._schema.sections
+            if _section_min_unmet(s, state.values.get(s.id))
+        ]
+
         completion = state.completion
         return {
             "ok": True,
             "step_id": state.step_id,
             "filled": filled,
             "missing_required": missing_required,
+            "section_min_unmet_sections": section_min_unmet_sections,
             "required_filled": completion.required_filled if completion else 0,
             "required_total": completion.required_total if completion else 0,
             "complete": bool(completion and completion.complete),
@@ -1324,33 +1589,19 @@ class ToolDispatcher:
                 },
             }
 
-        # Require at least one affirmative token — prevents "no thanks" or a
-        # random sentence fragment from being treated as consent.
-        _AFFIRMATIVE = frozenset({
-            "yes", "yeah", "yep", "yup", "correct", "confirmed", "confirm",
-            "right", "ok", "okay", "proceed", "go", "done", "sure",
-            "absolutely", "good", "perfect", "sounds good", "that's right",
-            "thats right", "all good",
-        })
-        confirmation_words = set(confirmation.lower().split())
-        # Also check for multi-word phrases in the raw string
+        # Reject only explicit refusals — authority to save is on the frontend.
+        # Strip punctuation per-token so "Yes." / "Confirmed." match correctly.
+        _negatives = frozenset({"no", "nope", "nah", "cancel", "stop", "not", "don't", "dont"})
         confirmation_lower = confirmation.lower()
-        has_affirmative = bool(confirmation_words & _AFFIRMATIVE) or any(
-            phrase in confirmation_lower
-            for phrase in (
-                "that's right", "thats right", "sounds good", "all good",
-                "that's all", "thats all", "that's everything", "all done",
-                "i'm done", "im done", "we're done", "that's correct",
-            )
-        )
-        if not has_affirmative:
+        # Strip trailing/leading punctuation from each token before checking
+        confirmation_words = {w.strip(".,!?;:'\"") for w in confirmation_lower.split()}
+        if confirmation_words <= _negatives:
             return {
                 "ok": False,
                 "rejection": {
                     "code": "missing_confirmation",
                     "reason_human": (
-                        "I need a clear yes or confirmation before I can save and "
-                        "move on — could you say yes or confirmed to proceed?"
+                        "No problem — let me know when you're ready to save and move on."
                     ),
                 },
             }
@@ -1405,9 +1656,25 @@ class ToolDispatcher:
             return {
                 "ok": False,
                 "error": "section_min_unmet",
-                "sections": [s.id for s in unmet_sections],
+                "sections": [
+                    {
+                        "section_id": s.id,
+                        "label": s.label or s.id,
+                        "rows_in_formstate": len(state.values.get(s.id) or []),
+                        "min_required": s.repeatable.min if s.repeatable else 1,
+                        "action": (
+                            "The FormState has 0 committed rows for this section. "
+                            "If the participant mentioned someone from a prior session, "
+                            "call add_repeatable_row then update_field for each field "
+                            "(name, relation, email, phone) individually. "
+                            "Do NOT ask for a new/additional person."
+                        ),
+                    }
+                    for s in unmet_sections
+                ],
                 "message": (
-                    "Please add at least one entry to: "
+                    "The following sections have no rows committed to FormState yet — "
+                    "use add_repeatable_row then update_field to commit the data: "
                     + ", ".join(s.label or s.id for s in unmet_sections)
                 ),
             }
@@ -1461,28 +1728,41 @@ class ToolDispatcher:
             }
 
         # N-2 fix: cross-field invariant gate (NDIS compliance).
-        # pending_validation_errors only catches per-field rejections. Cross-field
-        # rules (emergency-email-unique, plan-end-after-start, medical-history-
-        # all-or-none) only run inside validate_step_complete, which was never
-        # called at advance time. A user could hit advance with two emergency
-        # contacts sharing one email and the webhook would fire with corrupt data.
-        cross_rejections = validate_step_complete(self._schema, state)
-        if cross_rejections:
+        # In advisory mode all cross-field violations are emitted as warnings and
+        # advance proceeds — Flutter submit-button is the sole blocking gate.
+        # validate_required_only (not validate_step_complete) is used here so that
+        # cross-field rules are skipped — all 5 are intentionally advisory on voice.
+        # In strict mode (advisory=False) the original blocking behaviour is preserved.
+        if settings.onboarding_voice_validation_advisory:
+            cross_rejections = _validate_required_only(self._schema, state)
             for rej in cross_rejections:
                 await self._emit({
-                    "type": "validation_rejection",
+                    "type": "field_advisory_warning",
                     "section_id": "_aggregate",
                     "field_id": "_aggregate",
-                    "rejection": rej.model_dump(),
+                    "code": rej.code,
+                    "reason_human": rej.reason_human,
+                    "severity": "advisory",
                 })
-            return {
-                "ok": False,
-                "rejection": {
-                    "code": "cross_field_invariants_failed",
-                    "reason_human": cross_rejections[0].reason_human,
-                    "all_rejections": [r.model_dump() for r in cross_rejections],
-                },
-            }
+            # Do NOT return — advisory violations do not block advance
+        else:
+            cross_rejections = validate_step_complete(self._schema, state)
+            if cross_rejections:
+                for rej in cross_rejections:
+                    await self._emit({
+                        "type": "validation_rejection",
+                        "section_id": "_aggregate",
+                        "field_id": "_aggregate",
+                        "rejection": rej.model_dump(),
+                    })
+                return {
+                    "ok": False,
+                    "rejection": {
+                        "code": "cross_field_invariants_failed",
+                        "reason_human": cross_rejections[0].reason_human,
+                        "all_rejections": [r.model_dump() for r in cross_rejections],
+                    },
+                }
 
         state.completed = True
         state.completed_at = datetime.now(UTC)
@@ -1575,6 +1855,76 @@ class ToolDispatcher:
                 "error": f"max rows ({section.repeatable.max}) reached for {section_id}",
             }
 
+        # Incomplete-current-row guard.
+        # Observed regression (2026-05-20): emergency_contacts had ONE row
+        # with only a name filled. Agent asked the user "want to continue
+        # or add another?". User said "yes". Agent called add_repeatable_row
+        # and ended up with TWO broken rows (the original half-filled and
+        # a brand-new empty one). The user could no longer advance_step.
+        #
+        # Block the call when the most-recent row of the SAME section has
+        # any required field empty. The model receives a clean rejection
+        # and prompt Rule 23 tells it to finish the current row first.
+        rep_count = state.repeatable_rows.get(section_id, 0)
+        rows = state.values.get(section_id)
+        last_idx: int | None = None
+        if isinstance(rows, list) and rows:
+            last_idx = len(rows) - 1
+        elif rep_count > 0:
+            last_idx = rep_count - 1
+        if last_idx is not None and last_idx >= 0:
+            last_row = rows[last_idx] if isinstance(rows, list) and last_idx < len(rows) else {}
+            if isinstance(last_row, dict):
+                missing_required: list[str] = []
+                for fspec in section.item_fields or []:
+                    if not fspec.required:
+                        continue
+                    # Honour visible_if so we only count fields that are
+                    # actually rendered for this row.
+                    if fspec.visible_if:
+                        cond_f, cond_v = next(iter(fspec.visible_if.items()))
+                        raw_cond = last_row.get(cond_f)
+                        actual = (
+                            raw_cond.get("value")
+                            if isinstance(raw_cond, dict) else raw_cond
+                        )
+                        if actual != cond_v:
+                            continue
+                    raw = last_row.get(fspec.id)
+                    value = raw.get("value") if isinstance(raw, dict) else raw
+                    is_empty = (
+                        value is None
+                        or (isinstance(value, str) and not value.strip())
+                        or (isinstance(value, list) and not value)
+                    )
+                    if is_empty:
+                        missing_required.append(fspec.id)
+                if missing_required:
+                    log.info(
+                        "add_repeatable_row REJECTED incomplete_current_row "
+                        "section=%s last_row=%d missing=%s session=%s",
+                        section_id, last_idx, missing_required, self._session_id,
+                    )
+                    return {
+                        "ok": False,
+                        "rejection": {
+                            "code": "incomplete_current_row",
+                            "reason_human": (
+                                f"Row {last_idx + 1} of '{section_id}' is "
+                                f"still missing: {', '.join(missing_required)}. "
+                                "Finish that row before adding another."
+                            ),
+                            "section_id": section_id,
+                            "row_index": last_idx,
+                            "missing_fields": missing_required,
+                            "suggested_fix": (
+                                "Ask the participant for the missing field(s) "
+                                "in the current row, OR call delete_repeatable_row "
+                                "if they want to discard the current row instead."
+                            ),
+                        },
+                    }
+
         new_index = state.increment_repeatable_row(section_id)
         # Auto-pin focus to the new row so any immediate update_field call
         # doesn't hit cross_section_blocked — agent doesn't need a separate
@@ -1597,6 +1947,264 @@ class ToolDispatcher:
         })
 
         return {"ok": True, "section_id": section_id, "new_index": new_index}
+
+    # ── Handler: delete_repeatable_row ───────────────────────────────────────
+
+    async def _delete_repeatable_row(self, args: dict[str, Any]) -> dict[str, Any]:
+        section_id = args.get("section_id", "").strip()
+        row_index = args.get("row_index")
+
+        if not section_id:
+            return {"ok": False, "error": "section_id required"}
+
+        section = self._schema.get_section(section_id)
+        if section is None:
+            return {"ok": False, "error": f"unknown section: {section_id}"}
+        if not section.is_repeatable:
+            return {"ok": False, "error": f"not repeatable: {section_id}"}
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return {"ok": False, "error": "session state not found"}
+
+        # Authoritative row count: repeatable_rows counter (incremented by
+        # add_repeatable_row) is the declared count. state.values[section_id]
+        # may be None or a shorter list when no update_field calls were made yet.
+        rep_count = state.repeatable_rows.get(section_id, 0)
+        rows = state.values.get(section_id)
+        value_count = len(rows) if isinstance(rows, list) else 0
+        current_count = max(rep_count, value_count)
+
+        # Row-index inference. When the user says "remove the morning routine"
+        # without specifying which row, the model often omits row_index. If
+        # there is exactly one row, default to row 0. If there are multiple
+        # rows, we need an explicit index to avoid ambiguity. Without this
+        # inference the model could not action "remove X" requests at all
+        # (observed session 4339494d 2026-05-20: agent verbally confirmed
+        # removal but never called the tool because row_index was unknown).
+        if row_index is None:
+            if current_count == 1:
+                row_index = 0
+            elif current_count == 0:
+                return {
+                    "ok": False,
+                    "rejection": {
+                        "code": "section_already_empty",
+                        "reason_human": (
+                            f"There are no rows to delete in '{section_id}'."
+                        ),
+                    },
+                }
+            else:
+                return {
+                    "ok": False,
+                    "rejection": {
+                        "code": "row_index_ambiguous",
+                        "reason_human": (
+                            f"'{section_id}' has {current_count} rows — please "
+                            "tell me which one to delete by position."
+                        ),
+                        "row_count": current_count,
+                        "suggested_fix": (
+                            "Ask the user which numbered row they mean, then "
+                            "retry with the explicit row_index argument."
+                        ),
+                    },
+                }
+        if not isinstance(row_index, int):
+            return {"ok": False, "error": "row_index must be an integer"}
+
+        if current_count == 0 or row_index >= current_count or row_index < 0:
+            return {
+                "ok": False,
+                "error": (
+                    f"row_index {row_index} out of range "
+                    f"(section '{section_id}' has {current_count} row(s))"
+                ),
+            }
+
+        min_rows = section.repeatable.min if section.repeatable else 0
+        if current_count <= min_rows:
+            return {
+                "ok": False,
+                "error": (
+                    f"cannot delete — '{section_id}' requires at least "
+                    f"{min_rows} row(s) and currently has {current_count}"
+                ),
+            }
+
+        # Splice from state.values only when that row exists there.
+        if isinstance(rows, list) and row_index < value_count:
+            state.values[section_id] = [r for i, r in enumerate(rows) if i != row_index]
+
+        # Decrement the repeatable_rows counter.
+        if rep_count > 0:
+            state.repeatable_rows[section_id] = rep_count - 1
+
+        remaining = state.repeatable_rows.get(section_id, 0)
+
+        # Adjust focus pointer if it was on the deleted row or beyond it.
+        if state.focused_section == section_id:
+            if remaining == 0:
+                state.focused_section = None
+                state.focused_repeatable_index = None
+            elif state.focused_repeatable_index is not None:
+                if state.focused_repeatable_index >= remaining:
+                    state.focused_repeatable_index = remaining - 1
+                elif state.focused_repeatable_index > row_index:
+                    state.focused_repeatable_index -= 1
+
+        state.recompute_completion(self._schema)
+        state.touch()
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        log.info(
+            "delete_repeatable_row section=%s deleted_index=%d remaining=%d session=%s",
+            section_id, row_index, remaining, self._session_id,
+        )
+        await self._emit({
+            "type": "row_deleted",
+            "section_id": section_id,
+            "deleted_index": row_index,
+            "remaining_rows": remaining,
+        })
+        await self._emit({"type": "state", "state": state.model_dump(mode="json")})
+
+        return {
+            "ok": True,
+            "section_id": section_id,
+            "deleted_index": row_index,
+            "remaining_rows": remaining,
+        }
+
+    # ── Handler: clear_field ─────────────────────────────────────────────────
+
+    async def _clear_field(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Blank out a previously-filled field.
+
+        Reproduces user complaints from session 2026-05-20: "I would like
+        to remove the service address" — agent had no way to clear a
+        scalar field via voice (update_field rejects empty value). This
+        tool sets the field to None in FormState and emits field_cleared
+        so the Flutter input UI blanks.
+
+        For removing a row of a repeatable section, use
+        delete_repeatable_row instead.
+        """
+        section_id = args.get("section", "").strip()
+        field_id = args.get("field", "").strip()
+        repeatable_index = args.get("repeatable_index")
+
+        if not section_id or not field_id:
+            return {"ok": False, "error": "section and field are required"}
+
+        section = self._schema.get_section(section_id)
+        if section is None:
+            return {"ok": False, "error": f"unknown section: {section_id}"}
+
+        field_spec = next(
+            (f for f in section.all_fields() if f.id == field_id), None
+        )
+        if field_spec is None:
+            return {
+                "ok": False,
+                "error": f"field '{field_id}' not in section '{section_id}'",
+            }
+
+        # Readonly guard mirrors update_field — cannot clear identity-bound
+        # values either.
+        if field_spec.readonly:
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "field_readonly",
+                    "reason_human": (
+                        f"'{field_spec.label or field_id}' is read-only — "
+                        "it comes from your account and cannot be cleared."
+                    ),
+                },
+                "readonly": True,
+            }
+
+        # Readonly_paths (per-session bootstrap) also blocks clearing.
+        path = f"{section_id}.{field_id}"
+        if path in self._readonly_paths:
+            log.info(
+                "clear_field REJECTED readonly path=%s session=%s",
+                path, self._session_id,
+            )
+            return {
+                "ok": False,
+                "rejection": {
+                    "code": "field_readonly",
+                    "reason_human": (
+                        f"'{field_spec.label or field_id}' is read-only here."
+                    ),
+                },
+                "readonly": True,
+            }
+
+        state = await self._repo.get_state(self._session_id)
+        if state is None:
+            return {"ok": False, "error": "session state not found"}
+
+        # Repeatable section: repeatable_index is required.
+        if section.is_repeatable:
+            if repeatable_index is None or not isinstance(repeatable_index, int):
+                return {
+                    "ok": False,
+                    "error": (
+                        "repeatable_index required for clear_field on a "
+                        "repeatable section"
+                    ),
+                }
+            rows = state.values.get(section_id)
+            if not isinstance(rows, list) or repeatable_index >= len(rows):
+                return {
+                    "ok": False,
+                    "error": (
+                        f"row_index {repeatable_index} out of range for "
+                        f"'{section_id}'"
+                    ),
+                }
+            target_row = rows[repeatable_index]
+            if isinstance(target_row, dict) and field_id in target_row:
+                target_row.pop(field_id)
+        else:
+            sec_values = state.values.get(section_id)
+            if isinstance(sec_values, dict) and field_id in sec_values:
+                sec_values.pop(field_id)
+
+        # Drop any pending validation error pinned to this target.
+        _clear_validation_error(
+            state, section_id, field_id,
+            repeatable_index if section.is_repeatable else None,
+        )
+
+        state.recompute_completion(self._schema)
+        state.touch()
+        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+
+        log.info(
+            "clear_field section=%s field=%s repeatable_index=%s session=%s",
+            section_id, field_id, repeatable_index, self._session_id,
+        )
+        event: dict[str, Any] = {
+            "type": "field_cleared",
+            "section_id": section_id,
+            "field_id": field_id,
+        }
+        if section.is_repeatable:
+            event["repeatable_index"] = repeatable_index
+        await self._emit(event)
+        await self._emit({"type": "state", "state": state.model_dump(mode="json")})
+
+        return {
+            "ok": True,
+            "section_id": section_id,
+            "field_id": field_id,
+            "repeatable_index": repeatable_index if section.is_repeatable else None,
+        }
 
     # ── Handler: policy_block ────────────────────────────────────────────────
 
@@ -1621,6 +2229,75 @@ class ToolDispatcher:
         state = await self._repo.get_state(self._session_id)
         if state is None:
             return {"ok": False, "error": "session state not found"}
+
+        # Rule 9 server-side enforcement — PREMATURE_REPEATABLE_ENTRY guard.
+        # Observed regression (session 0382aaed @ 13:24:18): the model fired
+        # `enter_repeatable_section(allergies)` 75ms after the user said
+        # "Hi, let's start." — pinning focus before the agent had even
+        # responded with a greeting. This corrupts downstream cross-section
+        # writes (everything looks "blocked by allergies") and is the
+        # mechanism behind multiple bugs in the 2026-05-19 dump. The prompt
+        # rule alone is insufficient — the model still violates it, so
+        # enforce it server-side.
+        #
+        # Trigger conditions (ALL must hold):
+        #   • turn_id == 0   (agent has not yet responded with anything)
+        #   • the target section has zero existing rows
+        #   • the user's last utterance is a greeting-only phrase
+        if self._turn_id == 0 and (
+            not isinstance(state.values.get(section_id), list)
+            or len(state.values.get(section_id) or []) == 0
+        ):
+            try:
+                _transcript = await self._repo.get_transcript(self._session_id)
+            except Exception:  # noqa: BLE001 — best-effort guard, do not break on Redis blip
+                _transcript = []
+            _last_user_text = ""
+            for _entry in reversed(_transcript):
+                if isinstance(_entry, dict) and _entry.get("speaker") == "user":
+                    _last_user_text = (_entry.get("text") or "").strip().lower()
+                    break
+            if _last_user_text:
+                # Token-set check: the whole utterance must be composed only
+                # of greeting tokens (handles compound greetings like
+                # "Hi, let's start." or "Hello there ready let's begin").
+                _greeting_tokens = {
+                    "hi", "hello", "hey", "yo", "hiya",
+                    "good", "morning", "afternoon", "evening",
+                    "lets", "let's", "start", "begin", "go", "start.",
+                    "ready", "okay", "ok", "yes", "yep", "sure", "yeah",
+                    "sena", "there", "you", "we", "now",
+                }
+                _tokens = re.findall(r"[a-z']+", _last_user_text)
+                _all_greeting = bool(_tokens) and all(
+                    t in _greeting_tokens for t in _tokens
+                )
+                if _all_greeting:
+                    log.info(
+                        "enter_repeatable_section REJECTED PREMATURE turn=%d "
+                        "section=%s last_user_text=%r session=%s — Rule 9",
+                        self._turn_id,
+                        section_id,
+                        _last_user_text[:80],
+                        self._session_id,
+                    )
+                    return {
+                        "ok": False,
+                        "rejection": {
+                            "code": "PREMATURE_REPEATABLE_ENTRY",
+                            "reason_human": (
+                                "Greet the participant and orient them before "
+                                "entering a repeatable section. Wait for them "
+                                "to name a value for this section."
+                            ),
+                            "suggested_fix": (
+                                "Respond to the user's greeting first, then "
+                                "ask them what they want to add — do NOT pin "
+                                "focus to a section until the user has named "
+                                "a value."
+                            ),
+                        },
+                    }
 
         current_rows = state.values.get(section_id)
         existing_count = len(current_rows) if isinstance(current_rows, list) else 0

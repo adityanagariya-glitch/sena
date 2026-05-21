@@ -10,6 +10,14 @@ from .base import ValidationRejection
 _STRIP_NON_DIGIT = re.compile(r"\D")
 
 
+def _normalise_phone(raw: Any) -> str:
+    """Strip non-digits and convert AU local format (0xxx) to E.164 digits (61xxx)."""
+    digits = _STRIP_NON_DIGIT.sub("", _s(raw))
+    if len(digits) == 10 and digits.startswith("0"):
+        digits = "61" + digits[1:]
+    return digits
+
+
 def _fv(raw: Any) -> Any:
     """Extract .value from FieldValue dict; return raw otherwise."""
     return raw.get("value") if isinstance(raw, dict) and "value" in raw else raw
@@ -62,7 +70,7 @@ def check_emergency_phone_unique_and_differs_from_client(
     '0412 …' compare correctly.
     """
     rejections: list[ValidationRejection] = []
-    client_phone = _STRIP_NON_DIGIT.sub("", _s((state_values.get("basics") or {}).get("phone")))
+    client_phone = _normalise_phone((state_values.get("basics") or {}).get("phone"))
     rows = state_values.get("emergency_contacts") or []
     if not isinstance(rows, list):
         return rejections
@@ -70,7 +78,7 @@ def check_emergency_phone_unique_and_differs_from_client(
     for row in rows:
         if not isinstance(row, dict):
             continue
-        phone_norm = _STRIP_NON_DIGIT.sub("", _s(row.get("phone")))
+        phone_norm = _normalise_phone(row.get("phone"))
         if not phone_norm:
             continue
         if client_phone and phone_norm == client_phone:
@@ -117,7 +125,15 @@ def check_medical_history_all_or_none(state_values: dict[str, Any]) -> list[Vali
     for idx, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
-        filled = [f for f in [_s(row.get("title")), _s(row.get("year")), _s(row.get("description"))] if f]
+        filled = [
+            f
+            for f in [
+                _s(row.get("title")),
+                _s(row.get("year")),
+                _s(row.get("description")),
+            ]
+            if f
+        ]
         if 0 < len(filled) < 3:
             rejections.append(ValidationRejection(
                 code="medical_history_incomplete_row",
@@ -139,13 +155,52 @@ def check_time_slot_no_overlap(slots: list[dict[str, Any]]) -> list[ValidationRe
         if start is None or end is None:
             continue
         if end <= start:
-            return [ValidationRejection(code="time_slot_end_before_start", reason_human="Start time must be before end time")]
+            return [ValidationRejection(
+                code="time_slot_end_before_start",
+                reason_human="Start time must be before end time",
+            )]
         parsed.append((start, end))
     parsed.sort()
     for i in range(len(parsed) - 1):
         if parsed[i + 1][0] < parsed[i][1]:
-            return [ValidationRejection(code="time_slots_overlap", reason_human="Time slots must not overlap")]
+            return [ValidationRejection(
+                code="time_slots_overlap",
+                reason_human="Time slots must not overlap",
+            )]
     return []
+
+
+def check_support_schedule_time_order(
+    state_values: dict[str, Any],
+) -> list[ValidationRejection]:
+    """schedule_of_supports[*]: end_time MUST be strictly greater than
+    start_time. No zero-duration, no cross-midnight slots."""
+    rejections: list[ValidationRejection] = []
+    rows = state_values.get("schedule_of_supports") or []
+    if not isinstance(rows, list):
+        return rejections
+
+    def _hm(s: str) -> int | None:
+        m = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", (s or "").strip())
+        return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        start = _hm(_s(row.get("start_time")))
+        end = _hm(_s(row.get("end_time")))
+        if start is None or end is None:
+            continue
+        if end <= start:
+            rejections.append(ValidationRejection(
+                code="time_slot_end_before_start",
+                reason_human="Start time must be before end time",
+                suggested_fix=(
+                    "End time must be strictly greater than start time — "
+                    "no zero-duration or cross-midnight slots."
+                ),
+            ))
+    return rejections
 
 
 def validate_cross_fields(state_values: dict[str, Any]) -> list[ValidationRejection]:
@@ -154,4 +209,5 @@ def validate_cross_fields(state_values: dict[str, Any]) -> list[ValidationReject
     results.extend(check_emergency_phone_unique_and_differs_from_client(state_values))
     results.extend(check_plan_end_after_start(state_values))
     results.extend(check_medical_history_all_or_none(state_values))
+    results.extend(check_support_schedule_time_order(state_values))
     return results

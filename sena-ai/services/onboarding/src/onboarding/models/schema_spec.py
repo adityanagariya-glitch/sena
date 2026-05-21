@@ -31,6 +31,11 @@ class FieldSpec(BaseModel):
     # visible_if: {field_id: expected_value} — skip field if condition not met
     visible_if: dict[str, Any] | None = None
     default: Any | None = None
+    # readonly: true → voice agent must NEVER call update_field on this field.
+    # Used for identity-bound values (email, externally-managed IDs) that flow
+    # from the auth/account system. The dispatcher rejects writes server-side
+    # in addition to the prompt's Rule 3 readonly handling.
+    readonly: bool = False
 
     @model_validator(mode="after")
     def options_required_for_enum(self) -> FieldSpec:

@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-05-12
+updated: 2026-05-15
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -8,162 +8,72 @@ purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session
 
 Read these files IN ORDER at the start of any new session. Stop when you have enough context for the user's current request.
 
+> **State as of 2026-05-14:** Voice assistance feature is **closed and deployed** (EC2,
+> `docker-compose.deploy.yml`); Case Review service is **shelved at Phase C**. Both feature
+> histories live in `.claude/tasks/ARCHIVE.md`. The next feature has not started — `TASKS.md`
+> shows an empty Active section. Do NOT carry voice/case-review planning context into a new
+> feature unless the work directly extends shipped infrastructure.
+
 ## 1. MUST-READ (always)
 
 | # | File | Why |
 |---|------|-----|
-| 1 | `CLAUDE.md` (project root) | Hard rules, architecture, Gemini API rules, cleanup rule, demo stack |
+| 1 | `CLAUDE.md` (project root) | Hard rules, architecture, Gemini API rules, cleanup rule |
 | 2 | `.claude/SESSION_START.md` (this file) | Tells you what to read next |
-| 3 | `.claude/tasks/TASKS.md` | Current task state, active/completed/backlog |
+| 3 | `.claude/tasks/TASKS.md` | Current task state (active queue, backlog). Empty Active = awaiting new-feature direction |
 | 4 | `.claude/issues-solved/INDEX.md` | Grep-first symptom→fix table. Check BEFORE debugging anything. |
-| 5 | `.planning/ONBOARDING_VOICE_API_PLAN.md` | Historical build plan — onboarding voice API, phases A–F (all shipped 2026-04-29). Read for architecture context, NOT for next-step guidance. |
-| 6 | `~/.claude/projects/C--Users-Admin-Downloads-SENA/memory/MEMORY.md` | Memory index — points to all user/project/feedback memories |
+| 5 | `~/.claude/projects/C--Users-Admin-Downloads-SENA/memory/MEMORY.md` | Memory index — points to all user/project/feedback memories |
 
 ## 2. READ-IF-RELEVANT (task-dependent)
 
 | Task area | Read |
 |-----------|------|
-| Voice demo / Gemini Live bugs | `memory/feedback_gemini_live_patterns.md`, `memory/project_voice_demo_working.md` |
-| What's left to build (voice) | `.planning/GEMINI_LIVE_NATIVE_SCOPE.md` (Gemini-native scope reference) — for next-step state read TASKS.md |
-| Onboarding validation / sequencing / schema-drift | `.planning/PRD-validation-sequencing-discovery.md` + `.planning/VALIDATION-CROSS-CHECK-2026-05-07.md` + `.claude/client_onboarding_validations.md` (Flutter-canonical) |
-| Case Note Review service (task #10) | `.planning/CASE_NOTE_REVIEW_PLAN.md` — phases A–G, subagent policy, blockers |
-| Onboarding cross-screen context | `.planning/PRD-cross-screen-context.md` + `.claude/plans/no-graceful-muffin.md` — per-(tenant_id, participant_id) shared bucket, lossless compression, isolation guard |
-| Architecture / code structure | `graphify-out/GRAPH_REPORT.md` |
+| Investigating shipped voice code | `.claude/tasks/ARCHIVE.md` Feature A → then specific service paths under `sena-ai/services/onboarding/` |
+| Investigating shipped case-review code | `.claude/tasks/ARCHIVE.md` Feature B → `.planning/CASE_NOTE_REVIEW_PLAN.md` |
+| Gemini Live bugs (any service still using Live API) | `memory/feedback_gemini_live_patterns.md`, `memory/project_voice_demo_working.md` |
+| Onboarding validation contract (Flutter still pending) | `SENA_AI/flutterhandoffdev.md` — canonical Step-1 handoff |
+| Architecture / code structure overview | `graphify-out/GRAPH_REPORT.md` |
 | NDIS domain / compliance | specific files in `ndis_markdown_docs/` (never the whole folder) |
+| Agent pipeline + routing (planner → implementer → reviewer chain) | `.claude/rules/sena-rules.md` |
+| API / WS event canonical list (path-scoped, auto-loads) | `.claude/rules/api.md` (loads when editing `*/api/*.py`) |
+| Redis key inventory (path-scoped, auto-loads) | `.claude/rules/database.md` (loads when editing `*/repositories/*.py`) |
+| Historical decisions log | `.claude/memory/decisions.md` |
+| Session memory (per-task log entries) | `.claude/memory/sena-memory.md` |
 
 ## 3. DO-NOT-READ
 
 - `/archive/`, `.venv/`, `.vscode/` — token waste, ignored per CLAUDE.md
 - `ndis_markdown_docs/` (whole folder) — massive token cost. Read only a specific file when an NDIS compliance question requires it.
+- `.claude/tasks/ARCHIVE.md` — read only if explicitly investigating prior work. Do NOT skim it for "what's next."
 
 ---
 
-## Voice-Onboarding Validation Contract (added 2026-05-12)
+## Shipped infrastructure (still authoritative for the codebase)
 
-Canonical Flutter handoff: **`SENA_AI/flutterhandoffdev.md`** (root of SENA_AI). Backend wiring
-complete 2026-05-12 by the 6-agent orchestration (AUDITOR → MAPPER → HANDOFF → BACKEND → DOCS →
-QA). Frontend implementation pending in `sena-mobile` Flutter repo. See `.claude/tasks/TASKS.md`
-#17 for the full record.
+These are the durable artefacts the voice/case-review features left behind. They remain in force regardless of which feature is active next.
 
-**The 5 non-negotiable rules of the contract:**
+**Active services:**
+- `sena-ai/services/onboarding/` — port 8083, Redis-only state. **Deployed to EC2** via `docker-compose.deploy.yml`. Flutter contract still pending implementation in `sena-mobile` repo per `flutterhandoffdev.md`.
+- `sena-ai/services/case_review/` — port 8084, ai-db (pgvector); 4 tables with RLS on tenant_id. Phase A-C shipped; Phase D-G shelved.
+- `sena-ai/services/voice/` — port 8082, Flow B dictation (LiveKit + Bedrock). Pre-existing service; no recent activity.
+- `sena-ai/services/ocr/` — skeleton only, not wired.
 
-1. **Validate-before-state.** A field never updates a controller/state before validation passes —
-   typed **or** voice. No "write first, validate later" allowed for either input method.
-2. **`input_method` is first-class.** Captured at intake ("typed" or "voice"), threaded through
-   every validator + error report. Backend `FieldValue.input_method` surfaces on `field_apply` WS
-   events.
-3. **POST `/v1/onboarding/session/{session_id}/errors`** fires on every validation FAIL (typed and
-   voice). Strict body shape; persists to Redis list `sena:onboarding:errors:{sid}`, 7-day TTL.
-4. **Voice failure → TTS speaks the same on-screen string + auto-reopens the mic.** No silent
-   drops. The string the user reads must match the string Sena speaks, both pulled from
-   `AppStrings`.
-5. **Voice = first-class.** Every validator, every error path, every cross-field invariant applies
-   equally to both input methods. No "voice happy-path" shortcuts.
-
-**Backend already wired (2026-05-12):** new `POST /errors` endpoint, `FieldValue.input_method`
-through writers, per-write cross-field invariant check in `_update_field` (no longer only at
-advance gate), reconciled `reason_human` strings to match Flutter `AppStrings`,
-`basics.interpreter_required` → `_v_boolean_required`, `basics.about_me` → `_v_text250_required`.
-New tests: `test_errors_endpoint.py`, `test_field_apply.py`, extended `test_validators.py`.
-
-**Frontend pending in `sena-mobile`:** every Step-1 voice-mapped field must validate-before-state
-for typed AND voice; `validation_rejection` parsed; TTS error-speak + mic auto-reopen; POST
-`/errors` fired on typed failures; AppStrings additions; `flutter analyze` 0 warnings. See
-`flutterhandoffdev.md` for the field-level contract.
-
----
-
-## ✅ DONE: state-sync desync repair (2026-05-11)
-
-Task #15 — Four user-reported voice-flow bugs fixed in one surgical pass:
-1. **Service-address auto-copy** — schema's `copy_from_if_flagged: home_address` is now load-bearing. New `_apply_copy_mirroring()` helper in `services/tools.py` runs after every successful `set_field`, mirroring source-section fields into the target when the flag (default `true`) is set. Mirrored events carry `source: "app"` + `auto_copied_from: <section>`.
-2. **Resumed sessions re-asking name** — `onboarding_cross_screen_context_enabled` default flipped `False` → `True` in `core/settings.py`. Bucket key (`{tenant_id}:{participant_id}`) makes isolation structural; the flag-off default was a diagnostic pause, not a permanent kill.
-3. **Emergency-contact update loop** — `_update_field` now does implicit-enter for repeatable targets (auto-pin `focused_section` + `focused_repeatable_index`) so `cross_section_blocked` never fires when the agent skips the explicit `enter_repeatable_section` call. Non-repeatable cross-section writes still require `cross_section_intent: true`.
-4. **Double-prompted email** — new "JSON-as-Truth Protocol — MANDATORY pre-flight" block in `prompts/onboarding_system.md` directly under ABSOLUTE STATE AUTHORITY. 5 rules force the agent to consult `current_page_values` + `prior_pages` before generating any question.
-
-**Tests:** 192 → 198 (+6 regression). **Stale file removed:** `FLUTTER_VOICE_INTEGRATION_FIXES.md` (content consolidated into `FLUTTER_DEV_HANDOFF.md` Issue #28 addendum). **Flutter follow-up:** parse `source` + `auto_copied_from` keys on `field_updated` events (HANDOFF Issue #28); ensure `tenant_id` + `participant_id` non-empty on `POST /v1/onboarding/session` (HANDOFF Issue #26 — required for `prior_pages` to populate). See TASKS.md #15 for the full inventory.
-
-## ✅ DONE: validation awareness + sequencing + schema-drift discovery (2026-05-07)
-
-Task #13 — server-side validators authoritative; `pending_validation_errors` blocks `advance_step`; `validation_failed`/`validation_cleared` client→server frames wired in `gemini_live._handle_control`; 4 new server→client events shipped (`repeatable_section_entered/exited`, `field_skipped_warning` with `missing_fields[]` enumerating exactly which required fields are empty, `schema_drift_detected` with `kind: unknown_field|unknown_section`). `FLUTTER_DEV_HANDOFF.md` brought into full sync with backend reality. Tests 78/78 (excluding 2 pre-existing unrelated import errors). **PRD:** `.planning/PRD-validation-sequencing-discovery.md`. **Cross-check:** `.planning/VALIDATION-CROSS-CHECK-2026-05-07.md`. **Validator catalogue:** `.claude/client_onboarding_validations.md` (Flutter-canonical). See TASKS.md #13 for full file list.
-
-## ✅ DONE: cross-screen shared context (2026-05-06)
-
-Task #12 — per-(tenant_id, participant_id) shared bucket of step summaries (`UserContextRepo`, Redis Hash + Set, 7-day TTL); lossless compress/decompress; isolation guard via `state_repo.assert_session_owner`; rendered into prompt as EARLIER IN THIS ONBOARDING block (between `[LIVE_STATE_JSON]` and SCHEMA). Single feature flag `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED` (default `true`) for rollback. Tests 89/89. **PRD:** `.planning/PRD-cross-screen-context.md`. **Plan:** `.claude/plans/no-graceful-muffin.md` (isolation repair history). See TASKS.md #12 for full file list.
-
-## ✅ DONE: onboarding 7-rules + voice protocols (2026-05-02)
-
-Task #11 — implemented all 7 voice-onboarding behavioural rules plus interrupt-recovery, silence-watchdog two-step, and Gemini context_window_compression. Tests 78/78. **Plan artifact:** `~/.claude/plans/cozy-waddling-river.md`. **Flutter delta:** Issues 7–9 in `FLUTTER_DEV_HANDOFF.md` (was `FLUTTER_VOICE_INTEGRATION_FIXES.md` — deleted 2026-05-11, content consolidated into HANDOFF). See TASKS.md #11 for full file list.
-
-**Key entry points for resuming:**
-- `models/session_bootstrap.py` — Rule 1/2 envelope; rendered into prompt as `[LIVE_STATE_JSON]`
-- `prompts/onboarding_system.md` — fully rewritten with all 7 rules and voice protocols
-- `services/screen_context.py::ScreenStateV2.field_errors` — Rule 7 reason hints
-- `services/tools.py` — `update_field.values` array parameter (Rule 4); `_readonly_paths` set on dispatcher (Rule 3)
-
-## ✅ DONE: onboarding v2 implemented (2026-04-29)
-
-All 14 files complete. See TASKS.md #9 for full file list. **Next task: Case Note Review #10 Phase D** (`/review` endpoint — risks + restrictive practices + anomalies). Read `.planning/CASE_NOTE_REVIEW_PLAN.md` to resume.
-
-### v2 summary (for reference)
-- `screen_state_v2` WS message + `ScreenStateV2` model + `from_v1()` adapter
-- `field_apply` envelope drives Flutter GetX controllers directly
-- `add_repeatable_row` Gemini tool for growing repeatable sections
-- `coverage.py` + `field_apply.py` — pure enforcement modules
-- `voice_coverage` / `voice_repeatable_sections` on `StepSchema` (fixtures updated)
-- `bio` → `about_me` in `schema_personal_information.json`
-- `prompt_version:"v2"` + `coverage` array in ready envelope
-
----
-
-## Current state (canonical pointer)
-
-**TASKS.md is the authoritative tracker.** It's hook-bumped on every edit and survives `/compact`. Read it for: active task, completed-task trail, blocked items, and next-step guidance. Do not duplicate state here — old "Current state snapshot" blocks rotted between sessions.
-
-**Active services & ports:**
-- `sena-ai/services/onboarding/` — port 8083, Redis-only (FormState, transcript, WS lock, resumption handles, cross-screen bucket)
-- `sena-ai/services/case_review/` — port 8084, ai-db (pgvector); 4 tables with RLS on tenant_id
-- `sena-ai/demo_live_server.py` — port 8082, standalone Gemini Live demo
-
-**How to run:**
+**How to run locally:**
 ```bash
-# Onboarding
+# Onboarding (Redis-only)
 cd sena-ai/services/onboarding && pip install -e . && uvicorn src.onboarding.main:create_app --factory --reload --port 8083
 
-# Case Review
+# Case Review (requires ai-db running)
 cd sena-ai/services/case_review && pip install -e . && uvicorn src.case_review.main:create_app --factory --reload --port 8084
 
-# Demo
-cd sena-ai && uvicorn demo_live_server:app --reload --port 8082
+# Voice (Flow B)
+cd sena-ai/services/voice && pip install -e . && uvicorn src.voice.main:create_app --factory --reload --port 8082
 ```
 
-**Known blocked (move to TASKS.md if these change):**
-- Case Review Phase F (submit gate) — other engineer's register schema
-- RAG (NDIS docs) — client sample docs
-- Multi-tenant auth / RLS — client JWT claims structure
-- OCR service — document samples
-- AU data residency sign-off for Gemini Live — production blocker
-
----
-
-## How to verify state on session start
-
-Run these to confirm nothing rotted since 2026-04-21:
-
-```bash
-# 1. Demo still runs?
-cd sena-ai && uvicorn demo_live_server:app --reload --port 8082
-# Open http://localhost:8082 → Start → speak → expect reply
-
-# 2. Git clean?
-git status
-git log --oneline -10
-
-# 3. Env file present?
-ls sena-ai/.env  # must contain SENA_AI_GEMINI_API_KEY + SENA_AI_GEMINI_LIVE_MODEL_ID=gemini-3.1-flash-live-preview
-```
-
-If demo breaks: first suspect `session.receive()` retry loop (`while True: ... continue`) and `realtime_input_config` presence. See `feedback_gemini_live_patterns.md`.
+**Authoritative contracts:**
+- WS events (onboarding) — `.claude/rules/api.md`
+- Redis key inventory — `.claude/rules/database.md`
+- Voice-onboarding validation contract — `SENA_AI/flutterhandoffdev.md` (frontend pending)
 
 ---
 
@@ -173,17 +83,21 @@ Three hooks in `.claude/settings.json` keep this system deterministic:
 
 | Hook | Script | What it does |
 |------|--------|--------------|
-| `SessionStart` | `.claude/hooks/session-start.sh` | Injects this read-order as additionalContext on every new session — Claude sees the protocol before the first prompt |
+| `SessionStart` | `.claude/hooks/session-start.sh` | Injects this read-order as additionalContext on every new session |
 | `Stop` | `.claude/hooks/stop.sh` | Rebuilds graphify graph + emits reminder to verify `TASKS.md` at every session boundary (including /clear, /compact, resume) |
 | `PostToolUse` (Write\|Edit) | `.claude/hooks/bump-updated.sh` | Auto-bumps `updated: YYYY-MM-DD` frontmatter on SESSION_START.md, TASKS.md, MEMORY.md, CLAUDE.md whenever Claude edits them |
 
-**You never need to manually update `updated:` fields.** The hook does it. If a file lacks frontmatter (e.g., CLAUDE.md), the hook no-ops safely.
+**You never need to manually update `updated:` fields.** The hook does it. If a file lacks frontmatter, the hook no-ops safely.
 
 If a hook seems broken: check `/hooks` menu, or run `bash .claude/hooks/<name>.sh` directly with a fake stdin payload to diagnose.
 
 ---
 
 ## Rules you MUST reload every session
+
+From `.claude/rules/principal-engineer.md` (canonical — agents inherit automatically):
+- **Orchestration Protocols** (new 2026-05-15): sub-agent delegation triggers, plan mode triggers (3+ files / arch / blast-radius), dynamic recalibration ("stop and replan when"), root-cause over symptom (never skip/delete tests), elegance check (4-question pause before finalizing), minimal blast radius → out-of-scope observations go to `.claude/tasks/followups.md` not the diff
+- **Self-improvement**: same lesson 3× → promote from `lessons.md` to `CLAUDE.md` permanent rule; repeating a `lessons.md` entry = instant-fail
 
 From `CLAUDE.md`:
 - Gemini code → invoke `Skill: gemini-live-api-dev` BEFORE editing
@@ -198,5 +112,16 @@ From memory (`feedback_gemini_live_patterns.md`):
 - Use `await b2g`, not `asyncio.wait(FIRST_COMPLETED)`
 - Single AudioContext on browser for mic+playback
 - Manual 24kHz→native upsample before `createBuffer`
-- **NEVER gate mic audio on `_agent_speaking` flag** — causes VAD to die after 2-4 turns. Send audio unconditionally; Gemini's native VAD + `START_OF_ACTIVITY_INTERRUPTS` handles barge-in.
-- Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise and exhausts VAD budget
+- **NEVER gate mic audio on `_agent_speaking` flag** — causes VAD to die after 2-4 turns
+- Use `START_SENSITIVITY_LOW` — HIGH fires on ambient noise
+
+---
+
+## Starting a new feature
+
+When the user introduces a new feature, follow this sequence:
+
+1. **Route through `@agent-sena-planner`** for any non-trivial multi-file work. The planner produces the architectural plan + subtask DAG + NDIS-compliance + tenant-boundary analysis. (See `.claude/rules/sena-rules.md` for the full pipeline.)
+2. **Add the new task to `TASKS.md` Active section** before writing any code.
+3. **Do NOT reuse archived plans** (`.claude/plans/` is currently empty by design). Drop a new plan there if the new feature warrants one.
+4. **Update `CLAUDE.md` "Adding New Project Components" protocol** if the feature adds a new service, directory, or external resource — that protocol mandates a sync sweep across CLAUDE.md / SESSION_START.md / TASKS.md / MEMORY.md / a new `project_<name>.md` memory file.

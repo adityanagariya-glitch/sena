@@ -25,7 +25,7 @@ _DATE_MIN_18 = "You must be at least 18 years old"
 _AMOUNT_POSITIVE = "Amount must be greater than zero"
 _DURATION_MIN_1 = "Duration must be at least 1 hour when provided"
 _DURATION_NUMBERS_ONLY = "Duration must contain numbers only"
-_DURATION_MAX_24 = "Duration must be less than or equal to 24 hours"
+_DURATION_MAX_99 = "Duration must be less than or equal to 99 hours"
 _TIME_SLOTS_OVERLAP = "Time slots must not overlap"
 _TIME_INVALID_RANGE = "Start time must be before end time"
 _TIME_HM_INVALID = "Use 24-hour time as HH:mm (e.g. 09:30)."
@@ -45,10 +45,16 @@ def _at_least(n: int) -> str:
 
 # ── Regex ────────────────────────────────────────────────────────────────────
 _AU_PHONE = re.compile(r"^(?:\+61[2-478]\d{8}|0[2-478]\d{8}|1300\d{6}|1800\d{6}|13\d{4})$")
-# M3 — Stricter email: cap domain at 3 labels max (e.g. foo@a.b.c.d is rejected).
-# Real-world emails almost never have >3 domain labels; voice transcription often
-# produces absurd hostnames (`foo@torproject.dev.mrrobot.com`) that pass RFC but
-# fail eyeball test. Pair with disposable-domain blocklist below.
+# Standard email — matches Flutter client spec `client_onboarding_validations.md`:
+# unbounded label count, no disposable-domain check. Used for `basics.email`
+# (pre-filled from auth, not user-typed) and `plan_info.contact_email` /
+# `plan_info.billing_email` (≤50 chars enforced separately).
+_EMAIL_RE_STANDARD = re.compile(
+    r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+)+$",
+    re.IGNORECASE,
+)
+# Strict email — used ONLY for `emergency_contacts.email` per spec line 47.
+# 3-label cap + disposable-domain blocklist + RFC 5321 length limits.
 _EMAIL_RE = re.compile(
     r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+){1,3}$",
     re.IGNORECASE,
@@ -102,16 +108,32 @@ def _au_phone(v: str, *, required: bool = True) -> ValidationRejection | None:
     return None
 
 
-def _email(v: str, *, required: bool = True) -> ValidationRejection | None:
+def _email(
+    v: str,
+    *,
+    required: bool = True,
+    strict: bool = True,
+    max_len: int | None = None,
+) -> ValidationRejection | None:
+    """Email validator. Three modes, matching `client_onboarding_validations.md`:
+
+    - `strict=True` (default, emergency_contacts.email): 3-label-cap regex,
+      RFC 5321 length checks, disposable-domain blocklist.
+    - `strict=False` (basics.email, plan_info emails): unbounded-label standard
+      regex, NO disposable check, NO length cap unless `max_len` is set.
+    - `max_len`: extra length cap (spec sets 50 for plan_info contact/billing).
+    """
     if not v:
         return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED) if required else None
-    if not _EMAIL_RE.match(v):
+    if max_len is not None and len(v) > max_len:
         return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
-    # M3 — block known disposable inboxes; also enforce RFC 5321 length limits
+    pattern = _EMAIL_RE if strict else _EMAIL_RE_STANDARD
+    if not pattern.match(v):
+        return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
+    if not strict:
+        return None
+    # Strict-only: RFC 5321 length checks + disposable-domain blocklist.
     domain = v.lower().rsplit("@", 1)[-1]
-    # RFC 5321: each dot-separated label ≤ 63 chars, total domain ≤ 253 chars.
-    # The regex already enforces shape (3-label cap); these guards catch
-    # long-domain transcription artefacts like foo@aaaaaa...64chars...aaa.com.
     if len(domain) > 253 or any(len(lbl) > 63 for lbl in domain.split(".")):
         return ValidationRejection(code="email_invalid", reason_human=_EMAIL_INVALID)
     if domain in _DISPOSABLE_EMAIL_DOMAINS:
@@ -147,7 +169,15 @@ def _v_full_name(raw: Any, _state: Any) -> ValidationRejection | None:
 
 
 def _v_email_required(raw: Any, _state: Any) -> ValidationRejection | None:
-    return _email(_str(raw), required=True)
+    """STRICT email — used ONLY by `emergency_contacts.email` per spec line 47.
+    Applies 3-label cap + RFC 5321 length + disposable-domain blocklist."""
+    return _email(_str(raw), required=True, strict=True)
+
+
+def _v_email_standard_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    """STANDARD email — used by `basics.email` per spec line 15. No disposable
+    check (auth-prefilled, not user-typed). Standard regex only."""
+    return _email(_str(raw), required=True, strict=False)
 
 
 def _v_phone_au_required(raw: Any, _state: Any) -> ValidationRejection | None:
@@ -298,25 +328,37 @@ def _v_plan_manager_conditional(raw: Any, state: Any) -> ValidationRejection | N
 
 
 def _v_email_conditional(raw: Any, state: Any) -> ValidationRejection | None:
-    """Required email only when plan_management = 'Plan Managed'."""
+    """Required email only when plan_management = 'Plan Managed'. Standard
+    regex + ≤50 chars per spec line 94-95 (no disposable check)."""
     if state is not None:
         mgmt_raw = ((state.values.get("plan_info") or {}).get("plan_management") or {})
         mgmt = mgmt_raw.get("value") if isinstance(mgmt_raw, dict) else mgmt_raw
         if mgmt != "Plan Managed":
-            return _email(_str(raw), required=False)
-    return _email(_str(raw), required=True)
+            return _email(_str(raw), required=False, strict=False, max_len=50)
+    return _email(_str(raw), required=True, strict=False, max_len=50)
 
 
 def _v_amount_optional(raw: Any, _state: Any) -> ValidationRejection | None:
     v = _str(raw)
     if not v:
         return None
+    normalised = v.replace(",", "").strip()
     try:
-        n = float(v.replace(",", ""))
+        n = float(normalised)
         if n <= 0:
             return ValidationRejection(code="amount_not_positive", reason_human=_AMOUNT_POSITIVE)
     except ValueError:
         return ValidationRejection(code="amount_invalid", reason_human=_AMOUNT_POSITIVE)
+    # 9-digit integer-part cap per spec — funding allocation MUST NOT exceed
+    # 999,999,999. Strip leading sign and decimal portion before counting.
+    int_part = normalised.lstrip("+-").split(".")[0]
+    # Strip leading zeros so "000000000123" doesn't count as 12 digits.
+    int_part_significant = int_part.lstrip("0") or "0"
+    if len(int_part_significant) > 9:
+        return ValidationRejection(
+            code="amount_too_large",
+            reason_human="Amount must be at most 9 digits (i.e. up to 999,999,999).",
+        )
     return None
 
 
@@ -332,8 +374,8 @@ def _v_duration_required(raw: Any, _state: Any) -> ValidationRejection | None:
     i = int(n)
     if i < 1:
         return ValidationRejection(code="duration_too_short", reason_human=_DURATION_MIN_1)
-    if i > 24:
-        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_24)
+    if i > 99:
+        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_99)
     return None
 
 
@@ -354,8 +396,8 @@ def _v_duration_optional(raw: Any, _state: Any) -> ValidationRejection | None:
     i = int(n)
     if i < 1:
         return ValidationRejection(code="duration_too_short", reason_human=_DURATION_MIN_1)
-    if i > 24:
-        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_24)
+    if i > 99:
+        return ValidationRejection(code="duration_too_long", reason_human=_DURATION_MAX_99)
     return None
 
 
@@ -363,6 +405,16 @@ def _v_time_hm24_optional(raw: Any, _state: Any) -> ValidationRejection | None:
     v = _str(raw)
     if not v:
         return None
+    if not _HM24.match(v):
+        return ValidationRejection(code="time_hm_invalid", reason_human=_TIME_HM_INVALID,
+                                   suggested_fix="Use HH:mm format, e.g. 09:30 or 14:00.")
+    return None
+
+
+def _v_time_hm24_required(raw: Any, _state: Any) -> ValidationRejection | None:
+    v = _str(raw)
+    if not v:
+        return ValidationRejection(code="required", reason_human=_FIELD_REQUIRED)
     if not _HM24.match(v):
         return ValidationRejection(code="time_hm_invalid", reason_human=_TIME_HM_INVALID,
                                    suggested_fix="Use HH:mm format, e.g. 09:30 or 14:00.")
@@ -593,7 +645,7 @@ def _v_doc_expiry_future(raw: Any, _state: Any) -> ValidationRejection | None:
 _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] = {
     # Step 1 — Personal Information
     ("basics", "full_name"):          _v_full_name,
-    ("basics", "email"):              _v_email_required,
+    ("basics", "email"):              _v_email_standard_required,
     ("basics", "phone"):              _v_phone_au_required,
     ("basics", "date_of_birth"):      _v_dob,
     ("basics", "gender"):             _v_gender_required,
@@ -640,7 +692,7 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("plan_info", "billing_email"):  _v_email_conditional,
     ("ndis_goals", "goal"):          _v_text250_required,
     ("support_coordinator", "coordinator_name"):  _v_text50_required,
-    ("support_coordinator", "coordinator_email"): _v_email_required,
+    ("support_coordinator", "coordinator_email"): _v_email_standard_required,
     ("allocated_funding", "daily_living"):          _v_amount_optional,
     ("allocated_funding", "social_community"):       _v_amount_optional,
     ("allocated_funding", "support_coordination"):   _v_amount_optional,
@@ -650,10 +702,10 @@ _RULES: dict[tuple[str, str], Callable[[Any, Any], ValidationRejection | None]] 
     ("schedule_of_supports", "description"):        _v_support_description,
     ("schedule_of_supports", "frequency"):          _v_text_required,
     # Schema declares duration_hours as required: false — use the optional variant.
-    ("schedule_of_supports", "duration_hours"):     _v_duration_optional,
+    ("schedule_of_supports", "duration_hours"):     _v_duration_required,
     ("schedule_of_supports", "days"):               _v_multi_enum_required,
-    ("schedule_of_supports", "start_time"):         _v_time_hm24_optional,
-    ("schedule_of_supports", "end_time"):           _v_time_hm24_optional,
+    ("schedule_of_supports", "start_time"):         _v_time_hm24_required,
+    ("schedule_of_supports", "end_time"):           _v_time_hm24_required,
 
     # ── Staff Step 1 — Basic Profile (section_id: staff_basics) ─────────────────
     ("staff_basics", "full_name"):               _v_full_name,

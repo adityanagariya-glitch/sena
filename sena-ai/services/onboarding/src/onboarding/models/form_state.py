@@ -31,6 +31,10 @@ class FieldValue(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     turn_id: int | None = None
     updated_at: datetime = Field(default_factory=_utcnow)
+    # True when the agent has verbally confirmed this field value with the
+    # participant during the current WS session. Defaults False so existing
+    # Redis-serialised payloads deserialise without error.
+    confirmed_in_session: bool = False
 
 
 class EscalationRecord(BaseModel):
@@ -166,6 +170,7 @@ class FormState(BaseModel):
         turn_id: int | None = None,
         repeatable_index: int | None = None,
         input_method: Literal["typed", "voice"] | None = None,
+        confirmed_in_session: bool = False,
     ) -> None:
         fv = FieldValue(
             value=value,
@@ -173,6 +178,7 @@ class FormState(BaseModel):
             confidence=confidence,
             turn_id=turn_id,
             input_method=input_method,
+            confirmed_in_session=confirmed_in_session,
         )
         if repeatable_index is not None:
             if section_id not in self.values or not isinstance(self.values[section_id], list):

@@ -11,7 +11,7 @@
       "label": "About you",
       "fields": [
         {"id": "full_name", "type": "text", "label": "Full Name", "required": true},
-        {"id": "email", "type": "email", "label": "Email Address", "required": true},
+        {"id": "email", "type": "email", "label": "Email Address", "required": true, "readonly": true},
         {"id": "phone", "type": "phone", "label": "Phone Number", "format": "+61", "required": true},
         {"id": "date_of_birth", "type": "date", "label": "Date of Birth", "required": true},
         {
@@ -19,18 +19,28 @@
           "type": "enum",
           "label": "Gender",
           "required": true,
-          "options": ["Male", "Female", "Non-binary", "Prefer not to say", "Other"]
+          "options": ["Male", "Female", "Other"]
         },
         {"id": "about_me", "type": "textarea", "label": "About Me", "required": false},
-        {"id": "preferred_language", "type": "text", "label": "Preferred Language", "required": true},
-        {"id": "interpreter_required", "type": "boolean", "label": "Interpreter Required", "required": true, "default": false},
         {
-          "id": "interpreter_language",
-          "type": "text",
-          "label": "Interpreter Language",
-          "required": false,
-          "visible_if": {"interpreter_required": true}
-        }
+          "id": "preferred_language",
+          "type": "enum",
+          "label": "Preferred Language",
+          "required": true,
+          "options": [
+            "English",
+            "Mandarin",
+            "Arabic",
+            "Vietnamese",
+            "Cantonese",
+            "Punjabi",
+            "Greek",
+            "Italian",
+            "Hindi",
+            "Spanish"
+          ]
+        },
+        {"id": "interpreter_required", "type": "boolean", "label": "Interpreter Required", "required": true, "default": false}
       ]
     },
     {
@@ -104,7 +114,7 @@
           "type": "enum",
           "label": "Relationship",
           "required": true,
-          "options": ["Parent", "Sibling", "Partner", "Friend", "Carer", "Other"]
+          "options": ["Father", "Mother", "Sibling", "Spouse", "Friend", "Guardian", "Carer", "Other"]
         },
         {"id": "email", "type": "email", "label": "Contact Email", "required": true},
         {"id": "phone", "type": "phone", "label": "Contact Phone", "format": "+61", "required": true}

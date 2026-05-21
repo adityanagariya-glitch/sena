@@ -336,6 +336,132 @@ Future<void> _onValidationRejection(VoiceValidationRejection rej) async {
 }
 ```
 
+### 3.4a voice_event_model.dart — add `field_advisory_warning` case
+
+- **File**: `lib/features/voice_onboarding/data/models/voice_event_model.dart`
+- **Why**: the server emits `field_advisory_warning` for non-blocking validation nudges (e.g. a soft format suggestion). Without this case the event is silently dropped and the advisory is never surfaced to the participant.
+- **Add inside the parser switch / if-chain** (after the `validation_rejection` case):
+
+```dart
+case 'field_advisory_warning':
+  final allowed = json['allowed_values'];
+  return VoiceFieldAdvisoryWarning(
+    sectionId: json['section_id'] as String,
+    fieldId: json['field_id'] as String,
+    repeatableIndex: json['repeatable_index'] as int?,
+    code: (json['code'] as String?) ?? 'unknown',
+    reasonHuman: (json['reason_human'] as String?) ?? '',
+    severity: 'advisory',
+    suggestedFix: json['suggested_fix'] as String?,
+    allowedValues: allowed is List
+        ? allowed.whereType<String>().toList(growable: false)
+        : const <String>[],
+  );
+```
+
+- **Also add** the entity `VoiceFieldAdvisoryWarning` to `lib/features/voice_onboarding/domain/entities/voice_event.dart` with the same fields. Add the sealed-class branch / `is`-check used elsewhere in the file.
+- **Add a case** to the `switch` / type-test in `_handleEvent` (in `voice_session_controller.dart`):
+
+```dart
+case VoiceFieldAdvisoryWarning warn:
+  _onFieldAdvisoryWarning(warn);
+  break;
+```
+
+- **Implement `_onFieldAdvisoryWarning`**:
+
+```dart
+void _onFieldAdvisoryWarning(VoiceFieldAdvisoryWarning warn) {
+  final key = _advisoryKey(warn.sectionId, warn.fieldId, warn.repeatableIndex);
+  // Store advisory — do NOT block field progression or revert
+  _pendingAdvisories[key] = warn;
+  // Surface after the current extraction burst completes (post-frame)
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (_pendingAdvisories.containsKey(key)) {
+      Get.find<ClientStep1Controller>().fieldAdvisories[
+          _resolveSenaPath(warn.sectionId, warn.fieldId, warn.repeatableIndex)] =
+          warn.reasonHuman;
+    }
+  });
+}
+
+String _advisoryKey(String sectionId, String fieldId, int? index) =>
+    index == null ? '$sectionId.$fieldId' : '$sectionId.$fieldId.$index';
+
+// Add to controller state:
+// final Map<String, VoiceFieldAdvisoryWarning> _pendingAdvisories = {};
+// Cleared when next update_field for same field returns ok=true with no warning.
+```
+
+- **Clear advisory on successful write**: in the existing `_onFieldApply` (or wherever `field_apply` events are handled), after a successful commit add:
+
+```dart
+_pendingAdvisories.remove(_advisoryKey(event.sectionId, event.fieldId, event.repeatableIndex));
+Get.find<ClientStep1Controller>().fieldAdvisories.remove(
+    _resolveSenaPath(event.sectionId, event.fieldId, event.repeatableIndex));
+```
+
+- **`fieldAdvisories` on `ClientStep1Controller`** — add alongside `fieldErrors`:
+
+```dart
+final RxMap<String, String> fieldAdvisories = <String, String>{}.obs;
+```
+
+Wire each field's advisory into a secondary hint text widget (amber, not red). Do NOT disable the Next/Submit button based on advisory state — these are non-blocking by contract.
+
+---
+
+### 3.4b voice_event_model.dart — add `field_confirmed` case
+
+- **File**: `lib/features/voice_onboarding/data/models/voice_event_model.dart`
+- **Why**: the server emits `field_confirmed` when it has positively acknowledged a voice-captured value. Without this case the client cannot suppress redundant re-confirmation prompts, leading to the agent asking the participant to confirm the same value twice.
+- **Add inside the parser switch / if-chain** (after the `field_advisory_warning` case):
+
+```dart
+case 'field_confirmed':
+  return VoiceFieldConfirmed(
+    sectionId: json['section_id'] as String,
+    fieldId: json['field_id'] as String,
+    repeatableIndex: json['repeatable_index'] as int?,
+    value: json['value'],
+    confirmationSource: (json['confirmation_source'] as String?) ?? 'voice',
+    turnId: json['turn_id'] as int? ?? 0,
+  );
+```
+
+- **Also add** the entity `VoiceFieldConfirmed` to `lib/features/voice_onboarding/domain/entities/voice_event.dart`. Add the sealed-class branch / `is`-check.
+- **Add a case** to the `switch` / type-test in `_handleEvent`:
+
+```dart
+case VoiceFieldConfirmed confirmed:
+  _onFieldConfirmed(confirmed);
+  break;
+```
+
+- **Implement `_onFieldConfirmed`**:
+
+```dart
+void _onFieldConfirmed(VoiceFieldConfirmed confirmed) {
+  final senaPath = _resolveSenaPath(
+      confirmed.sectionId, confirmed.fieldId, confirmed.repeatableIndex);
+  // Mark as confirmed in local session state — purely local, no network call
+  Get.find<ClientStep1Controller>().confirmedFields.add(senaPath);
+  // Suppress any pending re-confirmation UI for this field
+  Get.find<ClientStep1Controller>().pendingConfirmationFields.remove(senaPath);
+}
+```
+
+- **`confirmedFields` and `pendingConfirmationFields` on `ClientStep1Controller`** — add:
+
+```dart
+final RxSet<String> confirmedFields = <String>{}.obs;
+final RxSet<String> pendingConfirmationFields = <String>{}.obs;
+```
+
+`confirmedFields` is cleared on `Get.find<ClientStep1Controller>().resetSession()` or when the step advances. `pendingConfirmationFields` is populated by whichever logic currently triggers re-confirmation prompts — remove the check for any path present in `confirmedFields` to suppress the duplicate prompt.
+
+---
+
 ### 3.5 Voice sink no longer writes directly
 
 - **File**: `lib/features/voice_onboarding/presentation/widgets/client_step1_voice_sink.dart`
@@ -1568,6 +1694,13 @@ Backward compat: optional, default `None`. Pre-existing serialised states still 
 `services/field_apply.py` — `build_envelope` accepts an optional `input_method` parameter and surfaces it on the emitted envelope when non-None. Clients can ignore the field safely until they handle it; older clients keep working.
 
 `services/tools.py::_update_field` threads `input_method="voice"` into `build_envelope` since voice-tool dispatch is the only path that calls it today.
+
+#### New server-emitted WS events (added alongside `field_apply`)
+
+| Event | Payload | Flutter Action |
+|---|---|---|
+| `field_advisory_warning` | `{section_id, field_id, repeatable_index?, code, reason_human, severity: "advisory", suggested_fix?, allowed_values?}` | Store advisory; surface after current extraction burst completes; do NOT block field progression |
+| `field_confirmed` | `{section_id, field_id, repeatable_index?, value, confirmation_source: "voice", turn_id}` | Mark field as confirmed in session state; suppress redundant re-confirmation prompts; no network call needed |
 
 ### 12.4 Per-write cross-field check policy
 
