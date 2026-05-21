@@ -3,6 +3,19 @@ name = "restrictive-practices"
 version = "0.1.0"
 description = "NDIS Restrictive Practice Detection Pipeline"
 requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=1.74.0",
+    "redis>=5.0.0",
+    "structlog>=24.0.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "fakeredis[lua]>=2.20.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
 
 [tool.ruff]
 target-version = "py312"
@@ -13,7 +26,7 @@ src = ["."]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["api", "db", "ingestion", "models", "pipeline"]
+known-first-party = ["api", "db", "ingestion", "models", "pipeline", "voice"]
 
 [tool.mypy]
 python_version = "3.12"

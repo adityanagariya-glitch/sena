@@ -2,10 +2,10 @@
 
 # Infrastructure
 up:
-	docker-compose up -d
+	docker-compose -f docker-compose_db.yml up -d
 
 down:
-	docker-compose down
+	docker-compose -f docker-compose_db.yml down
 
 # Dev server
 server:

@@ -69,10 +69,13 @@ START → triage_step (Haiku, Bedrock converse, maxTokens=512)
 | `scripts/ingest_docs.py` | CLI: `--sample` or `--pdf <path> --category <c> --source <s>` |
 | `scripts/ingest_style_standards.py` | Ingests client gold-standard doc into pgvector (15 chunks: 4 casenotes + 6 field sections + 5 incident reports, 3 new document_type values) |
 | `scripts/test_quality_score.py` | Smoke test for quality scorer — 3 fixtures (Premium/Average/Poor) |
-| `scripts/test_*.py` | Standalone smoke runners (not pytest); per-step verification |
 | `scripts/test_sarah_note.py` | Realistic end-to-end fixture — complex multi-practice shift note (physical + chemical + seclusion); good regression canary |
 | `scripts/test_form_api.py` | 8-scenario comprehensive test covering all 4 verdict outcomes and all 5 practice types using structured form fields |
 | `scripts/test_draft_endpoint.py` | 10-scenario smoke test for `/draft` — calls `run_drafter()` directly |
+| `scripts/test_incident_draft.py` | Smoke test for `pipeline/incident_draft.py` — verifies incident report fields |
+| `scripts/test_summary.py` | Smoke test for `pipeline/summary.py` — verifies summary block fields |
+| `scripts/test_perf_baseline.py` | Pipeline performance baseline — records processing_time_ms per step |
+| `scripts/_debug_pipeline.py` | Interactive debug harness — runs pipeline with verbose step logging; not for CI |
 
 ### API Routes
 
@@ -193,51 +196,55 @@ All use `SENA_AI_` prefix in `.env` at the module root.
 # Activate env first
 conda activate sena_env
 
-# Full demo setup (one command)
-# Note: Makefile's `make up` calls `docker-compose up -d` — if no docker-compose.yml
-# exists here, run the DB step manually first (see below)
-make demo-setup      # docker-compose up + ingest real PDFs + seed BSPs
+# ── Infrastructure ────────────────────────────────────────────────────────────
+make up              # docker-compose -f docker-compose_db.yml up -d (Postgres + pgvector, port 5433)
+make down            # stop DB
 
-# Or step by step:
-docker-compose -f docker-compose_db.yml up -d   # Postgres + pgvector on port 5433
-python scripts/ingest_ndis_policies.py           # ingest 5 official NDIS PDFs (place in pdfs/ if download blocked)
-python scripts/ingest_style_standards.py         # ingest client gold-standard doc (15 chunks, 3 document_types) — run once
-python scripts/setup_transcribe_vocab.py         # create NDIS custom vocabulary in Transcribe — run once; set SENA_AI_TRANSCRIPTION_VOCAB_NAME after
-python scripts/seed_demo.py                      # seed demo BSPs
+# ── Full demo setup ───────────────────────────────────────────────────────────
+make demo-setup      # up + ingest-ndis + seed-demo (Makefile fixed to use docker-compose_db.yml)
+python scripts/ingest_style_standards.py         # ingest gold-standard doc (15 chunks) — once only
+python scripts/setup_transcribe_vocab.py         # create NDIS Transcribe vocabulary — once; set SENA_AI_TRANSCRIPTION_VOCAB_NAME after
 
-# API server
-uvicorn main:app --reload --port 8084
+# ── API server ─────────────────────────────────────────────────────────────────
+make server          # uvicorn main:app --reload --port 8084
 # → Swagger UI at http://localhost:8084/docs
 # → Demo UI at http://localhost:8084/demo (Basic auth required if BASIC_AUTH_USER set)
 
-# Ingest sample NDIS policies (no PDF required — for quick testing)
-python scripts/ingest_docs.py --sample
+# ── Data ingestion ─────────────────────────────────────────────────────────────
+make ingest          # ingest sample NDIS policies (no PDF required — quick testing)
+make ingest-ndis     # download + ingest all official NDIS PDFs
+make seed-demo       # seed demo BSPs into DB
 
-# Ingest a real PDF manually
+# Ingest a real PDF manually:
+make ingest-pdf PDF=path/to/guide.pdf CATEGORY="Chemical Restraint" SOURCE="NDIS Guide 2023" RISK="High Risk"
+# or directly:
 python scripts/ingest_docs.py --pdf path/to/guide.pdf \
     --category "Chemical Restraint" \
     --source "NDIS Regulated Restrictive Practices Guide 2023" \
     --risk "High Risk" --document-type "Regulatory"
 
-# Smoke-test individual pipeline steps (standalone — not pytest)
-make test            # runs triage → rag → evaluator → cross_check → pipeline in sequence
+# ── Smoke tests (standalone — not pytest) ─────────────────────────────────────
+make test            # triage → rag → evaluator → cross_check → pipeline
 make test-sarah      # realistic complex fixture (physical + chemical + seclusion)
-python scripts/test_form_api.py  # 8 real-data scenarios (all 4 outcomes, all 5 practice types; uses structured form fields)
-python scripts/test_draft_endpoint.py  # 10 drafter scenarios; calls run_drafter() directly, no server needed
+python scripts/test_form_api.py          # 8 real-data scenarios (all 4 outcomes, all 5 practice types)
+python scripts/test_draft_endpoint.py   # 10 drafter scenarios; calls run_drafter() directly
+python scripts/test_incident_draft.py   # incident report drafter smoke test
+python scripts/test_summary.py          # summary step smoke test
+python scripts/test_perf_baseline.py    # processing_time_ms baseline per step
 
-# Or individual steps:
+# Individual steps:
 python scripts/test_triage.py
 python scripts/test_rag.py
 python scripts/test_evaluator.py
 python scripts/test_cross_check.py
 python scripts/test_pipeline.py
 
-# Code quality
+# ── Code quality ───────────────────────────────────────────────────────────────
 make lint            # ruff check .
 make format          # ruff format .
 make typecheck       # mypy . --ignore-missing-imports
 
-# DB inspection
+# ── DB inspection ──────────────────────────────────────────────────────────────
 make audit           # last 5 pipeline run rows
 make audit-chunks    # chunk counts by document type
 
@@ -245,7 +252,7 @@ make audit-chunks    # chunk counts by document type
 docker exec -it sena-ai-db psql -U sena_ai -d sena_ai
 ```
 
-**Note on pytest:** `pyproject.toml` declares `testpaths = ["tests"]` but the `tests/` directory does not yet exist — all testing is via standalone smoke runners in `scripts/`. Adding pytest unit tests is a backlog item.
+**Pytest (voice assistant):** `tests/test_voice/` contains 38 pytest tests for the voice package. Run via `python -m pytest tests/test_voice/ -q`. Requires `fakeredis` — install with `pip install fakeredis pytest pytest-asyncio`.
 
 ## Critical Rules
 
@@ -270,3 +277,53 @@ docker exec -it sena-ai-db psql -U sena_ai -d sena_ai
 - Never pass form fields directly to LLM — always call `note.to_text()` which handles both transcript-first and form-narrative rendering
 - `behavioural_events` is the highest-signal field for detection — when constructing test notes, put restrictive practice evidence there
 - `bsp_mentioned_in_note` must NOT gate `alert_required` — model sets it True even for negative mentions; rely on cross_check SQL only. See issues-solved 0018.
+
+## Voice Assistant (voice/)
+
+Real-time case-note form assistant using Gemini Live. Worker speaks; assistant fills missing fields in real time. Does NOT call `/evaluate` — worker presses Submit manually.
+
+### Architecture
+
+```
+POST /v1/restrictive-practices/voice/session  → create session, issue WS token, seed initial_values into Redis
+WSS  /v1/restrictive-practices/voice/ws/{id}?token=…  → Gemini Live bridge
+
+voice/
+  schema.py          build_case_note_schema() — 7 sections, 27 fields
+  state.py           CaseNoteVoiceState — Pydantic v2 session state
+  state_repo.py      VoiceStateRepo — Redis ops, key prefix sena:rp_voice:
+  tools.py           ToolDispatcher — 5 tools: update_field/clear_field/get_session_context/finish_session/escalate_incident
+  prompt_builder.py  build_system_prompt() — injects LIVE_STATE_JSON + schema
+  gemini_live.py     GeminiLiveSession — audio bridge (copy of onboarding with 3 import rewires)
+  prompts/
+    case_note_system.md  System prompt for case-note context
+  validators/        sequencing.py (no repeatables), field_rules.py (injury_description rule)
+```
+
+### Key rules
+
+- All Redis keys use `sena:rp_voice:` prefix — never `sena:onboarding:` (enforced in tests/test_voice/test_state_repo.py)
+- `finish_session` validates all required fields filled, emits `session_complete` with `to_case_note_payload()`, sets `state.completed=True` — NEVER calls `/evaluate`
+- `voice_coverage=[]` means all fields are voice-eligible (no coverage gate)
+- `safety.injury_description` has `visible_if={"any_injuries": True}` — only appears in schema/prompt when `any_injuries=True`
+- Send `screen_state_v2` from Flutter when `any_injuries` toggles so the server re-evaluates `visible_if`
+
+### Env vars (voice-specific)
+
+| Var | Default | Notes |
+|-----|---------|-------|
+| `SENA_AI_GEMINI_API_KEY` | `""` | Required for voice |
+| `SENA_AI_GEMINI_LIVE_MODEL_ID` | `gemini-3.1-flash-live-preview` | |
+| `SENA_AI_REDIS_URL` | `redis://localhost:6379/0` | Start via `docker-compose -f docker-compose_db.yml up -d` |
+| `SENA_AI_VOICE_SESSION_MAX_SEC` | `3600` | Session TTL |
+| `SENA_AI_VOICE_SILENCE_TIMEOUT_SEC` | `8` | Silence watchdog; 0 = disabled |
+
+### Tests
+
+```bash
+python -m pytest tests/test_voice/ -q   # 38 tests, fakeredis, no live services needed
+```
+
+### Flutter contract
+
+See `FLUTTER_VOICE_INTEGRATION.md` for the full WS event contract, `screen_state_v2` shape, and field section reference.

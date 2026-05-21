@@ -3,12 +3,16 @@ import os
 import traceback
 from pathlib import Path
 
+import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from api.routes import _require_auth, router
+from api.voice_routes import set_voice_repo, voice_router
+from config import settings
 from db.session import create_tables
+from voice.state_repo import VoiceStateRepo
 
 _DEMO_HTML = Path(__file__).parent / "demo_ui.html"
 
@@ -34,6 +38,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(router)
+    app.include_router(voice_router)
 
     @app.get("/demo", include_in_schema=False, dependencies=[Depends(_require_auth)])
     async def demo_ui() -> FileResponse:
@@ -55,8 +60,30 @@ def create_app() -> FastAPI:
             await create_tables()
             logger.info("DB tables ready.")
         except Exception as exc:
-            logger.warning("DB not reachable at startup — start PostgreSQL before using pipeline endpoints. (%s)", exc)
+            logger.warning(
+                "DB not reachable at startup — start PostgreSQL before using pipeline endpoints. (%s)",
+                exc,
+            )
+        try:
+            redis_client = aioredis.from_url(settings.redis_url, decode_responses=False)
+            await redis_client.ping()
+            repo = VoiceStateRepo(redis_client)
+            set_voice_repo(repo)
+            logger.info("Voice Redis connected: %s", settings.redis_url)
+        except Exception as exc:
+            logger.warning(
+                "Redis not reachable at startup — voice endpoints unavailable. (%s)", exc
+            )
         logger.info("Startup complete.")
+
+    @app.on_event("shutdown")
+    async def on_shutdown() -> None:
+        from api.voice_routes import _repo as voice_repo_instance
+        try:
+            if voice_repo_instance is not None:
+                await voice_repo_instance._r.aclose()
+        except Exception:
+            pass
 
     return app
 

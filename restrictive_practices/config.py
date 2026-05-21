@@ -57,5 +57,17 @@ class Settings(BaseSettings):
     transcription_language: str = "en-AU" # Transcribe language code
     transcription_vocab_name: str = ""    # Custom vocabulary name (optional; blank = omit)
 
+    # Voice assistant (Gemini Live + Redis)
+    gemini_api_key: str = ""
+    gemini_live_model_id: str = "gemini-3.1-flash-live-preview"
+    redis_url: str = "redis://localhost:6379/0"
+    voice_session_max_sec: int = 3600
+    voice_silence_timeout_sec: int = 8
+    voice_validation_advisory: bool = True
+    voice_grounding_enabled: bool = False
+    screen_state_max_bytes: int = 8192
+    resumption_handle_ttl_sec: int = 600
+    debug: bool = False
+
 
 settings = Settings()

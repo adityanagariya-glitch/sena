@@ -17,5 +17,14 @@ services:
     volumes:
       - ai-db-data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: sena-rp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
 volumes:
   ai-db-data:
+  redis-data:
