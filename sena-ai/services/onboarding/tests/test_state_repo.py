@@ -1,20 +1,37 @@
 """Tests for Redis-backed FormStateRepo."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
-
-from onboarding.models.form_state import FieldSource, FormState
+from onboarding.models.form_state import FormState
 from onboarding.models.schema_spec import StepSchema
 
-FIXTURES = Path(__file__).parent.parent / "fixtures"
+_MINIMAL_SCHEMA: dict = {
+    "step_id": "personal_information",
+    "step_label": "Personal Information",
+    "progress_percent": 20,
+    "sections": [
+        {
+            "id": "basics",
+            "label": "About you",
+            "fields": [
+                {"id": "full_name", "type": "text", "label": "Full Name", "required": True},
+                {"id": "email", "type": "email", "label": "Email Address", "required": True},
+            ],
+        },
+        {
+            "id": "emergency_contacts",
+            "label": "Emergency Contacts",
+            "repeatable": {"min": 0, "max": 5},
+            "item_fields": [
+                {"id": "name", "type": "text", "label": "Name", "required": True},
+                {"id": "relation", "type": "text", "label": "Relation", "required": True},
+            ],
+        },
+    ],
+}
 
 
 def personal_schema() -> StepSchema:
-    data = json.loads((FIXTURES / "schema_personal_information.json").read_text())
-    return StepSchema.model_validate(data)
+    return StepSchema.model_validate(_MINIMAL_SCHEMA)
 
 
 def make_state(session_id: str = "sess-001") -> FormState:

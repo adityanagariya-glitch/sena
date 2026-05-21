@@ -41,10 +41,12 @@ from onboarding.services.screen_context import (
     payload_hash,
     render_injection_text,
 )
-from onboarding.services.tools import FUNCTION_DECLS, POLICY_BLOCK_DECL, PolicyBlockSignal
+from onboarding.services.tools import FUNCTION_DECLS
 
 if TYPE_CHECKING:
+    from onboarding.models.turn_payload import TurnPayload
     from onboarding.repositories.state_repo import FormStateRepo
+    from onboarding.services.mobile_bridge import MobileBridge
     from onboarding.services.tools import ToolDispatcher
 
 import structlog
@@ -75,6 +77,7 @@ class GeminiLiveSession:
         repo: FormStateRepo,
         tool_dispatcher: ToolDispatcher | None = None,
         replay_context: str | None = None,
+        mobile_bridge: MobileBridge | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -82,6 +85,8 @@ class GeminiLiveSession:
         self._repo = repo
         self._tools = tool_dispatcher
         self._replay_context = replay_context
+        self._mobile_bridge = mobile_bridge
+        self._current_turn: TurnPayload | None = None
         self._turn_id = 0
         self._last_screen_hash: str | None = None
         self._last_audio_at: float = 0.0
@@ -156,8 +161,7 @@ class GeminiLiveSession:
             # Phase C/E — tool list built by grounding module; includes Google Search
             # when SENA_AI_ONBOARDING_GROUNDING_ENABLED=true (default off).
             tools=build_live_tools(
-                FUNCTION_DECLS if settings.onboarding_grounding_enabled
-                else [*FUNCTION_DECLS, POLICY_BLOCK_DECL],
+                FUNCTION_DECLS,
                 grounding_enabled=settings.onboarding_grounding_enabled,
             ) if self._tools else None,
             # Multi-turn REQUIRES explicit realtime_input_config with VAD.
@@ -283,11 +287,29 @@ class GeminiLiveSession:
             # Signal end-of-utterance so Gemini flushes its audio buffer
             await session.send_realtime_input(audio_stream_end=True)
 
-        elif msg_type == "screen_state":
-            await self._handle_screen_state(session, data, version=1)
+        elif msg_type == "tool_response":
+            request_id = data.get("request_id")
+            result = data.get("result", {})
+            if isinstance(request_id, str) and self._mobile_bridge is not None:
+                self._mobile_bridge.resolve(request_id, result)
 
-        elif msg_type == "screen_state_v2":
-            await self._handle_screen_state(session, data, version=2)
+        elif msg_type in ("screen_state", "screen_state_v2"):
+            # api.md: enforce SCREEN_STATE_MAX_BYTES BEFORE Pydantic parse to
+            # prevent memory exhaustion via a giant payload.
+            if len(raw_text) > settings.screen_state_max_bytes:
+                await self._ws.send_text(json.dumps({
+                    "type": "error",
+                    "code": "screen_state_too_large",
+                    "message": (
+                        f"screen_state payload exceeds "
+                        f"{settings.screen_state_max_bytes} bytes"
+                    ),
+                }))
+                return False
+            if msg_type == "screen_state":
+                await self._handle_screen_state(session, data, version=1)
+            else:
+                await self._handle_screen_state_v2_turn(session, data)
 
         elif msg_type == "validation_failed":
             await self._handle_validation_failed(session, data)
@@ -396,6 +418,32 @@ class GeminiLiveSession:
             section_id,
             field_id,
         )
+
+    async def _handle_screen_state_v2_turn(
+        self, session: genai.live.AsyncSession, data: dict
+    ) -> None:
+        """Handle screen_state_v2 with TurnPayload — updates _current_turn and
+        falls through to the legacy screen-state injection for Gemini context."""
+        from pydantic import ValidationError
+
+        from onboarding.models.turn_payload import TurnPayload
+
+        turn_json = data.get("turn")
+        if turn_json is not None:
+            try:
+                new_turn = TurnPayload.model_validate(turn_json)
+                self._current_turn = new_turn
+                await session.send_realtime_input(
+                    text=f"[TURN]{new_turn.model_dump_json()}[/TURN]"
+                )
+            except ValidationError as e:
+                await self._ws.send_text(json.dumps({
+                    "type": "error", "code": "turn_invalid", "message": str(e),
+                }))
+                return
+        else:
+            # No turn key — delegate to legacy handler for backwards-compat.
+            await self._handle_screen_state(session, data, version=2)
 
     async def _handle_screen_state(
         self, session: genai.live.AsyncSession, data: dict, *, version: int = 1
@@ -887,26 +935,15 @@ class GeminiLiveSession:
             args_dict = dict(call.args) if call.args else {}
             try:
                 result = await self._tools.dispatch(call.name, args_dict)
-            except PolicyBlockSignal as exc:
-                log.info(
-                    "policy_block_signal question=%r session=%s",
-                    exc.question,
+            except Exception:
+                log.exception(
+                    "tool_dispatch_error tool=%s session=%s",
+                    call.name,
                     self._session_id,
                 )
-                await self._ws.send_text(
-                    json.dumps(
-                        {
-                            "type": "error",
-                            "code": "policy_block",
-                            "message": (
-                                "This question requires current NDIS policy data. "
-                                "Please re-ask with Google Search grounding enabled."
-                            ),
-                        }
-                    )
-                )
-                await self._ws.close(4011)
-                return
+                result = {
+                    "ok": False, "reason": "Internal dispatch error", "code": "dispatch_error"
+                }
             responses.append(
                 types.FunctionResponse(
                     id=call.id,
