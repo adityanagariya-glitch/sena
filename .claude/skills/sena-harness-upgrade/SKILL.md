@@ -64,6 +64,8 @@ Then run the phases below in order. Use plan mode for any phase that touches >3 
 - [ ] Grep `principal-engineer.md` for ALL 6 orchestration sub-headers: `Sub-Agent Delegation`, `Plan Mode Triggers`, `Dynamic Recalibration`, `Root Cause Over Symptom`, `Elegance Check`, `Minimal Blast Radius`. Any missing → re-add from `REFERENCE.md` §4b.
 - [ ] Verify anti-patterns 11-13 present in `principal-engineer.md`: "Paste a sub-agent's full output", "Drift from the plan", "Repeat a mistake already captured". Missing → add.
 - [ ] Verify the DoD followups.md line present: `Out-of-scope observations moved to .claude/tasks/followups.md, not left in the diff.` Missing → add.
+- [ ] Verify `principal-engineer.md` has the `## ⚖️ ASYMMETRIC PRIVILEGED TRUST` section referencing `.claude/rules/asymmetric-privileged-trust.md` (added 2026-05-19, SDAR-inspired). Missing → re-add reference.
+- [ ] Verify `.claude/rules/asymmetric-privileged-trust.md` exists and contains: per-agent table (14 rows), feature-implementation teacher/student pattern, weighted-lessons promotion formula, hard-exemption list. Missing → recreate from `REFERENCE.md` §25.
 
 ### Phase 4.5 — Autoload rules + supporting files
 

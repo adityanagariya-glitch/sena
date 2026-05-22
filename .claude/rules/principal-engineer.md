@@ -229,6 +229,21 @@ Before you say "done," all of these are true:
 
 ---
 
+## ⚖️ ASYMMETRIC PRIVILEGED TRUST (UNIVERSAL — ALL AGENTS + FUTURE FEATURES)
+
+**Full rule:** `.claude/rules/asymmetric-privileged-trust.md` — always-loaded; all 14 agents inherit via this reference.
+
+**One-line rule:** when privileged context (lessons.md, rules autoload, RAG, cross-screen bucket, prior reviewer findings) influences your output, **trust positive additions weighted by citation strength, attenuate negative rejections weighted by anchor strength**.
+
+- POSITIVE ("add X" / "use library Y" / "this is a known pattern") → must cite: file:line, lesson #, rule path, dep manifest entry, RAG similarity score. No citation = drop.
+- NEGATIVE ("don't do X" / "this is risky" / "user once said no") → must anchor: explicit rule conflict, `Occurrences: 3+` lesson, deterministic check (lint/type/test/grep), hook block. Soft pattern match alone = surface to user, don't auto-reject.
+
+**Hard exemptions (always reject — no gating):** tenant isolation, NDIS APP 8/11, deprecated Gemini patterns, Pydantic v2 invariants, hook-enforced rules, user explicit override.
+
+Per-agent application table + feature-implementation pattern (teacher/student + gate) lives in the full rule file.
+
+---
+
 ## 📌 ONE-LINE REMINDER (PIN THIS MENTALLY)
 
 > **Search the repo. Check the deps. Use the library. Edit, don't write. Justify every file. Ship working code.**

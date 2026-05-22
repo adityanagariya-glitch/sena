@@ -1,12 +1,12 @@
-# Graph Report - .  (2026-05-19)
+# Graph Report - .  (2026-05-22)
 
 ## Corpus Check
-- 143 files · ~1,178,469 words
+- 143 files · ~1,178,623 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1532 nodes · 3747 edges · 132 communities detected
-- Extraction: 42% EXTRACTED · 58% INFERRED · 0% AMBIGUOUS · INFERRED: 2163 edges (avg confidence: 0.5)
+- 1486 nodes · 3850 edges · 132 communities detected
+- Extraction: 30% EXTRACTED · 70% INFERRED · 0% AMBIGUOUS · INFERRED: 2702 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -144,16 +144,16 @@
 - [[_COMMUNITY_Community 131|Community 131]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `FormState` - 319 edges
-2. `StepSchema` - 298 edges
-3. `FormStateRepo` - 250 edges
-4. `ToolDispatcher` - 157 edges
-5. `SessionBootstrap` - 138 edges
-6. `ValidationRejection` - 115 edges
-7. `FieldSource` - 104 edges
-8. `SectionSpec` - 94 edges
-9. `FieldSpec` - 79 edges
-10. `PolicyBlockSignal` - 72 edges
+1. `FormState` - 411 edges
+2. `StepSchema` - 389 edges
+3. `FormStateRepo` - 337 edges
+4. `ToolDispatcher` - 223 edges
+5. `ValidationRejection` - 172 edges
+6. `SessionBootstrap` - 169 edges
+7. `FieldSource` - 118 edges
+8. `SectionSpec` - 117 edges
+9. `FieldSpec` - 98 edges
+10. `ScreenStateMessage` - 86 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `SENA Platform Overview` --semantically_similar_to--> `Extras Claude.md Project Context`  [INFERRED] [semantically similar]
@@ -175,180 +175,180 @@
 ## Communities
 
 ### Community 0 - "Community 0"
-Cohesion: 0.03
-Nodes (283): ValidationRejection, Required only when plan_management = 'Plan Managed'., Required only when plan_management = 'Plan Managed'., Required email only when plan_management = 'Plan Managed'., Required email only when plan_management = 'Plan Managed'., Required only when plan_management = 'Plan Managed'., Required email only when plan_management = 'Plan Managed'., Required only when plan_management = 'Plan Managed'. (+275 more)
+Cohesion: 0.02
+Nodes (285): ValidationRejection, Cross-field invariant validators — pure functions, no I/O., Extract .value from FieldValue dict; return raw otherwise., schedule_of_supports[*]: end_time MUST be strictly greater than     start_time., Extract .value from FieldValue dict; return raw otherwise., NDIS rule: emergency contact phone must not equal the participant's own     phon, NDIS rule: emergency contact phone must not equal the participant's own     pho, Per-field validators mirroring Flutter lib/core/utils/validators.dart.  Error st (+277 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.04
-Nodes (124): BaseModel, CaseNoteClient, _load_fixtures(), Fetch case notes for a (staff, client) pair.     Uses fixture stub. Replace stub, classify(), ClassifyResult, _FieldClassification, _GeminiClassifyOutput (+116 more)
+Nodes (130): BaseModel, CaseNoteClient, _load_fixtures(), Fetch case notes for a (staff, client) pair.     Uses fixture stub. Replace stub, classify(), ClassifyResult, _FieldClassification, _GeminiClassifyOutput (+122 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.05
-Nodes (80): BaseException, GeminiLiveSession, Gemini Live session wrapper for the onboarding WebSocket endpoint.  Ported from, Open Gemini connection and bridge until the client disconnects., Open Gemini connection and bridge until the client disconnects., Forward browser audio + control messages → Gemini., Handle a JSON control message from the client.         Returns True if the sessi, Forward browser audio + control messages → Gemini. (+72 more)
+Cohesion: 0.03
+Nodes (112): GeminiLiveSession, Gemini Live session wrapper for the onboarding WebSocket endpoint.  Ported from, Open Gemini connection and bridge until the client disconnects., Open Gemini connection and bridge until the client disconnects., Open Gemini connection and bridge until the client disconnects., Open Gemini connection and bridge until the client disconnects., Forward browser audio + control messages → Gemini., Handle a JSON control message from the client.         Returns True if the sessi (+104 more)
 
 ### Community 3 - "Community 3"
+Cohesion: 0.06
+Nodes (107): Enum, EscalationRecord, FieldSource, FieldSpec, FieldType, Return all fields (regular or item_fields for repeatable)., RepeatableConfig, SectionSpec (+99 more)
+
+### Community 4 - "Community 4"
+Cohesion: 0.04
+Nodes (82): _append_repeatable(), build_summary(), _format_time_since(), _format_verbatim(), Cross-screen shared-context — pure module.  Single source of truth for what a "s, Distil a completed FormState into a StepSummary.      `form_state.values` is the, Render the cross-screen context as a readable prompt block.      Returns the emp, Compact, lossless JSON of every populated FormState field not excluded.      Enc (+74 more)
+
+### Community 5 - "Community 5"
 Cohesion: 0.03
 Nodes (39): ApprovalService, auth_context_dependency(), AuthContext, get_auth_context_from_dev_headers(), get_auth_context_from_jwt(), _parse_uuid(), BedrockService, ApprovalQueueItem (+31 more)
 
-### Community 4 - "Community 4"
+### Community 6 - "Community 6"
 Cohesion: 0.02
 Nodes (96): Circuit Breaker Configuration Table, Audit: Context Preloader Timing Risk, Graceful Degradation Ladder (5 Levels), Audit Blind Spot: No Fallback Voice Pipeline, Audit Blind Spot: No Multi-Tenancy Model in Voice, Audit: NON_BLOCKING Tool Calls Experimental Risk, Audit Blind Spot: No Observability Architecture, Hardened Session State Machine (+88 more)
 
-### Community 5 - "Community 5"
-Cohesion: 0.06
-Nodes (68): Shared types for server-side field validation., _at_least(), _at_most(), _au_phone(), _email(), _fv(), _list(), _max_len() (+60 more)
-
-### Community 6 - "Community 6"
-Cohesion: 0.06
-Nodes (48): _append_repeatable(), build_summary(), _format_time_since(), _format_verbatim(), Cross-screen shared-context — pure module.  Single source of truth for what a "s, Distil a completed FormState into a StepSummary.      `form_state.values` is the, Render the cross-screen context as a readable prompt block.      Returns the emp, Compact, lossless JSON of every populated FormState field not excluded.      Enc (+40 more)
-
 ### Community 7 - "Community 7"
-Cohesion: 0.06
-Nodes (26): _fv(), _load_schema(), Tests for the onboarding validators package.  All tests are pure — no Redis, no, Unknown (section, field) pairs must pass — drift detection is tools.py's job., plan_manager is required only when plan_management = 'Plan Managed'., plan_end validator cross-references plan_start from FormState., plan_manager is required only when plan_management = 'Plan Managed'., ValidationRejection serialises correctly for the FunctionResponse payload. (+18 more)
+Cohesion: 0.19
+Nodes (8): _create_session(), _personal_schema_payload(), Tests for POST /v1/onboarding/session/{session_id}/errors.  Endpoint records mob, Cross-tenant isolation: a caller from another tenant cannot         report erro, Repository-level coverage for the unexposed read companion., TestErrorsEndpoint, TestErrorsRepoCompanion, _valid_body()
 
 ### Community 8 - "Community 8"
-Cohesion: 0.04
-Nodes (29): emitted(), _fill_requirements_scalar_fields(), seeded_repo(), test_advance_step_blocked_by_section_min(), test_advance_step_passes_when_routines_filled(), test_basics_email_allows_disposable_per_spec(), test_C1_different_row_still_blocked(), test_C1_same_row_sibling_bypasses_lock() (+21 more)
-
-### Community 9 - "Community 9"
-Cohesion: 0.08
-Nodes (11): Enum, CompletionStats, TranscriptEntry, _utcnow(), RepeatableConfig, load_fixture(), Tests for schema_spec.py Pydantic models., test_fixture_valid() (+3 more)
-
-### Community 10 - "Community 10"
-Cohesion: 0.07
-Nodes (12): from_v1(), payload_hash(), Screen state context injection — v2 (screen_state_v2 + v1 adapter).  Pure module, Produce the deterministic multi-line [SCREEN] block injected into Gemini.      E, Stable SHA-256 hash of a payload dict for idempotency deduplication.     Identic, Validated contents of a v1 screen_state data payload. Unknown keys ignored., Structured screen state emitted by Flutter on each field focus change.     Drive, Normalise a v1 ScreenStateMessage into ScreenStateV2.     Maps current_screen → (+4 more)
-
-### Community 11 - "Community 11"
-Cohesion: 0.14
-Nodes (17): _build_initial_values(), complete_session(), create_session(), diag_bucket(), end_personal_details_session(), end_session(), get_state(), health_live() (+9 more)
-
-### Community 12 - "Community 12"
-Cohesion: 0.19
-Nodes (8): _create_session(), _personal_schema_payload(), Tests for POST /v1/onboarding/session/{session_id}/errors.  Endpoint records mob, Cross-tenant isolation: a caller from another tenant cannot         report error, Repository-level coverage for the unexposed read companion., TestErrorsEndpoint, TestErrorsRepoCompanion, _valid_body()
-
-### Community 13 - "Community 13"
 Cohesion: 0.15
 Nodes (8): make_state(), personal_schema(), Tests for Redis-backed FormStateRepo., TestCreateAndGet, TestResumption, TestStateUpdate, TestTranscript, TestWsLock
 
-### Community 14 - "Community 14"
+### Community 9 - "Community 9"
+Cohesion: 0.11
+Nodes (3): Validated contents of a v1 screen_state data payload. Unknown keys ignored., ScreenData, Tests for services/screen_context.py — pure module, no mocks needed.
+
+### Community 10 - "Community 10"
 Cohesion: 0.16
 Nodes (7): personal_schema_payload(), Integration tests for REST routes., TestCompleteSession, TestCreateSession, TestGetState, TestHealth, TestUpdateState
 
-### Community 15 - "Community 15"
+### Community 11 - "Community 11"
 Cohesion: 0.12
 Nodes (13): FieldDef, Render field schema as a structured text block for prompt injection., schema_as_text(), OnboardingState, Use this tool to search for NDIS or company policies if the user asks a question, Use this tool to update the onboarding form when the user provides their details, Executes the tool and updates the form data in the state., Route to tools if the LLM called a tool, otherwise end turn. (+5 more)
 
-### Community 16 - "Community 16"
-Cohesion: 0.23
-Nodes (13): _FakeRep, _FakeSection, _make_schema(), _make_state(), test_next_optional_field_returns_first_empty_optional_in_schema_order(), test_next_optional_field_returns_none_when_all_optionals_filled(), test_section_min_unmet_dict_values(), test_section_min_unmet_min_one_no_rows() (+5 more)
-
-### Community 17 - "Community 17"
+### Community 12 - "Community 12"
 Cohesion: 0.28
-Nodes (14): _build(), _make_requirements_state(), _make_schema(), _make_state(), test_build_system_prompt_contains_rule_13_and_14(), test_next_optional_field_token_empty_when_none_remain(), test_next_optional_field_token_interpolated(), test_participant_name_token_falls_back_to_unknown_when_missing() (+6 more)
+Nodes (9): _FakeBridge, test_dispatch_propose_field_forwards_to_bridge(), test_dispatch_submit_step_returns_blockers_verbatim(), test_dispatch_unknown_tool_returns_error(), test_escalate_incident_does_not_call_bridge(), test_set_turn_id_stores_value(), test_step_completed_flips_on_successful_submit(), test_step_completed_stays_false_for_non_submit_tools() (+1 more)
 
-### Community 18 - "Community 18"
+### Community 13 - "Community 13"
 Cohesion: 0.14
 Nodes (4): Malformed body → 422, not 501., Without overriding auth dep, missing headers → 422 Unprocessable., test_context_request_validation(), test_missing_auth_headers_returns_422()
 
-### Community 19 - "Community 19"
+### Community 14 - "Community 14"
 Cohesion: 0.14
 Nodes (1): Tests for services/resumption.py — fakeredis integration.
 
-### Community 20 - "Community 20"
+### Community 15 - "Community 15"
 Cohesion: 0.15
 Nodes (12): Test Case 5: Verify Redis Persistence (State Retrieval)     Prove that Redis ho, Test Case 1: Initial Connection     Verify the system handles empty states corr, Test Case 6: WebRTC Telemetry Auth Token     Ensure the backend generates a val, Test Case 2: Provide Single Field (Standard Turn)     Verify the router acknowl, Test Case 3: Bulk Fulfillment     Verify the router skips fulfilled fields and, Test Case 4: Verify Complex Nested Structures     Verify the Pydantic models cl, test_01_initial_connection(), test_02_provide_single_field() (+4 more)
 
-### Community 21 - "Community 21"
+### Community 16 - "Community 16"
 Cohesion: 0.26
 Nodes (9): _make_repo(), test_append_audit_creates_row(), test_confirm_incident_draft_sets_confirmed(), test_create_incident_draft_persists(), test_create_review_session_adds_and_commits(), test_get_review_session_none_when_missing(), test_get_rolling_summary_none_when_missing(), test_get_rolling_summary_returns_row() (+1 more)
 
-### Community 22 - "Community 22"
-Cohesion: 0.32
-Nodes (11): check_emergency_email_unique_and_differs_from_client(), check_emergency_phone_unique_and_differs_from_client(), check_medical_history_all_or_none(), check_plan_end_after_start(), check_time_slot_no_overlap(), _fv(), Cross-field invariant validators — pure functions, no I/O., Extract .value from FieldValue dict; return raw otherwise. (+3 more)
+### Community 17 - "Community 17"
+Cohesion: 0.24
+Nodes (12): _make_session(), _mock_gemini_session(), Tests for GeminiLiveSession._handle_screen_state — Step N-4 fix.  Verifies that, Sending the same field error twice (with a different screen hash) does     not d, A v2 payload with no field_errors must not modify an existing     pending_valida, Fake Gemini AsyncSession — only send_realtime_input needed., field_errors in v2 payload → upserted into state.pending_validation_errors., _seed() (+4 more)
 
-### Community 23 - "Community 23"
+### Community 18 - "Community 18"
 Cohesion: 0.2
 Nodes (5): BaseSettings, CaseReviewSettings, OnboardingSettings, All env vars read as SENA_AI_<FIELD_NAME_UPPER>.     No Field(alias=...) — alias, VoiceSettings
 
-### Community 24 - "Community 24"
-Cohesion: 0.33
-Nodes (9): _apply_copy_mirroring(), _build_dry_run_values(), _clear_validation_error(), _coerce_value(), _field_is_filled(), _matches_visible_if(), _set_next_forced_field(), _upsert_validation_error() (+1 more)
+### Community 19 - "Community 19"
+Cohesion: 0.24
+Nodes (8): end_personal_details_session(), end_session(), health_live(), health_ready(), process_personal_details_turn(), process_turn(), start_personal_details_session(), start_session()
 
-### Community 25 - "Community 25"
-Cohesion: 0.44
-Nodes (8): _build_live_state_block(), build_system_prompt(), _build_validator_reminder(), _compute_next_forced_field(), _compute_next_required_field(), _partition_state_by_readonly(), _render_pending_validation_errors(), _voice_coverage_section()
+### Community 20 - "Community 20"
+Cohesion: 0.2
+Nodes (3): CompletionStats, TranscriptEntry, _utcnow()
 
-### Community 26 - "Community 26"
+### Community 21 - "Community 21"
+Cohesion: 0.38
+Nodes (9): _minimal_turn(), test_prompt_contains_turn_json_block(), test_prompt_first_name_empty_still_renders(), test_prompt_includes_grounding_section_when_enabled(), test_prompt_includes_voice_coverage_block_when_provided(), test_prompt_lists_all_six_tool_names(), test_prompt_no_legacy_placeholders_remain(), test_prompt_substitutes_first_name() (+1 more)
+
+### Community 22 - "Community 22"
 Cohesion: 0.39
 Nodes (8): _envelope_for(), Tests for services/field_apply.build_envelope.  Added 2026-05-12 (Agent 03B). Ve, _schema(), test_envelope_includes_input_method_when_typed(), test_envelope_includes_input_method_when_voice(), test_envelope_omits_input_method_when_none(), test_envelope_required_keys_present(), test_envelope_returns_none_when_blocked_by_coverage()
 
-### Community 27 - "Community 27"
+### Community 23 - "Community 23"
 Cohesion: 0.22
 Nodes (1): client()
 
-### Community 28 - "Community 28"
+### Community 24 - "Community 24"
 Cohesion: 0.25
 Nodes (7): build_replay_context(), issue_handle(), Session resumption service — Phase E.  Thin layer over the Redis primitives in F, Generate a UUID4 resumption handle, store it in Redis with TTL, return it.     T, Atomically validate and consume a resumption handle (single-use via GETDEL)., Format the last N transcript entries as a [RESUME] text turn for Gemini injectio, redeem_handle()
 
-### Community 29 - "Community 29"
-Cohesion: 0.57
-Nodes (7): _all_schema_files(), _build_state(), _first_required_scalar_paths(), test_bootstrap_value_appears_in_rendered_system_prompt(), test_screen_field_status_does_not_affect_unrelated_paths(), test_screen_field_status_filled_overrides_empty_state(), test_seeded_state_skips_filled_required_fields()
+### Community 25 - "Community 25"
+Cohesion: 0.39
+Nodes (5): _FakeWS, test_dispatch_concurrent_requests_get_distinct_ids(), test_dispatch_round_trip_happy_path(), test_dispatch_timeout_returns_validation_timeout(), test_resolve_unknown_request_id_is_silently_ignored()
 
-### Community 30 - "Community 30"
+### Community 26 - "Community 26"
+Cohesion: 0.46
+Nodes (7): test_turn_payload_parses_minimal_valid_payload(), test_turn_payload_rejects_unknown_bootstrap_mode(), test_turn_payload_rejects_unknown_field_type(), test_turn_payload_serialises_to_compact_json(), test_visible_field_enum_values_list_of_strings_for_enum(), test_visible_field_enum_values_optional_for_text(), _valid_turn()
+
+### Community 27 - "Community 27"
 Cohesion: 0.33
 Nodes (4): client(), live_audio(), Standalone Gemini Live demo server — continuous-streaming pipeline, no DB/Redis/, Continuous audio bridge: browser mic → Gemini Live → browser speaker.      Clien
 
-### Community 31 - "Community 31"
+### Community 28 - "Community 28"
 Cohesion: 0.38
 Nodes (3): create_app(), lifespan(), Minimal OCR service stub. Real implementation pending.
 
-### Community 32 - "Community 32"
+### Community 29 - "Community 29"
 Cohesion: 0.29
 Nodes (1): Tests for services/grounding.py — pure module, no mocks needed.
 
-### Community 33 - "Community 33"
+### Community 30 - "Community 30"
 Cohesion: 0.29
 Nodes (2): Tests for webhook retry logic., TestFireWebhook
 
-### Community 34 - "Community 34"
+### Community 31 - "Community 31"
 Cohesion: 0.33
 Nodes (2): get_auth_context(), get_repo()
 
-### Community 35 - "Community 35"
-Cohesion: 0.33
-Nodes (0): 
+### Community 32 - "Community 32"
+Cohesion: 0.4
+Nodes (2): _personal_schema(), ws_client()
 
-### Community 36 - "Community 36"
+### Community 33 - "Community 33"
 Cohesion: 0.4
 Nodes (1): Voice coverage check — pure module (no IO).
 
-### Community 37 - "Community 37"
+### Community 34 - "Community 34"
+Cohesion: 0.6
+Nodes (4): build_system_prompt(), _grounding_section(), Builds the Gemini system instruction for an onboarding session.  Loads the markd, _voice_coverage_section()
+
+### Community 35 - "Community 35"
 Cohesion: 0.5
 Nodes (4): fire_webhook(), HMAC-SHA256 hex signature. Returns empty string when no secret configured., POST payload to url with retry.     Returns True if any attempt succeeded (2xx),, _sign_payload()
 
-### Community 38 - "Community 38"
+### Community 36 - "Community 36"
 Cohesion: 0.4
 Nodes (1): EventService
 
-### Community 39 - "Community 39"
+### Community 37 - "Community 37"
 Cohesion: 0.83
 Nodes (3): run_migrations(), run_migrations_offline(), run_migrations_online()
 
-### Community 40 - "Community 40"
+### Community 38 - "Community 38"
 Cohesion: 0.5
 Nodes (1): create case review tables  Revision ID: 0001 Revises: Create Date: 2026-04-23  T
 
-### Community 41 - "Community 41"
+### Community 39 - "Community 39"
 Cohesion: 0.5
 Nodes (1): configure_logging()
 
-### Community 42 - "Community 42"
+### Community 40 - "Community 40"
 Cohesion: 0.5
 Nodes (3): build_envelope(), field_apply envelope builder — pure module (no IO)., Build a field_apply envelope for emission to the Flutter client.      ``input_me
 
-### Community 43 - "Community 43"
+### Community 41 - "Community 41"
 Cohesion: 0.5
 Nodes (3): build_live_tools(), Grounding tool builder — Phase E.  Pure module (no IO). Assembles the Gemini Liv, Returns the tools list to attach to LiveConnectConfig.      Always includes Tool
+
+### Community 42 - "Community 42"
+Cohesion: 0.5
+Nodes (2): Shared types for server-side field validation., Server-side validators for the onboarding voice service.  All validators are pur
+
+### Community 43 - "Community 43"
+Cohesion: 0.5
+Nodes (0): 
 
 ### Community 44 - "Community 44"
 Cohesion: 0.5
@@ -356,11 +356,11 @@ Nodes (0):
 
 ### Community 45 - "Community 45"
 Cohesion: 0.67
-Nodes (1): Return all fields (regular or item_fields for repeatable).
+Nodes (0): 
 
 ### Community 46 - "Community 46"
 Cohesion: 0.67
-Nodes (1): Session bootstrap envelope — declares Rule 1 / Rule 2 hygiene contract.  Every o
+Nodes (0): 
 
 ### Community 47 - "Community 47"
 Cohesion: 0.67
@@ -372,15 +372,15 @@ Nodes (0):
 
 ### Community 49 - "Community 49"
 Cohesion: 0.67
-Nodes (0): 
+Nodes (2): Tenant A's private document chunks are invisible to Tenant B., test_tenant_a_cannot_see_tenant_b_document_chunks()
 
 ### Community 50 - "Community 50"
-Cohesion: 0.67
+Cohesion: 1.0
 Nodes (0): 
 
 ### Community 51 - "Community 51"
-Cohesion: 0.67
-Nodes (2): Tenant A's private document chunks are invisible to Tenant B., test_tenant_a_cannot_see_tenant_b_document_chunks()
+Cohesion: 1.0
+Nodes (0): 
 
 ### Community 52 - "Community 52"
 Cohesion: 1.0
@@ -388,7 +388,7 @@ Nodes (0):
 
 ### Community 53 - "Community 53"
 Cohesion: 1.0
-Nodes (1): Look up a FieldSpec by (section_id, field_id).          Handles both regular sec
+Nodes (0): 
 
 ### Community 54 - "Community 54"
 Cohesion: 1.0
@@ -400,27 +400,27 @@ Nodes (0):
 
 ### Community 56 - "Community 56"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Authentication Modes (dev_header / jwt), Gap P1-G1: JWT Validation Middleware Missing
 
 ### Community 57 - "Community 57"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Cost Governor / Zombie Session Protection, Cost Guard (Token Caps + Retries)
 
 ### Community 58 - "Community 58"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (2): Extras plan.md (Original Design v1), System Design v1 (Hierarchical Multi-Agent)
 
 ### Community 59 - "Community 59"
 Cohesion: 1.0
-Nodes (2): Authentication Modes (dev_header / jwt), Gap P1-G1: JWT Validation Middleware Missing
+Nodes (0): 
 
 ### Community 60 - "Community 60"
 Cohesion: 1.0
-Nodes (2): Cost Governor / Zombie Session Protection, Cost Guard (Token Caps + Retries)
+Nodes (0): 
 
 ### Community 61 - "Community 61"
 Cohesion: 1.0
-Nodes (2): Extras plan.md (Original Design v1), System Design v1 (Hierarchical Multi-Agent)
+Nodes (0): 
 
 ### Community 62 - "Community 62"
 Cohesion: 1.0
@@ -476,7 +476,7 @@ Nodes (0):
 
 ### Community 75 - "Community 75"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Backwards-compat: synthesise a bootstrap from the legacy initial_state.
 
 ### Community 76 - "Community 76"
 Cohesion: 1.0
@@ -488,7 +488,7 @@ Nodes (0):
 
 ### Community 78 - "Community 78"
 Cohesion: 1.0
-Nodes (1): Backwards-compat: synthesise a bootstrap from the legacy initial_state.
+Nodes (0): 
 
 ### Community 79 - "Community 79"
 Cohesion: 1.0
@@ -592,19 +592,19 @@ Nodes (0):
 
 ### Community 104 - "Community 104"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Cross-tenant isolation: a caller from another tenant cannot         report error
 
 ### Community 105 - "Community 105"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Repository-level coverage for the unexposed read companion.
 
 ### Community 106 - "Community 106"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Return all fields (regular or item_fields for repeatable).
 
 ### Community 107 - "Community 107"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Look up a FieldSpec by (section_id, field_id).          Handles both regular sec
 
 ### Community 108 - "Community 108"
 Cohesion: 1.0
@@ -624,27 +624,27 @@ Nodes (0):
 
 ### Community 112 - "Community 112"
 Cohesion: 1.0
-Nodes (1): In Phase 2, this node will call Gemini Multimodal to extract fields     from th
+Nodes (0): 
 
 ### Community 113 - "Community 113"
 Cohesion: 1.0
-Nodes (1): Deterministic routing: checks FormState against required fields.     If missing
+Nodes (1): In Phase 2, this node will call Gemini Multimodal to extract fields     from th
 
 ### Community 114 - "Community 114"
 Cohesion: 1.0
-Nodes (1): Fetches the current session state, applies frontend overrides,     invokes the
+Nodes (1): Deterministic routing: checks FormState against required fields.     If missing
 
 ### Community 115 - "Community 115"
 Cohesion: 1.0
-Nodes (1): Helper endpoint to verify the full FormState directly out of Redis.
+Nodes (1): Fetches the current session state, applies frontend overrides,     invokes the
 
 ### Community 116 - "Community 116"
 Cohesion: 1.0
-Nodes (1): Generates a secure LiveKit JWT so the frontend can connect to the voice room.
+Nodes (1): Helper endpoint to verify the full FormState directly out of Redis.
 
 ### Community 117 - "Community 117"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): Generates a secure LiveKit JWT so the frontend can connect to the voice room.
 
 ### Community 118 - "Community 118"
 Cohesion: 1.0
@@ -703,31 +703,35 @@ Cohesion: 1.0
 Nodes (1): Root requirements.txt Dependencies
 
 ## Knowledge Gaps
-- **140 isolated node(s):** `Use this tool to search for NDIS or company policies if the user asks a question`, `Use this tool to update the onboarding form when the user provides their details`, `Executes the tool and updates the form data in the state.`, `Route to tools if the LLM called a tool, otherwise end turn.`, `Test Case 1: Initial Connection     Verify the system handles empty states corr` (+135 more)
+- **161 isolated node(s):** `Use this tool to search for NDIS or company policies if the user asks a question`, `Use this tool to update the onboarding form when the user provides their details`, `Executes the tool and updates the form data in the state.`, `Route to tools if the LLM called a tool, otherwise end turn.`, `Test Case 1: Initial Connection     Verify the system handles empty states corr` (+156 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 52`** (2 nodes): `classify_paragraph()`, `classify_service.py`
+- **Thin community `Community 50`** (2 nodes): `classify_paragraph()`, `classify_service.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (2 nodes): `Look up a FieldSpec by (section_id, field_id).          Handles both regular sec`, `.get_field_spec()`
+- **Thin community `Community 51`** (2 nodes): `build_user_prompt()`, `dictation_prompt.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 54`** (2 nodes): `build_user_prompt()`, `dictation_prompt.py`
+- **Thin community `Community 52`** (2 nodes): `build_personal_details_user_prompt()`, `personal_details_prompt.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (2 nodes): `build_personal_details_user_prompt()`, `personal_details_prompt.py`
+- **Thin community `Community 53`** (2 nodes): `generate_livekit_access()`, `livekit_service.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (2 nodes): `generate_livekit_access()`, `livekit_service.py`
+- **Thin community `Community 54`** (2 nodes): `build_idempotency_key()`, `idempotency.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (2 nodes): `build_idempotency_key()`, `idempotency.py`
+- **Thin community `Community 55`** (2 nodes): `test_session_end.py`, `test_end_session_not_found()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 58`** (2 nodes): `test_session_end.py`, `test_end_session_not_found()`
+- **Thin community `Community 56`** (2 nodes): `Authentication Modes (dev_header / jwt)`, `Gap P1-G1: JWT Validation Middleware Missing`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 59`** (2 nodes): `Authentication Modes (dev_header / jwt)`, `Gap P1-G1: JWT Validation Middleware Missing`
+- **Thin community `Community 57`** (2 nodes): `Cost Governor / Zombie Session Protection`, `Cost Guard (Token Caps + Retries)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 60`** (2 nodes): `Cost Governor / Zombie Session Protection`, `Cost Guard (Token Caps + Retries)`
+- **Thin community `Community 58`** (2 nodes): `Extras plan.md (Original Design v1)`, `System Design v1 (Hierarchical Multi-Agent)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 61`** (2 nodes): `Extras plan.md (Original Design v1)`, `System Design v1 (Hierarchical Multi-Agent)`
+- **Thin community `Community 59`** (1 nodes): `env.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 62`** (1 nodes): `env.py`
+- **Thin community `Community 60`** (1 nodes): `seed_dev_data.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 63`** (1 nodes): `seed_dev_data.py`
+- **Thin community `Community 61`** (1 nodes): `__init__.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 62`** (1 nodes): `__init__.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 63`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 64`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -751,13 +755,13 @@ Nodes (1): Root requirements.txt Dependencies
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 74`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 75`** (1 nodes): `__init__.py`
+- **Thin community `Community 75`** (1 nodes): `Backwards-compat: synthesise a bootstrap from the legacy initial_state.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 76`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 77`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 78`** (1 nodes): `Backwards-compat: synthesise a bootstrap from the legacy initial_state.`
+- **Thin community `Community 78`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 79`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -783,39 +787,39 @@ Nodes (1): Root requirements.txt Dependencies
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 90`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 91`** (1 nodes): `__init__.py`
+- **Thin community `Community 91`** (1 nodes): `settings.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 92`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 93`** (1 nodes): `__init__.py`
+- **Thin community `Community 93`** (1 nodes): `base.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 94`** (1 nodes): `settings.py`
+- **Thin community `Community 94`** (1 nodes): `session.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 95`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 96`** (1 nodes): `base.py`
+- **Thin community `Community 96`** (1 nodes): `error_handler.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 97`** (1 nodes): `session.py`
+- **Thin community `Community 97`** (1 nodes): `request_id.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 98`** (1 nodes): `__init__.py`
+- **Thin community `Community 98`** (1 nodes): `tenant_context.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (1 nodes): `error_handler.py`
+- **Thin community `Community 99`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 100`** (1 nodes): `request_id.py`
+- **Thin community `Community 100`** (1 nodes): `errors.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 101`** (1 nodes): `tenant_context.py`
+- **Thin community `Community 101`** (1 nodes): `responses.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 102`** (1 nodes): `__init__.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 103`** (1 nodes): `errors.py`
+- **Thin community `Community 103`** (1 nodes): `conftest.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 104`** (1 nodes): `responses.py`
+- **Thin community `Community 104`** (1 nodes): `Cross-tenant isolation: a caller from another tenant cannot         report error`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 105`** (1 nodes): `__init__.py`
+- **Thin community `Community 105`** (1 nodes): `Repository-level coverage for the unexposed read companion.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 106`** (1 nodes): `conftest.py`
+- **Thin community `Community 106`** (1 nodes): `Return all fields (regular or item_fields for repeatable).`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 107`** (1 nodes): `Forward Gemini audio and transcript events → client.          session.receive()`
+- **Thin community `Community 107`** (1 nodes): `Look up a FieldSpec by (section_id, field_id).          Handles both regular sec`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 108`** (1 nodes): `Forward Gemini audio and transcript events → client.          session.receive()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -825,17 +829,17 @@ Nodes (1): Root requirements.txt Dependencies
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 111`** (1 nodes): `Forward Gemini audio and transcript events → client.          session.receive()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 112`** (1 nodes): `In Phase 2, this node will call Gemini Multimodal to extract fields     from th`
+- **Thin community `Community 112`** (1 nodes): `Forward Gemini audio and transcript events → client.          session.receive()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 113`** (1 nodes): `Deterministic routing: checks FormState against required fields.     If missing`
+- **Thin community `Community 113`** (1 nodes): `In Phase 2, this node will call Gemini Multimodal to extract fields     from th`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 114`** (1 nodes): `Fetches the current session state, applies frontend overrides,     invokes the`
+- **Thin community `Community 114`** (1 nodes): `Deterministic routing: checks FormState against required fields.     If missing`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 115`** (1 nodes): `Helper endpoint to verify the full FormState directly out of Redis.`
+- **Thin community `Community 115`** (1 nodes): `Fetches the current session state, applies frontend overrides,     invokes the`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 116`** (1 nodes): `Generates a secure LiveKit JWT so the frontend can connect to the voice room.`
+- **Thin community `Community 116`** (1 nodes): `Helper endpoint to verify the full FormState directly out of Redis.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 117`** (1 nodes): `Forward Gemini audio and transcript events → client.          session.receive()`
+- **Thin community `Community 117`** (1 nodes): `Generates a secure LiveKit JWT so the frontend can connect to the voice room.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 118`** (1 nodes): `Top-level screen_state_v2 WS message wrapper.`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -869,17 +873,17 @@ Nodes (1): Root requirements.txt Dependencies
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `FormState` connect `Community 0` to `Community 1`, `Community 2`, `Community 6`, `Community 7`, `Community 9`, `Community 13`, `Community 16`?**
-  _High betweenness centrality (0.157) - this node is a cross-community bridge._
-- **Why does `StepSchema` connect `Community 0` to `Community 1`, `Community 2`, `Community 36`, `Community 7`, `Community 9`, `Community 42`, `Community 45`, `Community 13`, `Community 16`, `Community 53`, `Community 26`?**
-  _High betweenness centrality (0.139) - this node is a cross-community bridge._
-- **Are the 313 inferred relationships involving `FormState` (e.g. with `CreateSessionRequest` and `CreateSessionResponse`) actually correct?**
-  _`FormState` has 313 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 293 inferred relationships involving `StepSchema` (e.g. with `CreateSessionRequest` and `CreateSessionResponse`) actually correct?**
-  _`StepSchema` has 293 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 228 inferred relationships involving `FormStateRepo` (e.g. with `CreateSessionRequest` and `CreateSessionResponse`) actually correct?**
-  _`FormStateRepo` has 228 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 142 inferred relationships involving `ToolDispatcher` (e.g. with `WebSocket route — Phase B: Gemini Live voice session for onboarding.  Endpoint:` and `GeminiLiveSession`) actually correct?**
-  _`ToolDispatcher` has 142 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 135 inferred relationships involving `SessionBootstrap` (e.g. with `CreateSessionRequest` and `CreateSessionResponse`) actually correct?**
-  _`SessionBootstrap` has 135 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `FormState` connect `Community 0` to `Community 1`, `Community 34`, `Community 3`, `Community 4`, `Community 8`, `Community 17`, `Community 20`?**
+  _High betweenness centrality (0.134) - this node is a cross-community bridge._
+- **Why does `StepSchema` connect `Community 0` to `Community 1`, `Community 33`, `Community 3`, `Community 4`, `Community 34`, `Community 40`, `Community 8`, `Community 20`, `Community 22`?**
+  _High betweenness centrality (0.116) - this node is a cross-community bridge._
+- **Are the 405 inferred relationships involving `FormState` (e.g. with `CreateSessionRequest` and `CreateSessionResponse`) actually correct?**
+  _`FormState` has 405 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 384 inferred relationships involving `StepSchema` (e.g. with `CreateSessionRequest` and `CreateSessionResponse`) actually correct?**
+  _`StepSchema` has 384 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 315 inferred relationships involving `FormStateRepo` (e.g. with `CreateSessionRequest` and `CreateSessionResponse`) actually correct?**
+  _`FormStateRepo` has 315 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 219 inferred relationships involving `ToolDispatcher` (e.g. with `WebSocket route — Phase B: Gemini Live voice session for onboarding.  Endpoint:` and `GeminiLiveSession`) actually correct?**
+  _`ToolDispatcher` has 219 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 170 inferred relationships involving `ValidationRejection` (e.g. with `Server-side validators for the onboarding voice service.  All validators are pur` and `Cross-field invariant validators — pure functions, no I/O.`) actually correct?**
+  _`ValidationRejection` has 170 INFERRED edges - model-reasoned connections that need verification._

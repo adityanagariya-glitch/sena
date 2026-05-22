@@ -801,3 +801,57 @@ When recreating any of these from scratch:
 2. Body content can be regenerated from CLAUDE.md sections OR from previous git history (`git log --all --source -- .claude/rules/<file>.md`).
 3. **Do NOT duplicate this content into CLAUDE.md** — defeats the autoload purpose and bloats every session's token cost.
 4. **Test the autoload:** open a file matching the glob → confirm the rule's contents appear in Claude's working context.
+
+---
+
+## §25 — `rules/asymmetric-privileged-trust.md` template
+
+Canonical always-referenced rule (SDAR-inspired, added 2026-05-19). All 14 agents inherit via `principal-engineer.md` § Asymmetric Privileged Trust. Applies to all 14 current agents, future agents, and future AI features.
+
+```yaml
+---
+description: Universal rule — apply asymmetric trust whenever an agent or feature operates with retrieved/privileged context (lessons.md, decisions.md, rules autoload, RAG, cross-screen context, schema injection). Positive additions need a citation, negative rejections need a high-confidence anchor. Pattern adapted from SDAR (arXiv:2605.15155, May 2026). Applies to all 14 current agents + future agents + future AI features.
+---
+```
+
+Body must cover:
+
+1. **One-line rule** — positive recommendations weighted by citation strength; negative rejections weighted by anchor strength.
+2. **Why asymmetric** — teacher rejection may come from bad retrieval; teacher endorsement requires a real citation.
+3. **Three application layers:**
+   - **Agent reasoning** — self-check gate before output (positive citation? negative anchor?). Includes 14-row per-agent table mapping each agent to its valid citation sources and required anchors.
+   - **Feature implementation** — teacher (with retrieval) + student (without) + gate. Includes table mapping current SENA features (Case Review classify/review, Onboarding voice, Voice Bedrock case note) to their teacher/student/gate triples.
+   - **`/sena-learn` weighted lessons** — replaces raw `Occurrences: 3+` with `weighted_sum ≥ 3.0`. Weights: explicit correction 1.0, implicit reframe 0.5, single mood 0.2, self-induced 0.8.
+4. **Hard exemptions** — tenant isolation, NDIS APP 8/11, deprecated Gemini, Pydantic v2 invariants, hook-enforced rules, user explicit override. NO gating, always reject.
+5. **Recording use** — agent must surface gating rationale in its output so user can audit.
+
+**Per-agent citation/anchor table (14 rows — copy verbatim):**
+
+| Agent | Positive citation source | Negative anchor required |
+|-------|--------------------------|--------------------------|
+| `sena-planner` | `pyproject.toml` dep / repo Grep hit / past plan in ARCHIVE.md | Explicit rule conflict (NDIS / tenant) — not "feels risky" |
+| `sena-task-breaker` | Planner's files-to-touch list | Dependency cycle detected — not "could be split more" |
+| `sena-implementer` | Path-scoped rule autoloaded for the file type | ruff/mypy failure — not "feels non-idiomatic" |
+| `sena-business-reviewer` | NDIS rule violation w/ specific clause | Pattern-match on past finding (low trust unless 3×) |
+| `sena-security-reviewer` | Tenant key missing, `assert_session_owner` absent, secret committed | "Looks suspicious" alone — must cite OWASP or auto-block signature |
+| `sena-bug-fixer` | Reviewer finding w/ file:line | Cannot expand scope beyond named files |
+| `sena-optimization-reviewer` | Profile / benchmark / N+1 grep hit | "Could be faster" without measurement |
+| `sena-cleaner` | ruff/mypy output, debug-print grep | "Code smell" without lint rule |
+| `sena-git-committer` | Files in diff, decisions.md entry from this cycle | Cannot reference files outside the staged diff |
+| `sena-log-analyzer` | Stack frame file:line, issues-solved/INDEX.md signature match | "Pattern looks like" without signature match |
+| `sena-researcher` | Context7 doc URL w/ section anchor | Cannot reject library based on stale training data alone |
+| `sena-doc-writer` | Grounded file:line that exists | Cannot claim symbol exists without grep verification |
+| `sena-code-reviewer` | Auto-block signature match | Gut-feel block — must escalate, not auto-reject |
+| `sena-engineering-collaborator` | Past failure citation (issues-solved / lessons / archived plan) | Cannot add phases without explicit risk citation |
+
+**Feature-pattern table** (extend when new features added):
+
+| Feature | Teacher (privileged) | Student (vanilla) | Gate signal |
+|---------|----------------------|-------------------|-------------|
+| Case Review classify | Gemini Flash + pgvector past notes | Gemini Flash, no retrieval | pgvector cosine score |
+| Case Review review | Gemini Flash + history + audit | Gemini Flash, current note only | Disagreement → require BOTH agree before flagging staff |
+| Onboarding voice prompt | Full prompt + cross-screen + state JSON | Just current step state | After 3 successful transitions, drop cross-screen (internalization) |
+| Voice service case note (Bedrock) | Bedrock + prior shift context | Bedrock + turn transcript only | Disagreement on field → flag for staff |
+| `<future feature>` | `<retrieval/RAG source>` | `<LLM-only call>` | `<measurable signal>` |
+
+**Source paper:** *Self-Distilled Agentic Reinforcement Learning* (Lu et al., arXiv:2605.15155, 2026-05-14, code at `github.com/ZJU-REAL/SDAR`).
