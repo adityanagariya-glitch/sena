@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -64,7 +64,9 @@ class TurnPayload(BaseModel):
     participant: Participant
     step: StepInfo
     bootstrap_mode: BootstrapMode
-    prior_steps: dict[str, str] = Field(default_factory=dict)
+    # Cross-screen bucket carries step summaries as nested dicts
+    # ({name, dob, _step_label, ...}), not flat strings.
+    prior_steps: dict[str, Any] = Field(default_factory=dict)
     visible_fields: list[VisibleField]
     next_target: NextTarget | None = None
     last_rejection: LastRejection | None = None
