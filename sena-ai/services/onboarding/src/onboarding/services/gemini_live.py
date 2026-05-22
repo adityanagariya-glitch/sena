@@ -605,14 +605,16 @@ class GeminiLiveSession:
                                         )
                                         turn_started = True
                                         self._gemini_is_speaking = True
-                                        # NOTE: Do NOT send audio_stream_end=True here.
-                                        # Per Gemini Live API: audio_stream_end means
-                                        # "microphone turned off / stream closed" — it
-                                        # signals session-level end-of-input, not a
-                                        # mid-conversation flush. Sending it on every
-                                        # turn corrupts VAD state and causes Gemini to
-                                        # mis-handle subsequent user audio. Echo must
-                                        # be solved on the client (Flutter mic mute).
+                                        # Per .claude/rules/gemini.md: send
+                                        # audio_stream_end on turn_start to flush
+                                        # Gemini's VAD buffer of echo frames that
+                                        # arrived in-flight before Flutter muted
+                                        # the mic. Without this, after turn 0 VAD
+                                        # silently stops firing for the next user
+                                        # utterance (observed 2026-05-22).
+                                        await session.send_realtime_input(
+                                            audio_stream_end=True
+                                        )
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 
