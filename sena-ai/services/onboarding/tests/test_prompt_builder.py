@@ -44,15 +44,15 @@ def test_prompt_substitutes_step_label() -> None:
 
 def test_prompt_contains_turn_json_block() -> None:
     out = build_system_prompt(_minimal_turn())
-    assert "[TURN]" in out
-    assert "[/TURN]" in out
+    assert "<state>" in out
+    assert "</state>" in out
     assert '"first_name":"Jane"' in out
 
 
 def test_prompt_lists_all_six_tool_names() -> None:
     out = build_system_prompt(_minimal_turn())
     for name in (
-        "propose_field",
+        "update_field",
         "clear_field",
         "add_row",
         "delete_row",
@@ -95,3 +95,25 @@ def test_prompt_includes_voice_coverage_block_when_provided() -> None:
     out = build_system_prompt(_minimal_turn(), voice_coverage=["basics.full_name"])
     assert "VOICE COVERAGE" in out
     assert "basics.full_name" in out
+
+
+def test_prompt_includes_per_step_fragment_when_present() -> None:
+    """personal_information.md ships with the repo — its rules must load."""
+    out = build_system_prompt(_minimal_turn())
+    assert "Step-specific rules — Personal Details" in out
+
+
+def test_prompt_omits_step_fragment_for_unknown_step() -> None:
+    """Unknown step.id → no fragment loaded, base template still renders."""
+    tp = _minimal_turn()
+    tp.step.id = "this_step_does_not_exist"
+    out = build_system_prompt(tp)
+    # __STEP_RULES__ placeholder must be replaced even when fragment missing.
+    assert "__STEP_RULES__" not in out
+    assert "Step-specific rules" not in out
+
+
+def test_prompt_step_rules_placeholder_consumed() -> None:
+    """Placeholder must never leak into the rendered prompt."""
+    out = build_system_prompt(_minimal_turn())
+    assert "__STEP_RULES__" not in out

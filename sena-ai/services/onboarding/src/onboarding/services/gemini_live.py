@@ -437,7 +437,7 @@ class GeminiLiveSession:
                 # Gemini Live treats realtime text as a user message and will
                 # trigger a model turn AND poison VAD state for subsequent
                 # audio. The TurnPayload is already embedded in the system
-                # instruction at session start, and propose_field round-trips
+                # instruction at session start, and update_field round-trips
                 # surface live deltas to the agent.
             except ValidationError as e:
                 await self._ws.send_text(json.dumps({

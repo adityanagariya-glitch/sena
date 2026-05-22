@@ -1,13 +1,16 @@
 """Renders the v2 onboarding system prompt.
 
-Mobile owns schema + validation + state. The builder substitutes 4 simple
+Mobile owns schema + validation + state. The builder substitutes 5 simple
 placeholders into a fixed template:
   __STEP_LABEL__              — step.label for the persona line
   __VOICE_COVERAGE_SECTION__  — empty or a one-line whitelist
   __GROUNDING_SECTION__       — empty or Google Search blurb
+  __STEP_RULES__              — per-step behavior fragment (see prompts/steps/)
   __TURN_JSON__               — the TurnPayload serialised to compact JSON
 
-No business logic. No sequencing. No validation. No state inspection.
+Per-step rules live in `prompts/steps/{step_id}.md`. Edit one file per step.
+Missing file = empty section (no step-specific rules). The base template stays
+free of step-specific logic.
 """
 from __future__ import annotations
 
@@ -15,7 +18,9 @@ from pathlib import Path
 
 from onboarding.models.turn_payload import TurnPayload
 
-_TEMPLATE_PATH = Path(__file__).parent.parent / "prompts" / "onboarding_system.md"
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+_TEMPLATE_PATH = _PROMPTS_DIR / "onboarding_system.md"
+_STEPS_DIR = _PROMPTS_DIR / "steps"
 
 
 def _voice_coverage_section(voice_coverage: list[str] | None) -> str:
@@ -24,7 +29,7 @@ def _voice_coverage_section(voice_coverage: list[str] | None) -> str:
     paths = ", ".join(voice_coverage)
     return (
         "\n## VOICE COVERAGE\n"
-        f"You may ONLY call propose_field for these fields: {paths}.\n"
+        f"You may ONLY call update_field for these fields: {paths}.\n"
     )
 
 
@@ -39,6 +44,19 @@ def _grounding_section(enabled: bool) -> str:
     )
 
 
+def _step_rules_section(step_id: str) -> str:
+    """Load `prompts/steps/{step_id}.md` if present, else empty."""
+    if not step_id:
+        return ""
+    fragment_path = _STEPS_DIR / f"{step_id}.md"
+    if not fragment_path.is_file():
+        return ""
+    body = fragment_path.read_text(encoding="utf-8").strip()
+    if not body:
+        return ""
+    return f"\n{body}\n"
+
+
 def build_system_prompt(
     turn: TurnPayload,
     *,
@@ -51,5 +69,6 @@ def build_system_prompt(
         .replace("__STEP_LABEL__", turn.step.label)
         .replace("__VOICE_COVERAGE_SECTION__", _voice_coverage_section(voice_coverage))
         .replace("__GROUNDING_SECTION__", _grounding_section(grounding_enabled))
+        .replace("__STEP_RULES__", _step_rules_section(turn.step.id))
         .replace("__TURN_JSON__", turn.model_dump_json())
     )

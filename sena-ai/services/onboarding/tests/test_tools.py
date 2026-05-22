@@ -20,7 +20,7 @@ class _FakeBridge:
 def test_function_decls_lists_exactly_six_tools() -> None:
     names = {d["name"] for d in FUNCTION_DECLS}
     assert names == {
-        "propose_field",
+        "update_field",
         "clear_field",
         "add_row",
         "delete_row",
@@ -29,8 +29,8 @@ def test_function_decls_lists_exactly_six_tools() -> None:
     }
 
 
-def test_function_decl_propose_field_required_args() -> None:
-    decl = next(d for d in FUNCTION_DECLS if d["name"] == "propose_field")
+def test_function_decl_update_field_required_args() -> None:
+    decl = next(d for d in FUNCTION_DECLS if d["name"] == "update_field")
     params = decl["parameters"]
     assert set(params["required"]) == {"section", "field", "value"}
     assert params["properties"]["repeatable_index"]["type"] == "integer"
@@ -42,13 +42,13 @@ def test_function_decl_submit_step_requires_transcript() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_propose_field_forwards_to_bridge() -> None:
+async def test_dispatch_update_field_forwards_to_bridge() -> None:
     bridge = _FakeBridge({"ok": True})
     disp = ToolDispatcher(bridge=bridge)
     args = {"section": "basics", "field": "phone", "value": "0412"}
-    out = await disp.dispatch("propose_field", args)
+    out = await disp.dispatch("update_field", args)
     assert out == {"ok": True}
-    assert bridge.calls == [("propose_field", args)]
+    assert bridge.calls == [("update_field", args)]
 
 
 @pytest.mark.asyncio
@@ -106,7 +106,7 @@ async def test_step_completed_stays_false_when_submit_returns_blockers() -> None
 async def test_step_completed_stays_false_for_non_submit_tools() -> None:
     bridge = _FakeBridge({"ok": True})
     disp = ToolDispatcher(bridge=bridge)
-    await disp.dispatch("propose_field", {"section": "basics", "field": "phone", "value": "0412"})
+    await disp.dispatch("update_field", {"section": "basics", "field": "phone", "value": "0412"})
     assert disp.step_completed is False
 
 

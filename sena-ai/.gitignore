@@ -28,3 +28,4 @@
 # Database data, virtual environments, IDE config not tracked
 archive/
 
+.venv/*

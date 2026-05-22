@@ -28,14 +28,14 @@ async def test_dispatch_round_trip_happy_path() -> None:
 
     task = asyncio.create_task(respond_after_send())
     result = await bridge.dispatch(
-        "propose_field", {"section": "basics", "field": "phone", "value": "0412345678"}
+        "update_field", {"section": "basics", "field": "phone", "value": "0412345678"}
     )
     await task
 
     assert result == {"ok": True}
     sent = ws.sent[-1]
     assert sent["type"] == "tool_request"
-    assert sent["tool"] == "propose_field"
+    assert sent["tool"] == "update_field"
     assert sent["args"]["value"] == "0412345678"
     assert "request_id" in sent
 
@@ -44,7 +44,7 @@ async def test_dispatch_round_trip_happy_path() -> None:
 async def test_dispatch_timeout_returns_validation_timeout() -> None:
     ws = _FakeWS()
     bridge = MobileBridge(ws, timeout_sec=0.05)
-    result = await bridge.dispatch("propose_field", {"section": "x", "field": "y", "value": "z"})
+    result = await bridge.dispatch("update_field", {"section": "x", "field": "y", "value": "z"})
     assert result == {"ok": False, "reason": "Validation timed out", "code": "mobile_timeout"}
 
 
@@ -68,8 +68,8 @@ async def test_dispatch_concurrent_requests_get_distinct_ids() -> None:
 
     task = asyncio.create_task(driver())
     results = await asyncio.gather(
-        bridge.dispatch("propose_field", {"section": "a", "field": "b", "value": "c"}),
-        bridge.dispatch("propose_field", {"section": "a", "field": "d", "value": "e"}),
+        bridge.dispatch("update_field", {"section": "a", "field": "b", "value": "c"}),
+        bridge.dispatch("update_field", {"section": "a", "field": "d", "value": "e"}),
     )
     await task
     assert all(r == {"ok": True} for r in results)

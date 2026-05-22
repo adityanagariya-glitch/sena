@@ -19,25 +19,45 @@ class _Bridge(Protocol):
 
 
 _KNOWN_TOOLS = frozenset({
-    "propose_field", "clear_field", "add_row", "delete_row", "submit_step",
+    "update_field", "clear_field", "add_row", "delete_row", "submit_step",
 })
 
 
 FUNCTION_DECLS: list[dict[str, Any]] = [
     {
-        "name": "propose_field",
+        "name": "update_field",
         "description": (
-            "Save a value the participant just said into the named field. "
-            "Mobile validates and returns {ok:true} or {ok:false, reason}. "
-            "Speak the reason verbatim on rejection."
+            "REQUIRED whenever the participant provides ANY value to save or change "
+            "(name, date, phone, email, address, gender, language, relation, etc). "
+            "Call this BEFORE speaking any confirmation. Do not apologise for save "
+            "failures unless this function returned {ok:false}. "
+            "Examples: user says '1st December 1999' → call update_field("
+            "section='basics', field='date_of_birth', value='1999-12-01'). "
+            "User says 'Sibling' for a contact relation → call update_field("
+            "section='emergency_contacts', field='relation', repeatable_index=N, "
+            "value='Sibling'). User says 'change my first name to Devi' → call "
+            "update_field(section='basics', field='full_name', value='Devi'). "
+            "Mobile validates and returns {ok:true} on success or "
+            "{ok:false, reason} on failure — speak reason verbatim on rejection."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "section": {"type": "string"},
-                "field": {"type": "string"},
-                "value": {},
-                "repeatable_index": {"type": "integer"},
+                "section": {
+                    "type": "string",
+                    "description": "Section id from visible_fields path before the '.' (e.g. 'basics', 'home_address', 'emergency_contacts').",
+                },
+                "field": {
+                    "type": "string",
+                    "description": "Field id from visible_fields path after the '.' (e.g. 'date_of_birth', 'phone', 'relation'). Use EXACT id, never invent variants.",
+                },
+                "value": {
+                    "description": "The captured value. Dates as YYYY-MM-DD. Enums must match enum_values exactly (case-sensitive). Multi-enums as array.",
+                },
+                "repeatable_index": {
+                    "type": "integer",
+                    "description": "0-based row index for repeatable sections (emergency_contacts, etc). Omit for scalar fields.",
+                },
             },
             "required": ["section", "field", "value"],
         },
