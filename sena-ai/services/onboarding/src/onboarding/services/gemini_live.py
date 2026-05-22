@@ -433,9 +433,12 @@ class GeminiLiveSession:
             try:
                 new_turn = TurnPayload.model_validate(turn_json)
                 self._current_turn = new_turn
-                await session.send_realtime_input(
-                    text=f"[TURN]{new_turn.model_dump_json()}[/TURN]"
-                )
+                # Do NOT inject [TURN] as send_realtime_input(text=...) —
+                # Gemini Live treats realtime text as a user message and will
+                # trigger a model turn AND poison VAD state for subsequent
+                # audio. The TurnPayload is already embedded in the system
+                # instruction at session start, and propose_field round-trips
+                # surface live deltas to the agent.
             except ValidationError as e:
                 await self._ws.send_text(json.dumps({
                     "type": "error", "code": "turn_invalid", "message": str(e),
@@ -605,16 +608,11 @@ class GeminiLiveSession:
                                         )
                                         turn_started = True
                                         self._gemini_is_speaking = True
-                                        # Per .claude/rules/gemini.md: send
-                                        # audio_stream_end on turn_start to flush
-                                        # Gemini's VAD buffer of echo frames that
-                                        # arrived in-flight before Flutter muted
-                                        # the mic. Without this, after turn 0 VAD
-                                        # silently stops firing for the next user
-                                        # utterance (observed 2026-05-22).
-                                        await session.send_realtime_input(
-                                            audio_stream_end=True
-                                        )
+                                        # Do NOT send audio_stream_end here in
+                                        # auto-VAD mode — it is only honoured
+                                        # in manual-VAD mode and otherwise
+                                        # corrupts VAD state. Echo is fully
+                                        # handled by Flutter mic mute.
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 
