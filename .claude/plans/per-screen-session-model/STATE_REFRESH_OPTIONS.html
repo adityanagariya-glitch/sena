@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SENA Onboarding — State Refresh Options</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #161b22;
+    --panel-2: #1c2128;
+    --line: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --good: #3fb950;
+    --bad: #f85149;
+    --warn: #d29922;
+    --accent: #58a6ff;
+    --accent-2: #bc8cff;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; padding: 32px 48px; max-width: 1400px;
+  }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--accent); }
+  .subtitle { color: var(--muted); margin-bottom: 28px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 18px 22px; margin: 16px 0;
+  }
+  .grid { display: grid; gap: 14px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel-2); font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .good { color: var(--good); font-weight: 600; }
+  .bad { color: var(--bad); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .accent { color: var(--accent); }
+  pre, code {
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 12.5px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 14px 16px; overflow-x: auto; margin: 10px 0;
+  }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 3px; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 11px;
+    font-size: 11px; font-weight: 600; margin-right: 6px;
+  }
+  .tag-good { background: rgba(63,185,80,0.15); color: var(--good); border: 1px solid var(--good); }
+  .tag-bad { background: rgba(248,81,73,0.15); color: var(--bad); border: 1px solid var(--bad); }
+  .tag-warn { background: rgba(210,153,34,0.15); color: var(--warn); border: 1px solid var(--warn); }
+  .tag-info { background: rgba(88,166,255,0.15); color: var(--accent); border: 1px solid var(--accent); }
+  .diagram {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 18px; font-family: "JetBrains Mono", monospace; font-size: 12px;
+    white-space: pre; overflow-x: auto; line-height: 1.4;
+  }
+  .pill {
+    display: inline-block; padding: 4px 12px; border-radius: 14px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    font-size: 12px; margin: 2px;
+  }
+  .pill.win { background: rgba(63,185,80,0.12); border-color: var(--good); color: var(--good); }
+  .pill.lose { background: rgba(248,81,73,0.12); border-color: var(--bad); color: var(--bad); }
+  .pill.partial { background: rgba(210,153,34,0.12); border-color: var(--warn); color: var(--warn); }
+  .score-box {
+    display: inline-block; min-width: 28px; padding: 4px 10px;
+    border-radius: 4px; font-weight: 700; text-align: center;
+  }
+  .score-9, .score-10 { background: var(--good); color: #000; }
+  .score-7, .score-8 { background: #79c879; color: #000; }
+  .score-5, .score-6 { background: var(--warn); color: #000; }
+  .score-3, .score-4 { background: #e08070; color: #fff; }
+  .score-0, .score-1, .score-2 { background: var(--bad); color: #fff; }
+  .recommendation {
+    background: linear-gradient(135deg, rgba(63,185,80,0.12), rgba(88,166,255,0.08));
+    border: 1px solid var(--good); border-radius: 8px;
+    padding: 20px 24px; margin: 20px 0;
+  }
+  .recommendation h2 { border: none; margin-top: 0; color: var(--good); }
+  ul.tight { margin: 6px 0; padding-left: 20px; }
+  ul.tight li { margin: 3px 0; }
+  .arrow-bad { color: var(--bad); }
+  .arrow-good { color: var(--good); }
+  .legend { color: var(--muted); font-size: 12px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>SENA Onboarding — Voice Context Refresh: Option Comparison</h1>
+<p class="subtitle">
+  Goal: keep Gemini Live's view of FormState coherent across mid-session field changes
+  without poisoning VAD or creating dual writers. Model in use: <code>gemini-3.1-flash-live-preview</code>.
+</p>
+
+<!-- ============ PROBLEM ============ -->
+<h2>1. The problem (today, in production)</h2>
+
+<div class="panel">
+<div class="diagram">
++---------------------------------------+
+|      Gemini Live working memory       |
++---------------------------------------+
+|                                       |
+|  WRITER #1 (frozen at connect time)   |     <span class="bad">stale after first edit</span>
+|  +---------------------------------+  |
+|  | system_instruction:             |  |
+|  |   __TURN_JSON__ = {             |  |
+|  |     visible_fields: [...],      |  |
+|  |     next_target: ...,           |  |
+|  |     last_rejection: ...         |  |
+|  |   }                             |  |
+|  +---------------------------------+  |
+|                  +                    |
+|  WRITER #2 (live, per-turn)           |     <span class="warn">conversational drift</span>
+|  +---------------------------------+  |
+|  | user: "change my DOB to 5/5/01" |  |
+|  | assistant: "got it"             |  |
+|  | user: "my name is Jane now"     |  |
+|  +---------------------------------+  |
+|                  |                    |
+|                  v                    |
+|         <span class="bad">context-window</span>             |
+|         <span class="bad">compression</span>                |
+|                  |                    |
+|                  v                    |
+|       <span class="bad">HALLUCINATED VALUES</span>         |
+|       (compressor smashes the two     |
+|        copies into one ambiguous      |
+|        summary)                       |
+|                                       |
++---------------------------------------+
+</div>
+<p>
+  Three reported issues all trace to <strong>two writers, one field</strong>:
+</p>
+<ol>
+  <li><span class="tag tag-bad">#1</span> Stale screen JSON during live connection</li>
+  <li><span class="tag tag-bad">#2</span> Memory state conflict / duplication</li>
+  <li><span class="tag tag-bad">#3</span> Hallucination from compression of conflicting state</li>
+</ol>
+</div>
+
+<!-- ============ MODEL CONSTRAINTS ============ -->
+<h2>2. What the docs let us do (model-specific)</h2>
+
+<table>
+  <tr>
+    <th>Channel</th>
+    <th>Works on <code>gemini-2.5-flash-live-preview</code></th>
+    <th>Works on <code>gemini-3.1-flash-live-preview</code> (SENA today)</th>
+    <th>VAD safe?</th>
+    <th>Doc-blessed?</th>
+  </tr>
+  <tr>
+    <td><code>send_realtime_input(text=...)</code></td>
+    <td><span class="warn">interpreted as user msg</span></td>
+    <td><span class="warn">interpreted as user msg</span></td>
+    <td><span class="bad">NO — poisons VAD</span></td>
+    <td><span class="bad">not for state injection</span></td>
+  </tr>
+  <tr>
+    <td><code>send_client_content(role="system")</code> mid-session</td>
+    <td><span class="good">YES</span></td>
+    <td><span class="bad">NO — error 1007 after first turn</span></td>
+    <td><span class="good">yes</span></td>
+    <td><span class="good">official pattern</span></td>
+  </tr>
+  <tr>
+    <td><code>send_client_content(turns=...)</code> interleaved with audio</td>
+    <td><span class="warn">"not recommended"</span></td>
+    <td><span class="bad">blocked + interleave warning</span></td>
+    <td><span class="warn">unclear</span></td>
+    <td><span class="bad">no</span></td>
+  </tr>
+  <tr>
+    <td><code>Part.from_function_response(response=ANY)</code></td>
+    <td><span class="good">YES</span></td>
+    <td><span class="good">YES — already in use</span></td>
+    <td><span class="good">yes</span></td>
+    <td><span class="good">designed for this</span></td>
+  </tr>
+  <tr>
+    <td><code>SessionResumptionConfig.handle</code> + reconnect</td>
+    <td><span class="good">YES</span></td>
+    <td><span class="good">YES</span></td>
+    <td><span class="good">yes</span></td>
+    <td><span class="good">official pattern</span></td>
+  </tr>
+</table>
+
+<p class="legend">
+  <strong>Critical:</strong> The <code>send_client_content</code> 3.1-model restriction
+  (error 1007 after first model turn) eliminates the most common community-suggested fix
+  — it works on 2.5 but not on the model SENA already uses.
+</p>
+
+<!-- ============ OPTIONS ============ -->
+<h2>3. Six options on the table</h2>
+
+<table>
+  <tr>
+    <th style="width: 40px;">#</th>
+    <th>Name</th>
+    <th>Mechanism in one line</th>
+    <th>Works on 3.1?</th>
+  </tr>
+  <tr>
+    <td><strong>A</strong></td>
+    <td>Strip bootstrap JSON</td>
+    <td>Delete <code>__TURN_JSON__</code> entirely; model relies on conversation only</td>
+    <td><span class="good">yes</span></td>
+  </tr>
+  <tr>
+    <td><strong>B</strong></td>
+    <td>Per-screen reconnect (PLAN #1)</td>
+    <td>Open new Live session per Flutter screen change; pre-warm next session 2s ahead</td>
+    <td><span class="good">yes</span></td>
+  </tr>
+  <tr>
+    <td><strong>C</strong></td>
+    <td>Hybrid (per-step reconnect only)</td>
+    <td>Keep bootstrap JSON; reconnect at step boundary; mid-step relies on tool returns</td>
+    <td><span class="good">yes</span></td>
+  </tr>
+  <tr>
+    <td><strong>D</strong></td>
+    <td>function_response state channel ⭐</td>
+    <td>Every tool call returns full fresh FormState in its <code>response</code> payload</td>
+    <td><span class="good">yes</span></td>
+  </tr>
+  <tr>
+    <td><strong>E</strong></td>
+    <td>Self-refresh tool</td>
+    <td>Add <code>get_current_state()</code> tool model self-calls when it senses staleness</td>
+    <td><span class="good">yes</span></td>
+  </tr>
+  <tr>
+    <td><strong>F</strong></td>
+    <td>system-role <code>send_client_content</code></td>
+    <td>Push fresh JSON via system-role message mid-session</td>
+    <td><span class="bad">NO — error 1007</span></td>
+  </tr>
+</table>
+
+<!-- ============ OPTION D — THE VISUAL THE USER ASKED FOR ============ -->
+<h2>4. Option D explained visually (the one you didn't grok)</h2>
+
+<div class="panel">
+<h3>The idea in one sentence</h3>
+<p>
+  Every time the model calls a tool, the tool's <strong>return value</strong> ships back a fresh full snapshot
+  of FormState. The model then reads from "what the tool just told me" instead of "what was in the system prompt
+  at session start." No new SDK surface. No reconnect. No VAD interaction.
+</p>
+
+<h3>Today's flow (BROKEN)</h3>
+<div class="diagram">
+session start
+   │
+   │ system_instruction = "...prompt... __TURN_JSON__={visible_fields:[{path:'basics.name', value:null}]}..."
+   ▼
+[Gemini Live frozen view: name=null]
+   │
+   │
+user: "my name is Jane"
+   ▼
+model calls update_field(section="basics", field="name", value="Jane")
+   │
+   │ <span class="arrow-bad">tool returns:</span> {"ok": true}                          <span class="bad">← only "ok", no fresh state</span>
+   ▼
+[Gemini Live working memory NOW:]
+   ├─ frozen system_instruction says <span class="bad">name=null</span>            <span class="bad">← STALE</span>
+   ├─ conversation says <span class="warn">"Jane" (from user)</span>                 <span class="warn">← drift</span>
+   └─ tool result says <span class="good">"ok"</span>                                <span class="muted">← no state</span>
+   │
+   ▼
+user: "what's my name on file?"
+   │
+   ▼
+model has 2 conflicting answers in memory → <span class="bad">hallucinates "Janet"</span>
+</div>
+
+<h3>Option D flow (FIXED)</h3>
+<div class="diagram">
+session start
+   │
+   │ system_instruction = "...prompt..."                              <span class="good">← NO bootstrap JSON, or minimal</span>
+   ▼
+[Gemini Live view: no state — model knows to wait]
+   │
+   │ first turn: model calls get_current_state() → returns full FormState
+   ▼
+[Gemini Live view: name=null (from tool, not from prompt)]
+   │
+   │
+user: "my name is Jane"
+   ▼
+model calls update_field(section="basics", field="name", value="Jane")
+   │
+   │ <span class="arrow-good">tool returns:</span> {
+   │     "ok": true,
+   │     "saved": {"section":"basics", "field":"name", "value":"Jane"},
+   │     <span class="good">"state": {</span>                                              <span class="good">← NEW: fresh full snapshot</span>
+   │       <span class="good">"visible_fields": [{path:"basics.name", value:"Jane"},</span>
+   │       <span class="good">                   {path:"basics.dob",  value:null}, ...],</span>
+   │       <span class="good">"next_target": {path:"basics.dob", ...},</span>
+   │       <span class="good">"prior_steps": {...}</span>
+   │     <span class="good">}</span>
+   │   }
+   ▼
+[Gemini Live working memory:]
+   ├─ system_instruction has no state to be stale about        <span class="good">← ONE writer only</span>
+   └─ latest tool result has full fresh state                  <span class="good">← AUTHORITATIVE</span>
+   │
+   ▼
+user: "what's my name on file?"
+   │
+   ▼
+model reads from latest function_response.state → answers "Jane" correctly
+</div>
+
+<h3>The prompt rule that makes this work</h3>
+<pre>## 1. Source of truth
+
+Your source of truth is the <code>state</code> field in the most recent
+function_response in this conversation. The bootstrap state block (§8) is
+your starting state for the very first turn ONLY. Every subsequent
+update_field, add_row, etc. returns a fresh <code>state</code> snapshot —
+that is the new truth. Never combine information from §8 with the
+latest function_response.</pre>
+
+<h3>What changes in code</h3>
+<table>
+  <tr><th>File</th><th>Change</th><th>Size</th></tr>
+  <tr>
+    <td><code>services/tools.py</code></td>
+    <td>Every handler appends <code>"state": current_turn.model_dump()</code> to its return dict</td>
+    <td>~10 lines × 6 tools</td>
+  </tr>
+  <tr>
+    <td><code>prompts/onboarding_system.md</code></td>
+    <td>Rewrite §1 to point at function_response as source of truth; reduce §8 to "first-turn only"</td>
+    <td>~20 lines</td>
+  </tr>
+  <tr>
+    <td><code>services/prompt_builder.py</code></td>
+    <td>Optional: shrink <code>__TURN_JSON__</code> to participant + step header only (no field values)</td>
+    <td>~5 lines</td>
+  </tr>
+  <tr>
+    <td><code>services/tools.py</code></td>
+    <td>Add new tool: <code>get_current_state()</code> — model calls when uncertain</td>
+    <td>~15 lines</td>
+  </tr>
+</table>
+</div>
+
+<!-- ============ SCORING ============ -->
+<h2>5. Scoring against your 3 expected behaviors</h2>
+
+<table>
+  <tr>
+    <th>Option</th>
+    <th style="text-align:center;">Issue #1<br><span class="legend">stale JSON</span></th>
+    <th style="text-align:center;">Issue #2<br><span class="legend">memory conflict</span></th>
+    <th style="text-align:center;">Issue #3<br><span class="legend">hallucination</span></th>
+    <th style="text-align:center;">Single source of truth</th>
+    <th style="text-align:center;">Implementation cost</th>
+    <th style="text-align:center;">Risk</th>
+    <th style="text-align:center;">Total /60</th>
+  </tr>
+  <tr>
+    <td><strong>D</strong> function_response state ⭐</td>
+    <td style="text-align:center;"><span class="score-box score-10">10</span></td>
+    <td style="text-align:center;"><span class="score-box score-10">10</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span></td>
+    <td style="text-align:center;"><span class="score-box score-10">10</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span> <span class="legend">~1 day</span></td>
+    <td style="text-align:center;"><span class="score-box score-8">8</span></td>
+    <td style="text-align:center;"><strong>56</strong></td>
+  </tr>
+  <tr>
+    <td><strong>B</strong> Per-screen reconnect (PLAN #1)</td>
+    <td style="text-align:center;"><span class="score-box score-10">10</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span></td>
+    <td style="text-align:center;"><span class="score-box score-4">4</span> <span class="legend">15 subtasks</span></td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><strong>48</strong></td>
+  </tr>
+  <tr>
+    <td><strong>C</strong> Hybrid (per-step reconnect)</td>
+    <td style="text-align:center;"><span class="score-box score-8">8</span></td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><span class="score-box score-8">8</span></td>
+    <td style="text-align:center;"><strong>44</strong></td>
+  </tr>
+  <tr>
+    <td><strong>E</strong> Self-refresh tool</td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><span class="score-box score-6">6</span></td>
+    <td style="text-align:center;"><span class="score-box score-6">6</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span></td>
+    <td style="text-align:center;"><span class="score-box score-6">6</span> <span class="legend">model may not self-call</span></td>
+    <td style="text-align:center;"><strong>41</strong></td>
+  </tr>
+  <tr>
+    <td><strong>A</strong> Strip bootstrap JSON (no replacement)</td>
+    <td style="text-align:center;"><span class="score-box score-10">10</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span></td>
+    <td style="text-align:center;"><span class="score-box score-7">7</span></td>
+    <td style="text-align:center;"><span class="score-box score-9">9</span></td>
+    <td style="text-align:center;"><span class="score-box score-10">10</span></td>
+    <td style="text-align:center;"><span class="score-box score-5">5</span> <span class="legend">first-turn ambiguity</span></td>
+    <td style="text-align:center;"><strong>50</strong></td>
+  </tr>
+  <tr>
+    <td><strong>F</strong> system_role send_client_content</td>
+    <td style="text-align:center;"><span class="score-box score-0">0</span></td>
+    <td style="text-align:center;"><span class="score-box score-0">0</span></td>
+    <td style="text-align:center;"><span class="score-box score-0">0</span></td>
+    <td style="text-align:center;"><span class="score-box score-0">0</span></td>
+    <td style="text-align:center;"><span class="score-box score-0">0</span></td>
+    <td style="text-align:center;"><span class="score-box score-0">0</span></td>
+    <td style="text-align:center;"><strong>0</strong> <span class="bad">3.1 blocks it</span></td>
+  </tr>
+</table>
+
+<!-- ============ RECOMMENDATION ============ -->
+<div class="recommendation">
+<h2>6. Recommendation</h2>
+<p>
+  <strong>Ship Option D this week.</strong> It uses a doc-blessed Gemini channel,
+  works on 3.1, eliminates all 3 reported issues, ~1-day diff, and doesn't conflict
+  with PLAN #1 (per-screen reconnect) which can ship later as the prompt-adherence
+  polish step.
+</p>
+<p>
+  Why not B alone: it's the right long-term shape but costs 15 subtasks and won't
+  solve mid-screen field edits even after shipping. D handles those too.
+</p>
+<p>
+  Why not A alone: yes it removes the conflicting writer, but the model loses its
+  bootstrap snapshot — first-turn it has no context at all. D keeps a tiny header
+  + lets tool returns hydrate the rest.
+</p>
+<p>
+  <strong>Combined path:</strong>
+</p>
+<pre>Phase 1 (this week)   →  Option D  (P0 firefight)
+Phase 2 (next month) →  Option B / PLAN #1  (prompt adherence + audio UX win)</pre>
+</div>
+
+<h2>7. References</h2>
+<ul class="tight">
+  <li><a href="https://ai.google.dev/api/live" target="_blank">Live API — WebSockets API reference (Google AI for Developers)</a></li>
+  <li><a href="https://ai.google.dev/gemini-api/docs/live-session" target="_blank">Session management with Live API</a></li>
+  <li><a href="https://ai.google.dev/gemini-api/docs/live-api/capabilities" target="_blank">Live API capabilities guide</a></li>
+  <li><a href="https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api/best-practices" target="_blank">Best practices with Gemini Live API (Vertex)</a></li>
+  <li><a href="https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api/start-manage-session" target="_blank">Start and manage live sessions (Vertex)</a></li>
+  <li><a href="https://docs.livekit.io/agents/models/realtime/plugins/gemini/" target="_blank">LiveKit Gemini Live plugin — documents the 3.1 error-1007 restriction on send_client_content</a></li>
+  <li><a href="https://docs.pipecat.ai/api-reference/server/services/s2s/gemini-live" target="_blank">Pipecat Gemini Live service docs</a></li>
+  <li><a href="https://voxam.hashnode.dev/stop-letting-llm-drive-voice-agent-state-machine" target="_blank">VOXAM — Stop letting the LLM drive your voice agent's state machine</a></li>
+</ul>
+
+</body>
+</html>

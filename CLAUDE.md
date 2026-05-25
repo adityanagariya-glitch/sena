@@ -127,6 +127,26 @@ Rules:
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current. The Stop hook also rebuilds the graph at every session boundary.
 
+## code-review-graph (blast-radius analysis)
+
+MCP server providing precise call-graph impact analysis via Tree-sitter AST. Complementary to graphify: graphify = community structure + architecture; code-review-graph = precise callers/dependents/affected tests for a specific symbol or file.
+
+**MCP server:** `code-review-graph` (wired in `.claude/settings.json`) — auto-watches for file changes.
+**Graph DB:** `.code-review-graph/graph.db` (auto-built, gitignored).
+
+**Use before any non-trivial edit:**
+- `get_callers(symbol)` — who calls this function?
+- `get_dependents(file)` — what imports/uses this module?
+- `get_affected_tests(file_or_symbol)` — which tests exercise this code?
+- `detect_changes(file)` — what downstream nodes are affected by a change here?
+
+**Rule:** Before editing any file touched by 3+ other modules (check `get_dependents`), run blast-radius analysis first. If affected test count > 5 or callers span multiple services, flag to user before proceeding.
+
+**Rebuild manually if graph is stale:**
+```powershell
+& "C:\Users\Admin\Downloads\SENA\.venv\Scripts\code-review-graph.exe" build --repo "C:\Users\Admin\Downloads\sena-mobile\sena-mobile\SENA_AI"
+```
+
 ## Hooks
 
 Automated hooks enforce safety rules and maintain documentation consistency. See `.claude/HOOKS_README.md` for full details.

@@ -1,6 +1,6 @@
 ---
 title: Session Start Guide
-updated: 2026-05-15
+updated: 2026-05-25
 purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session to land in same state.
 ---
 
@@ -33,6 +33,7 @@ Read these files IN ORDER at the start of any new session. Stop when you have en
 | Gemini Live bugs (any service still using Live API) | `memory/feedback_gemini_live_patterns.md`, `memory/project_voice_demo_working.md` |
 | Onboarding validation contract (Flutter still pending) | `SENA_AI/flutterhandoffdev.md` — canonical Step-1 handoff |
 | Architecture / code structure overview | `graphify-out/GRAPH_REPORT.md` |
+| Blast-radius before editing a heavily-imported file | MCP `code-review-graph` — `get_dependents(file)`, `get_callers(symbol)`, `get_affected_tests(file)`. Rebuild: `& "C:\Users\Admin\Downloads\SENA\.venv\Scripts\code-review-graph.exe" build --repo .` |
 | NDIS domain / compliance | specific files in `ndis_markdown_docs/` (never the whole folder) |
 | Agent pipeline + routing (planner → implementer → reviewer chain) | `.claude/rules/sena-rules.md` |
 | API / WS event canonical list (path-scoped, auto-loads) | `.claude/rules/api.md` (loads when editing `*/api/*.py`) |
@@ -100,6 +101,7 @@ From `.claude/rules/principal-engineer.md` (canonical — agents inherit automat
 - **Self-improvement**: same lesson 3× → promote from `lessons.md` to `CLAUDE.md` permanent rule; repeating a `lessons.md` entry = instant-fail
 
 From `CLAUDE.md`:
+- **code-review-graph (MCP):** before editing any file imported by 3+ modules, call `get_dependents` / `get_callers` / `get_affected_tests`. If affected tests > 5 or callers span multiple services → flag to user before proceeding. Graph DB: `.code-review-graph/graph.db` (auto-watched).
 - Gemini code → invoke `Skill: gemini-live-api-dev` BEFORE editing
 - Use `send_realtime_input(audio=Blob(...))` — NOT `session.send(LiveClientRealtimeInput(...))`
 - Current model: `gemini-3.1-flash-live-preview`

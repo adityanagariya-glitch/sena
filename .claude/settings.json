@@ -1,129 +1,138 @@
-{
-  "env": {
-    "VIRTUAL_ENV": "C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.venv",
-    "SENA_AI_VENV_SCRIPTS": "C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.venv\\Scripts"
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "bash .claude/statusline"
-  },
-  "permissions": {
-    "deny": [
-      "Bash(rm -rf *)",
-      "Bash(rm -rf /)",
-      "Bash(rm -rf ~)",
-      "Bash(git push --force:*)",
-      "Bash(git push --force-with-lease:*)",
-      "Bash(git push origin main:*)",
-      "Bash(git push origin master:*)",
-      "Read(./.env)",
-      "Read(./.env.*)",
-      "Read(./secrets/**)",
-      "Read(./**/credentials.json)",
-      "Read(./**/*.pem)",
-      "Read(./**/*.key)",
-      "Read(./**/id_rsa)",
-      "Read(./**/id_ed25519)"
-    ]
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/session-start.sh"
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/pre-tool-use.sh"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit|NotebookEdit|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/post-tool-use.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/bump-updated.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/architecture-reminder.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/issue-capture-reminder.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__plugin_context7",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/ctx7-flag.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/skills-flag.sh"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/stop.sh"
-          }
-        ]
-      }
-    ]
-  },
-  "mcpServers": {
-    "sigmap": {
-      "command": "node",
-      "args": [
-        "C:\\Users\\Admin\\AppData\\Roaming\\npm\\node_modules\\sigmap\\gen-context.js",
-        "--mcp"
-      ]
-    }
-  }
+﻿{
+    "env":  {
+                "VIRTUAL_ENV":  "C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.venv",
+                "SENA_AI_VENV_SCRIPTS":  "C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI\\.venv\\Scripts"
+            },
+    "statusLine":  {
+                       "type":  "command",
+                       "command":  "bash .claude/statusline"
+                   },
+    "permissions":  {
+                        "deny":  [
+                                     "Bash(rm -rf *)",
+                                     "Bash(rm -rf /)",
+                                     "Bash(rm -rf ~)",
+                                     "Bash(git push --force:*)",
+                                     "Bash(git push --force-with-lease:*)",
+                                     "Bash(git push origin main:*)",
+                                     "Bash(git push origin master:*)",
+                                     "Read(./.env)",
+                                     "Read(./.env.*)",
+                                     "Read(./secrets/**)",
+                                     "Read(./**/credentials.json)",
+                                     "Read(./**/*.pem)",
+                                     "Read(./**/*.key)",
+                                     "Read(./**/id_rsa)",
+                                     "Read(./**/id_ed25519)"
+                                 ]
+                    },
+    "hooks":  {
+                  "SessionStart":  [
+                                       {
+                                           "matcher":  "*",
+                                           "hooks":  [
+                                                         {
+                                                             "type":  "command",
+                                                             "command":  "bash .claude/hooks/session-start.sh"
+                                                         }
+                                                     ]
+                                       }
+                                   ],
+                  "PreToolUse":  [
+                                     {
+                                         "matcher":  "*",
+                                         "hooks":  [
+                                                       {
+                                                           "type":  "command",
+                                                           "command":  "bash .claude/hooks/pre-tool-use.sh"
+                                                       }
+                                                   ]
+                                     }
+                                 ],
+                  "PostToolUse":  [
+                                      {
+                                          "matcher":  "Write|Edit|NotebookEdit|Bash",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "bash .claude/hooks/post-tool-use.sh"
+                                                        }
+                                                    ]
+                                      },
+                                      {
+                                          "matcher":  "Write|Edit",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "bash .claude/hooks/bump-updated.sh"
+                                                        }
+                                                    ]
+                                      },
+                                      {
+                                          "matcher":  "Write",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "bash .claude/hooks/architecture-reminder.sh"
+                                                        }
+                                                    ]
+                                      },
+                                      {
+                                          "matcher":  "Write|Edit|NotebookEdit",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "bash .claude/hooks/issue-capture-reminder.sh"
+                                                        }
+                                                    ]
+                                      },
+                                      {
+                                          "matcher":  "mcp__plugin_context7",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "bash .claude/hooks/ctx7-flag.sh"
+                                                        }
+                                                    ]
+                                      },
+                                      {
+                                          "matcher":  "Skill",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "bash .claude/hooks/skills-flag.sh"
+                                                        }
+                                                    ]
+                                      }
+                                  ],
+                  "Stop":  [
+                               {
+                                   "matcher":  "*",
+                                   "hooks":  [
+                                                 {
+                                                     "type":  "command",
+                                                     "command":  "bash .claude/hooks/stop.sh"
+                                                 }
+                                             ]
+                               }
+                           ]
+              },
+    "mcpServers":  {
+                       "sigmap":  {
+                                      "command":  "node",
+                                      "args":  [
+                                                   "C:\\Users\\Admin\\AppData\\Roaming\\npm\\node_modules\\sigmap\\gen-context.js",
+                                                   "--mcp"
+                                               ]
+                                  },
+                       "code-review-graph":  {
+                                                 "command":  "C:\\Users\\Admin\\Downloads\\SENA\\.venv\\Scripts\\code-review-graph.exe",
+                                                 "args":  [
+                                                              "mcp",
+                                                              "--repo",
+                                                              "C:\\Users\\Admin\\Downloads\\sena-mobile\\sena-mobile\\SENA_AI",
+                                                              "--auto-watch"
+                                                          ]
+                                             }
+                   }
 }

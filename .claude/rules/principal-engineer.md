@@ -254,6 +254,7 @@ Per-agent application table + feature-implementation pattern (teacher/student + 
 
 Before writing a single new function in `sena-ai/`:
 
+0. **Blast-radius check (if file has 3+ importers):** call MCP `get_dependents(file)` + `get_affected_tests(file)`. If affected tests > 5 or callers span multiple services → flag to user before proceeding. (`code-review-graph` MCP, graph at `.code-review-graph/graph.db`)
 1. `Grep "def <name>" sena-ai/services/<svc>/src/` — is it already in this service?
 2. `Grep "def <name>" sena-ai/shared/` — is it in the shared library?
 3. `Read sena-ai/services/<svc>/pyproject.toml` — what's already installed?
