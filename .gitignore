@@ -59,6 +59,7 @@ Figma
 # Added by code-review-graph
 .code-review-graph/
 .agent_memory/
+**/.memory_sessions.json
 .agents/
 .mcp.json
 graphify-out/

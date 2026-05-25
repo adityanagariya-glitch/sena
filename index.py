@@ -102,7 +102,7 @@ else:
 # Will be replaced after successful login
 jwt_token = ""
 
-with open('services/try/formatted_apis.json', 'r') as f:
+with open('services/section_2/formatted_apis.json', 'r') as f:
     AVAILABLE_APIS = json.load(f)
 
 API_BASE_URL = "https://dev-api.isena.org/api"
@@ -580,7 +580,7 @@ def _persist_turn(user_question, assistant_text, mode, api_path=None, api_respon
             }
             resp = bedrock_agentcore.create_event(**params)
             event_id = (resp.get("event") or {}).get("eventId")
-            if event_id:
+            if event_id and VERBOSE:
                 print(f"[memory] AgentCore event written:")
         except Exception as e:
             print(f"[memory] AgentCore create_event failed: {e}")
@@ -1197,7 +1197,7 @@ VOICE — speak like a friendly Australian colleague:
 
     messages = _assemble_context(user_question)
 
-    print("\nAssistant: ", end="", flush=True)
+    print("\nSena: ", end="", flush=True)
     response = call_bedrock_stream(messages, system_prompt)
 
     if response:
@@ -1459,14 +1459,16 @@ def _skip_memory_gate(user_question):
 
 def process_query(user_question):
     """Main query processor — memory-first (unless verification is needed), then route."""
-    print(f"\nProcessing: {user_question}")
+    if VERBOSE:
+        print(f"\nProcessing: {user_question}")
 
     # Step 0: if user is asking to verify/validate/cross-check, skip memory entirely.
     if not _skip_memory_gate(user_question):
         # Step 1: try memory before any routing or fetching.
         memory_answer = _try_answer_from_memory(user_question)
         if memory_answer:
-            print("Mode: Memory (answered from prior conversation)")
+            if VERBOSE:
+                print("Mode: Memory (answered from prior conversation)")
             print(f"\nAssistant: {memory_answer}")
             _persist_turn(user_question, memory_answer, mode="MEMORY")
             return memory_answer
@@ -1475,19 +1477,27 @@ def process_query(user_question):
     intent_analysis = detect_intent(user_question)
     intent = intent_analysis.get('intent', 'CHAT')
 
-    print(f"Intent: {intent} ({intent_analysis.get('reason', '')})")
+    # Print reasoning in clean format
+    print(f"Reasoning: {intent}")
+
+    if VERBOSE:
+        print(f"  ({intent_analysis.get('reason', '')})")
 
     if intent == 'API':
-        print("Mode: API Routing")
+        if VERBOSE:
+            print("Mode: API Routing")
         return process_api_call(user_question)
     elif intent == 'KB' and BEDROCK_KB_ID:
-        print("Mode: Knowledge Base (RAG)")
+        if VERBOSE:
+            print("Mode: Knowledge Base (RAG)")
         return process_kb_query(user_question)
     elif intent == 'META':
-        print("Mode: Meta (conversation recall)")
+        if VERBOSE:
+            print("Mode: Meta (conversation recall)")
         return process_meta_query(user_question)
     else:
-        print("Mode: Normal Chat")
+        if VERBOSE:
+            print("Mode: Normal Chat")
         return process_normal_chat(user_question)
 
 if __name__ == "__main__":
