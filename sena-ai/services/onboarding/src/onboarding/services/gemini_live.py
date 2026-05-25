@@ -19,6 +19,7 @@ Key implementation notes:
   - No proactive audio on gemini-3.1-flash-live-preview; greeting fires on
     the user's first utterance (system prompt handles the wording)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -131,8 +132,14 @@ class GeminiLiveSession:
         # LiveConnectConfig property.
         compression_cfg = None
         try:
+            # Option D Layer 3 — aggressive sliding-window compression so
+            # stale conversational drift gets summarised away faster, leaving
+            # recent function_response.state payloads to dominate the model's
+            # attention. 4000 tokens ≈ 5–7 min of voice — long enough to keep
+            # recent exchanges, short enough to evict stale drift fast.
+            # See .claude/plans/per-screen-session-model/ISSUE_AND_SOLUTION.md §7.12.
             compression_cfg = types.ContextWindowCompressionConfig(
-                sliding_window=types.SlidingWindow()
+                sliding_window=types.SlidingWindow(target_tokens=4000)
             )
         except (AttributeError, TypeError):
             # SDK older than the compression types — keep going without it.
@@ -163,7 +170,9 @@ class GeminiLiveSession:
             tools=build_live_tools(
                 FUNCTION_DECLS,
                 grounding_enabled=settings.onboarding_grounding_enabled,
-            ) if self._tools else None,
+            )
+            if self._tools
+            else None,
             # Multi-turn REQUIRES explicit realtime_input_config with VAD.
             # Without it the receive() iterator exits after the first turn and
             # the session silently stops processing audio.
@@ -271,9 +280,7 @@ class GeminiLiveSession:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            log.warning(
-                "invalid_json_from_client session=%s", self._session_id
-            )
+            log.warning("invalid_json_from_client session=%s", self._session_id)
             return False
 
         msg_type = data.get("type")
@@ -297,14 +304,18 @@ class GeminiLiveSession:
             # api.md: enforce SCREEN_STATE_MAX_BYTES BEFORE Pydantic parse to
             # prevent memory exhaustion via a giant payload.
             if len(raw_text) > settings.screen_state_max_bytes:
-                await self._ws.send_text(json.dumps({
-                    "type": "error",
-                    "code": "screen_state_too_large",
-                    "message": (
-                        f"screen_state payload exceeds "
-                        f"{settings.screen_state_max_bytes} bytes"
-                    ),
-                }))
+                await self._ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "code": "screen_state_too_large",
+                            "message": (
+                                f"screen_state payload exceeds "
+                                f"{settings.screen_state_max_bytes} bytes"
+                            ),
+                        }
+                    )
+                )
                 return False
             if msg_type == "screen_state":
                 await self._handle_screen_state(session, data, version=1)
@@ -324,9 +335,7 @@ class GeminiLiveSession:
         # "start" arrives before run() — safe to ignore here if it slips through
         return False
 
-    async def _handle_validation_failed(
-        self, session: genai.live.AsyncSession, data: dict
-    ) -> None:
+    async def _handle_validation_failed(self, session: genai.live.AsyncSession, data: dict) -> None:
         """Flutter reports a client-side validation rejection — upsert into
         pending_validation_errors and inject a re-ask prompt into Gemini."""
         section_id = data.get("section_id", "")
@@ -440,9 +449,15 @@ class GeminiLiveSession:
                 # instruction at session start, and update_field round-trips
                 # surface live deltas to the agent.
             except ValidationError as e:
-                await self._ws.send_text(json.dumps({
-                    "type": "error", "code": "turn_invalid", "message": str(e),
-                }))
+                await self._ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "error",
+                            "code": "turn_invalid",
+                            "message": str(e),
+                        }
+                    )
+                )
                 return
         else:
             # No turn key — delegate to legacy handler for backwards-compat.
@@ -580,12 +595,8 @@ class GeminiLiveSession:
                         # ── Input transcription (user speech → text) ───────────
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = sc.input_transcription.text
-                            log.info(
-                                "USER_SAID %r session=%s", txt, self._session_id
-                            )
-                            await self._ws.send_text(
-                                json.dumps({"type": "user_said", "text": txt})
-                            )
+                            log.info("USER_SAID %r session=%s", txt, self._session_id)
+                            await self._ws.send_text(json.dumps({"type": "user_said", "text": txt}))
                             await self._repo.append_transcript(
                                 self._session_id,
                                 {"speaker": "user", "text": txt, "turn_id": self._turn_id},
@@ -603,9 +614,7 @@ class GeminiLiveSession:
                             for part in sc.model_turn.parts:
                                 if part.inline_data:
                                     if not turn_started:
-                                        await self._ws.send_text(
-                                            json.dumps({"type": "turn_start"})
-                                        )
+                                        await self._ws.send_text(json.dumps({"type": "turn_start"}))
                                         turn_started = True
                                         self._gemini_is_speaking = True
                                         # Do NOT send audio_stream_end here in
@@ -651,9 +660,7 @@ class GeminiLiveSession:
                                     ttl_sec=settings.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
-                            await self._ws.send_text(
-                                json.dumps({"type": "interrupted"})
-                            )
+                            await self._ws.send_text(json.dumps({"type": "interrupted"}))
                             turn_started = False
                             chunk_count = 0
                             self._gemini_is_speaking = False
@@ -672,7 +679,7 @@ class GeminiLiveSession:
                                     await session.send_realtime_input(
                                         text=(
                                             "[INTERRUPTED] You were saying: "
-                                            f"\"{interrupted_intent}\". "
+                                            f'"{interrupted_intent}". '
                                             "Address what the user just said first, "
                                             "then return to that thought only if it "
                                             "is still relevant."
@@ -716,9 +723,7 @@ class GeminiLiveSession:
                                     ttl_sec=settings.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
-                            await self._ws.send_text(
-                                json.dumps({"type": "turn_complete"})
-                            )
+                            await self._ws.send_text(json.dumps({"type": "turn_complete"}))
                             log.info(
                                 "turn_complete chunks=%d turn=%d session=%s",
                                 chunk_count,
@@ -745,9 +750,7 @@ class GeminiLiveSession:
                     # to enable Gemini-native reconnect (faster than app-level replay).
                     resumption_update = getattr(msg, "session_resumption_update", None)
                     if resumption_update:
-                        gemini_handle = getattr(
-                            resumption_update, "resumable_session_handle", None
-                        )
+                        gemini_handle = getattr(resumption_update, "resumable_session_handle", None)
                         if gemini_handle:
                             log.debug(
                                 "gemini_session_handle_updated session=%s handle=%.12s…",
@@ -942,7 +945,9 @@ class GeminiLiveSession:
                     self._session_id,
                 )
                 result = {
-                    "ok": False, "reason": "Internal dispatch error", "code": "dispatch_error"
+                    "ok": False,
+                    "reason": "Internal dispatch error",
+                    "code": "dispatch_error",
                 }
             responses.append(
                 types.FunctionResponse(

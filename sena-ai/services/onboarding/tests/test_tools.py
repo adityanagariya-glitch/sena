@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from onboarding.services.tools import FUNCTION_DECLS, ToolDispatcher
+from onboarding.services.tools import _KNOWN_TOOLS, FUNCTION_DECLS, ToolDispatcher
 
 
 class _FakeBridge:
@@ -26,7 +26,16 @@ def test_function_decls_lists_exactly_six_tools() -> None:
         "delete_row",
         "submit_step",
         "escalate_incident",
+        "get_current_state",
     }
+    assert {
+        "update_field",
+        "clear_field",
+        "add_row",
+        "delete_row",
+        "submit_step",
+        "get_current_state",
+    } == _KNOWN_TOOLS
 
 
 def test_function_decl_update_field_required_args() -> None:
@@ -53,8 +62,13 @@ async def test_dispatch_update_field_forwards_to_bridge() -> None:
 
 @pytest.mark.asyncio
 async def test_dispatch_submit_step_returns_blockers_verbatim() -> None:
-    blockers = [{"path": "basics.profile_picture", "label": "Profile Photo",
-                 "reason": "Profile photo is required"}]
+    blockers = [
+        {
+            "path": "basics.profile_picture",
+            "label": "Profile Photo",
+            "reason": "Profile photo is required",
+        }
+    ]
     bridge = _FakeBridge({"ok": False, "blockers": blockers})
     disp = ToolDispatcher(bridge=bridge)
     out = await disp.dispatch("submit_step", {"confirmation_transcript": "I'm done"})
@@ -75,10 +89,13 @@ async def test_escalate_incident_does_not_call_bridge() -> None:
     bridge = _FakeBridge({"ok": True})
     incidents: list[dict[str, Any]] = []
     disp = ToolDispatcher(bridge=bridge, on_incident=lambda args: incidents.append(args))
-    out = await disp.dispatch("escalate_incident", {
-        "reason": "self_harm",
-        "transcript_excerpt": "...",
-    })
+    out = await disp.dispatch(
+        "escalate_incident",
+        {
+            "reason": "self_harm",
+            "transcript_excerpt": "...",
+        },
+    )
     assert out == {"ok": True}
     assert bridge.calls == []
     assert incidents == [{"reason": "self_harm", "transcript_excerpt": "..."}]
