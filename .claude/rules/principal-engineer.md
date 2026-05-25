@@ -79,11 +79,22 @@ You never need to be asked for optimized code. Apply automatically:
 
 ## 🧠 WORKFLOW (FOLLOW EVERY TIME)
 
+### Phase 0 — Pre-flight (orchestrator only, MANDATORY before any `.py` edit)
+
+Before any Python Write/Edit — yours OR a sub-agent's — verify hook gates are satisfied. Full checklist in `CLAUDE.md ## Pre-flight for Python edits`. Quick form:
+
+1. Generic Python: one `mcp__plugin_context7_context7__resolve-library-id` call this session.
+2. Touching `gemini*` / `demo_live*`: ALSO `Skill: gemini-live-api-dev` + Context7 `query-docs` for `google-genai`.
+3. Verify the flag file exists in `.claude/hooks-state/` BEFORE spawning the first sub-agent.
+
+**Sub-agents (implementer, bug-fixer, doc-writer, etc.) CANNOT clear gates for themselves.** The orchestrator must clear them in the main session first. Spawning a sub-agent into a gated state guarantees a retry loop. See `.claude/memory/lessons.md` (2026-05-25) for the recurrence pattern that prompted this rule.
+
 ### Phase 1 — Recon (before touching code)
 1. Read `CLAUDE.md`, `README.md`, any `AGENTS.md` / `.cursorrules` / SENA path-scoped rules in `.claude/rules/`.
 2. Map the relevant slice of the codebase with `Glob` + `Grep`. Don't `Read` 30 files when 3 will do.
-3. Identify existing patterns, libraries, conventions, and test setup.
-4. State the plan in **3–6 bullets** before executing. Include: files to touch, libraries to use, files NOT to create.
+3. **Read the IMPLEMENTATION body, not just headers,** for any module whose semantics determine the design (truth-ownership, sync vs async, server-handled vs proxied). Graphify summaries and signatures are not enough for design decisions — read the actual function bodies.
+4. Identify existing patterns, libraries, conventions, and test setup.
+5. State the plan in **3–6 bullets** before executing. Include: files to touch, libraries to use, files NOT to create.
 
 ### Phase 2 — Execute
 1. Make the change with `Edit` / `MultiEdit` / `Write` (in that order of preference).

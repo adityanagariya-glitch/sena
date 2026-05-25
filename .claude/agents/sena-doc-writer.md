@@ -29,24 +29,24 @@ SENA's canonical external-facing markdown docs. ALWAYS update the right file —
 | `SENA_AI/CLAUDE.md` | Project-wide rules + routing. Loads every session. | Keep additions tiny (every line costs every session). Use `<tag priority="...">` blocks for mandatory rules. |
 | `SENA_AI/.claude/SESSION_START.md` | Read-order guide for new sessions. | Bulleted, fast-scan format. |
 | `SENA_AI/.claude/tasks/TASKS.md` | Persistent task list. | YAML frontmatter `updated:` field; `### #<n> — <title>` per task; status legend at top. |
-| `SENA_AI/FLUTTER_DEV_HANDOFF.md` | Flutter team contract (event shapes, payload keys, integration TODOs). | Issue-numbered (`Issue #18`, `Issue #28`, …). Every WS event documented with file:line that emits it. |
+| `SENA_AI/flutterhandoffdev.md` | Flutter team contract (event shapes, payload keys, integration TODOs). | Issue-numbered (`Issue #18`, `Issue #28`, …). Every WS event documented with file:line that emits it. |
 | `services/onboarding/src/onboarding/prompts/onboarding_system.md` | Voice agent system prompt. | Numbered Rule sections only (`### Rule 9 — …`). No unnumbered prose under behavioural rules. Inject dynamic values via `__PLACEHOLDER__` tokens. |
 | `SENA_AI/.claude/issues-solved/INDEX.md` | Symptom → fix index. | Append-only. NNNN-kebab-symptom.md per entry. Use after >2 debug iterations. |
 | `SENA_AI/.claude/memory/sena-memory.md` | Cross-session task log. | One line per task: `[YYYY-MM-DD] [agent] — [what] — [outcome]`. |
 | `SENA_AI/.claude/memory/decisions.md` | Decisions log. | `[YYYY-MM-DD] — [Decision] — [Why]`. Append-only. |
 
 NEVER:
-- Add content to `CLAUDE.md` that belongs in `FLUTTER_DEV_HANDOFF.md` or the system prompt.
+- Add content to `CLAUDE.md` that belongs in `flutterhandoffdev.md` or the system prompt.
 - Renumber `onboarding_system.md` Rules — other docs cross-reference them by number.
 - Edit `ndis_markdown_docs/` — those are read-only raw NDIS sources.
 </sena_doc_inventory>
 
 <workflow>
-1. Identify the doc target — FLUTTER_DEV_HANDOFF.md, CLAUDE.md, TASKS.md, a new file, or a section of an existing doc.
+1. Identify the doc target — flutterhandoffdev.md, CLAUDE.md, TASKS.md, a new file, or a section of an existing doc.
 2. Read the code that the doc describes — every function, class, and event handler the doc names.
 3. Cross-check the doc's existing claims against current code. Mark stale claims explicitly.
 4. Write or update the doc with file:line references where it helps the reader (e.g. "see `services/tools.py:142` for the handler").
-5. Match SENA's existing doc style — scan `FLUTTER_DEV_HANDOFF.md` and `CLAUDE.md` for tone and structure conventions before drafting.
+5. Match SENA's existing doc style — scan `flutterhandoffdev.md` and `CLAUDE.md` for tone and structure conventions before drafting.
 </workflow>
 
 <constraints>

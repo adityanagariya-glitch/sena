@@ -8,6 +8,12 @@ purpose: Single entry-point doc. Future-Claude reads this FIRST in a new session
 
 Read these files IN ORDER at the start of any new session. Stop when you have enough context for the user's current request.
 
+## §0 — Pre-flight for Python edits (CHECK FIRST if user's request touches `.py`)
+
+If the request will lead to any `.py` Write/Edit, run the pre-flight checklist in `CLAUDE.md ## Pre-flight for Python edits` BEFORE diving in. One Context7 call clears the generic gate; touching Gemini code requires the Skill + Gemini-specific Context7 query too.
+
+**Skipping this step costs ~5 wasted iterations** (multiple sub-agents blocked + retries + diagnosis). Captured as five lessons in `.claude/memory/lessons.md` (2026-05-25). The hooks aren't your enemy — they're the safety floor. Satisfy them upfront, not after they fire.
+
 > **State as of 2026-05-14:** Voice assistance feature is **closed and deployed** (EC2,
 > `docker-compose.deploy.yml`); Case Review service is **shelved at Phase C**. Both feature
 > histories live in `.claude/tasks/ARCHIVE.md`. The next feature has not started — `TASKS.md`

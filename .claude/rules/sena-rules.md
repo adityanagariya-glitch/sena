@@ -68,7 +68,7 @@ A task is only complete when:
 - Hook gates (`pre-tool-use.sh`, Rule 3 — Gemini Live Config Gate) are enforced by the runtime regardless of these rules. Agents must respect those gates.
 - The `.agents/` folder no longer exists (deleted 2026-05-11). All agent definitions live in `.claude/agents/`. Historical references in `memory/` describe past state and are intentionally left untouched.
 
-## Current Inventory (as of 2026-05-15)
+## Current Inventory (as of 2026-05-25)
 
 | Area | Count | Path |
 |------|-------|------|
@@ -82,6 +82,6 @@ A task is only complete when:
 | Tasks files | 3 — `TASKS.md` (active queue), `ARCHIVE.md` (closed features), `followups.md` (out-of-scope observations) | `.claude/tasks/` |
 | Plans | empty by design between features — see `.claude/plans/README.md` | `.claude/plans/` |
 
-**Hook state flags** live in `.claude/` root (`ctx7-session.flag`, `ctx7-gemini.flag`, `skills-gemini.flag`). Cleared on every session start; re-earn by invoking the relevant Skill or Context7 MCP.
+**Hook state flags** live in `.claude/hooks-state/` (`ctx7-session.flag`, `ctx7-gemini.flag`, `skills-gemini.flag`). Cleared on every session start; re-earn by invoking the relevant Skill or Context7 MCP. (Stray root-level `.flag` files exist from earlier broken `settings.json` matcher wiring — vestigial, can be removed safely.) The `.claude/state/` directory was removed 2026-05-25 (duplicate path, never used by live hooks).
 
 **The `audits/`, `client_onboarding_validations.md`, and `gsd-instructions.md` files were removed 2026-05-15.** If you see references in code/docs, they're stale — sweep them.

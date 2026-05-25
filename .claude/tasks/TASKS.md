@@ -1,6 +1,6 @@
 ---
 title: Persistent Task List
-updated: 2026-05-22
+updated: 2026-05-25
 ---
 
 > **Clean slate — 2026-05-14.** Voice assistance (feature A) shipped to EC2; Case Review
@@ -20,8 +20,24 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 
 ## Active
 
+### #2 — Option D state-channel fix for Gemini hallucination (2026-05-25)
+- **Status:** server-side-shipped-pending-flutter-commit
+- **Priority:** P0 (production hallucination firefight)
+- **Pipeline:** planner ✓ · implementer ✓ · business-reviewer ✓ · security-reviewer ✓ · code-reviewer ✓ · bug-fixer ✓ (5 patches) · optimization-reviewer ✓ · doc-writer ✓ · cleaner ✓ (ruff/format/mypy clean; 19 pre-existing gemini_live.py mypy errors unchanged) · **git-committer pending user ack**
+- **Server-side files (committed branch `voice-assistance-optimization`):**
+  - `services/onboarding/src/onboarding/services/tools.py` — `get_current_state` in `_KNOWN_TOOLS` + `FUNCTION_DECLS` (7 tools total)
+  - `services/onboarding/src/onboarding/services/prompt_builder.py` — `_bootstrap_state_json` helper; bootstrap shrunk to participant+step+next_target+bootstrap_mode when flag on
+  - `services/onboarding/src/onboarding/services/gemini_live.py` — `SlidingWindow(target_tokens=4000)` Layer 3 compression
+  - `services/onboarding/src/onboarding/core/settings.py` — `onboarding_tool_state_channel: bool = True`
+  - `services/onboarding/src/onboarding/prompts/onboarding_system.md` — §1 rewrite + §1a FORBIDDEN PHRASES (9 bullets incl. NDIS) + §1b staleness + §6 7-tools + §8 demoted
+  - `services/onboarding/tests/test_tools.py` — coverage extended for `get_current_state`
+- **Flutter handoff:** `sena-ai/services/onboarding/FLUTTER_HANDOFF_OPTION_D.md` — full contract for sena-mobile team (every tool_response must carry fresh `state`; new `get_current_state` handler; UI-driven update path)
+- **Mobile-side pending:** sena-mobile team must implement matching half. Until they do, the fix is incomplete and Gemini has no authoritative view of FormState. Feature flag `SENA_AI_ONBOARDING_TOOL_STATE_CHANNEL=false` is the hot rollback.
+- **Followups (in `.claude/tasks/followups.md`):** rollback-asymmetry (prompt rules stay Option-D-shaped when flag=False — intentional per spec §7.11)
+- **Reference:** `.claude/plans/per-screen-session-model/ISSUE_AND_SOLUTION.md` (full spec) · `.claude/plans/per-screen-session-model/OPTION_D_EXPLAINED.html` (storyboard) · `.claude/plans/per-screen-session-model/STATE_REFRESH_OPTIONS.html` (option comparison)
+
 ### #1 — Per-screen Live session model (2026-05-22)
-- **Status:** plan-approved-pending-decisions
+- **Status:** plan-approved-deferred-to-phase-2 (Option D shipping first as P0 firefight)
 - **Priority:** P1
 - **Plan:** `.claude/plans/per-screen-session-model/PLAN.md`
 - **Goal:** Replace one-Live-session-per-step with one-session-per-screen + parallel pre-warm. Fixes Gemini Live's poor adherence to the ~800-line monolithic system prompt.

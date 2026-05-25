@@ -293,41 +293,87 @@ Add a `get_current_state()` tool. The model calls it when it thinks its state is
 
 ## 7. Option D — the fix in exact detail
 
+> **ARCHITECTURE CORRECTION (2026-05-25 implementation audit):** `tools.py` is a thin proxy to `MobileBridge`. Mobile (Flutter) is the source of truth, not server-side Redis. The Option D pattern still holds — every tool reply must ship fresh `state` — but the **state must be built and returned by Flutter, not by server-side Python**. Server's role narrows to:
+> 1. Declaring the new `get_current_state` tool to Gemini (in `FUNCTION_DECLS`).
+> 2. Shrinking the bootstrap JSON in `system_instruction` (Layer 1).
+> 3. Configuring context compression (Layer 3).
+> 4. Updating the system prompt rules (Layer 2 + Layer 4).
+> 5. Documenting the contract for the Flutter team.
+>
+> All `state`-payload construction lives in Flutter. See `FLUTTER_HANDOFF_OPTION_D.md` for the mobile contract.
+
 ### 7.1 The one-line idea
 
-**Every tool-call reply ships back the full fresh form state.** The system prompt no longer carries a copy of the form state. The model's source of truth becomes the most recent `function_response`.
+**Every tool-call reply ships back the full fresh form state — and Flutter builds it.** The system prompt no longer carries a copy of the form state. The model's source of truth becomes the most recent `function_response.state` field, populated by Flutter.
 
-### 7.2 What the tool reply shape changes from / to
+### 7.2 What the tool reply shape changes from / to (FLUTTER-SIDE)
 
-**Before:**
+Today, Flutter's `tool_response` for `update_field` returns something like:
 
-```python
-# sena-ai/services/onboarding/src/onboarding/services/tools.py
-async def _update_field(self, args: dict) -> dict[str, Any]:
-    # ... validation, repo write ...
-    return {"ok": True, "saved": {"section": section, "field": field, "value": value}}
+```jsonc
+// Today — minimal mobile reply over WebSocket
+{ "type": "tool_response", "tool_id": "...", "result": {"ok": true} }
 ```
 
-**After:**
+After Option D:
 
-```python
-async def _update_field(self, args: dict) -> dict[str, Any]:
-    # ... validation, repo write ...
-    fresh_turn = await self._build_fresh_turn_payload()   # NEW
-    return {
-        "ok": True,
-        "saved": {"section": section, "field": field, "value": value},
-        "state": fresh_turn.model_dump(mode="json"),       # NEW
+```jsonc
+// Option D — Flutter MUST include the full fresh state in result
+{
+  "type": "tool_response",
+  "tool_id": "...",
+  "result": {
+    "ok": true,
+    "saved": {"section": "basics", "field": "name", "value": "Jane"},
+    "state": {
+      "participant": {"first_name": "Jane"},
+      "step": {"id": "personal_information", "label": "Personal Information", "number": 1},
+      "bootstrap_mode": "returning_same_page",
+      "visible_fields": [
+        {"path": "basics.name",  "value": "Jane", "type": "text",  "required": true},
+        {"path": "basics.dob",   "value": null,   "type": "date",  "required": true},
+        {"path": "basics.phone", "value": null,   "type": "phone", "required": true}
+      ],
+      "next_target": {"path": "basics.dob", "label": "your date of birth", "reason": "next_required"},
+      "last_rejection": null,
+      "pending_confirmation": null,
+      "prior_steps": {}
     }
+  }
+}
 ```
 
-Every tool handler (`update_field`, `add_row`, `clear_field`, `delete_repeatable_row`, `submit_step`, `escalate_incident`) gets the same `"state"` key.
+Every tool reply for `update_field`, `add_row`, `clear_field`, `delete_row`, `submit_step` carries the same `"state"` key. `escalate_incident` is handled entirely server-side (audit + alert) and does not need a `state` field.
 
-### 7.3 What `_build_fresh_turn_payload()` does
+### 7.3 The new `get_current_state` tool (server-declared, Flutter-implemented)
 
-A single helper that reads the latest FormState from Redis and renders the same `TurnPayload` shape the bootstrap prompt used to carry. Implementation is straightforward and reuses existing rendering code in `services/turn_payload_builder.py` (assuming it exists) or `mobile_bridge.py`.
+Server adds a new entry to `FUNCTION_DECLS` so Gemini knows the tool exists. Flutter handles the actual reply.
 
-Cost per call: one Redis read + one Pydantic serialization. Negligible.
+Server side (in `tools.py` — minimal change):
+
+```python
+# Add to _KNOWN_TOOLS:
+_KNOWN_TOOLS = frozenset({
+    "update_field", "clear_field", "add_row", "delete_row", "submit_step",
+    "get_current_state",   # NEW
+})
+
+# Add to FUNCTION_DECLS:
+{
+    "name": "get_current_state",
+    "description": (
+        "Re-read the participant's full current form state. Call this if your "
+        "most recent function_response is more than 3 turns ago and you are "
+        "about to assert any field value, OR if the participant says something "
+        "that suggests the form has changed outside of voice (e.g. they say "
+        "'I just typed it in'). Mobile returns {ok: true, state: {...}} with the "
+        "freshest snapshot — treat its `state` as your new source of truth."
+    ),
+    "parameters": {"type": "object", "properties": {}, "required": []},
+},
+```
+
+That's the entire server-side change for the new tool. Flutter implements the response handler.
 
 ### 7.4 What changes in the system prompt
 
