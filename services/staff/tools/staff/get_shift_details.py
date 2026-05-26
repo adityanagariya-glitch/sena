@@ -1,10 +1,19 @@
 """get_shift_details — full details for ONE specific shift by ID.
 
-Persona routing:
-- ISW                                  → /isw/shift/core-details/{id}
-- support worker (staff_type)          → /mobile/staff-shift/view-shift/{id}
+Persona routing (matches the SENA UI's view-shift endpoint per role):
+- ISW                                  → /mobile/isw-shift/view-shift/{id}
+- support worker (mobile / field)      → /mobile/staff-shift/view-shift/{id}
+- client / participant                 → /mobile/client-shift/view-shift/{id}
 - admin                                → /organization/shift/details/{id}
 - other org members                    → /organization-member/shift/details/{id}
+
+Each "view-shift" mobile endpoint returns:
+- core shift fields (title, status, date, times, location, agenda, notes)
+- clients array (with participantId)
+- supportWorkers array (with participantId)
+- healthProfessionals array
+- duration in minutes
+- participantId for acknowledging the shift
 """
 import sys
 
@@ -18,9 +27,12 @@ from tools.base import ToolSpec, ToolResult
 def _pick_path(shift_id):
     user_type = (user_context.get("user_type") or "").lower()
     staff_type = (user_context.get("staff_type") or "").lower()
+    roles = [r.lower() for r in (user_context.get("roles") or [])]
 
     if user_type == "isw":
-        return "/isw/shift/core-details/{id}"
+        return "/mobile/isw-shift/view-shift/{id}"
+    if user_type == "client" or "guardian" in roles or user_type == "guardian":
+        return "/mobile/client-shift/view-shift/{id}"
     if staff_type == "support_worker":
         return "/mobile/staff-shift/view-shift/{id}"
     if user_type == "admin":

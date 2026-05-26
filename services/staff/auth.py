@@ -8,10 +8,33 @@ they always pick up the latest value.
 import base64
 import json
 import requests
+import sys
 from datetime import datetime
 
 from config import API_BASE_URL
 from state import user_context
+
+
+def _hydrate_user_timezone():
+    """After successful auth, populate user_context['timezone'] from persistent
+    storage if a non-expired entry exists. Non-fatal — if memory or DDB is
+    unreachable, timezone stays None and the agent uses the Sydney fallback
+    + asks the user to set it.
+    """
+    if not user_context.get("authenticated"):
+        return
+    try:
+        # Lazy import — memory depends on AWS clients which may not be ready
+        # in all callers (e.g. tests). Failures degrade gracefully.
+        from memory import _load_user_timezone
+        tz = _load_user_timezone()
+        if tz:
+            user_context["timezone"] = tz
+            print(f"  Loaded timezone from memory: {tz}")
+        else:
+            print("  No timezone on file — will fall back to Sydney and ask the user.")
+    except Exception as e:
+        print(f"  Timezone hydrate skipped ({type(e).__name__}: {e})", file=sys.stderr)
 
 # Will be replaced after successful login.
 jwt_token = ""
@@ -207,6 +230,7 @@ def authenticate_with_jwt(token):
         print(f"  User ID: {user_context['user_id']}")
         print(f"  Organization: {user_context['organization_id']}")
         user_context["authenticated"] = True
+        _hydrate_user_timezone()
         return True
 
     except Exception as e:
@@ -325,12 +349,14 @@ def authenticate_user():
             print(f"  Organization ID: {user_context['organization_id']}")
             print(f"  Email: {user_context['email']}")
             user_context["authenticated"] = True
+            _hydrate_user_timezone()
             return True
         else:
             print(f"  Profile fetch failed: {profile_response.status_code}")
             print(f"  Response: {profile_response.text[:200]}")
             # We at least have a token; allow the assistant to continue
             user_context["authenticated"] = True
+            _hydrate_user_timezone()
             return True
 
     except Exception as e:

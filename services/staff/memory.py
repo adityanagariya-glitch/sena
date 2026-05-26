@@ -164,6 +164,144 @@ def _fetch_session_summaries(actor_id, k=3):
     return summaries
 
 
+# ---- User timezone persistence (30-day cache) ----
+# Stored in AgentCore preferences namespace + DDB chat_audit (audit trail).
+# When user volunteers their timezone via chat ("I'm in Perth"), we save it.
+# On next login, we load it; expired (>30d) entries are treated as missing,
+# triggering a re-ask.
+_TIMEZONE_TTL_DAYS = 30
+
+
+def _save_user_timezone(tz_iana: str):
+    """Persist the user's IANA timezone to both AgentCore (long-term memory)
+    and DDB chat_audit (audit trail). Sets user_context["timezone"] in-process.
+
+    Failures are non-fatal — in-process value still updates so the current
+    session benefits even if persistence breaks.
+    """
+    actor_id = _actor_id()
+    now = datetime.now(timezone.utc)
+    iso = now.isoformat()
+
+    # 1) Update in-process state immediately
+    user_context["timezone"] = tz_iana
+
+    # 2) AgentCore — write as a USER preference event so it gets extracted
+    #    into the /users/{actor_id}/preferences/ namespace by the USER_PREFERENCE
+    #    strategy and surfaces on future logins.
+    if AGENTCORE_MEMORY_ID and bedrock_agentcore:
+        try:
+            pref_text = (
+                f"The user's timezone is {tz_iana}. They told us this on {iso}. "
+                f"Use this timezone for all date/time calculations like 'today', "
+                f"'this week', month names. If more than 30 days old since this "
+                f"date, treat as stale and re-ask."
+            )
+            bedrock_agentcore.create_event(
+                memoryId=AGENTCORE_MEMORY_ID,
+                actorId=actor_id,
+                sessionId=_session_id(),
+                eventTimestamp=now,
+                payload=[
+                    {"conversational": {"role": "USER", "content": {"text": f"My timezone is {tz_iana}."}}},
+                    {"conversational": {"role": "ASSISTANT", "content": {"text": pref_text}}},
+                ],
+                clientToken=str(uuid.uuid4()),
+            )
+            if VERBOSE:
+                print(f"[memory] timezone saved to AgentCore: {tz_iana}", file=sys.stderr)
+        except Exception as e:
+            print(f"[memory] AgentCore timezone save failed: {e}", file=sys.stderr)
+
+    # 3) DDB chat_audit — explicit timezone preference row (separate from per-turn rows)
+    if chat_audit_table:
+        try:
+            expires_at = int((now + timedelta(days=_TIMEZONE_TTL_DAYS)).timestamp())
+            chat_audit_table.put_item(Item={
+                "pk": actor_id,
+                "sk": f"timezone#{iso}",
+                "kind": "user_timezone",
+                "timezone": tz_iana,
+                "set_at": iso,
+                "expires_at": expires_at,
+            })
+            if VERBOSE:
+                print(f"[memory] timezone saved to DDB (expires {expires_at})", file=sys.stderr)
+        except Exception as e:
+            print(f"[memory] DDB timezone save failed: {e}", file=sys.stderr)
+
+
+# Process-local cache to avoid hitting AgentCore/DDB on every turn
+_tz_cache = {}  # actor_id → (loaded_at_epoch, tz_iana_or_None)
+_TZ_CACHE_TTL_SECONDS = 600  # 10 min in-process; storage is source of truth
+
+
+def _load_user_timezone() -> str | None:
+    """Load the user's timezone from persistent storage. Returns the IANA name
+    if found and < 30 days old, else None (caller should fall back to Sydney
+    and prompt the user to set their timezone).
+
+    Reads from DDB chat_audit first (has explicit set_at + expires_at metadata),
+    falls back to AgentCore preferences scan.
+    """
+    actor_id = _actor_id()
+
+    cached = _tz_cache.get(actor_id)
+    if cached and (time.time() - cached[0]) < _TZ_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    tz_iana = None
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    # 1) DDB lookup — most recent timezone#... row
+    if chat_audit_table:
+        try:
+            resp = chat_audit_table.query(
+                KeyConditionExpression="pk = :pk AND begins_with(sk, :prefix)",
+                ExpressionAttributeValues={":pk": actor_id, ":prefix": "timezone#"},
+                ScanIndexForward=False,  # newest first
+                Limit=1,
+            )
+            items = resp.get("Items") or []
+            if items:
+                latest = items[0]
+                expires_at = int(latest.get("expires_at", 0))
+                if expires_at > now_ts:
+                    tz_iana = latest.get("timezone")
+                    if VERBOSE:
+                        print(f"[memory] loaded timezone from DDB: {tz_iana}", file=sys.stderr)
+                else:
+                    if VERBOSE:
+                        print(f"[memory] timezone in DDB but expired ({expires_at} < now)", file=sys.stderr)
+        except Exception as e:
+            print(f"[memory] DDB timezone load failed: {e}", file=sys.stderr)
+
+    # 2) AgentCore preferences fallback — scan for "timezone" mentions
+    if not tz_iana and AGENTCORE_MEMORY_ID and bedrock_agentcore:
+        try:
+            resp = bedrock_agentcore.retrieve_memory_records(
+                memoryId=AGENTCORE_MEMORY_ID,
+                namespace=f"/users/{actor_id}/preferences/",
+                searchCriteria={"searchQuery": "user timezone IANA location state", "topK": 3},
+            )
+            for record in (resp.get("memoryRecordSummaries") or resp.get("memoryRecords") or []):
+                content = record.get("content") or {}
+                text = (content.get("text") if isinstance(content, dict) else content) or ""
+                # Look for the IANA pattern we wrote in _save_user_timezone
+                match = re.search(r"timezone is (Australia/[A-Za-z_]+)", text)
+                if match:
+                    tz_iana = match.group(1)
+                    if VERBOSE:
+                        print(f"[memory] loaded timezone from AgentCore: {tz_iana}", file=sys.stderr)
+                    break
+        except Exception as e:
+            if VERBOSE:
+                print(f"[memory] AgentCore timezone load failed (non-fatal): {e}", file=sys.stderr)
+
+    _tz_cache[actor_id] = (time.time(), tz_iana)
+    return tz_iana
+
+
 def _format_user_profile():
     """Build the per-user system-prompt tier — role/org/preferences/summaries.
 

@@ -2180,5 +2180,289 @@
       "admin_web"
     ],
     "purpose": "List all org work logs (with filters)"
+  },
+   {
+    "method": "GET",
+    "path": "/organization-member/shift/calendar-view",
+    "description": "Get the authenticated member's calendar view",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client-shift/calendar-view",
+    "description": "Get the logged-in client's calendar view (no pagination)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Monday."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Sunday."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title or support-worker full name"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client Mobile Calendar View successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "title": "Morning Care",
+          "date": "2026-04-17",
+          "startTime": "2026-04-17T01:00:00.000Z",
+          "endTime": "2026-04-17T08:00:00.000Z",
+          "duration": 420,
+          "status": "draft",
+          "meetingType": "client",
+          "isRecurring": true,
+          "isCancelled": false,
+          "location": {
+            "address": "123 Main St",
+            "url": "https://maps.google.com/?cid=...",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": "<p>Notes...</p>",
+          "agenda": "<p>Agenda...</p>",
+          "acknowledgedAt": null,
+          "parentShiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "distance": 4.2,
+          "client": [
+            {
+              "clientId": "c843ac3d-...",
+              "userId": "8720a2b8-...",
+              "email": "client@yopmail.com",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "...",
+              "userId": "...",
+              "fullName": "Jane Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ]
+        }
+      ],
+      "timestamp": "2026-04-16T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/isw-shift/calendar-view",
+    "description": "Get the logged-in ISW support worker's calendar view (no pagination)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Monday."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Sunday."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title, support-worker full name, or client name"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get ISW Mobile Calendar View successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "title": "Morning Care",
+          "date": "2026-04-17",
+          "startTime": "2026-04-17T01:00:00.000Z",
+          "endTime": "2026-04-17T08:00:00.000Z",
+          "duration": 420,
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": true,
+          "isCancelled": false,
+          "location": {
+            "address": "123 Main St",
+            "url": "https://maps.google.com/?cid=...",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": "<p>Notes...</p>",
+          "agenda": "<p>Agenda...</p>",
+          "acknowledgedAt": null,
+          "parentShiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "distance": 4.2,
+          "workLogId": null,
+          "workLogStatus": null,
+          "clients": [
+            {
+              "clientId": "c843ac3d-...",
+              "userId": "8720a2b8-...",
+              "email": "client@yopmail.com",
+              "name": "John Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "staffId": "...",
+              "userId": "...",
+              "fullName": "Jane Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ]
+        }
+      ],
+      "timestamp": "2026-04-16T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/staff-shift/calendar-view",
+    "description": "Get the logged-in support worker's calendar view (no pagination)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Monday."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Sunday."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title, support-worker full name, or client name"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Staff Mobile Calendar View successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "title": "Morning Care",
+          "date": "2026-04-17",
+          "startTime": "2026-04-17T01:00:00.000Z",
+          "endTime": "2026-04-17T08:00:00.000Z",
+          "duration": 420,
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": true,
+          "isCancelled": false,
+          "location": {
+            "address": "123 Main St",
+            "url": "https://maps.google.com/?cid=...",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": "<p>Notes...</p>",
+          "agenda": "<p>Agenda...</p>",
+          "acknowledgedAt": null,
+          "parentShiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "distance": 4.2,
+          "workLogId": null,
+          "workLogStatus": null,
+          "client": [
+            {
+              "clientId": "c843ac3d-...",
+              "userId": "8720a2b8-...",
+              "email": "client@yopmail.com",
+              "name": "John Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "...",
+              "userId": "...",
+              "fullName": "Jane Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ]
+        }
+      ],
+      "timestamp": "2026-04-16T10:00:00.000Z"
+    }
   }
 ]

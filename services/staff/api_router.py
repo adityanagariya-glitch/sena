@@ -346,62 +346,185 @@ def _make_cache_key(url, query_params):
     return f"{url}|{qp}"
 
 
+# Terminal-direct stream — bypasses any redirect_stderr() context (e.g. the one
+# Streamlit's ui.py uses to capture model output). Every HTTP call to the
+# backend is logged here so the launching terminal always shows what the agent
+# is doing in real time. Imported once; used unconditionally.
+import sys as _sys
+_TERMINAL = _sys.__stderr__
+
+
+def _short_url(url):
+    """Strip the base URL for terminal readability."""
+    try:
+        from config import API_BASE_URL as _base
+        if url.startswith(_base):
+            return url[len(_base):]
+    except Exception:
+        pass
+    return url
+
+
+def _fmt_qp(qp):
+    if not qp:
+        return ""
+    pairs = "&".join(f"{k}={v}" for k, v in qp.items())
+    if len(pairs) > 120:
+        pairs = pairs[:120] + "…"
+    return f"?{pairs}"
+
+
+def _shape_preview(result, max_chars=200):
+    """One-line preview of an API response — top-level keys, list counts,
+    'total' fields if present. Helps quickly see if a 200 OK is genuinely
+    empty or has data we're failing to surface elsewhere."""
+    try:
+        if isinstance(result, list):
+            return f"list[{len(result)}]"
+        if not isinstance(result, dict):
+            return f"{type(result).__name__}"
+        # Walk one layer deeper into envelopes to find the real records list
+        keys = list(result.keys())
+        bits = [f"keys={keys[:6]}"]
+        # Look for the actual records list at common nesting paths
+        data = result.get("data")
+        if isinstance(data, list):
+            bits.append(f"data=list[{len(data)}]")
+        elif isinstance(data, dict):
+            inner_keys = list(data.keys())[:6]
+            bits.append(f"data.keys={inner_keys}")
+            for k in ("shifts", "items", "rows", "list", "records", "clients", "staff"):
+                if isinstance(data.get(k), list):
+                    bits.append(f"data.{k}=list[{len(data[k])}]")
+                    break
+            t = data.get("total") or data.get("totalCount") or data.get("totalRecords")
+            if isinstance(t, (int, float)):
+                bits.append(f"data.total={int(t)}")
+        # Top-level total
+        t = result.get("total") or result.get("totalCount") or result.get("totalRecords")
+        if isinstance(t, (int, float)):
+            bits.append(f"total={int(t)}")
+        out = " ".join(bits)
+        return out[:max_chars] + ("…" if len(out) > max_chars else "")
+    except Exception as e:
+        return f"<preview-err: {type(e).__name__}>"
+
+
+# Rolling response dump — /tmp/sena_api_log.jsonl. One JSON line per call.
+# Lets you tail or inspect the FULL body for any call when terminal preview
+# isn't enough. Trimmed to keep the file from growing forever.
+import os as _os
+_API_DUMP_PATH = "/tmp/sena_api_log.jsonl"
+_API_DUMP_MAX_BYTES = 5 * 1024 * 1024  # 5 MB rolling cap
+
+
+def _dump_response(short_path, method, query_params, result, status, elapsed_ms, size):
+    """Append the full response to /tmp/sena_api_log.jsonl for inspection.
+    Best-effort — never raises."""
+    try:
+        # If the file is too big, truncate it (rolling)
+        if _os.path.exists(_API_DUMP_PATH) and _os.path.getsize(_API_DUMP_PATH) > _API_DUMP_MAX_BYTES:
+            with open(_API_DUMP_PATH, "w") as fh:
+                fh.write("")  # truncate
+        entry = {
+            "ts": _time.time(),
+            "method": method,
+            "path": short_path,
+            "query": query_params or {},
+            "status": status,
+            "elapsed_ms": elapsed_ms,
+            "size_bytes": size,
+            "body": result,
+        }
+        with open(_API_DUMP_PATH, "a") as fh:
+            fh.write(json.dumps(entry, default=str)[:200000])  # cap one entry at 200 KB
+            fh.write("\n")
+    except Exception:
+        pass  # diagnostic only — never fail the call
+
+
 def call_target_api(method, url, query_params=None, body_params=None, use_cache=True):
     """Call the target API. GET responses are cached (10 min) by default.
 
     Pass use_cache=False to force a fresh fetch (e.g. user said "refresh"/"latest").
     Mutating methods (POST/PUT/DELETE) are never cached.
+
+    Every call is logged to the original terminal stderr (sys.__stderr__) so the
+    Streamlit-launching shell sees a live trace of the agent's HTTP activity,
+    even when ui.py redirects stderr to capture model output.
     """
+    short_path = _short_url(url) + _fmt_qp(query_params)
+    method_u = method.upper()
+
     # Check cache for GET requests
-    if use_cache and method.upper() == 'GET':
+    if use_cache and method_u == 'GET':
         cache_key = _make_cache_key(url, query_params)
         cached = _api_cache.get(cache_key)
         if cached and (_time.time() - cached[0]) < _API_CACHE_TTL_SECONDS:
-            import sys as _sys
-            qp_str = f" qp={query_params}" if query_params else ""
-            print(f"[api-cache] HIT for {url}{qp_str}", file=_sys.stderr)
+            print(f"[API] cache HIT  {method_u} {short_path}", file=_TERMINAL, flush=True)
             return cached[1]
+
+    print(f"[API] →         {method_u} {short_path}", file=_TERMINAL, flush=True)
+    _t0 = _time.time()
 
     try:
         headers = get_auth_headers()
 
-        if method.upper() == 'GET':
+        if method_u == 'GET':
             response = requests.get(url, params=query_params, headers=headers, timeout=10)
-        elif method.upper() == 'POST':
+        elif method_u == 'POST':
             response = requests.post(url, json=body_params, params=query_params, headers=headers, timeout=10)
-        elif method.upper() == 'PUT':
+        elif method_u == 'PUT':
             response = requests.put(url, json=body_params, params=query_params, headers=headers, timeout=10)
-        elif method.upper() == 'DELETE':
+        elif method_u == 'DELETE':
             response = requests.delete(url, params=query_params, headers=headers, timeout=10)
         else:
+            print(f"[API] ✗ unsupported method {method_u}", file=_TERMINAL, flush=True)
             return {"error": f"Unsupported HTTP method: {method}"}
+
+        elapsed_ms = int((_time.time() - _t0) * 1000)
 
         if response.status_code in [200, 201]:
             try:
                 result = response.json()
-            except:
+            except Exception:
                 result = {"data": response.text}
 
             # Cache successful GET responses
-            if method.upper() == 'GET':
+            if method_u == 'GET':
                 cache_key = _make_cache_key(url, query_params)
                 _api_cache[cache_key] = (_time.time(), result)
-                import sys as _sys
-                qp_str = f" qp={query_params}" if query_params else ""
-                print(f"[api-cache] STORED {url}{qp_str}", file=_sys.stderr)
 
+            size = len(response.content) if hasattr(response, "content") else 0
+            # Quick "what's actually in this response?" preview so we can
+            # debug empty/sparse data without manually inspecting every API.
+            preview = _shape_preview(result)
+            print(
+                f"[API] ←  {response.status_code} OK  {short_path}  ({elapsed_ms}ms, {size}B)  {preview}",
+                file=_TERMINAL, flush=True,
+            )
+            # Dump full response to a rolling log file for deeper inspection.
+            _dump_response(short_path, method_u, query_params, result, response.status_code, elapsed_ms, size)
             return result
         else:
+            print(
+                f"[API] ←  {response.status_code} ERR {short_path}  ({elapsed_ms}ms)  "
+                f"body={response.text[:160]!r}",
+                file=_TERMINAL, flush=True,
+            )
             return {
                 "error": f"API returned {response.status_code}",
                 "status_code": response.status_code,
                 "details": response.text[:300],
             }
     except requests.exceptions.Timeout:
+        print(f"[API] ✗ TIMEOUT   {method_u} {short_path}", file=_TERMINAL, flush=True)
         return {"error": "API call timed out", "status_code": 0}
     except requests.exceptions.ConnectionError:
+        print(f"[API] ✗ CONNERR   {method_u} {short_path}", file=_TERMINAL, flush=True)
         return {"error": f"Cannot reach {url}", "status_code": 0}
     except Exception as e:
+        print(f"[API] ✗ EXC       {method_u} {short_path}  {type(e).__name__}: {e}", file=_TERMINAL, flush=True)
         return {"error": str(e), "status_code": 0}
 
 

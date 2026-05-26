@@ -9,13 +9,16 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from config import VERBOSE
-from state import user_context
+from state import user_context, current_timezone
 from api_router import call_target_api, construct_api_url
 from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
 
 
-_AUS_TZ = ZoneInfo("Australia/Sydney")
+def _user_tz():
+    """User's local IANA tz (state-aware). Reads user_context['timezone'],
+    falls back to Australia/Sydney. zoneinfo handles DST automatically."""
+    return ZoneInfo(current_timezone())
 
 
 def _aus_to_utc_iso(dt_aus):
@@ -33,7 +36,7 @@ def _end_of_day(dt):
 
 
 def _timeframe_to_range(timeframe, from_date=None, to_date=None):
-    now = datetime.now(_AUS_TZ)
+    now = datetime.now(_user_tz())
     today = _start_of_day(now)
 
     if timeframe == "this_week":
@@ -71,8 +74,8 @@ def _timeframe_to_range(timeframe, from_date=None, to_date=None):
         if not from_date or not to_date:
             return None, None
         try:
-            f = datetime.fromisoformat(from_date).replace(tzinfo=_AUS_TZ)
-            t = datetime.fromisoformat(to_date).replace(tzinfo=_AUS_TZ)
+            f = datetime.fromisoformat(from_date).replace(tzinfo=_user_tz())
+            t = datetime.fromisoformat(to_date).replace(tzinfo=_user_tz())
             return _aus_to_utc_iso(_start_of_day(f)), _aus_to_utc_iso(_end_of_day(t))
         except ValueError:
             return None, None

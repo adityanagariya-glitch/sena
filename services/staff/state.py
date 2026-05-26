@@ -36,7 +36,28 @@ user_context = {
     "user_type": None,
     "email": None,
     "authenticated": False,
+    # Set by the frontend (lat/lng → IANA tz). Code reading this should fall
+    # back to "Australia/Sydney" when None — see current_timezone() below.
+    # See time_plan.md for the full resolution chain.
+    "lat": None,
+    "lng": None,
+    "timezone": None,
 }
+
+
+def current_timezone():
+    """Return the user's IANA timezone for all date math.
+
+    Resolution order:
+      1. user_context["timezone"]           ← set by frontend (future)
+      2. "Australia/Sydney"                  ← safe fallback for NDIS workers
+
+    Never returns None. Use this everywhere instead of hardcoding a zone.
+    When the frontend wires up lat/lng → tz resolution, no code changes here
+    will be needed — callers just start picking up the right tz.
+    """
+    tz = (user_context.get("timezone") or "").strip()
+    return tz or "Australia/Sydney"
 
 # In-memory fallback when AgentCore is disabled. Holds the last N turns of the
 # current process only — lost on restart, but lets the chatbot work locally

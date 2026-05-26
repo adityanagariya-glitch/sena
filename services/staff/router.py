@@ -89,6 +89,7 @@ DEFAULT for non-filter, non-discriminatory queries: ALLOW (typos, follow-ups, va
 ALLOW (return YES) — work queries:
 - ANY question about: shifts, clients, staff, payroll, allowances, policies, incidents, NDIS, support workers, rosters, schedules
 - Follow-ups referencing names from the prior reply ("tell me about John Doe", "what about Aryan", "more details", "them")
+- **Time/date refinements** ("in 2026", "in May", "in 2024", "for last week", "for next month", "on Monday", "this Friday", "in Q1", "in March") — these are CLARIFIERS for a prior NDIS query (shifts, clients, payroll, etc.) and must ALLOW. Even when sent alone with no other context, default to ALLOW — the user is refining the timeframe of the conversation, not changing topic.
 - Vague short questions ("clients?", "shifts today?", "any updates?", "yes", "more")
 - Typos, broken English, partial questions — assume work-related
 - Greetings, identity questions ("who are you?", "hi")
