@@ -39,14 +39,14 @@ def build_case_note_schema() -> StepSchema:
                 label="Activities & Skill-Building",
                 fields=[
                     FieldSpec(id="assisted", type=FieldType.textarea, label="Activities Assisted With", required=True),
-                    FieldSpec(id="practised_skill", type=FieldType.textarea, label="Skills Practised", required=False),
+                    FieldSpec(id="practised_skill", type=FieldType.textarea, label="Skills Practised", required=True),
                     FieldSpec(
                         id="participants_level_of_independence",
                         type=FieldType.text,
                         label="Participant Independence Level",
-                        required=False,
+                        required=True,
                     ),
-                    FieldSpec(id="observations", type=FieldType.textarea, label="Observations", required=False),
+                    FieldSpec(id="observations", type=FieldType.textarea, label="Observations", required=True),
                 ],
             ),
             SectionSpec(
@@ -54,22 +54,22 @@ def build_case_note_schema() -> StepSchema:
                 label="Wellbeing & Behaviour",
                 fields=[
                     FieldSpec(id="mood", type=FieldType.textarea, label="Mood & Behaviour", required=True),
-                    FieldSpec(id="behavioural_events", type=FieldType.textarea, label="Behavioural Events", required=False),
-                    FieldSpec(id="any_concerns", type=FieldType.boolean, label="Any Concerns", required=False),
+                    FieldSpec(id="behavioural_events", type=FieldType.textarea, label="Behavioural Events", required=True),
+                    FieldSpec(id="any_concerns", type=FieldType.boolean, label="Any Concerns", required=True),
                 ],
             ),
             SectionSpec(
                 id="outcomes",
                 label="Outcomes",
                 fields=[
-                    FieldSpec(id="what_went_well", type=FieldType.textarea, label="What Went Well", required=False),
+                    FieldSpec(id="what_went_well", type=FieldType.textarea, label="What Went Well", required=True),
                     FieldSpec(
                         id="what_needs_further_support",
                         type=FieldType.textarea,
                         label="What Needs Further Support",
-                        required=False,
+                        required=True,
                     ),
-                    FieldSpec(id="participant_comments", type=FieldType.textarea, label="Participant Comments", required=False),
+                    FieldSpec(id="participant_comments", type=FieldType.textarea, label="Participant Comments", required=True),
                 ],
             ),
             SectionSpec(
@@ -80,15 +80,15 @@ def build_case_note_schema() -> StepSchema:
                         id="medication_reminders_given",
                         type=FieldType.boolean,
                         label="Medication Reminders Given",
-                        required=False,
+                        required=True,
                     ),
                     FieldSpec(
                         id="safety_hazards_observed",
                         type=FieldType.textarea,
                         label="Safety Hazards Observed",
-                        required=False,
+                        required=True,
                     ),
-                    FieldSpec(id="any_injuries", type=FieldType.boolean, label="Any Injuries", required=False),
+                    FieldSpec(id="any_injuries", type=FieldType.boolean, label="Any Injuries", required=True),
                     FieldSpec(
                         id="injury_description",
                         type=FieldType.textarea,
@@ -103,8 +103,8 @@ def build_case_note_schema() -> StepSchema:
                 id="incidents",
                 label="Notes & Incidents",
                 fields=[
-                    FieldSpec(id="carer_feedback", type=FieldType.textarea, label="Carer Feedback", required=False),
-                    FieldSpec(id="incident_occurred", type=FieldType.boolean, label="Incident Occurred", required=False),
+                    FieldSpec(id="carer_feedback", type=FieldType.textarea, label="Carer Feedback", required=True),
+                    FieldSpec(id="incident_occurred", type=FieldType.boolean, label="Incident Occurred", required=True),
                 ],
             ),
         ],

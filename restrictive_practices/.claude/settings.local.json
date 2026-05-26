@@ -51,7 +51,9 @@
       "Bash(del *)",
       "Bash(python -c \"from models.schemas import EvaluateResponse, PipelineResult, CaseDraftResponse, SummaryOutput, IncidentDraftOutput; print\\('OK'\\)\")",
       "Bash(python -m pytest tests/ -x -q)",
-      "Bash(python -m ruff check pipeline/graph.py models/db.py scripts/test_perf_baseline.py)"
+      "Bash(python -m ruff check pipeline/graph.py models/db.py scripts/test_perf_baseline.py)",
+      "PowerShell(docker context ls 2>&1; docker info 2>&1 | Select-Object -First 5)",
+      "PowerShell(docker --context default ps --format \"table {{.Names}}`t{{.Status}}\" 2>&1)"
     ]
   },
   "enableAllProjectMcpServers": true,

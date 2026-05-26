@@ -14,7 +14,8 @@ from config import settings
 from db.session import create_tables
 from voice.state_repo import VoiceStateRepo
 
-_DEMO_HTML = Path(__file__).parent / "demo_ui.html"
+_DEMO_HTML       = Path(__file__).parent / "demo_ui.html"
+_VOICE_DEMO_HTML = Path(__file__).parent / "voice_demo.html"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,6 +44,10 @@ def create_app() -> FastAPI:
     @app.get("/demo", include_in_schema=False, dependencies=[Depends(_require_auth)])
     async def demo_ui() -> FileResponse:
         return FileResponse(_DEMO_HTML, media_type="text/html")
+
+    @app.get("/voice-demo", include_in_schema=False)
+    async def voice_demo_ui() -> FileResponse:
+        return FileResponse(_VOICE_DEMO_HTML, media_type="text/html")
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
