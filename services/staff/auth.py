@@ -51,6 +51,11 @@ def get_auth_headers():
     }
 
 
+def has_auth_token():
+    """True when this process has a bearer token loaded for backend API calls."""
+    return bool((jwt_token or "").strip())
+
+
 def decode_jwt(token):
     """Decode JWT token to extract claims (without verification)"""
     try:

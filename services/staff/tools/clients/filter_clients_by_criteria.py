@@ -18,7 +18,7 @@ queries).
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 import msgspec
 
@@ -32,8 +32,17 @@ from tools.base import ToolSpec, ToolResult
 
 class _Address(msgspec.Struct):
     suburb: Optional[str] = None
+    city: Optional[str] = None
     state: Optional[str] = None
     postcode: Optional[str] = None
+    postal_code: Optional[str] = None
+    address: Optional[str] = None
+
+
+class _MedicalProfile(msgspec.Struct, rename="camel", kw_only=True):
+    mobility_status: Optional[str] = None
+    primary_diagnosis: Optional[str] = None
+    secondary_diagnoses: Optional[str] = None
 
 
 class ClientProfile(msgspec.Struct, rename="camel", kw_only=True):
@@ -60,7 +69,10 @@ class ClientProfile(msgspec.Struct, rename="camel", kw_only=True):
     diagnosis: Optional[str] = None
     mobility: Optional[str] = None
     mobility_type: Optional[str] = None
+    mobility_status: Optional[str] = None
+    medical_profile: Optional[_MedicalProfile] = None
     languages: Optional[list] = None
+    languages_spoken: Optional[list] = None
     address: Optional[_Address] = None
     primary_address: Optional[_Address] = None
     cultural_background: Optional[str] = None
@@ -95,7 +107,9 @@ class ClientProfile(msgspec.Struct, rename="camel", kw_only=True):
 
     def suburb(self) -> Optional[str]:
         addr = self.address or self.primary_address
-        return addr.suburb if addr else None
+        if not addr:
+            return None
+        return addr.suburb or addr.city or addr.address
 
     def matches(self, criteria: dict) -> bool:
         """Apply the LLM-supplied criteria dict. All criteria are AND-combined."""
@@ -120,14 +134,26 @@ class ClientProfile(msgspec.Struct, rename="camel", kw_only=True):
         # Diagnosis (substring, case-insensitive)
         diagnosis_query = criteria.get("diagnosis")
         if diagnosis_query:
-            haystack = " ".join(filter(None, [self.primary_diagnosis, self.diagnosis])).lower()
+            med = self.medical_profile
+            haystack = " ".join(filter(None, [
+                self.primary_diagnosis,
+                self.diagnosis,
+                med.primary_diagnosis if med else None,
+                med.secondary_diagnoses if med else None,
+            ])).lower()
             if diagnosis_query.lower() not in haystack:
                 return False
 
         # Mobility (substring)
         mobility_query = criteria.get("mobility")
         if mobility_query:
-            haystack = " ".join(filter(None, [self.mobility, self.mobility_type])).lower()
+            med = self.medical_profile
+            haystack = " ".join(filter(None, [
+                self.mobility,
+                self.mobility_type,
+                self.mobility_status,
+                med.mobility_status if med else None,
+            ])).lower()
             if mobility_query.lower() not in haystack:
                 return False
 
@@ -149,23 +175,120 @@ class ClientProfile(msgspec.Struct, rename="camel", kw_only=True):
 
         # Language (substring match against any language)
         language_query = criteria.get("language")
-        if language_query and self.languages:
+        languages = self.languages or self.languages_spoken
+        if language_query and languages:
             langs_lower = " ".join(
-                str(l).lower() for l in self.languages if l
+                str(l).lower() for l in languages if l
             )
             if language_query.lower() not in langs_lower:
                 return False
-        elif language_query and not self.languages:
+        elif language_query and not languages:
             return False
 
-        # Suburb / location
-        location_query = criteria.get("location")
-        if location_query:
-            sub = (self.suburb() or "").lower()
-            if location_query.lower() not in sub:
-                return False
-
         return True
+
+
+_SKIP_RECURSIVE_KEYS = {
+    "id",
+    "_id",
+    "clientId",
+    "userId",
+    "invitationId",
+    "agreementId",
+    "organizationId",
+    "createdAt",
+    "updatedAt",
+    "deletedAt",
+    "expiresAt",
+    "profilePictureUrl",
+    "organizationLogo",
+    "stripeCustomerId",
+    "OrganizationClientMapping",
+    "organization",
+    "invitation",
+    "user",
+}
+
+
+def _normalise_text(value: Any) -> str:
+    return str(value).replace("_", " ").replace("-", " ").strip().lower()
+
+
+def _walk_text_values(value: Any, path: str = ""):
+    """Yield searchable text values from a raw client profile.
+
+    This intentionally searches broad profile content instead of a fixed set
+    of fields, because medical/allergy/mobility/location/support information
+    moves around as the API evolves.
+    """
+    if value is None:
+        return
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in _SKIP_RECURSIVE_KEYS:
+                continue
+            next_path = f"{path}.{key}" if path else key
+            yield from _walk_text_values(child, next_path)
+        return
+    if isinstance(value, list):
+        for idx, child in enumerate(value):
+            yield from _walk_text_values(child, path)
+        return
+    if isinstance(value, (str, int, float, bool)):
+        text = str(value).strip()
+        if text:
+            yield path, text
+
+
+def _raw_contains(record: dict, query: str):
+    """Return up to a few matched values for a broad profile text query."""
+    needle = _normalise_text(query)
+    if not needle:
+        return []
+    matches = []
+    seen = set()
+    for path, text in _walk_text_values(record):
+        hay = _normalise_text(text)
+        if needle in hay and text not in seen:
+            seen.add(text)
+            matches.append({"area": _friendly_area(path), "value": text[:120]})
+            if len(matches) >= 3:
+                break
+    return matches
+
+
+def _friendly_area(path: str) -> str:
+    p = (path or "").lower()
+    if "medicalprofile" in p or "medical" in p:
+        return "medical profile"
+    if "allerg" in p:
+        return "allergies"
+    if "medication" in p:
+        return "medications"
+    if "doctor" in p or "gp" in p:
+        return "doctor"
+    if "risk" in p:
+        return "risk notes"
+    if "address" in p or "location" in p:
+        return "location"
+    if "support" in p:
+        return "support details"
+    if "goal" in p:
+        return "goals"
+    if "language" in p:
+        return "languages"
+    return "profile"
+
+
+def _generic_queries(criteria: dict):
+    queries = []
+    for key in ("search", "contains", "medical", "allergy", "location", "any"):
+        value = criteria.get(key)
+        if isinstance(value, str) and value.strip():
+            queries.append(value.strip())
+        elif isinstance(value, list):
+            queries.extend(str(v).strip() for v in value if str(v).strip())
+    return queries
 
 
 def _list_client_ids():
@@ -192,7 +315,7 @@ def _list_client_ids():
 
 
 def _fetch_one(client_id):
-    """Fetch a single client's full profile and decode into ClientProfile."""
+    """Fetch a single client's full profile and decode typed + raw views."""
     raw = call_target_api(
         method="GET",
         url=construct_api_url("/organization/client/get/{id}", {"id": client_id}),
@@ -213,11 +336,28 @@ def _fetch_one(client_id):
         return None
 
     try:
-        return msgspec.convert(record, type=ClientProfile, strict=False)
+        profile = msgspec.convert(record, type=ClientProfile, strict=False)
+        return {"profile": profile, "record": record}
     except msgspec.ValidationError as e:
         if VERBOSE:
             print(f"[filter_clients] decode failed for {client_id}: {e}", file=sys.stderr)
         return None
+
+
+def _record_matches(item, criteria):
+    profile = item["profile"]
+    record = item["record"]
+    if not profile.matches(criteria):
+        return False, []
+
+    generic_matches = []
+    for query in _generic_queries(criteria):
+        query_matches = _raw_contains(record, query)
+        if not query_matches:
+            return False, []
+        generic_matches.extend(query_matches)
+
+    return True, generic_matches[:5]
 
 
 def _run(inputs):
@@ -251,19 +391,24 @@ def _run(inputs):
         print(f"[filter_clients] fetching {len(ids)} client details in parallel", file=sys.stderr)
 
     # 2. Parallel detail fetch (network is the bottleneck — concurrency wins)
-    profiles = []
+    records = []
     with ThreadPoolExecutor(max_workers=10) as ex:
         for fut in as_completed([ex.submit(_fetch_one, cid) for cid in ids]):
-            p = fut.result()
-            if p is not None:
-                profiles.append(p)
+            item = fut.result()
+            if item is not None:
+                records.append(item)
 
     # 3. Filter
-    matches = [p for p in profiles if p.matches(criteria)]
+    matches = []
+    for item in records:
+        ok, matched_values = _record_matches(item, criteria)
+        if ok:
+            item["matched_values"] = matched_values
+            matches.append(item)
 
     if VERBOSE:
         print(
-            f"[filter_clients] checked={len(profiles)} matches={len(matches)} "
+            f"[filter_clients] checked={len(records)} matches={len(matches)} "
             f"criteria={criteria}",
             file=sys.stderr,
         )
@@ -271,22 +416,39 @@ def _run(inputs):
     # 4. Build compact result (cap to 50 matches to keep prompt small)
     matches_summary = [
         {
-            "id": m.best_id(),
-            "name": m.display_name(),
-            "gender": m.gender,
-            "age": m.age(),
-            "status": m.status or m.onboarding_status,
-            "ndis": m.ndis_number,
-            "diagnosis": m.primary_diagnosis or m.diagnosis,
-            "suburb": m.suburb(),
+            "id": item["profile"].best_id(),
+            "name": item["profile"].display_name(),
+            "gender": item["profile"].gender,
+            "age": item["profile"].age(),
+            "status": item["profile"].status or item["profile"].onboarding_status,
+            "ndis": item["profile"].ndis_number,
+            "diagnosis": (
+                item["profile"].primary_diagnosis
+                or item["profile"].diagnosis
+                or (
+                    item["profile"].medical_profile.primary_diagnosis
+                    if item["profile"].medical_profile else None
+                )
+            ),
+            "mobility": (
+                item["profile"].mobility
+                or item["profile"].mobility_type
+                or item["profile"].mobility_status
+                or (
+                    item["profile"].medical_profile.mobility_status
+                    if item["profile"].medical_profile else None
+                )
+            ),
+            "location": item["profile"].suburb(),
+            "matched_values": item.get("matched_values") or [],
         }
-        for m in matches[:50]
+        for item in matches[:50]
     ]
 
     return ToolResult(
         data={
             "criteria": criteria,
-            "total_checked": len(profiles),
+            "total_checked": len(records),
             "match_count": len(matches),
             "matches": matches_summary,
             "truncated": len(matches) > 50,
@@ -298,11 +460,13 @@ TOOL = ToolSpec(
     name="filter_clients_by_criteria",
     description=(
         "Find clients matching demographic / clinical filters (gender + age + "
-        "diagnosis + mobility + cultural identity + language + location + status). "
+        "diagnosis + mobility + allergies + medical history + location + status, "
+        "or a broad profile text search). "
         "Use for NDIS cohort analysis like: 'female clients under 21', 'Aboriginal "
         "clients with autism in Sydney', 'wheelchair users aged 8-12', 'clients "
-        "with diabetes'. Admin / in-office staff only. Slower than other queries "
-        "(fetches each client's full profile), but caches for 10 minutes."
+        "with diabetes', 'clients with peanut allergies', 'clients in Frankston', "
+        "'clients with seizure history'. Admin / in-office staff only. Slower than "
+        "other queries (fetches each client's full profile), but caches for 10 minutes."
     ),
     input_schema={
         "type": "object",
@@ -314,6 +478,28 @@ TOOL = ToolSpec(
                     "All conditions are AND-combined."
                 ),
                 "properties": {
+                    "search": {
+                        "type": "string",
+                        "description": (
+                            "Broad case-insensitive search across the client's profile, "
+                            "including medical profile, allergies, medications, risks, "
+                            "support requirements, goals, addresses, locations, languages, "
+                            "and other recorded profile text. Use this for anything not "
+                            "covered by a specific key."
+                        ),
+                    },
+                    "contains": {
+                        "type": "string",
+                        "description": "Alias for broad profile text search.",
+                    },
+                    "medical": {
+                        "type": "string",
+                        "description": "Broad search for medical/profile terms, e.g. 'diabetes', 'seizure', 'asthma'.",
+                    },
+                    "allergy": {
+                        "type": "string",
+                        "description": "Broad search for allergy terms, e.g. 'peanut', 'latex'.",
+                    },
                     "gender": {
                         "type": "string",
                         "description": "Exact match, case-insensitive. e.g. 'female', 'male', 'non-binary'.",
@@ -351,7 +537,7 @@ TOOL = ToolSpec(
                     },
                     "location": {
                         "type": "string",
-                        "description": "Substring of suburb. e.g. 'Sydney', 'Toowoomba'.",
+                        "description": "Substring of address/location text. e.g. 'Sydney', 'Toowoomba', 'VIC'.",
                     },
                 },
             }

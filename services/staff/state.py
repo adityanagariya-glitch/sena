@@ -59,6 +59,44 @@ def current_timezone():
     tz = (user_context.get("timezone") or "").strip()
     return tz or "Australia/Sydney"
 
+
+# Australian IANA zones that observe daylight saving time. Stored once here so
+# any module can ask "does the user's timezone observe DST" without hardcoding.
+# zoneinfo handles the actual offset switch automatically (Apr / Oct each year)
+# from IANA tzdata — we never adjust offsets manually.
+DST_OBSERVING_ZONES = frozenset({
+    "Australia/Sydney",      # NSW — AEST ↔ AEDT
+    "Australia/Melbourne",   # VIC — AEST ↔ AEDT
+    "Australia/Hobart",      # TAS — AEST ↔ AEDT
+    "Australia/Adelaide",    # SA  — ACST ↔ ACDT (30-min offset)
+    "Australia/Canberra",    # ACT — same rules as NSW
+    "Australia/Lord_Howe",   # Lord Howe Island — 30-min DST shift
+})
+
+
+def timezone_observes_dst(tz_name=None):
+    """True if the timezone observes daylight saving at any point in the year.
+    Brisbane / Perth / Darwin → False. Sydney / Melbourne / Adelaide → True."""
+    return (tz_name or current_timezone()) in DST_OBSERVING_ZONES
+
+
+def timezone_dst_active_now(tz_name=None):
+    """True if DST is currently in effect for the given (or current) timezone."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz_name = tz_name or current_timezone()
+    try:
+        offset = datetime.now(ZoneInfo(tz_name)).dst()
+        return bool(offset and offset.total_seconds() != 0)
+    except Exception:
+        return False
+
+
+def timezone_short_label(tz_name=None):
+    """Friendly label for an IANA zone — e.g. 'Australia/Sydney' → 'Sydney'."""
+    tz_name = tz_name or current_timezone()
+    return tz_name.split('/')[-1].replace('_', ' ')
+
 # In-memory fallback when AgentCore is disabled. Holds the last N turns of the
 # current process only — lost on restart, but lets the chatbot work locally
 # without provisioning AWS resources.

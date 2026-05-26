@@ -2,7 +2,9 @@
 
 Wraps `/organization/shift/list-view/type`. The `type` query param is required
 by the backend and is derived from the timeframe input (thisweek / scheduled /
-completed). For "this_week" we send type=thisweek and skip from/to.
+completed) unless the caller passes an explicit shift_type. For "this_week" we
+send type=thisweek and skip from/to unless the caller asked for a status that
+requires a date window. Supports groupBy=participant/staff for grouped views.
 """
 import sys
 from datetime import datetime, timedelta, timezone
@@ -82,7 +84,17 @@ def _timeframe_to_range(timeframe, from_date=None, to_date=None):
     return None, None
 
 
-def _pick_type_for_timeframe(timeframe):
+def _this_week_range_utc():
+    now = datetime.now(_user_tz())
+    today = _start_of_day(now)
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    return _aus_to_utc_iso(monday), _aus_to_utc_iso(_end_of_day(sunday))
+
+
+def _pick_type_for_timeframe(timeframe, shift_type=None):
+    if shift_type in ("draft", "scheduled", "ongoing", "completed", "cancelled", "thisweek"):
+        return shift_type
     if timeframe == "this_week":
         return "thisweek"
     if timeframe in ("yesterday", "last_week"):
@@ -103,6 +115,10 @@ def _run(inputs):
 
     from_date = (inputs or {}).get("from_date")
     to_date = (inputs or {}).get("to_date")
+    shift_type = ((inputs or {}).get("shift_type") or "").strip().lower()
+    group_by = ((inputs or {}).get("group_by") or "").strip().lower()
+    page = (inputs or {}).get("page") or 1
+    limit = (inputs or {}).get("limit") or 10
 
     if timeframe == "date_range" and (not from_date or not to_date):
         return ToolResult(
@@ -110,15 +126,28 @@ def _run(inputs):
         )
 
     if VERBOSE:
-        print(f"[list_org_shifts] timeframe={timeframe}", file=sys.stderr)
+        print(
+            f"[list_org_shifts] timeframe={timeframe} type={shift_type!r} "
+            f"group_by={group_by!r}",
+            file=sys.stderr,
+        )
 
     path = "/organization/shift/list-view/type"
-    query_params = {"type": _pick_type_for_timeframe(timeframe)}
+    query_params = {
+        "page": int(page),
+        "type": _pick_type_for_timeframe(timeframe, shift_type),
+        "limit": int(limit),
+    }
 
+    selected_type = query_params["type"]
     from_iso, to_iso = _timeframe_to_range(timeframe, from_date, to_date)
+    if timeframe == "this_week" and selected_type != "thisweek":
+        from_iso, to_iso = _this_week_range_utc()
     if from_iso and to_iso:
         query_params["from"] = from_iso
         query_params["to"] = to_iso
+    if group_by in ("participant", "staff"):
+        query_params["groupBy"] = group_by
 
     url = construct_api_url(path, {})
     raw = call_target_api(method="GET", url=url, query_params=query_params)
@@ -141,8 +170,9 @@ TOOL = ToolSpec(
     description=(
         "ADMIN ONLY. List ALL shifts across the organisation (not just the "
         "user's). Use for: 'all shifts in the org', 'org-wide shifts', "
-        "'every shift this week', 'all shifts today'. If user is not admin, "
-        "return access error."
+        "'every shift this week', 'all shifts today', 'cancelled shifts grouped "
+        "by participant', 'completed shifts grouped by staff'. Supports explicit "
+        "shift_type and group_by=participant/staff."
     ),
     input_schema={
         "type": "object",
@@ -179,6 +209,34 @@ TOOL = ToolSpec(
                 "description": (
                     "ISO date YYYY-MM-DD. Required only if timeframe=date_range."
                 ),
+            },
+            "shift_type": {
+                "type": "string",
+                "enum": ["draft", "scheduled", "ongoing", "completed", "cancelled", "thisweek"],
+                "description": (
+                    "Optional explicit backend type. Use when the user asks for "
+                    "draft, scheduled, ongoing, completed, cancelled, or this-week "
+                    "shifts. If omitted, type is derived from timeframe."
+                ),
+            },
+            "group_by": {
+                "type": "string",
+                "enum": ["participant", "staff"],
+                "description": (
+                    "Optional grouped view. Use 'participant' for groupBy=participant "
+                    "and 'staff' for groupBy=staff."
+                ),
+            },
+            "page": {
+                "type": "integer",
+                "description": "Page number. Default 1.",
+                "minimum": 1,
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Records per page. Default 10.",
+                "minimum": 1,
+                "maximum": 100,
             },
         },
         "required": ["timeframe"],

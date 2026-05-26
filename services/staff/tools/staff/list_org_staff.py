@@ -60,6 +60,9 @@ TOOL = ToolSpec(
     name="list_org_staff",
     description=(
         "List staff/members in the organisation. PRIMARY TOOL for staff lookups. "
+        "For admin users this calls /organization/staff/get-all-staff-members. "
+        "For non-admin organisation members this calls /organization-member/team/"
+        "get-all-staff-members. "
         "Use for: 'all staff', 'in-office staff', 'support workers', 'find Sarah "
         "in staff', 'show me the team'. Pass `search` to filter by name "
         "(backend does case-insensitive matching). Pass `staff_type` to filter "

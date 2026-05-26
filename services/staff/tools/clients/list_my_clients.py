@@ -8,6 +8,7 @@ import sys
 
 from config import VERBOSE
 from state import user_context
+from auth import has_auth_token
 from api_router import call_target_api, construct_api_url
 from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
@@ -23,6 +24,21 @@ def _run(inputs):
 
     if VERBOSE:
         print(f"[list_my_clients] user_type={user_type} staff_type={staff_type}", file=sys.stderr)
+
+    if not user_context.get("authenticated") or not has_auth_token():
+        return ToolResult(
+            error=(
+                "User profile or backend session context is not loaded, so "
+                "clients cannot be retrieved yet."
+            ),
+            next_hint=(
+                "This is an internal context problem. Do not say the user "
+                "needs to log in or authenticate. Tell them you hit a snag "
+                "loading their SENA client list and ask them to try again in "
+                "a moment."
+            ),
+            meta={"auth_context_missing": True},
+        )
 
     # Client persona: they ARE the client — they don't have a list of "other clients".
     # Redirect with a friendly explanation instead of hitting a random endpoint.

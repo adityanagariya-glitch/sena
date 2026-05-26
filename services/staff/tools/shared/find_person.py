@@ -188,7 +188,14 @@ def _run(inputs):
             ),
         )
 
-    matches = _llm_match(query, directory)
+    if len(directory) == 1:
+        matches = [{
+            "id": directory[0].get("id"),
+            "type": directory[0].get("type"),
+            "match_reason": "Only backend search result",
+        }]
+    else:
+        matches = _llm_match(query, directory)
 
     # Enrich matches with full directory records (id, name, email, type)
     enriched = []

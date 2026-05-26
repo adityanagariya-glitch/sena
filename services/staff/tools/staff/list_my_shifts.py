@@ -56,6 +56,29 @@ def _clients_ref_path_for_user():
     return None  # unknown persona — skip enrichment
 
 
+def _calendar_view_path_for_user():
+    """Return the persona-appropriate calendar-view endpoint, or None.
+
+    Each persona has a `calendar-view` endpoint that returns shift occurrences
+    in a given UTC range (defaults to current week). This is a parallel/fallback
+    source — if the primary shift endpoint returns empty, the calendar-view may
+    still have data. Same bug pattern as the admin case, applied to every persona.
+    """
+    user_type = (user_context.get("user_type") or "").lower()
+    staff_type = (user_context.get("staff_type") or "").lower()
+    roles = [r.lower() for r in (user_context.get("roles") or [])]
+
+    if user_type == "client" or "guardian" in roles or user_type == "guardian":
+        return "/mobile/client-shift/calendar-view"
+    if user_type == "isw":
+        return "/mobile/isw-shift/calendar-view"
+    if staff_type == "support_worker" or user_type == "staff":
+        return "/mobile/staff-shift/calendar-view"
+    # Admin uses /organization-member/shift/calendar-view — already wired
+    # in the admin branch above.
+    return None
+
+
 def _fetch_parallel(fetchers):
     """Run multiple API calls concurrently. Each fetcher is a dict:
         {"label": <str>, "url": <str>, "params": <dict>}
@@ -352,6 +375,21 @@ def _run(inputs):
     user_type = (user_context.get("user_type") or "").lower()
     staff_type = (user_context.get("staff_type") or "").lower()
 
+    if not user_context.get("authenticated") or not user_type:
+        return ToolResult(
+            error=(
+                "User profile context is not loaded, so shifts cannot be "
+                "retrieved yet."
+            ),
+            next_hint=(
+                "This is an internal context problem. Do not say the user "
+                "needs to log in or authenticate. Tell them you hit a snag "
+                "loading their SENA profile and ask them to try again in a "
+                "moment."
+            ),
+            meta={"timeframe": timeframe, "auth_context_missing": True},
+        )
+
     if VERBOSE:
         print(
             f"[list_my_shifts] timeframe={timeframe} user_type={user_type} "
@@ -594,36 +632,80 @@ def _run(inputs):
             },
         )
 
-    # ---- non-admin personas: single shift endpoint + clients reference ----
-    if clients_ref_path:
-        fetchers = [
-            {"label": "shifts", "url": url, "params": query_params},
-            {"label": "clients_reference", "url": construct_api_url(clients_ref_path, {}), "params": {}},
-        ]
+    # ---- non-admin personas: primary shift endpoint + persona calendar-view
+    # + (optional) clients reference. All run in parallel so an empty primary
+    # response doesn't hide shifts that actually live in calendar-view. Same
+    # pattern as the admin fix.
+    calendar_path = _calendar_view_path_for_user()
+    fetchers = [{"label": "shifts", "url": url, "params": query_params}]
 
+    if calendar_path:
+        calendar_params = {}
+        if from_iso and to_iso:
+            calendar_params["from"] = from_iso
+            calendar_params["to"] = to_iso
+        elif timeframe == "this_week":
+            sd, ed = _this_week_range_utc()
+            calendar_params["from"] = sd
+            calendar_params["to"] = ed
+        if search:
+            calendar_params["search"] = search
+        fetchers.append({
+            "label": "shifts_calendar",
+            "url": construct_api_url(calendar_path, {}),
+            "params": calendar_params,
+        })
+
+    if clients_ref_path:
+        fetchers.append({
+            "label": "clients_reference",
+            "url": construct_api_url(clients_ref_path, {}),
+            "params": {},
+        })
+
+    # If we have at least 2 fetchers, run in parallel. Otherwise single-call.
+    if len(fetchers) >= 2:
         results = _fetch_parallel(fetchers)
         raw_primary = results.get("shifts", {})
-        raw_clients = results.get("clients_reference", {})
+        raw_calendar = results.get("shifts_calendar")
+        raw_clients = results.get("clients_reference")
 
-        if isinstance(raw_primary, dict) and raw_primary.get("error"):
+        # Fail only if BOTH primary AND calendar errored (when calendar exists).
+        primary_failed = isinstance(raw_primary, dict) and raw_primary.get("error")
+        calendar_failed = (
+            raw_calendar is None
+            or (isinstance(raw_calendar, dict) and raw_calendar.get("error"))
+        )
+        if primary_failed and calendar_failed:
             return ToolResult(
-                error=f"API error from {path}: {raw_primary.get('error')}",
-                meta={"status_code": raw_primary.get("status_code"), "path": path},
+                error=f"API error from {path}: {raw_primary.get('error') if isinstance(raw_primary, dict) else 'unknown'}",
+                meta={"status_code": raw_primary.get("status_code") if isinstance(raw_primary, dict) else None, "path": path},
             )
 
+        data = {
+            "shifts": raw_primary,
+            "_note": (
+                "Multiple parallel shift sources. 'shifts' is the persona's "
+                "primary list (this-week-shifts or all-shifts). 'shifts_calendar' "
+                "is the same persona's calendar-view, returned in parallel as a "
+                "fallback so an empty primary doesn't hide shifts that live in "
+                "the calendar endpoint. Treat both as ONE unified list — dedupe "
+                "by shift id. Never mention multiple sources. If ANY has shifts "
+                "in the asked window, surface them. 'clients_reference' (when "
+                "present) is for SILENT cross-referencing only — never reveal "
+                "client counts or lists unless the user explicitly asked."
+            ),
+        }
+        if raw_calendar is not None:
+            data["shifts_calendar"] = raw_calendar
+        if raw_clients is not None:
+            data["clients_reference"] = raw_clients
+
         return ToolResult(
-            data={
-                "shifts": raw_primary,
-                "clients_reference": raw_clients,
-                "_note": (
-                    "Two parallel sources. 'shifts' is the user's shift list. "
-                    "'clients_reference' is for SILENT cross-referencing of "
-                    "client ids → names. Never reveal client counts or list "
-                    "clients to the user unless they explicitly asked."
-                ),
-            },
+            data=data,
             meta={
                 "path": path,
+                "calendar_view_path": calendar_path,
                 "clients_ref_path": clients_ref_path,
                 "query_params": query_params,
                 "timeframe": timeframe,

@@ -27,6 +27,7 @@ from tools.clients.filter_clients_by_criteria import TOOL as _T_FILTER_CLIENTS
 
 # ---- Cross-section / shared ----
 from tools.shared.find_person import TOOL as _T_FIND_PERSON
+from tools.shared.list_my_organizations import TOOL as _T_LIST_MY_ORGS
 
 # ---- KB / Memory / Meta ----
 from tools.kb.get_policy import TOOL as _T_GET_POLICY
@@ -49,6 +50,7 @@ ALL_TOOLS: list[ToolSpec] = [
     _T_GET_CLIENT_GUARDIANS,
     _T_FILTER_CLIENTS,
     _T_FIND_PERSON,
+    _T_LIST_MY_ORGS,
     _T_GET_POLICY,
     _T_RECALL_CONVERSATION,
     _T_CLARIFY,

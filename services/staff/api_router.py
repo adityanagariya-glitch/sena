@@ -11,7 +11,7 @@ from state import (
     CLIENT_APIS,
     STAFF_APIS,
 )
-from auth import get_auth_headers
+from auth import get_auth_headers, has_auth_token
 from bedrock_client import call_bedrock
 
 
@@ -455,6 +455,14 @@ def call_target_api(method, url, query_params=None, body_params=None, use_cache=
     """
     short_path = _short_url(url) + _fmt_qp(query_params)
     method_u = method.upper()
+
+    if not has_auth_token():
+        print(f"[API] ✗ NOAUTH    {method_u} {short_path}", file=_TERMINAL, flush=True)
+        return {
+            "error": "Backend session context is not loaded",
+            "status_code": 401,
+            "auth_context_missing": True,
+        }
 
     # Check cache for GET requests
     if use_cache and method_u == 'GET':

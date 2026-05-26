@@ -27,6 +27,7 @@ from style_guide import (
     IDENTITY_RULE,
     EMPTY_DATA_RULES,
     ANSWER_DIRECTLY,
+    TIME_FORMAT_RULE,
 )
 from tools.registry import bedrock_tool_config
 from tools.dispatcher import run_tool
@@ -34,6 +35,63 @@ from tools.dispatcher import run_tool
 
 # How many tool-call iterations to allow before giving up (prevents infinite loops).
 _MAX_TOOL_ITERATIONS = 6
+
+_IN_SCOPE_WORK_TERMS = (
+    "shift",
+    "shifts",
+    "roster",
+    "rosters",
+    "client",
+    "clients",
+    "participant",
+    "participants",
+    "allowance",
+    "allowances",
+    "payroll",
+    "ndis",
+    "policy",
+    "policies",
+    "support worker",
+    "support workers",
+    "organisation",
+    "organisations",
+    "organization",
+    "organizations",
+    " org",
+    "orgs",
+    "business",
+    "business name",
+    "owner",
+    "account",
+)
+
+
+def _looks_like_work_query(text):
+    q = (text or "").lower()
+    return any(term in q for term in _IN_SCOPE_WORK_TERMS)
+
+
+def _work_query_snag_message(text):
+    q = (text or "").lower()
+    if (
+        "organisation" in q or "organization" in q or " org" in q
+        or "business" in q or "owner" in q or "account" in q
+    ):
+        subject = "organisation details"
+    elif "client" in q or "participant" in q or "medical" in q:
+        subject = "client information"
+    elif "shift" in q or "roster" in q:
+        subject = "shift answer"
+    elif "payroll" in q or "allowance" in q:
+        subject = "payroll details"
+    elif "policy" in q or "ndis" in q:
+        subject = "NDIS answer"
+    else:
+        subject = "answer"
+    return (
+        f"I hit a snag putting that {subject} together just now. "
+        "Please try again in a moment."
+    )
 
 
 def _today_context_block():
@@ -43,16 +101,30 @@ def _today_context_block():
     `user_context["timezone"]` (set by frontend OR by `set_my_timezone` tool)
     and falls back to Australia/Sydney when nothing is set.
 
-    When the fallback is in use, we tell the agent so it can append a one-line
-    note inviting the user to set their actual timezone (saved 30 days).
+    Includes a DST-aware footnote that the agent appends to any time-sensitive
+    answer (shifts, dates, schedules). When fallback is in use, also invites
+    the user to set their actual timezone.
     """
     from datetime import datetime
     from zoneinfo import ZoneInfo
-    from state import current_timezone, user_context
+    from state import (
+        current_timezone,
+        user_context,
+        timezone_observes_dst,
+        timezone_dst_active_now,
+        timezone_short_label,
+    )
 
     tz_name = current_timezone()
     is_fallback = not (user_context.get("timezone") or "").strip()
     now = datetime.now(ZoneInfo(tz_name))
+    short_label = timezone_short_label(tz_name)
+    observes_dst = timezone_observes_dst(tz_name)
+    dst_active = timezone_dst_active_now(tz_name)
+    if dst_active:
+        footnote_text = f"*(Based on {short_label} timezone with daylight saving)*"
+    else:
+        footnote_text = f"*(Based on {short_label} timezone)*"
 
     fallback_note = ""
     if is_fallback:
@@ -78,6 +150,8 @@ def _today_context_block():
         f"Current date/time context (user's local time):\n"
         f"- Today is {now.strftime('%A, %d %B %Y')} ({tz_name}, {now.tzname()}).\n"
         f"- Current year: {now.year}. Current month: {now.strftime('%B')} ({now.month}).\n"
+        f"- Timezone: {short_label}. Observes daylight saving: {'yes' if observes_dst else 'no'}. "
+        f"DST currently active: {'yes' if dst_active else 'no'}.\n"
         f"- When the user says a month name without a year (e.g. 'May', 'in March'), "
         f"assume the CURRENT YEAR ({now.year}) unless they explicitly say otherwise.\n"
         f"- When the user says 'this week' / 'last week' / 'next week' / 'this month' / "
@@ -86,6 +160,15 @@ def _today_context_block():
         f"- The backend API expects UTC; the shift/date tools handle that conversion "
         f"internally. You don't need to think about UTC — just reason in the user's "
         f"local time.\n"
+        f"\n"
+        f"## Timezone footnote — APPEND on time-sensitive replies\n"
+        f"After ANY answer involving shifts, dates, schedules, times, or anything "
+        f"sensitive to timezone (today/tomorrow/this week/this month/etc.), APPEND "
+        f"this exact line on its own new line at the end of your reply (in italics):\n"
+        f"    {footnote_text}\n"
+        f"DO NOT add this footnote on non-time-sensitive answers (profile lookups "
+        f"without dates, KB/policy queries, identity questions, error apologies, etc.). "
+        f"Just the time-sensitive ones. The italics matter — keep the asterisks.\n"
         f"{fallback_note}"
     )
 
@@ -124,6 +207,8 @@ Default to ACTION over clarification. If a sensible default exists (e.g. "shifts
 
 {ANSWER_DIRECTLY}
 
+{TIME_FORMAT_RULE}
+
 ## Stay focused
 When a tool returns useful data, write the answer — don't chain another tool unless genuinely needed.
 """
@@ -161,8 +246,9 @@ Critical rules:
 - `data.clients_reference` — INTERNAL LOOKUP ONLY (see rule 5)
 
 **Other personas** (support_worker / ISW / client / guardian):
-- `data.shifts` — the persona's shift list (this-week-shifts for the fast path, all-shifts otherwise)
-- `data.clients_reference` — INTERNAL LOOKUP ONLY (see rule 5)
+- `data.shifts` — primary shift list (this-week-shifts fast path, or all-shifts)
+- `data.shifts_calendar` — calendar-view (parallel fallback — `/mobile/{persona}-shift/calendar-view`). Returns shift occurrences in the asked range. If `data.shifts` is empty but `data.shifts_calendar` has data, the user has shifts; surface them.
+- `data.clients_reference` — INTERNAL LOOKUP ONLY (not present for client/guardian personas)
 
 Why 4 admin sources: the same shift can be visible from different angles — assigned in-office staff, assigned support workers, client participants, or the admin's own calendar. Querying only one returns empty when the data lives in another. We deliberately match the SENA UI's own approach.
 
@@ -170,17 +256,17 @@ Why 4 admin sources: the same shift can be visible from different angles — ass
 
 1. **Treat ALL shift sources as ONE unified list.** NEVER mention there were multiple sources. NEVER name "in_office" / "support_worker" / "clients_view" / "my_calendar" — internal plumbing the user must not see.
 
-2. **Never say "no shifts" if ANY shift source has data in the asked window.** Specifically, for admin check ALL of: `shifts_in_office`, `shifts_support_worker`, `shifts_clients_view`, `shifts_my_calendar`. For other personas check `shifts`. Saying "no shifts" while any source has data is the bug we're killing.
+2. **Never say "no shifts" if ANY shift source has data in the asked window.** For admin: check `shifts_thisweek` / `shifts_scheduled` / `shifts_completed` / `shifts_my_calendar` / and any genuine shift items in the picker sources. For other personas: check BOTH `shifts` AND `shifts_calendar`. Saying "no shifts" while any source has data is the bug we're killing.
 
 3. **Dedupe by shift id** if the same shift appears in multiple sources (very common for admin — the same shift shows up under in-office, support-worker, AND clients views).
 
 4. **Cross-reference client ids against `clients_reference` SILENTLY.** When a shift has a client id but blank name/NDIS, look up the name in `clients_reference` and inline it ("Sat 09:00 with John Smith"). Never expose the lookup happened.
 
-5. **🚫 NEVER MENTION `clients_reference` OR LIST CLIENTS UNLESS THE USER EXPLICITLY ASKED ABOUT CLIENTS.** Forbidden patterns when the user asked about SHIFTS:
-   - ❌ "You've got 51 clients in your portfolio"
-   - ❌ "You have N clients but no shifts in this window"
-   - ❌ "Your clients are: …" (when they asked about shifts)
-   - ❌ "Want me to check your client list?" (when they asked about shifts)
+5. **NEVER MENTION `clients_reference` OR LIST CLIENTS UNLESS THE USER EXPLICITLY ASKED ABOUT CLIENTS.** Forbidden patterns when the user asked about SHIFTS:
+   - "You've got 51 clients in your portfolio"
+   - "You have N clients but no shifts in this window"
+   - "Your clients are: …" (when they asked about shifts)
+   - "Want me to check your client list?" (when they asked about shifts)
    - The clients_reference is a hidden lookup table — its size, contents, or existence MUST NOT leak into shift answers. If shifts are empty, just say "no shifts in [timeframe]" + offer a different timeframe. DO NOT mention client counts.
 
 6. **When the user DOES explicitly ask about clients** ("how many clients do I have", "list my clients", "who are my participants") → THEN you may use `clients_reference` or call `list_my_clients` / `list_org_clients` and answer accordingly. Only then.
@@ -195,7 +281,7 @@ def _skill_clients():
 - Name or ID mentioned ("tell me about Sarah", "client abc-123") → `find_person(query="<name>")` FIRST (backend search is fast). If exactly one match and the user wants the profile, follow with `get_client_details(client_id=<id>)`.
 - "my clients" / "do I have clients" → `list_my_clients`.
 - "all clients" / "every client" (admin) → `list_org_clients`.
-- Cohort filters ("Aboriginal clients with autism in Sydney", "female clients under 21") → `filter_clients_by_criteria` (admin/staff only).
+- Cohort filters ("Aboriginal clients with autism in Sydney", "female clients under 21", "clients with allergies", "clients in Frankston") → `filter_clients_by_criteria` (admin/staff only). Use specific keys when obvious (`diagnosis`, `mobility`, `location`, `allergy`) and use `search` for anything broad or new.
 - "[client]'s guardians" / "family contact for [client]" → `find_person` → `get_client_guardians(client_id=<id>)`.
 - "who supports [client]" / "[client]'s support workers" → `find_person` → `get_client_support_workers(client_id=<id>)`.
 
@@ -237,7 +323,7 @@ def _skill_cross_client():
 
 The data IS available — either you've already fetched it, or call `list_my_clients` now. DO NOT refuse with "I can't pull this across clients".
 
-Scan the list, check every plausible field for what the user asked. Different concepts use different keys in the data — look at all variants, including nested ones (under care, medical, supportTeam, etc.). You don't need a fixed table; the principle is: read the data, find what matches the concept the user asked about.
+For broad cohort/profile questions, prefer `filter_clients_by_criteria` with a broad `search` term unless the user only asked for a simple assigned-client list. The tool scans nested profile text, so it can handle medical info, primary diagnosis, location, mobility, allergies, medications, risks, support requirements, goals, and new profile fields without you guessing field names.
 
 Distinguish THREE states clearly — never conflate them:
 1. ASSIGNED — a real person/entity is mapped to the client (name/ID present).
@@ -266,6 +352,14 @@ def _skill_staff():
 """
 
 
+def _skill_organizations():
+    return """## Organisation lookup skill (active because the user mentioned organisations/orgs)
+
+- "my organisations" / "my organizations" / "which orgs do I own" / "list my orgs" → `list_my_organizations`.
+- This returns only the organisation IDs and business names linked to the logged-in owner.
+"""
+
+
 def _skill_timezone():
     return """## Timezone skill (active because the user mentioned a location / state / timezone)
 
@@ -285,7 +379,7 @@ _KW_SHIFT = (
     "huddle", "standup", "today", "tomorrow", "yesterday",
     "this week", "next week", "last week",
     "this month", "next month", "last month",
-    "arvo", "sarvo", "tonight", "tonite",
+    "arvo", "sarvo", "tonight", "tonite"
 )
 _KW_CLIENT = ("client", "participant", "guardian")
 _KW_CLINICAL = (
@@ -295,6 +389,8 @@ _KW_CLINICAL = (
     "doctor", " gp", "gp ", "diagnos",
     "support plan", "support requirement", "care plan",
     "medical", "history", "condition",
+    "wheelchair", "wheel chair", "mobility", "walking aid",
+    "asthma", "diabetes", "seizure", "epilepsy",
 )
 _KW_CROSS = (
     "any of", "across", "every client", "every clients",
@@ -304,6 +400,10 @@ _KW_CROSS = (
 _KW_STAFF = (
     "staff", "support worker", "in-office", "in office",
     "isw", "team", "huddle", "manager", "coordinator",
+)
+_KW_ORG = (
+    "organisation", "organisations", "organization", "organizations",
+    " org", "orgs", "business name", "owner",
 )
 _KW_TZ = (
     "timezone", "time zone", "i'm in ", "im in ",
@@ -336,6 +436,8 @@ def _skills_for_question(user_question: str) -> str:
         parts.append(_skill_cross_client())
     if any(kw in q for kw in _KW_STAFF):
         parts.append(_skill_staff())
+    if any(kw in q for kw in _KW_ORG):
+        parts.append(_skill_organizations())
     if any(kw in q for kw in _KW_TZ) or any(loc in q for loc in _AUS_LOCATIONS):
         parts.append(_skill_timezone())
 
@@ -477,10 +579,14 @@ def process_query_agent(user_question):
         if stop_reason == "guardrail_intervened":
             message = response.get("output", {}).get("message", {})
             text_blocks, _ = _content_blocks_with_tool_use(message)
-            final_text = " ".join(text_blocks).strip() or (
-                "I can only help with SENA and NDIS-related questions. Please ask "
-                "about shifts, clients, payroll, policies, or other NDIS topics."
-            )
+            guardrail_text = " ".join(text_blocks).strip()
+            if _looks_like_work_query(user_question):
+                final_text = _work_query_snag_message(user_question)
+            else:
+                final_text = guardrail_text or (
+                    "I can only help with SENA and NDIS-related questions. Please ask "
+                    "about shifts, clients, payroll, policies, or other NDIS topics."
+                )
             break
 
         assistant_message = response.get("output", {}).get("message", {})

@@ -115,18 +115,37 @@ def _run(inputs):
     if VERBOSE:
         print(f"[set_my_timezone] '{raw}' → {tz_iana}", file=sys.stderr)
 
-    # Lazy import to avoid circulars
+    # Lazy imports to avoid circulars
     from memory import _save_user_timezone
+    from state import (
+        timezone_observes_dst,
+        timezone_dst_active_now,
+        timezone_short_label,
+    )
+
     _save_user_timezone(tz_iana)
 
+    observes_dst = timezone_observes_dst(tz_iana)
+    dst_active_now = timezone_dst_active_now(tz_iana)
+    short_label = timezone_short_label(tz_iana)
+
     return ToolResult(
-        data={"saved": True, "timezone": tz_iana, "ttl_days": 30},
+        data={
+            "saved": True,
+            "timezone": tz_iana,
+            "short_label": short_label,
+            "observes_dst": observes_dst,
+            "dst_active_now": dst_active_now,
+            "ttl_days": 30,
+        },
         next_hint=(
-            f"Confirm to the user that you've saved their timezone as {tz_iana} "
-            f"and you'll remember it. NEVER mention how long it's stored for. "
-            f"Briefly note you'll use this for all date/time questions from now on. "
-            f"If they had asked a time-sensitive question just before, offer to "
-            f"re-run it with the correct timezone."
+            f"Confirm to the user that you've saved their timezone as "
+            f"{short_label} and you'll remember it. NEVER mention how long "
+            f"it's stored for. Briefly note you'll use this for all date/time "
+            f"questions from now on. "
+            f"{'They observe daylight saving — the clock change in Oct/Apr is handled automatically by the system so you do not need to do anything when DST starts or ends.' if observes_dst else 'Their region does not observe daylight saving — the time stays constant year-round.'} "
+            f"If they had asked a time-sensitive question just before, offer "
+            f"to re-run it with the correct timezone."
         ),
     )
 

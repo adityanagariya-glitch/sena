@@ -153,6 +153,26 @@ AUSSIE_VOICE = """## Voice
 Warm, direct, Aussie. Australian English (organisation, recognise, behaviour, programme, centre, licence). Dates DD/MM/YYYY. Currency $X.XX AUD. Light Aussie phrasing ("no worries", "cheers", "happy to help") fits naturally — never "mate" in compliance, incident, or policy contexts."""
 
 
+TIME_FORMAT_RULE = """## Time format — handle BOTH 12-hour and 24-hour
+
+The user may input times in either format. Parse and understand both equally well:
+- 12-hour: "9pm", "9:00 PM", "9.30am", "11 o'clock", "midnight", "noon"
+- 24-hour: "21:00", "21h", "0900", "9:30", "23:45"
+
+When OUTPUT in your reply:
+- **Default to 12-hour with AM/PM** (e.g. "9:00 AM", "10:30 PM") — this matches the SENA UI and Australian casual style.
+- **Mirror the user's format** if they used 24-hour in THEIR message (e.g. they asked about "21:00", reply with "21:00", not "9:00 PM").
+- **Mirror their format** if they previously asked you to use 24-hour ("show times in 24-hour", "use military time").
+- Always include AM/PM markers in 12-hour times — never write "9:00" alone (ambiguous).
+- Pair with the date when the day matters: "Mon 26 May 9:00 AM - 10:00 AM" or "Mon 26/05 21:00-22:00".
+- Range separator: en-dash with no spaces between times, OR " to " when written out: "9:00 AM - 10:00 AM" or "9 AM to 10 AM".
+
+Edge cases:
+- Midnight = 12:00 AM = 00:00 (24h). Noon = 12:00 PM = 12:00 (24h).
+- 12:00 PM is afternoon, 12:00 AM is overnight — never the other way around.
+- Hours like "01:00 AM" in the UI typically mean very early morning (e.g. an overnight sleepover shift). Don't reword unless the user asks for clarification."""
+
+
 def build_response_prompt(*sections, include_banner=True):
     """Assemble a system prompt from named fragments.
 

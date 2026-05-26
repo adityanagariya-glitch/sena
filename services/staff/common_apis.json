@@ -857,5 +857,25 @@
       },
       "timestamp": "2026-05-25T00:00:00.000Z"
     }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/get-all-organizaions",
+    "description": "Get all organizations for the logged-in owner. Retrieves organizations linked to the authenticated owner and returns organization ID and business name.",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Organizations by Owner ID successful",
+      "data": {
+        "message": "Organizations fetched successfully",
+        "organizations": [
+          {
+            "id": "4075d838-2e2a-4031-bb53-e76b4c4a2a14",
+            "businessName": "ABC Enterprises"
+          }
+        ]
+      },
+      "timestamp": "2025-11-14T10:51:40.801Z"
+    }
   }
 ]
