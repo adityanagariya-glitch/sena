@@ -2,8 +2,8 @@
 import boto3
 import logging
 
-from config import REGION, GENERATION_MODEL, MESSAGES
-from prompt import SYSTEM_PROMPTS, ACTIVE_PROMPT_VERSION
+from services.policy_proc.scripts.config import REGION, GENERATION_MODEL, MESSAGES
+from services.policy_proc.scripts.prompt import SYSTEM_PROMPTS, ACTIVE_PROMPT_VERSION
 
 logger = logging.getLogger(__name__)
 

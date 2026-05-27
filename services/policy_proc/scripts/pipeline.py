@@ -1,12 +1,12 @@
 # pipeline.py
 import logging
 import uuid
-from rewriter import rewrite_query
-from config import MESSAGES
-from classifier import classify, should_block
-from retriever import retrieve, is_context_empty
-from generator import generate_stream
-from memory import (
+from services.policy_proc.scripts.rewriter import rewrite_query
+from services.policy_proc.scripts.config import MESSAGES
+from services.policy_proc.scripts.classifier import classify, should_block
+from services.policy_proc.scripts.retriever import retrieve, is_context_empty
+from services.policy_proc.scripts.generator import generate_stream
+from services.policy_proc.scripts.memory import (
     get_memory_context,
     save_memory,
     create_session,

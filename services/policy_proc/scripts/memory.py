@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 
-from config import REGION, MEMORY_ID, SESSIONS_TABLE, TURNS_TABLE
+from services.policy_proc.scripts.config import REGION, MEMORY_ID, SESSIONS_TABLE, TURNS_TABLE
 
 logger = logging.getLogger(__name__)
 

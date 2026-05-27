@@ -3,7 +3,7 @@ import boto3
 import json
 import logging
 
-from config import REGION, KB_ID, NUM_RESULTS, RERANK_TOP, RERANKER_MODEL
+from services.policy_proc.scripts.config import REGION, KB_ID, NUM_RESULTS, RERANK_TOP, RERANKER_MODEL
 
 logger = logging.getLogger(__name__)
 

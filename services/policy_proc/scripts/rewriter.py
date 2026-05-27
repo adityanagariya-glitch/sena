@@ -2,7 +2,7 @@
 import boto3
 import logging
 
-from config import REGION
+from services.policy_proc.scripts.config import REGION
 
 logger = logging.getLogger(__name__)
 
