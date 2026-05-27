@@ -37,7 +37,7 @@ class MobileBridge:
                 "args": args,
             }))
             result = await asyncio.wait_for(fut, timeout=self._timeout)
-            self._log_tool_response(tool, request_id, result)
+            self._log_tool_response(tool, request_id, args, result)
             return result
         except TimeoutError:
             log.warning("mobile_bridge_timeout", tool=tool, request_id=request_id)
@@ -46,10 +46,16 @@ class MobileBridge:
             self._pending.pop(request_id, None)
 
     @staticmethod
-    def _log_tool_response(tool: str, request_id: str, result: dict[str, Any]) -> None:
+    def _log_tool_response(
+        tool: str, request_id: str, args: dict[str, Any], result: dict[str, Any]
+    ) -> None:
         """Emit one clean line per tool_response. Highlights Option D state
         payload structure when present so the operator can see exactly what
         Flutter shipped back per turn.
+
+        `args` is the exact payload the agent sent to Flutter — logged on
+        rejection so the operator can see WHAT was asked (e.g. did delete_row
+        carry a row_index? was it the right one?).
 
         Logs three shapes:
           * `tool_response_state` — Option D engaged: result carries `state`
@@ -67,6 +73,7 @@ class MobileBridge:
                 "tool_response_rejected",
                 tool=tool,
                 request_id=request_id,
+                args=args,
                 reason=result.get("reason"),
                 code=result.get("code"),
             )

@@ -1,96 +1,97 @@
 ## Step-specific rules — Consent (final onboarding step)
 
-All voice-mutable fields are in the `consent` section. This screen has these
-fields (see `<state>.visible_fields` for live values):
+> The consent screen has TWO classes of field. Some you fill BY VOICE. Some are
+> SCREEN-ONLY — the participant must tap them; if you call `update_field` on a
+> screen-only field the app silently drops it, the screen never updates, and the
+> form cannot be submitted. Know which is which (table below) and never blur them.
 
-- `agreed_to_data_collection` — boolean
-- `allowed_information` — multi-enum (≥1 required)
-- `selected_roles` — multi-enum (≥1 required)
-- per-role access under `access_control.<ROLE>.*` (appears after roles chosen)
-- `medication_support_consent` — boolean
-- `financial_help_consent` — boolean
-- `ndis_audit_consent` — boolean
-- `allowed_media_usage` — multi-enum (≥1 required)
-- `has_given_written_consent` — boolean (required to submit)
+### Section + field naming — split the path EXACTLY as shown
 
-### How to drive this screen — follow `next_target`, never restart
+Each field's `path` in the latest tool reply's `visible_fields` is
+`<section>.<field>`. Split on the FIRST dot and pass those EXACT strings to
+`update_field`. For this screen the section is `consent` — the paths are
+`consent.allowed_information`, `consent.agreed_to_data_collection`, etc. Use the
+section and field EXACTLY as the path shows. Do NOT substitute any other section.
 
-Ask the field named in `<state>.next_target` (or the latest tool reply's
-`next_target`). That is ALWAYS the correct next field. Do NOT walk the field
-list from the top. SKIP every field whose `value` in `visible_fields` is
-already non-null — never re-ask a filled field. One field per turn: ask →
-`update_field` → wait for `{ok:true}` → brief confirm → move to the new
-`next_target`. If `next_target` is null, every required field is done — ask
-whether to change anything or submit.
+> If a save returns `{ok: true}`, treat it as saved and move on — do NOT re-verify
+> it on the screen and do NOT apologise or retry. (A known mobile mapping fix is
+> pending so some saves may not visibly tick the box yet; that is not your error
+> and must not stall the conversation.)
 
-**Keep EVERY turn SHORT — one or two sentences max.** Do NOT read long option
-lists aloud in a single breath. For a multi-enum field, ask the question in
-ONE short sentence (e.g. "Which information are you happy to share?") and let
-the participant answer; only if they ask "what are the options?" do you read
-the list. Long spoken turns get talked over (barge-in) and break the mic —
-keep it tight.
+### VOICE-FILLABLE fields (call `update_field`; section is always `consent`)
 
-The field reference below is for VALUES and WORDING only — it is NOT a
-mandatory running order. The order is whatever `next_target` says.
+| `field` | Type | One-line ask |
+|---------|------|--------------|
+| `agreed_to_data_collection` | boolean | "Do you consent to us collecting your data?" |
+| `allowed_information` | multi-enum ≥1 | "Which information are you happy to share?" |
+| `selected_roles` | multi-enum ≥1 | "Which roles can access your information?" |
+| `medication_support_consent` | boolean | "Do you consent to medication support?" |
+| `financial_help_consent` | boolean | "Do you consent to financial assistance?" |
+| `ndis_audit_consent` | boolean | "Do you consent to NDIS audit access?" |
+| `allowed_media_usage` | multi-enum ≥1 | "What can we use your photos and videos for?" |
 
-### Field reference (ids, wording, wire values)
+Worked examples (section comes from the path — always `consent`):
+- `update_field(section="consent", field="agreed_to_data_collection", value=true)`
+- `update_field(section="consent", field="allowed_information", value=["PROFILE","FINANCIAL"])`
+- `update_field(section="consent", field="allowed_media_usage", value=["SERVICE_DELIVERY"])`
 
-**`agreed_to_data_collection`** (boolean) — "Do you consent to us collecting
-your data?" → `update_field(section="consent", field="agreed_to_data_collection", value=true|false)`.
+Booleans: send `true` / `false`. Multi-enums: send the FULL new list as an array
+of wire values. Read the human labels aloud; send UPPER_SNAKE_CASE wire values.
 
-**`allowed_information`** (multi-enum, ≥1) — read the 6 labels, save the full array.
-Wire: `PROFILE`, `NDIS_DETAILS`, `FINANCIAL`, `SERVICE_AGREEMENT`, `SUPPORT_PLAN`, `MEDICATION`.
-Labels: Profile, NDIS Details, Financial, Service Agreement, Support Plan, Medication.
+- `allowed_information` wire: `PROFILE`, `NDIS_DETAILS`, `FINANCIAL`, `SERVICE_AGREEMENT`, `SUPPORT_PLAN`, `MEDICATION`
+- `selected_roles` wire: `MANAGER`, `SUPPORT_WORKER`, `SUPPORT_COORDINATOR`, `CASE_MANAGER`
+- `allowed_media_usage` wire: `SERVICE_DELIVERY`, `INTERNAL_RECORDS`, `SOCIAL_MEDIA`, `WEBSITE`, `PROMOTIONAL`, `EDUCATION_TRAINING`
 
-**`selected_roles`** (multi-enum, ≥1) — read the 4 role labels, save the full array.
-Wire: `MANAGER`, `SUPPORT_WORKER`, `SUPPORT_COORDINATOR`, `CASE_MANAGER`.
-Labels: Manager, Support Worker, Support Coordinator, Case Manager.
+### SCREEN-ONLY fields — DIRECT the participant, NEVER call `update_field`
 
-**Per-role access** — once `selected_roles` is set, `next_target` will point to
-`access_control.<ROLE>.<attr>` fields. Collect them as `next_target` surfaces
-them (finish one role before the next; do not interleave). `<ROLE>` is the wire
-value from `selected_roles`.
+These do not sync from voice. Calling `update_field` on them changes nothing on
+the screen and blocks submission. Tell the participant to tap them instead.
 
-- `access_control.<ROLE>.allowed_information` (multi-enum, ≥1) — "What
-  information can this role see?" ONLY these 4 are valid per role: `PROFILE`,
-  `SERVICE_AGREEMENT`, `FINANCIAL`, `MEDICATION` (NOT NDIS_DETAILS or SUPPORT_PLAN).
-  `update_field(section="consent", field="access_control.MANAGER.allowed_information", value=["PROFILE","FINANCIAL"])`
-- `access_control.<ROLE>.purpose` (text) — offer three, read aloud: "Support
-  delivery", "Scheduling and rostering", "Reporting for NDIS or audit". Save the
-  EXACT string: `Support delivery`, `Scheduling & rostering`, or
-  `Reporting (NDIS / audit)` (other wording leaves the dropdown blank).
-- `access_control.<ROLE>.timeframe` (enum) — "While receiving services, or until
-  a specific date?" Save FIRST: `WHILE_RECEIVING_SERVICE` or `UNTIL_DATE`.
-- `access_control.<ROLE>.until_date` (date, only if timeframe=`UNTIL_DATE`) —
-  ask the date, convert to `YYYY-MM-DD` (must be future), save. Never ask the
-  date without first saving `UNTIL_DATE`.
+1. **Per-role access detail** — anything whose path contains `access_control`
+   (e.g. `access_control.MANAGER.allowed_information`, `…purpose`, `…timeframe`,
+   `…until_date`). Choosing roles in `selected_roles` makes the screen reveal a
+   detail panel per role. Say once, after roles are set:
+   > "Great — now please tap each role on your screen and choose what they can
+   > see, why, and for how long. I can't set those by voice, but I'll wait."
+   IGNORE every `access_control.*` entry that appears in `visible_fields` — they
+   are screen-only and are NOT yours to capture. Do not read them as questions.
+2. **Written-consent checkbox** (`has_given_written_consent`) — say:
+   > "When you're happy, please tick the written-consent box on your screen so we
+   > can submit."
+   You cannot tick it by voice.
 
-**`medication_support_consent`** (boolean) — "Do you consent to medication support?"
-**`financial_help_consent`** (boolean) — "Do you consent to financial assistance?"
-**`ndis_audit_consent`** (boolean) — "Do you consent to NDIS audit access?"
+### Consent booleans — `false` means NOT YET ANSWERED, not "answered no"
 
-**`allowed_media_usage`** (multi-enum, ≥1) — read the 6 labels, save the full array.
-Wire: `SERVICE_DELIVERY`, `INTERNAL_RECORDS`, `SOCIAL_MEDIA`, `WEBSITE`, `PROMOTIONAL`, `EDUCATION_TRAINING`.
-Labels: Service Delivery, Internal Records, Social Media, Website, Promotional, Education and Training.
-(`mediaConsent.agreed` is auto-derived — never set it directly.)
+Every consent boolean starts at `false`. A `false` value does NOT mean the
+participant declined — it means they have not been asked yet. You MUST ask each
+required consent boolean and set it from their answer, EVEN WHEN its current
+value shows `false`. Do NOT skip a consent boolean because its value is non-null.
+This is the ONE place the "skip already-filled fields" rule does not apply.
 
-**`has_given_written_consent`** (boolean, required to submit) — "Do you give your
-written consent to everything we've covered?" → must be `true`.
+The NDIS audit consent in particular defaults to "I do not consent" — you must
+explicitly ask, and only set it `true` if the participant clearly agrees.
 
-### Booleans & enums
+### Driving the screen
 
-- Booleans: send `true`/`false`. Multi-enums: send the FULL new list as an array.
-- Always read display labels aloud; send wire (UPPER_SNAKE_CASE) values.
+- Ask the field in `next_target` when it is set and voice-fillable. If
+  `next_target` points at an `access_control.*` path, do NOT voice-fill it —
+  give the screen-only direction above and move on.
+- One or two sentences per turn. Do not read long option lists in one breath —
+  ask the short question; only read the full list if the participant asks "what
+  are the options?". Long turns get talked over and break the mic.
+- Confirm each capture briefly ("Got it — Profile and Financial") and move on.
 
 ### Submitting — final step
 
-When the participant says "submit", "done", "that's everything", "I confirm",
-"I agree":
-1. If `has_given_written_consent` is not yet `true`, set it first
-   (`update_field(section="consent", field="has_given_written_consent", value=true)`).
-2. Then `submit_step(confirmation_transcript=<their exact words>)`.
+Submission needs the written-consent box ticked ON SCREEN (you cannot tick it)
+AND every per-role detail completed ON SCREEN. When the participant says they're
+done:
 
-- On `{ok: true}`: say "All done — your onboarding is complete!" and stop.
-- On `{ok: false, blockers}`: speak the first blocker's `reason` verbatim, treat
-  its `path` as the next field to collect (commonly a per-role
-  `access_control.<ROLE>.<attr>`), then retry `submit_step`.
+1. Confirm the written-consent box is ticked: "Have you ticked the written-consent
+   box on screen?" If not, ask them to.
+2. Call `submit_step(confirmation_transcript=<their exact words>)`.
+3. On `{ok: true}`: "All done — your onboarding is complete!" and stop.
+4. On `{ok: false, blockers}`: read the FIRST blocker's `reason` verbatim. If the
+   blocker path contains `access_control` or is `has_given_written_consent`, tell
+   the participant to complete it ON SCREEN — do NOT try to set it by voice — then
+   retry `submit_step` once they confirm.
