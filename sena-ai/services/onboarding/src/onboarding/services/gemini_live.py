@@ -119,6 +119,16 @@ class GeminiLiveSession:
         self._last_screen_hash: str | None = None
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
+        # Kickoff audio-suppression shield. gemini-3.1-flash-live-preview has a
+        # known VAD bug: if the participant talks over the model's OPENING
+        # greeting, the interrupt cancels the turn with zero output chunks and
+        # the VAD then wedges — it stops emitting input_transcription for the
+        # rest of the session (cookbook issue #1197). Workaround: drop inbound
+        # mic frames for a short window right after the greeting kicks off so
+        # the opening can't be barged-into. Set when the first model audio of
+        # the session arrives; epoch seconds, 0 = shield inactive.
+        self._kickoff_suppress_until: float = 0.0
+        self._kickoff_done: bool = False
         # Voice protocol — preserve the words Gemini was saying when interrupted
         # so the next turn can address the interruption AND the unfinished thought.
         # Injected as a hidden [INTERRUPTED] text turn right after the cut-off.
@@ -295,6 +305,16 @@ class GeminiLiveSession:
                     # silence period restarts the full warn → summary cycle.
                     self._silence_warned = False
                     self._silence_exhausted = False
+                    # Kickoff shield (cookbook #1197): for the first ~2.5s of the
+                    # opening greeting, drop inbound mic frames so the user can't
+                    # barge-in over it. Barging the opening interrupts turn 0 with
+                    # zero chunks and wedges Gemini's VAD for the whole session
+                    # (no more input_transcription). ONLY the opening is shielded.
+                    if (
+                        self._kickoff_suppress_until
+                        and time.monotonic() < self._kickoff_suppress_until
+                    ):
+                        continue
                     # Send all audio unconditionally — Gemini's VAD + START_OF_ACTIVITY_INTERRUPTS
                     # handles barge-in natively. The old _agent_speaking echo gate blocked user
                     # audio after turn N+1 model audio arrived, causing VAD to stop firing.
@@ -690,6 +710,20 @@ class GeminiLiveSession:
                                         # in manual-VAD mode and otherwise
                                         # corrupts VAD state. Echo is fully
                                         # handled by Flutter mic mute.
+                                        # Arm the kickoff shield on the FIRST
+                                        # model audio of the session only — the
+                                        # opening greeting. 2.5s per cookbook
+                                        # #1197 workaround. Later turns are not
+                                        # shielded (barge-in is fine there).
+                                        if not self._kickoff_done:
+                                            self._kickoff_done = True
+                                            self._kickoff_suppress_until = (
+                                                time.monotonic() + 2.5
+                                            )
+                                            log.info(
+                                                "kickoff_shield_armed session=%s window=2.5s",
+                                                self._session_id,
+                                            )
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 

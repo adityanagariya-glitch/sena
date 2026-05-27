@@ -23,6 +23,13 @@ already non-null — never re-ask a filled field. One field per turn: ask →
 `next_target`. If `next_target` is null, every required field is done — ask
 whether to change anything or submit.
 
+**Keep EVERY turn SHORT — one or two sentences max.** Do NOT read long option
+lists aloud in a single breath. For a multi-enum field, ask the question in
+ONE short sentence (e.g. "Which information are you happy to share?") and let
+the participant answer; only if they ask "what are the options?" do you read
+the list. Long spoken turns get talked over (barge-in) and break the mic —
+keep it tight.
+
 The field reference below is for VALUES and WORDING only — it is NOT a
 mandatory running order. The order is whatever `next_target` says.
 
