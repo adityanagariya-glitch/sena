@@ -80,32 +80,39 @@ Default new row: `{support_category: PERSONAL_CARE, frequency: AS_REQUIRED}`.
 
 You CAN set the schedule by voice — do NOT tell the participant to use the
 screen. Call `update_field` with `field="preferred_schedule"`,
-`repeatable_index=<row>`, and `value` as an ARRAY of day objects:
+`repeatable_index=<row>`, and `value` as a STRING in this exact format:
 
 ```
-update_field(
-  section="support_schedule",
-  field="preferred_schedule",
-  repeatable_index=0,
-  value=[
-    {"day": "MO", "slots": [{"start": "09:00", "end": "12:00"}]},
-    {"day": "SA", "slots": [{"start": "14:00", "end": "16:30"}]}
-  ]
-)
+"<DAY>[, <DAY>...] <START>-<END>[; <DAY> <START>-<END>...]"
+```
+
+- Days share the SAME time range are comma-joined; different time ranges are
+  separated by a semicolon `;`.
+- Times are 24-hour `HH:mm`. `END` must be strictly after `START`.
+- Days: `Mon Tue Wed Thu Fri Sat Sun` (or `MO TU WE TH FR SA SU`).
+
+Examples (the value is a plain string, NOT JSON):
+```
+update_field(section="support_schedule", field="preferred_schedule",
+  repeatable_index=0, value="Mon 09:00-18:00")
+
+update_field(section="support_schedule", field="preferred_schedule",
+  repeatable_index=0, value="Mon, Wed, Sat 18:25-22:25")
+
+update_field(section="support_schedule", field="preferred_schedule",
+  repeatable_index=0, value="Mon 22:00-22:30; Wed 09:00-12:00; Sat 06:00-09:00")
 ```
 
 Rules:
-- `day`: `MO`, `TU`, `WE`, `TH`, `FR`, `SA`, `SU` (English day names also accepted).
-- `slots`: ≥1 per day. Each slot needs BOTH `start` and `end` in 24-hour `HH:mm`.
-- `end` MUST be strictly after `start`.
-- This call REPLACES the whole schedule for that row — always send the full
-  desired set of days+slots, not a delta.
-- At least one day with one slot is required per support item.
+- This call REPLACES the whole schedule for that row — always send the FULL
+  desired set of days+times, not a delta. To change one day's time, resend
+  every day with the new time included.
+- At least one day with one time range is required per support item.
 
-Capture flow: ask which days, then for each day the start + end time. Convert
-spoken times to 24-hour `HH:mm` ("9am"→`09:00`, "half past 2 in the
-afternoon"→`14:30`). Repeat back day + start + end before saving. Then make
-ONE `update_field` call with the full array.
+Capture flow: ask which days and the start+end time for each. Convert spoken
+times to 24-hour `HH:mm` ("9am"→`09:00`, "half past 2 in the
+afternoon"→`14:30`, "10:25 pm"→`22:25`). Build the single string and make ONE
+`update_field` call.
 
 ### Walk-through order for a new support_schedule row
 

@@ -186,6 +186,36 @@ async def onboarding_ws(
             on_incident=_on_incident,
         )
 
+        # Seed the model with the live screen state so its FIRST greeting knows
+        # which fields are already filled — no get_current_state round-trip, no
+        # "these are already filled" reminder from the participant. Only when
+        # the hello frame carried visible_fields (resume / fresh-empty skip it).
+        initial_state_text: str | None = None
+        if initial_visible_fields:
+            filled = [
+                vf for vf in initial_visible_fields
+                if vf.value not in (None, "", [], {})
+            ]
+            empty_required = [
+                vf for vf in initial_visible_fields
+                if vf.required and vf.value in (None, "", [], {})
+            ]
+            initial_state_text = (
+                "[SCREEN STATE — read silently, do NOT read aloud] "
+                "This is the live state of the current screen. Use it for your "
+                "FIRST greeting; do NOT ask the participant which fields are "
+                "filled. "
+                f"Filled fields: {[vf.path for vf in filled]}. "
+                f"Empty required fields still to collect: "
+                f"{[vf.path for vf in empty_required]}. "
+                + (
+                    "Everything required is already filled — greet and ask if "
+                    "they want to change anything or submit."
+                    if not empty_required else
+                    "Greet briefly, then ask for the first empty required field."
+                )
+            )
+
         live_session = GeminiLiveSession(
             websocket=websocket,
             session_id=session_id,
@@ -194,6 +224,7 @@ async def onboarding_ws(
             tool_dispatcher=tool_dispatcher,
             replay_context=replay_context or None,
             mobile_bridge=mobile_bridge,
+            initial_state_text=initial_state_text,
         )
         await live_session.run()
 

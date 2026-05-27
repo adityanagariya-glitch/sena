@@ -101,6 +101,7 @@ class GeminiLiveSession:
         tool_dispatcher: ToolDispatcher | None = None,
         replay_context: str | None = None,
         mobile_bridge: MobileBridge | None = None,
+        initial_state_text: str | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -109,6 +110,10 @@ class GeminiLiveSession:
         self._tools = tool_dispatcher
         self._replay_context = replay_context
         self._mobile_bridge = mobile_bridge
+        # Hidden text turn injected at session open so the model greets from the
+        # REAL screen state without the participant having to say "these are
+        # already filled" and without waiting for a get_current_state round-trip.
+        self._initial_state_text = initial_state_text
         self._current_turn: TurnPayload | None = None
         self._turn_id = 0
         self._last_screen_hash: str | None = None
@@ -247,6 +252,13 @@ class GeminiLiveSession:
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
                 log.debug("replay_context_injected session=%s", self._session_id)
+            # Seed the live screen state as a hidden context turn so the model's
+            # FIRST greeting already knows which fields are filled — no
+            # get_current_state round-trip, no "these are already filled"
+            # reminder from the participant.
+            if self._initial_state_text:
+                await session.send_realtime_input(text=self._initial_state_text)
+                log.info("initial_state_seeded session=%s", self._session_id)
             self._last_audio_at = time.monotonic()
             b2g = asyncio.create_task(self._browser_to_gemini(session))
             g2b = asyncio.create_task(self._gemini_to_browser(session))
