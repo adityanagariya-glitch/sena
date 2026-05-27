@@ -171,6 +171,87 @@ def _fetch_session_summaries(actor_id, k=3):
 # triggering a re-ask.
 _TIMEZONE_TTL_DAYS = 30
 
+# Generic per-user facts (name, format prefs, anything the user says
+# "remember X" about). DDB holds 90 days; AgentCore session is 24h but its
+# USER_PREFERENCE extraction layer surfaces these across future sessions.
+_USER_FACTS_TTL_DAYS = 90
+
+
+def _save_about_user(fact: str, kind: str = "general") -> bool:
+    """Persist an arbitrary fact/preference about the user.
+
+    Writes to BOTH layers:
+      • AgentCore — as a conversational event in the current session. The
+        USER_PREFERENCE extraction strategy will surface it in future
+        sessions via _fetch_user_preferences.
+      • DynamoDB chat_audit — explicit row with 90-day TTL for durable lookup.
+
+    Examples of `fact`:
+      • "Their name is Jake."
+      • "They prefer 24-hour time format."
+      • "They like data presented as tables, not bullet points."
+      • "They're based in Adelaide."
+
+    `kind` is a short slug used as the DDB sort-key prefix:
+      • "name"        — the user's name
+      • "tz"          — timezone (handled by _save_user_timezone instead)
+      • "format_pref" — output formatting preference
+      • "general"     — anything else
+
+    Returns True if at least one layer wrote successfully. Failures are
+    non-fatal (chat is never blocked by memory writes).
+    """
+    actor_id = _actor_id()
+    now = datetime.now(timezone.utc)
+    iso = now.isoformat()
+    fact = (fact or "").strip()
+    if not fact:
+        return False
+
+    ok = False
+
+    # 1) AgentCore — conversational event so extraction picks it up
+    if AGENTCORE_MEMORY_ID and bedrock_agentcore:
+        try:
+            bedrock_agentcore.create_event(
+                memoryId=AGENTCORE_MEMORY_ID,
+                actorId=actor_id,
+                sessionId=_session_id(),
+                eventTimestamp=now,
+                payload=[
+                    {"conversational": {"role": "USER", "content": {"text": f"Remember about me: {fact}"}}},
+                    {"conversational": {"role": "ASSISTANT", "content": {
+                        "text": f"Noted — saved this preference about the user: {fact}"
+                    }}},
+                ],
+                clientToken=str(uuid.uuid4()),
+            )
+            if VERBOSE:
+                print(f"[memory] fact saved to AgentCore ({kind}): {fact[:80]}", file=sys.stderr)
+            ok = True
+        except Exception as e:
+            print(f"[memory] AgentCore fact save failed: {e}", file=sys.stderr)
+
+    # 2) DDB chat_audit — explicit row with 90-day TTL
+    if chat_audit_table:
+        try:
+            expires_at = int((now + timedelta(days=_USER_FACTS_TTL_DAYS)).timestamp())
+            chat_audit_table.put_item(Item={
+                "pk": actor_id,
+                "sk": f"fact#{kind}#{iso}",
+                "kind": f"user_fact_{kind}",
+                "fact": fact,
+                "set_at": iso,
+                "expires_at": expires_at,
+            })
+            if VERBOSE:
+                print(f"[memory] fact saved to DDB ({kind}, 90d TTL): {fact[:80]}", file=sys.stderr)
+            ok = True
+        except Exception as e:
+            print(f"[memory] DDB fact save failed: {e}", file=sys.stderr)
+
+    return ok
+
 
 def _save_user_timezone(tz_iana: str):
     """Persist the user's IANA timezone to both AgentCore (long-term memory)

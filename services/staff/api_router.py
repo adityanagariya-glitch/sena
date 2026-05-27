@@ -336,14 +336,130 @@ def construct_api_url(api_path, path_params):
 # Generic GET response cache — first call hits the API, subsequent calls within
 # TTL reuse the response. Bypassed when caller passes use_cache=False (e.g. user
 # explicitly asked for "refresh"/"latest"). Keyed by (url, query_params).
+# TTL is tiered by endpoint type: personal profiles (30m), shifts (5m), clients (20m),
+# org lookups (60m) for smart balance between freshness and latency.
 import time as _time
-_API_CACHE_TTL_SECONDS = 600  # 10 minutes
 _api_cache = {}  # cache_key → (timestamp, response)
 
 
 def _make_cache_key(url, query_params):
     qp = json.dumps(query_params or {}, sort_keys=True)
     return f"{url}|{qp}"
+
+
+def _get_cache_ttl(url):
+    """Tiered TTL by endpoint type. Data that changes frequently (shifts) gets
+    shorter TTL; stable reference data (orgs, roles) gets longer TTL.
+    
+    Returns: (TTL in seconds, tier name)
+    """
+    url_lower = (url or "").lower()
+    
+    # Personal profile — unlikely to change in a session, but still warm
+    if any(x in url_lower for x in ["/me", "/profile", "/my-profile", "my_profile"]):
+        return 1800, "profile"  # 30 minutes
+    
+    # Shifts & availability — changes often (user accepts/completes them live)
+    if any(x in url_lower for x in ["/shift", "shift/", "-shift/", "roster"]):
+        return 300, "shifts"  # 5 minutes
+    
+    # Client lists & details — stable within a work session
+    if any(x in url_lower for x in ["/client", "client/", "/participant", "participant/"]):
+        return 1200, "clients"  # 20 minutes
+    
+    # Org-level lookups (roles, staff directory, policy) — very stable
+    if any(x in url_lower for x in ["/organization/", "/organization-member/", "/policy"]):
+        return 3600, "org"  # 60 minutes
+    
+    # Visitor / guardian lookups — moderate stability
+    if "/visitor/" in url_lower or "/guardian" in url_lower:
+        return 900, "guardian"  # 15 minutes
+    
+    # Default: conservative 10 min for unknown endpoints
+    return 600, "default"
+
+
+def _extract_request_meta(url, query_params):
+    """Extract notable request metadata for logging (search terms, filters, pagination)."""
+    meta = {}
+    
+    if query_params:
+        # Search term
+        for key in ("search", "q", "query", "term"):
+            if key in query_params:
+                meta["search"] = query_params[key]
+                break
+        
+        # Filters commonly used
+        for key in ("type", "status", "staff_type", "role", "filter"):
+            if key in query_params and query_params[key]:
+                meta[key] = query_params[key]
+        
+        # Pagination
+        if "page" in query_params:
+            meta["page"] = query_params["page"]
+        if "limit" in query_params:
+            meta["limit"] = query_params["limit"]
+    
+    return meta
+
+
+def _extract_response_meta(result):
+    """Extract notable response metadata for logging (record counts, key IDs, totals)."""
+    meta = {}
+    
+    if not result or isinstance(result, dict) and result.get("error"):
+        return meta
+    
+    if not isinstance(result, dict):
+        return meta
+    
+    # Check for total/count at top level
+    for key in ("total", "totalCount", "totalRecords", "count"):
+        if key in result and isinstance(result[key], (int, float)):
+            meta["total"] = int(result[key])
+            break
+    
+    # Check for records/items list count
+    for key in ("data", "items", "records", "shifts", "clients", "staff", "results"):
+        if key in result and isinstance(result[key], list):
+            meta[f"{key}_count"] = len(result[key])
+            # If list has IDs, capture a sample
+            if result[key] and isinstance(result[key][0], dict):
+                first_id = result[key][0].get("id") or result[key][0].get("_id") or result[key][0].get("ID")
+                if first_id:
+                    meta["first_id"] = first_id
+            break
+    
+    # Extract nested totals from data envelope
+    if isinstance(result.get("data"), dict):
+        for key in ("total", "totalCount", "totalRecords", "count"):
+            if key in result["data"] and isinstance(result["data"][key], (int, float)):
+                meta["total"] = int(result["data"][key])
+                break
+    
+    return meta
+
+
+def _format_meta_preview(meta, max_keys=6):
+    """One-line preview of metadata dict, like tools do."""
+    if not meta:
+        return ""
+    # Keep important keys only
+    filtered = {k: v for k, v in meta.items() if k in (
+        "search", "type", "status", "staff_type", "role", "page", "limit",
+        "total", "data_count", "items_count", "records_count", "shifts_count",
+        "clients_count", "staff_count", "results_count", "first_id"
+    )}
+    if not filtered:
+        return ""
+    try:
+        s = json.dumps(filtered, ensure_ascii=False, default=str)
+        if len(s) > 150:
+            s = s[:150] + "…"
+        return f"  meta={s}"
+    except Exception:
+        return ""
 
 
 # Terminal-direct stream — bypasses any redirect_stderr() context (e.g. the one
@@ -468,11 +584,16 @@ def call_target_api(method, url, query_params=None, body_params=None, use_cache=
     if use_cache and method_u == 'GET':
         cache_key = _make_cache_key(url, query_params)
         cached = _api_cache.get(cache_key)
-        if cached and (_time.time() - cached[0]) < _API_CACHE_TTL_SECONDS:
-            print(f"[API] cache HIT  {method_u} {short_path}", file=_TERMINAL, flush=True)
+        cache_ttl, tier = _get_cache_ttl(url)
+        if cached and (_time.time() - cached[0]) < cache_ttl:
+            req_meta = _extract_request_meta(url, query_params)
+            meta_str = _format_meta_preview(req_meta)
+            print(f"[API] cache HIT  {method_u} {short_path}  [{tier}]{meta_str}", file=_TERMINAL, flush=True)
             return cached[1]
 
-    print(f"[API] →         {method_u} {short_path}", file=_TERMINAL, flush=True)
+    req_meta = _extract_request_meta(url, query_params)
+    meta_str = _format_meta_preview(req_meta)
+    print(f"[API] ▶  {method_u} {short_path}{meta_str}", file=_TERMINAL, flush=True)
     _t0 = _time.time()
 
     try:
@@ -507,17 +628,25 @@ def call_target_api(method, url, query_params=None, body_params=None, use_cache=
             # Quick "what's actually in this response?" preview so we can
             # debug empty/sparse data without manually inspecting every API.
             preview = _shape_preview(result)
+            
+            # Extract metadata from request and response for logging
+            req_meta = _extract_request_meta(url, query_params)
+            res_meta = _extract_response_meta(result)
+            meta = {**req_meta, **res_meta}
+            meta_str = _format_meta_preview(meta)
+            
             print(
-                f"[API] ←  {response.status_code} OK  {short_path}  ({elapsed_ms}ms, {size}B)  {preview}",
+                f"[API] ✓  {response.status_code}  {short_path}  ({elapsed_ms}ms){meta_str}",
                 file=_TERMINAL, flush=True,
             )
             # Dump full response to a rolling log file for deeper inspection.
             _dump_response(short_path, method_u, query_params, result, response.status_code, elapsed_ms, size)
             return result
         else:
+            req_meta = _extract_request_meta(url, query_params)
+            meta_str = _format_meta_preview(req_meta)
             print(
-                f"[API] ←  {response.status_code} ERR {short_path}  ({elapsed_ms}ms)  "
-                f"body={response.text[:160]!r}",
+                f"[API] ✗  {response.status_code}  {short_path}  ({elapsed_ms}ms){meta_str}",
                 file=_TERMINAL, flush=True,
             )
             return {

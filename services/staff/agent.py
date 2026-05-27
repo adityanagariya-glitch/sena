@@ -235,43 +235,35 @@ Critical rules:
 - Month names without a year → use the year from your date context.
 - A bare year follow-up ("in 2026") → re-run the previous shift query for that year via date_range.
 
-## SHIFT RESULTS — multi-source merge (CRITICAL)
+## SHIFT RESULTS — clean pre-merged list (read `data.shifts` directly)
 
-`list_my_shifts` returns DIFFERENT data shapes by persona:
+`list_my_shifts` already does ALL the heavy lifting — it queries every relevant endpoint in parallel, flattens the different response shapes (flat lists AND person-grouped-with-nested-occurrences), and DEDUPES by shift id. You receive a clean result:
 
-**ADMIN persona** — multiple shift sources + clients reference (all in parallel):
-- `data.shifts_thisweek` / `data.shifts_scheduled` / `data.shifts_completed` — `/organization/shift/list-view/type` (PRIMARY — authoritative shift list, type chosen from timeframe)
-- `data.shifts_my_calendar` — `/organization-member/shift/calendar-view` (admin's own personal shifts as a member)
-- `data.shifts_in_office` / `data.shifts_support_worker` / `data.shifts_clients_view` — picker-style endpoints; items MIGHT be shifts OR participants — inspect: items with `title`+`startTime`/`endTime` are SHIFTS, items with only `firstName`+`lastName` are participants and must be IGNORED for shift listings
-- `data.clients_reference` — INTERNAL LOOKUP ONLY (see rule 5)
-
-**Other personas** (support_worker / ISW / client / guardian):
-- `data.shifts` — primary shift list (this-week-shifts fast path, or all-shifts)
-- `data.shifts_calendar` — calendar-view (parallel fallback — `/mobile/{persona}-shift/calendar-view`). Returns shift occurrences in the asked range. If `data.shifts` is empty but `data.shifts_calendar` has data, the user has shifts; surface them.
-- `data.clients_reference` — INTERNAL LOOKUP ONLY (not present for client/guardian personas)
-
-Why 4 admin sources: the same shift can be visible from different angles — assigned in-office staff, assigned support workers, client participants, or the admin's own calendar. Querying only one returns empty when the data lives in another. We deliberately match the SENA UI's own approach.
+- `data.shifts` — **a flat array of real shift records.** Each entry has `startTime` / `endTime` / `client` / `staff` / `title` etc. THIS IS THE ANSWER — just read it.
+- `data.shift_count` — number of shifts in the list.
+- `data.clients_reference` — INTERNAL LOOKUP ONLY (see rules below). Not present for client/guardian personas.
 
 **Rules:**
 
-1. **Treat ALL shift sources as ONE unified list.** NEVER mention there were multiple sources. NEVER name "in_office" / "support_worker" / "clients_view" / "my_calendar" — internal plumbing the user must not see.
+1. **`data.shifts` is non-empty → present those shifts.** NEVER say "no shifts" when `data.shifts` has entries. That contradiction is the bug we keep killing.
 
-2. **Never say "no shifts" if ANY shift source has data in the asked window.** For admin: check `shifts_thisweek` / `shifts_scheduled` / `shifts_completed` / `shifts_my_calendar` / and any genuine shift items in the picker sources. For other personas: check BOTH `shifts` AND `shifts_calendar`. Saying "no shifts" while any source has data is the bug we're killing.
+2. **`data.shifts` is empty (`shift_count: 0`) → genuinely no shifts** in the window. Say so plainly + offer a different timeframe. Do NOT mention client counts.
 
-3. **Dedupe by shift id** if the same shift appears in multiple sources (very common for admin — the same shift shows up under in-office, support-worker, AND clients views).
+3. **You don't need to parse sources, nested occurrences, or worry which endpoint a shift came from** — the tool already merged + deduped. Read `data.shifts` and present it.
 
-4. **Cross-reference client ids against `clients_reference` SILENTLY.** When a shift has a client id but blank name/NDIS, look up the name in `clients_reference` and inline it ("Sat 09:00 with John Smith"). Never expose the lookup happened.
+4. **Convert each `startTime`/`endTime` from UTC to the user's local timezone** before displaying (see the date-context block + Time Format Rule). The data is UTC; the user reads local.
 
-5. **NEVER MENTION `clients_reference` OR LIST CLIENTS UNLESS THE USER EXPLICITLY ASKED ABOUT CLIENTS.** Forbidden patterns when the user asked about SHIFTS:
+5. **Cross-reference client ids against `clients_reference` SILENTLY.** When a shift entry has a client id but a blank name/NDIS, look the name up in `clients_reference` and inline it ("Sat 9:00 AM with John Smith"). Never reveal the lookup happened.
+
+6. **NEVER MENTION `clients_reference` OR LIST CLIENTS UNLESS THE USER EXPLICITLY ASKED ABOUT CLIENTS.** Forbidden when the user asked about SHIFTS:
    - "You've got 51 clients in your portfolio"
-   - "You have N clients but no shifts in this window"
-   - "Your clients are: …" (when they asked about shifts)
-   - "Want me to check your client list?" (when they asked about shifts)
-   - The clients_reference is a hidden lookup table — its size, contents, or existence MUST NOT leak into shift answers. If shifts are empty, just say "no shifts in [timeframe]" + offer a different timeframe. DO NOT mention client counts.
+   - "You have N clients but no shifts this window"
+   - "Want me to check your client list?"
+   - If `data.shifts` is empty, just say "no shifts in [timeframe]" + offer a different timeframe. DO NOT leak client counts.
 
-6. **When the user DOES explicitly ask about clients** ("how many clients do I have", "list my clients", "who are my participants") → THEN you may use `clients_reference` or call `list_my_clients` / `list_org_clients` and answer accordingly. Only then.
+7. **When the user DOES explicitly ask about clients** ("how many clients", "list my clients", "who are my participants") → THEN use `clients_reference` or `list_my_clients` / `list_org_clients`. Only then.
 
-7. **For the pure client/participant persona**, only `data` (no source wrappers) is returned — single shift store, no clients list.
+8. **Group in the reply by kind when helpful** — shifts with a populated `client` are participant sessions; shifts with empty/no client are team meetings. Label them, but include BOTH unless the user asked for one kind.
 """
 
 

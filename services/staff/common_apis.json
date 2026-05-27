@@ -877,5 +877,81 @@
       },
       "timestamp": "2025-11-14T10:51:40.801Z"
     }
+  },
+  [
+  {
+    "method": "GET",
+    "path": "/organization/shift/calendar",
+    "description": "Get calendar view of shifts grouped by staff or participant",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": true,
+        "description": "Start of date range as a full UTC ISO datetime (inclusive)."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": true,
+        "description": "End of date range as a full UTC ISO datetime (inclusive)."
+      },
+      {
+        "name": "groupBy",
+        "type": "string",
+        "required": false,
+        "description": "Group results by staff members or client participants (default staff)"
+      },
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 10)"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Optional search by staff/participant name"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Calendar View successful",
+      "data": {
+        "items": [
+          {
+            "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "fullName": "string",
+            "profilePictureUrl": "string",
+            "email": "string",
+            "occurrences": [
+              {
+                "shiftId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "date": "2026-05-26",
+                "startTime": "2026-05-26T09:35:07.035Z",
+                "endTime": "2026-05-26T09:35:07.035Z",
+                "isCancelled": true,
+                "client": {},
+                "staff": [
+                  {}
+                ]
+              }
+            ]
+          }
+        ],
+        "total": 0,
+        "page": 0,
+        "limit": 0
+      },
+      "timestamp": "2026-05-26T09:35:07.035Z"
+    }
   }
+]
 ]

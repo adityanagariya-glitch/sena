@@ -2181,7 +2181,7 @@
     ],
     "purpose": "List all org work logs (with filters)"
   },
-   {
+  {
     "method": "GET",
     "path": "/organization-member/shift/calendar-view",
     "description": "Get the authenticated member's calendar view",
@@ -2463,6 +2463,93 @@
         }
       ],
       "timestamp": "2026-04-16T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/calendar",
+    "description": "Get calendar view of shifts grouped by staff or participant. PRIMARY ENDPOINT for finding shifts attached to a NAMED PERSON. Returns shift occurrences for a date range, grouped by either staff or client participants. Recurring shifts are expanded. Call TWICE in parallel \u2014 once with groupBy=staff and once with groupBy=participant \u2014 to find shifts regardless of which role the person plays.",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": true,
+        "in": "query",
+        "description": "Start of date range as full UTC ISO datetime (inclusive)."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": true,
+        "in": "query",
+        "description": "End of date range as full UTC ISO datetime (inclusive)."
+      },
+      {
+        "name": "groupBy",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "enum": [
+          "staff",
+          "participant"
+        ],
+        "default": "staff",
+        "description": "Group results by staff (default \u2014 each item is a staff member with their shifts) or participant (each item is a client participant with their shifts)."
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "in": "query",
+        "default": 1,
+        "description": "Page number."
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "in": "query",
+        "default": 10,
+        "description": "Items per page."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "description": "Optional case-insensitive search by staff or participant name (first / last / preferred)."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Calendar View successful",
+      "data": {
+        "items": [
+          {
+            "userId": "uuid",
+            "fullName": "string",
+            "profilePictureUrl": "string",
+            "email": "string",
+            "occurrences": [
+              {
+                "shiftId": "uuid",
+                "date": "2026-05-26",
+                "startTime": "2026-05-26T09:35:07.035Z",
+                "endTime": "2026-05-26T09:35:07.035Z",
+                "isCancelled": false,
+                "client": {},
+                "staff": [
+                  {}
+                ]
+              }
+            ]
+          }
+        ],
+        "total": 0,
+        "page": 1,
+        "limit": 10
+      },
+      "timestamp": "2026-05-26T09:35:07.035Z"
     }
   }
 ]

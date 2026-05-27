@@ -63,7 +63,7 @@ def run_tool(name: str, inputs: Dict[str, Any]) -> ToolResult:
         # Show a brief preview of meta info to make traces readable
         meta_preview = ""
         if result.meta:
-            meta_short = {k: v for k, v in result.meta.items() if k in ("path", "timeframe", "search", "staff_type", "shift_filter", "client_id", "topic")}
+            meta_short = {k: v for k, v in result.meta.items() if k in ("path", "timeframe", "search", "staff_type", "shift_filter", "client_id", "topic", "merged_shift_count", "per_source_occurrence_counts")}
             if meta_short:
                 meta_preview = f"  meta={_short_inputs(meta_short)}"
         print(f"[TOOL] {status}{name}  ({elapsed_ms}ms){meta_preview}", file=_TERMINAL, flush=True)

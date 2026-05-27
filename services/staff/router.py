@@ -91,6 +91,13 @@ ALLOW (return YES) — work queries:
 - ANY question about SENA organisations / organizations / orgs / owner account / business names / organisation IDs linked to the logged-in user. Examples: "What organisations do I own?", "Which organisations are linked to me?", "Show my organisation IDs", "What businesses are under my account?"
 - Follow-ups referencing names from the prior reply ("tell me about John Doe", "what about Aryan", "more details", "them")
 - **Time/date refinements** ("in 2026", "in May", "in 2024", "for last week", "for next month", "on Monday", "this Friday", "in Q1", "in March") — these are CLARIFIERS for a prior NDIS query (shifts, clients, payroll, etc.) and must ALLOW. Even when sent alone with no other context, default to ALLOW — the user is refining the timeframe of the conversation, not changing topic.
+- **Personal-memory queries about the user themselves** — ALWAYS ALLOW. Examples:
+  - "remember my name" / "my name is Jake" / "call me Jake" / "I'm Jake"
+  - "what do you remember about me" / "what do you know about me"
+  - "remember I prefer tables" / "save this preference" / "I like 24-hour format"
+  - "forget what I said earlier" / "stop remembering X"
+  - "I'm based in Perth" / "my timezone is Brisbane" (also handled by set_my_timezone)
+  These are profile / preference operations on the user's OWN data and the assistant's memory. They are NEVER off-topic. The user is helping the assistant get to know them — that IS NDIS-relevant because it makes future NDIS replies better-personalised.
 - Vague short questions ("clients?", "shifts today?", "any updates?", "yes", "more")
 - Typos, broken English, partial questions — assume work-related
 - Greetings, identity questions ("who are you?", "hi")
@@ -173,25 +180,31 @@ def process_query(user_question):
     skip_memory = _skip_memory_gate(user_question)
     actor_id = _actor_id()
 
-    # All five tasks fire in parallel — total latency = max(slowest task).
-    # Security gates (LLM + Bedrock) run alongside memory-gate, route detection,
-    # and preference prefetch. No double execution, no sequential blocking.
+    # Security gates run in two phases:
+    # PHASE 1 (parallel): LLM content gate + memory + routing
+    #   - LLM gate is SMART: understands NDIS context (demographic filters, etc.)
+    # PHASE 2 (sequential): Bedrock guardrail check (only if LLM passed)
+    #   - This allows LLM to veto guardrail false-positives on legit NDIS queries
     start_parallel = time.time()
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         memory_future = None if skip_memory else ex.submit(_try_answer_from_memory, user_question)
         route_future = ex.submit(detect_route, user_question)
         llm_gate_future = ex.submit(_is_legitimate_ndis_query, user_question)
-        bedrock_gate_future = ex.submit(_bedrock_guardrail_check, user_question)
         ex.submit(_fetch_user_preferences, actor_id)  # fire-and-forget cache warmer
 
         memory_answer = memory_future.result() if memory_future else None
         route = route_future.result()
         is_legitimate = llm_gate_future.result()
-        bedrock_block_msg = bedrock_gate_future.result()
+
+    # Bedrock guardrail check runs AFTER LLM gate (sequential)
+    # so LLM veto can override it on false-positives (e.g., "list all staff" for NDIS work)
+    bedrock_block_msg = _bedrock_guardrail_check(user_question) if is_legitimate else None
 
     parallel_time = time.time() - start_parallel
     if VERBOSE:
-        print(f"[timing] parallel phase (memory || route || llm-gate || bedrock-gate || prefs): {parallel_time:.2f}s", file=sys.stderr)
+        print(f"[timing] phase 1 (parallel: memory || route || llm-gate || prefs): {parallel_time:.2f}s", file=sys.stderr)
+        if is_legitimate and bedrock_block_msg:
+            print(f"[timing] phase 2 (bedrock-gate, ran because llm-gate passed): ~0ms", file=sys.stderr)
 
     # ---- Double-layer security with LLM-veto override ----
     # The LLM gate is the SMART layer — it understands NDIS context (e.g. "female

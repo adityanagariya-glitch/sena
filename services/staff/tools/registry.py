@@ -10,9 +10,11 @@ from tools.base import ToolSpec
 # ---- Profile / identity tools ----
 from tools.profile.my_profile import TOOL as _T_MY_PROFILE
 from tools.profile.set_my_timezone import TOOL as _T_SET_MY_TIMEZONE
+from tools.profile.remember_about_me import TOOL as _T_REMEMBER_ABOUT_ME
 
 # ---- Staff section tools ----
 from tools.staff.list_my_shifts import TOOL as _T_LIST_MY_SHIFTS
+from tools.staff.list_shifts_for_person import TOOL as _T_LIST_SHIFTS_FOR_PERSON
 from tools.staff.list_org_shifts import TOOL as _T_LIST_ORG_SHIFTS
 from tools.staff.get_shift_details import TOOL as _T_GET_SHIFT_DETAILS
 from tools.staff.list_org_staff import TOOL as _T_LIST_ORG_STAFF
@@ -39,7 +41,9 @@ from tools.meta.cannot_help import TOOL as _T_CANNOT_HELP
 ALL_TOOLS: list[ToolSpec] = [
     _T_MY_PROFILE,
     _T_SET_MY_TIMEZONE,
+    _T_REMEMBER_ABOUT_ME,
     _T_LIST_MY_SHIFTS,
+    _T_LIST_SHIFTS_FOR_PERSON,
     _T_LIST_ORG_SHIFTS,
     _T_GET_SHIFT_DETAILS,
     _T_LIST_ORG_STAFF,

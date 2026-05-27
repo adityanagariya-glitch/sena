@@ -79,6 +79,98 @@ def _calendar_view_path_for_user():
     return None
 
 
+def _extract_occurrences(raw):
+    """Pull shift occurrences out of ANY of the shapes the shift endpoints
+    return. Returns a flat list of shift dicts.
+
+    Handles:
+      • Flat list at data.data          → /organization/shift/list-view/type
+      • Flat list at top-level data     → calendar-view (data=[...])
+      • Person-grouped with nested
+        occurrences/shifts arrays       → /organization/shift/staff/* + /clients
+                                          and /organization/shift/calendar
+    """
+    if not isinstance(raw, dict) or raw.get("error"):
+        return []
+
+    data = raw.get("data")
+
+    # Shape A: data is already a flat list of shift records
+    if isinstance(data, list):
+        records = data
+    # Shape B/C: data is a dict — could hold a flat list under data.data,
+    # or person-grouped items under data.items / data.data
+    elif isinstance(data, dict):
+        records = (
+            data.get("data")
+            or data.get("items")
+            or data.get("shifts")
+            or data.get("records")
+            or []
+        )
+        if not isinstance(records, list):
+            records = []
+    else:
+        return []
+
+    out = []
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        # If this record itself looks like a shift (has a start time / shiftId),
+        # take it directly.
+        if any(k in rec for k in ("startTime", "startDate", "from", "startAt")) or \
+           any(k in rec for k in ("shiftId", "id")) and any(k in rec for k in ("title", "endTime", "endDate")):
+            out.append(rec)
+            continue
+        # Otherwise it's a person-grouped item → dig into the nested shifts.
+        nested = (
+            rec.get("occurrences")
+            or rec.get("shifts")
+            or rec.get("entries")
+            or rec.get("events")
+            or []
+        )
+        if isinstance(nested, list):
+            for occ in nested:
+                if isinstance(occ, dict):
+                    out.append(occ)
+    return out
+
+
+def _shift_dedupe_key(shift):
+    """Stable key to dedupe a shift across multiple sources. Prefer shiftId;
+    fall back to id; finally a (start,end,title) tuple."""
+    sid = shift.get("shiftId") or shift.get("id") or shift.get("_id")
+    if sid:
+        # Include the date so recurring-template expansions on different days
+        # aren't collapsed into one.
+        day = shift.get("date") or (shift.get("startTime") or "")[:10]
+        return f"{sid}|{day}"
+    start = shift.get("startTime") or shift.get("startDate") or shift.get("from") or ""
+    end = shift.get("endTime") or shift.get("endDate") or shift.get("to") or ""
+    title = shift.get("title") or shift.get("name") or ""
+    return f"{start}|{end}|{title}"
+
+
+def _merge_and_dedupe_shifts(results, shift_keys):
+    """Flatten every shift source into one deduped list of shift dicts.
+
+    `results` is the dict returned by _fetch_parallel; `shift_keys` the labels
+    that hold shift data. Returns (merged_list, per_source_counts)."""
+    seen = {}
+    per_source = {}
+    for key in shift_keys:
+        raw = results.get(key)
+        occs = _extract_occurrences(raw)
+        per_source[key] = len(occs)
+        for occ in occs:
+            dk = _shift_dedupe_key(occ)
+            if dk not in seen:
+                seen[dk] = occ
+    return list(seen.values()), per_source
+
+
 def _fetch_parallel(fetchers):
     """Run multiple API calls concurrently. Each fetcher is a dict:
         {"label": <str>, "url": <str>, "params": <dict>}
@@ -160,7 +252,7 @@ def _org_shift_view_fetchers(search):
     """Fetchers for the 3 UI-confirmed org shift endpoints. Same param shape
     across all three (page / limit / search). We pull page 1 with a generous
     limit; downstream merging dedupes by shift id."""
-    params = {"page": 1, "limit": 100}
+    params = {"page": 1, "limit": 50}
     if search:
         params["search"] = search
     return [
@@ -459,7 +551,7 @@ def _run(inputs):
         # label for the meta/error envelope; the actual fetches are wired
         # in the parallel block.
         path = "/organization/shift/[in-office+support-worker+clients]"
-        query_params = {"page": 1, "limit": 20}
+        query_params = {"page": 1, "limit": 50}
         if search:
             query_params["search"] = search
 
@@ -496,6 +588,8 @@ def _run(inputs):
         #      SENA UI also pulls them on the Shifts page — include them as
         #      additional context for cross-referencing.
         #   6. /organization/client/list/all-clients — silent name lookup.
+        # Picker endpoints (in-office / support-worker / clients) — match the
+        # SENA UI exactly: page=1&limit=20.
         admin_params = {"page": 1, "limit": 20}
         if search:
             admin_params["search"] = search
@@ -509,63 +603,98 @@ def _run(inputs):
             calendar_params["from"] = sd
             calendar_params["to"] = ed
 
-        # /organization/shift/list-view/type expects:
-        #   type=thisweek   → no from/to (server computes Mon–Sun UTC week)
-        #   type=scheduled  → from+to required, future shifts excluding this week
-        #   type=completed  → from+to required, past completed shifts
+        # /organization/shift/list-view/type is the AUTHORITATIVE org shift list.
+        # Its `type` semantics are awkward:
+        #   type=thisweek   → SCHEDULED shifts in the current week (from/to ignored)
+        #   type=scheduled  → upcoming SCHEDULED shifts EXCLUDING this week (from/to required)
+        #   type=completed  → COMPLETED shifts in the from/to range (from/to required)
+        #
+        # A shift that already started this week flips to "completed", so for a
+        # current-week query we must fetch BOTH type=thisweek (upcoming part)
+        # AND type=completed (elapsed part) to show the whole week. Likewise a
+        # month window spans past+future, so it needs completed + thisweek +
+        # scheduled. We build the right set of calls per timeframe.
+        now_utc = _aus_to_utc_iso(datetime.now(_user_tz()))
+        wk_start, wk_end = _this_week_range_utc()
+
         list_view_calls = []
         if timeframe in ("yesterday", "last_week", "last_month"):
+            # Purely past → completed only
             if from_iso and to_iso:
-                list_view_calls.append((
-                    "shifts_completed",
-                    {"type": "completed", "from": from_iso, "to": to_iso, "page": 1, "limit": 50},
-                ))
-        elif timeframe in ("this_week", "today", "arvo", "sarvo"):
-            # Server computes current Mon–Sun UTC week
+                list_view_calls.append(("shifts_completed", {"type": "completed", "from": from_iso, "to": to_iso, "page": 1, "limit": 50}))
+        elif timeframe in ("this_week", "today", "arvo", "sarvo", "tomorrow"):
+            # Current week → upcoming (thisweek) + already-happened (completed this week)
             list_view_calls.append(("shifts_thisweek", {"type": "thisweek", "page": 1, "limit": 50}))
+            list_view_calls.append(("shifts_completed", {"type": "completed", "from": wk_start, "to": now_utc, "page": 1, "limit": 50}))
+        elif timeframe == "this_month":
+            # Month spans past + current week + future → all three
+            list_view_calls.append(("shifts_completed", {"type": "completed", "from": from_iso, "to": now_utc, "page": 1, "limit": 50}))
+            list_view_calls.append(("shifts_thisweek", {"type": "thisweek", "page": 1, "limit": 50}))
+            if to_iso:
+                list_view_calls.append(("shifts_scheduled", {"type": "scheduled", "from": now_utc, "to": to_iso, "page": 1, "limit": 50}))
         else:
-            # Future timeframes (tomorrow, next_week, next_month, this_month, date_range)
+            # Future (next_week, next_month, future date_range) → scheduled
             if from_iso and to_iso:
-                list_view_calls.append((
-                    "shifts_scheduled",
-                    {"type": "scheduled", "from": from_iso, "to": to_iso, "page": 1, "limit": 50},
-                ))
+                list_view_calls.append(("shifts_scheduled", {"type": "scheduled", "from": from_iso, "to": to_iso, "page": 1, "limit": 50}))
+            # A date_range that includes past days also needs completed
+            if timeframe == "date_range" and from_iso and from_iso < now_utc:
+                list_view_calls.append(("shifts_completed", {"type": "completed", "from": from_iso, "to": min(to_iso or now_utc, now_utc), "page": 1, "limit": 50}))
 
         fetchers = []
-        # Primary shift source — list-view/type
         for label, params in list_view_calls:
             if search:
-                params["search"] = search
+                params["search"] = params.get("search") or search
             fetchers.append({
                 "label": label,
                 "url": construct_api_url("/organization/shift/list-view/type", {}),
                 "params": params,
             })
 
-        # Admin's own personal shifts via member calendar-view
+        # PRIMARY org-wide shift source: /organization/shift/calendar.
+        # Returns ALL org shift occurrences (any status, recurring expanded) in
+        # the window, grouped by person. groupBy=staff catches shifts with staff
+        # assigned; groupBy=participant catches shifts with clients assigned.
+        # Unlike list-view/type (which filters by scheduled/completed/thisweek)
+        # and calendar-view (scoped to where the admin is a participant), THIS
+        # endpoint surfaces the org's whole roster. _extract_occurrences handles
+        # the nested {items: [{occurrences: [...]}]} shape.
+        cal_from, cal_to = from_iso, to_iso
+        if not (cal_from and cal_to):
+            cal_from, cal_to = _this_week_range_utc()
+        for gb in ("staff", "participant"):
+            cal_params = {"groupBy": gb, "from": cal_from, "to": cal_to, "page": 1, "limit": 50}
+            if search:
+                cal_params["search"] = search
+            fetchers.append({
+                "label": f"shifts_calendar_{gb}",
+                "url": construct_api_url("/organization/shift/calendar", {}),
+                "params": cal_params,
+            })
+
+        # Admin's own personal shifts via member calendar-view (catches shifts
+        # where the admin is themselves a participant — covers any status).
         fetchers.append({
             "label": "shifts_my_calendar",
             "url": construct_api_url("/organization-member/shift/calendar-view", {}),
             "params": calendar_params,
         })
 
-        # 3 participant-picker endpoints (UI also uses these on Shifts page)
+        # The 3 endpoints the SENA UI's Shifts page calls. They MAY return
+        # participant directories OR shifts-grouped-by-person depending on
+        # response shape — _extract_occurrences handles both (digs into any
+        # nested occurrences/shifts array; contributes nothing if the items
+        # are pure participant records). Belt-and-suspenders: include them so
+        # we never miss shifts the UI surfaces here.
         fetchers.extend([
-            {
-                "label": "shifts_in_office",
-                "url": construct_api_url("/organization/shift/staff/in-office", {}),
-                "params": dict(admin_params),
-            },
-            {
-                "label": "shifts_support_worker",
-                "url": construct_api_url("/organization/shift/staff/support-worker", {}),
-                "params": dict(admin_params),
-            },
-            {
-                "label": "shifts_clients_view",
-                "url": construct_api_url("/organization/shift/clients", {}),
-                "params": dict(admin_params),
-            },
+            {"label": "shifts_in_office",
+             "url": construct_api_url("/organization/shift/staff/in-office", {}),
+             "params": dict(admin_params)},
+            {"label": "shifts_support_worker",
+             "url": construct_api_url("/organization/shift/staff/support-worker", {}),
+             "params": dict(admin_params)},
+            {"label": "shifts_clients_view",
+             "url": construct_api_url("/organization/shift/clients", {}),
+             "params": dict(admin_params)},
         ])
 
         if clients_ref_path:
@@ -578,11 +707,13 @@ def _run(inputs):
         results = _fetch_parallel(fetchers)
         raw_clients = results.get("clients_reference", {})
 
-        # Collect every shift source we actually requested.
+        # Collect every shift source we actually requested. (Picker endpoints
+        # removed — they're participant directories, never shifts.)
         candidate_shift_keys = (
+            "shifts_calendar_staff", "shifts_calendar_participant",      # org-wide calendar (PRIMARY)
             "shifts_thisweek", "shifts_scheduled", "shifts_completed",  # list-view/type
             "shifts_my_calendar",                                        # member calendar
-            "shifts_in_office", "shifts_support_worker", "shifts_clients_view",  # pickers
+            "shifts_in_office", "shifts_support_worker", "shifts_clients_view",  # UI picker endpoints
         )
         shift_keys = tuple(k for k in candidate_shift_keys if k in results)
         shift_sources = {k: results[k] for k in shift_keys}
@@ -596,27 +727,28 @@ def _run(inputs):
                 meta={"path": path, "shift_sources": list(shift_sources.keys())},
             )
 
+        # Flatten + dedupe ALL sources into one clean list. This is the key
+        # fix: the picker endpoints nest shifts inside person items, the
+        # list-view/type endpoint has a flat list, calendar-view has another
+        # shape. We normalise them all here so the LLM gets ONE list of
+        # actual shift records — no nested-JSON spelunking, no source-shape
+        # guessing, no "is this a participant or a shift" confusion.
+        merged_shifts, per_source_counts = _merge_and_dedupe_shifts(results, shift_keys)
+
         data = {
-            **shift_sources,
+            "shifts": merged_shifts,  # ← THE answer: flat, deduped shift list
+            "shift_count": len(merged_shifts),
             "clients_reference": raw_clients,
             "_note": (
-                "Admin parallel sources. PRIMARY shift list is "
-                "'shifts_thisweek' / 'shifts_scheduled' / 'shifts_completed' "
-                "(whichever was queried — comes from /organization/shift/"
-                "list-view/type, the authoritative shift list). "
-                "'shifts_my_calendar' is the admin's own personal shifts as "
-                "an org member. The 3 picker-style sources ('shifts_in_office'"
-                ", 'shifts_support_worker', 'shifts_clients_view') may "
-                "contain shift records OR participant directories depending "
-                "on the response shape — inspect each item: if it has "
-                "'title' + 'startTime'/'endTime' it's a SHIFT; if it has "
-                "'firstName'+'lastName' but no time fields, it's a PARTICIPANT "
-                "and you should IGNORE it for shift listings. "
-                "Treat all genuine shift entries as ONE unified list; never "
-                "mention multiple sources; dedupe by shift id. If ANY source "
-                "has shifts in the asked window, surface them. 'clients_"
-                "reference' is for silent name lookup ONLY — never reveal "
-                "client counts unless the user explicitly asked about clients."
+                "'shifts' is the FINAL merged + deduped list of shift records "
+                "from every source — already flattened, so each entry is a "
+                "real shift (with startTime/endTime/client/staff). Just read "
+                "'shifts' directly. If it's empty, there genuinely are no "
+                "shifts in the window. If non-empty, NEVER say 'no shifts'. "
+                "Convert each startTime/endTime from UTC to the user's local "
+                "timezone before displaying. 'clients_reference' is a SILENT "
+                "name lookup for client ids — never reveal client counts "
+                "unless the user explicitly asked about clients."
             ),
         }
 
@@ -626,6 +758,8 @@ def _run(inputs):
                 "path": path,
                 "clients_ref_path": clients_ref_path,
                 "shift_sources": list(shift_keys),
+                "per_source_occurrence_counts": per_source_counts,
+                "merged_shift_count": len(merged_shifts),
                 "query_params": query_params,
                 "timeframe": timeframe,
                 "parallel_fetch": True,
@@ -682,22 +816,27 @@ def _run(inputs):
                 meta={"status_code": raw_primary.get("status_code") if isinstance(raw_primary, dict) else None, "path": path},
             )
 
+        # Flatten + dedupe primary + calendar into one clean shift list, same
+        # as the admin path. The LLM reads `shifts` directly.
+        merge_keys = ["shifts"]
+        if raw_calendar is not None:
+            merge_keys.append("shifts_calendar")
+        merged_shifts, per_source_counts = _merge_and_dedupe_shifts(results, merge_keys)
+
         data = {
-            "shifts": raw_primary,
+            "shifts": merged_shifts,  # ← flat, deduped shift list
+            "shift_count": len(merged_shifts),
             "_note": (
-                "Multiple parallel shift sources. 'shifts' is the persona's "
-                "primary list (this-week-shifts or all-shifts). 'shifts_calendar' "
-                "is the same persona's calendar-view, returned in parallel as a "
-                "fallback so an empty primary doesn't hide shifts that live in "
-                "the calendar endpoint. Treat both as ONE unified list — dedupe "
-                "by shift id. Never mention multiple sources. If ANY has shifts "
-                "in the asked window, surface them. 'clients_reference' (when "
-                "present) is for SILENT cross-referencing only — never reveal "
-                "client counts or lists unless the user explicitly asked."
+                "'shifts' is the FINAL merged + deduped list of real shift "
+                "records (from the persona's primary endpoint + calendar-view, "
+                "flattened). Read it directly. Empty = genuinely no shifts in "
+                "the window. Non-empty = NEVER say 'no shifts'. Convert each "
+                "startTime/endTime from UTC to the user's local timezone "
+                "before displaying. 'clients_reference' (when present) is a "
+                "SILENT name lookup — never reveal client counts unless the "
+                "user explicitly asked about clients."
             ),
         }
-        if raw_calendar is not None:
-            data["shifts_calendar"] = raw_calendar
         if raw_clients is not None:
             data["clients_reference"] = raw_clients
 
@@ -707,6 +846,8 @@ def _run(inputs):
                 "path": path,
                 "calendar_view_path": calendar_path,
                 "clients_ref_path": clients_ref_path,
+                "per_source_occurrence_counts": per_source_counts,
+                "merged_shift_count": len(merged_shifts),
                 "query_params": query_params,
                 "timeframe": timeframe,
                 "parallel_fetch": True,
