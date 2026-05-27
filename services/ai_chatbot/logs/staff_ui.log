@@ -1,0 +1,11 @@
+2026-05-27 11:29:08.016 Uvicorn server started on 127.0.0.1:8601
+
+  You can now view your Streamlit app in your browser.
+
+  URL: http://127.0.0.1:8601/staff
+
+[bedrock-guardrails] no guardrails configured — set SENA_AI_BEDROCK_GUARDRAIL_IDS to enable
+[bedrock-kb] disabled — set SENA_AI_BEDROCK_KB_ID to enable RAG
+[memory] AgentCore disabled — set SENA_AI_AGENTCORE_MEMORY_ID to enable
+[memory] DDB audit disabled — set SENA_AI_CHAT_AUDIT_TABLE to enable
+[memory] session table disabled — set SENA_AI_SESSION_TABLE for multi-process session continuity (falling back to local file)
