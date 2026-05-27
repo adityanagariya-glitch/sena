@@ -39,7 +39,7 @@ fi
 # Append the snapshot. Read on next session via .claude/SESSION_START.md → TASKS.md.
 {
   echo ""
-  echo "$NOW main — Compaction snapshot — branch=$BRANCH commit=$COMMIT working_tree=$DIRTY active_tasks=$ACTIVE_TASKS; resume order: .claude/SESSION_START.md → .claude/tasks/TASKS.md → FLUTTER_DEV_HANDOFF.md (if Flutter work in flight) → onboarding_system.md (if voice-prompt work in flight)."
+  echo "$NOW main — Compaction snapshot — branch=$BRANCH commit=$COMMIT working_tree=$DIRTY active_tasks=$ACTIVE_TASKS; resume order: .claude/SESSION_START.md → .claude/tasks/TASKS.md → flutterhandoffdev.md (if Flutter work in flight) → onboarding_system.md (if voice-prompt work in flight)."
 } >> "$MEMORY_FILE"
 
 exit 0

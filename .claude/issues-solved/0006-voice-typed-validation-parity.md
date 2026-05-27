@@ -140,5 +140,5 @@ first, then both implementations follow.
 - Contract: `SENA_AI/flutterhandoffdev.md`
 - Session-start protocol: `.claude/SESSION_START.md` § "Voice-Onboarding Validation
   Contract (added 2026-05-12)"
-- Predecessor (Flutter consumer gaps): Task #14 Issues #18-#22 in `FLUTTER_DEV_HANDOFF.md`
+- Predecessor (Flutter consumer gaps): Task #14 Issues #18-#22 in `flutterhandoffdev.md`
 - State-sync siblings: Task #13 (validation awareness), Task #15 (state-sync desync)

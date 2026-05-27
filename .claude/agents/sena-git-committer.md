@@ -32,7 +32,7 @@ SENA repo rules:
     fix:      bug correction
     refactor: internal restructure, no behaviour change
     test:     adding or updating tests only
-    docs:     CLAUDE.md, TASKS.md, FLUTTER_DEV_HANDOFF.md, prompts/*.md
+    docs:     CLAUDE.md, TASKS.md, flutterhandoffdev.md, prompts/*.md
     chore:    deps, configs, lint, CI
     perf:     performance improvement only
     security: security fix (tenant isolation, auth, secrets)

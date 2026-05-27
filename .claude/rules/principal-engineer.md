@@ -79,11 +79,22 @@ You never need to be asked for optimized code. Apply automatically:
 
 ## 🧠 WORKFLOW (FOLLOW EVERY TIME)
 
+### Phase 0 — Pre-flight (orchestrator only, MANDATORY before any `.py` edit)
+
+Before any Python Write/Edit — yours OR a sub-agent's — verify hook gates are satisfied. Full checklist in `CLAUDE.md ## Pre-flight for Python edits`. Quick form:
+
+1. Generic Python: one `mcp__plugin_context7_context7__resolve-library-id` call this session.
+2. Touching `gemini*` / `demo_live*`: ALSO `Skill: gemini-live-api-dev` + Context7 `query-docs` for `google-genai`.
+3. Verify the flag file exists in `.claude/hooks-state/` BEFORE spawning the first sub-agent.
+
+**Sub-agents (implementer, bug-fixer, doc-writer, etc.) CANNOT clear gates for themselves.** The orchestrator must clear them in the main session first. Spawning a sub-agent into a gated state guarantees a retry loop. See `.claude/memory/lessons.md` (2026-05-25) for the recurrence pattern that prompted this rule.
+
 ### Phase 1 — Recon (before touching code)
 1. Read `CLAUDE.md`, `README.md`, any `AGENTS.md` / `.cursorrules` / SENA path-scoped rules in `.claude/rules/`.
 2. Map the relevant slice of the codebase with `Glob` + `Grep`. Don't `Read` 30 files when 3 will do.
-3. Identify existing patterns, libraries, conventions, and test setup.
-4. State the plan in **3–6 bullets** before executing. Include: files to touch, libraries to use, files NOT to create.
+3. **Read the IMPLEMENTATION body, not just headers,** for any module whose semantics determine the design (truth-ownership, sync vs async, server-handled vs proxied). Graphify summaries and signatures are not enough for design decisions — read the actual function bodies.
+4. Identify existing patterns, libraries, conventions, and test setup.
+5. State the plan in **3–6 bullets** before executing. Include: files to touch, libraries to use, files NOT to create.
 
 ### Phase 2 — Execute
 1. Make the change with `Edit` / `MultiEdit` / `Write` (in that order of preference).
@@ -229,6 +240,21 @@ Before you say "done," all of these are true:
 
 ---
 
+## ⚖️ ASYMMETRIC PRIVILEGED TRUST (UNIVERSAL — ALL AGENTS + FUTURE FEATURES)
+
+**Full rule:** `.claude/rules/asymmetric-privileged-trust.md` — always-loaded; all 14 agents inherit via this reference.
+
+**One-line rule:** when privileged context (lessons.md, rules autoload, RAG, cross-screen bucket, prior reviewer findings) influences your output, **trust positive additions weighted by citation strength, attenuate negative rejections weighted by anchor strength**.
+
+- POSITIVE ("add X" / "use library Y" / "this is a known pattern") → must cite: file:line, lesson #, rule path, dep manifest entry, RAG similarity score. No citation = drop.
+- NEGATIVE ("don't do X" / "this is risky" / "user once said no") → must anchor: explicit rule conflict, `Occurrences: 3+` lesson, deterministic check (lint/type/test/grep), hook block. Soft pattern match alone = surface to user, don't auto-reject.
+
+**Hard exemptions (always reject — no gating):** tenant isolation, NDIS APP 8/11, deprecated Gemini patterns, Pydantic v2 invariants, hook-enforced rules, user explicit override.
+
+Per-agent application table + feature-implementation pattern (teacher/student + gate) lives in the full rule file.
+
+---
+
 ## 📌 ONE-LINE REMINDER (PIN THIS MENTALLY)
 
 > **Search the repo. Check the deps. Use the library. Edit, don't write. Justify every file. Ship working code.**
@@ -239,6 +265,7 @@ Before you say "done," all of these are true:
 
 Before writing a single new function in `sena-ai/`:
 
+0. **Blast-radius check (if file has 3+ importers):** call MCP `get_dependents(file)` + `get_affected_tests(file)`. If affected tests > 5 or callers span multiple services → flag to user before proceeding. (`code-review-graph` MCP, graph at `.code-review-graph/graph.db`)
 1. `Grep "def <name>" sena-ai/services/<svc>/src/` — is it already in this service?
 2. `Grep "def <name>" sena-ai/shared/` — is it in the shared library?
 3. `Read sena-ai/services/<svc>/pyproject.toml` — what's already installed?

@@ -4,6 +4,7 @@ Six tools. Mobile is authoritative. The dispatcher is a thin proxy that
 hands every tool call to MobileBridge, except escalate_incident which is a
 pure backend side-effect (audit + alert).
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -18,9 +19,16 @@ class _Bridge(Protocol):
     async def dispatch(self, tool: str, args: dict[str, Any]) -> dict[str, Any]: ...
 
 
-_KNOWN_TOOLS = frozenset({
-    "update_field", "clear_field", "add_row", "delete_row", "submit_step",
-})
+_KNOWN_TOOLS = frozenset(
+    {
+        "update_field",
+        "clear_field",
+        "add_row",
+        "delete_row",
+        "submit_step",
+        "get_current_state",
+    }
+)
 
 
 FUNCTION_DECLS: list[dict[str, Any]] = [
@@ -45,18 +53,33 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
             "properties": {
                 "section": {
                     "type": "string",
-                    "description": "Section id from visible_fields path before the '.' (e.g. 'basics', 'home_address', 'emergency_contacts').",
+                    "description": (
+                        "Section id from visible_fields path before the "
+                        "'.' (e.g. 'basics', 'home_address', "
+                        "'emergency_contacts')."
+                    ),
                 },
                 "field": {
                     "type": "string",
-                    "description": "Field id from visible_fields path after the '.' (e.g. 'date_of_birth', 'phone', 'relation'). Use EXACT id, never invent variants.",
+                    "description": (
+                        "Field id from visible_fields path after the '.' "
+                        "(e.g. 'date_of_birth', 'phone', 'relation'). Use "
+                        "EXACT id, never invent variants."
+                    ),
                 },
                 "value": {
-                    "description": "The captured value. Dates as YYYY-MM-DD. Enums must match enum_values exactly (case-sensitive). Multi-enums as array.",
+                    "description": (
+                        "The captured value. Dates as YYYY-MM-DD. Enums "
+                        "must match enum_values exactly (case-sensitive). "
+                        "Multi-enums as array."
+                    ),
                 },
                 "repeatable_index": {
                     "type": "integer",
-                    "description": "0-based row index for repeatable sections (emergency_contacts, etc). Omit for scalar fields.",
+                    "description": (
+                        "0-based row index for repeatable sections "
+                        "(emergency_contacts, etc). Omit for scalar fields."
+                    ),
                 },
             },
             "required": ["section", "field", "value"],
@@ -112,10 +135,26 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "escalate_incident",
+        "name": "get_current_state",
         "description": (
-            "Flag abuse / self-harm / safety concerns. Continue calmly after."
+            "Re-read the participant's full current form state. Call this if "
+            "your most recent function_response is more than 3 turns ago and "
+            "you are about to assert any field value, OR if the participant "
+            "says something that suggests the form has changed outside of "
+            "voice (e.g. they say 'I just typed it in'). Mobile returns "
+            "{ok: true, state: {...}} with the freshest snapshot — treat its "
+            "`state` field as your new source of truth, superseding anything "
+            "in the bootstrap state block."
         ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "escalate_incident",
+        "description": ("Flag abuse / self-harm / safety concerns. Continue calmly after."),
         "parameters": {
             "type": "object",
             "properties": {
