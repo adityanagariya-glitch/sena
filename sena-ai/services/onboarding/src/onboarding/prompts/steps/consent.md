@@ -4,6 +4,35 @@ This is the final step. Multi-screen flow (Overview → Sharing → Review).
 All voice-mutable fields are scoped to the `consent` section. Use these
 exact field ids and wire enum values for `update_field`.
 
+### MASTER SEQUENCE — ONE field per turn, STRICT ORDER
+
+Consent is long and legal. Do NOT batch questions. Do NOT skip ahead. Ask
+exactly ONE field, wait for the participant's answer, call `update_field`,
+wait for `{ok: true}`, confirm in one short sentence, THEN move to the next
+field. Never ask the next question before the previous `update_field`
+returned `ok: true`.
+
+Walk these in this exact order. Skip a field ONLY if it is already filled
+(`value` non-null in `visible_fields`) — announce it's already set and move
+on. NEVER fabricate a value the participant didn't say.
+
+1. `agreed_to_data_collection` — "Do you consent to us collecting your data?" → yes/no → save.
+2. `allowed_information` — read the 6 labels, ask which they allow → save full array.
+3. `selected_roles` — read the 4 role labels, ask which roles get access → save full array.
+4. **Per-role loop** — for EACH role in `selected_roles`, IN ORDER, collect all 4 sub-fields (see "Dialogue flow for per-role fields" below) before touching the next role. Finish role A completely, then role B. Never interleave.
+5. `medication_support_consent` — "Do you consent to medication support?" → yes/no → save.
+6. `financial_help_consent` — "Do you consent to financial assistance?" → yes/no → save.
+7. `ndis_audit_consent` — "Do you consent to NDIS audit access?" → yes/no → save.
+8. `allowed_media_usage` — read the 6 labels, ask which media uses they allow → save full array.
+9. `has_given_written_consent` — "Do you give your written consent to everything we've covered?" → must be `true` → save.
+10. Only after 1–9 are all saved → `submit_step`.
+
+**Hard rules for this sequence:**
+- ONE question per turn. After saving a field, confirm briefly then ask the NEXT field in the list. Do NOT say "anything else?" — drive forward through the list.
+- Before asking field N, re-check `visible_fields`: if field N already has a non-null `value`, skip it (say "I've already got that") and go to N+1.
+- NEVER call `submit_step` until step 9 (`has_given_written_consent`) is `true`.
+- If the participant jumps ahead ("just submit"), still walk any unfilled required field first — `submit_step` will block otherwise.
+
 ### Section: `consent` — sharing booleans & multi-enums
 
 | field id | type | required | enum values (wire — use EXACTLY) | display label |
@@ -56,8 +85,8 @@ every role before moving on.
 
 | `<attr>` | type | required | wire values / format | display label |
 |---|---|---|---|---|
-| `allowed_information` | multi-enum | yes (≥1) | same values as top-level `allowed_information` (`PROFILE`, `FINANCIAL`, `SERVICE_AGREEMENT`,  `MEDICATION`) | "What information can this role see?" |
-| `purpose` | text | yes | free text (display options: `Support Delivery`, `Scheduling and Rostering`, `Reporting and NDIS Audit`) | "What is the purpose of access?" |
+| `allowed_information` | multi-enum | yes (≥1) | ONLY these 4 (per-role is a SUBSET of top-level — mobile shows only these): `PROFILE`, `SERVICE_AGREEMENT`, `FINANCIAL`, `MEDICATION` (display labels: Profile, Service Agreement, Financial, Medication). Do NOT offer NDIS_DETAILS or SUPPORT_PLAN here. | "What information can this role see?" |
+| `purpose` | text | yes | MUST be one of these EXACT strings (mobile dropdown only renders an exact match): `Support delivery`, `Scheduling & rostering`, `Reporting (NDIS / audit)` | "What is the purpose of access?" |
 | `timeframe` | enum | yes | `WHILE_RECEIVING_SERVICE`, `UNTIL_DATE` | "How long should this role have access?" |
 | `until_date` | date | conditional (required when timeframe = `UNTIL_DATE`) | `YYYY-MM-DD`, must be a future date | "Until what date?" |
 
@@ -67,8 +96,8 @@ every role before moving on.
 # Set allowed_information for Manager role:
 update_field(section="consent", field="access_control.MANAGER.allowed_information", value=["PROFILE","FINANCIAL"])
 
-# Set purpose for Manager:
-update_field(section="consent", field="access_control.MANAGER.purpose", value="Support Delivery")
+# Set purpose for Manager (MUST be an exact dropdown string):
+update_field(section="consent", field="access_control.MANAGER.purpose", value="Support delivery")
 
 # Set timeframe for Manager:
 update_field(section="consent", field="access_control.MANAGER.timeframe", value="WHILE_RECEIVING_SERVICE")
@@ -82,7 +111,7 @@ update_field(section="consent", field="access_control.SUPPORT_WORKER.until_date"
 
 After setting `selected_roles`, loop through **each selected role in order**:
 1. Ask which information types this role can see → call `update_field` for `allowed_information` → wait for `ok: true`.
-2. Ask the purpose of access (offer three choices: `Support Delivery`, `Scheduling and Rostering`, `Reporting and NDIS Audit`) → call `update_field` for `purpose` → wait for `ok: true`.
+2. Ask the purpose of access (offer three choices, read aloud: "Support delivery", "Scheduling and rostering", "Reporting for NDIS or audit"). Save the EXACT dropdown string — `Support delivery`, `Scheduling & rostering`, or `Reporting (NDIS / audit)` — via `update_field` for `purpose` → wait for `ok: true`. Sending any other wording leaves the mobile dropdown blank.
 3. Ask how long access lasts (`While receiving services` or `Until a specific date`).
    - **MANDATORY: as soon as the participant answers step 3, call `update_field` for `timeframe` FIRST (before asking anything else).**
    - If they say "while receiving services" → `update_field(section="consent", field="access_control.<ROLE>.timeframe", value="WHILE_RECEIVING_SERVICE")` → wait for `ok: true`.
