@@ -210,19 +210,28 @@ async def onboarding_ws(
                     empty_required_paths.append(path)
 
         if filled_paths or empty_required_paths:
+            if not empty_required_paths:
+                _action = (
+                    "Everything required is already filled. Greet briefly and "
+                    "ask if they want to change anything or submit. Do NOT walk "
+                    "through fields one by one."
+                )
+            else:
+                _first = empty_required_paths[0]
+                _action = (
+                    f"START by asking for THIS field only: {_first}. "
+                    "Do NOT start from the top of the form. Do NOT ask about any "
+                    "field listed as already filled. Skip every filled field and "
+                    "ask only the empty required ones, in the order listed."
+                )
             initial_state_text = (
                 "[SCREEN STATE — read silently, do NOT read aloud] "
                 "This is the live state of the current screen on session open. "
-                "Use it for your FIRST greeting; do NOT ask the participant "
-                "which fields are already filled — you already know. "
-                f"Filled fields: {filled_paths}. "
-                f"Empty required fields still to collect: {empty_required_paths}. "
-                + (
-                    "Everything required is already filled — greet and ask if "
-                    "they want to change anything or submit."
-                    if not empty_required_paths else
-                    "Greet briefly, then ask for the first empty required field."
-                )
+                "You already know what is filled — never ask the participant "
+                "which fields are done. "
+                f"Already filled (SKIP these, do NOT ask): {filled_paths}. "
+                f"Empty required fields to collect IN THIS ORDER: {empty_required_paths}. "
+                + _action
             )
 
         live_session = GeminiLiveSession(
