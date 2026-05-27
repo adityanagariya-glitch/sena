@@ -56,7 +56,7 @@ every role before moving on.
 
 | `<attr>` | type | required | wire values / format | display label |
 |---|---|---|---|---|
-| `allowed_information` | multi-enum | yes (≥1) | same values as top-level `allowed_information` (`PROFILE`, `NDIS_DETAILS`, `FINANCIAL`, `SERVICE_AGREEMENT`, `SUPPORT_PLAN`, `MEDICATION`) | "What information can this role see?" |
+| `allowed_information` | multi-enum | yes (≥1) | same values as top-level `allowed_information` (`PROFILE`, `FINANCIAL`, `SERVICE_AGREEMENT`,  `MEDICATION`) | "What information can this role see?" |
 | `purpose` | text | yes | free text (display options: `Support Delivery`, `Scheduling and Rostering`, `Reporting and NDIS Audit`) | "What is the purpose of access?" |
 | `timeframe` | enum | yes | `WHILE_RECEIVING_SERVICE`, `UNTIL_DATE` | "How long should this role have access?" |
 | `until_date` | date | conditional (required when timeframe = `UNTIL_DATE`) | `YYYY-MM-DD`, must be a future date | "Until what date?" |
@@ -81,10 +81,15 @@ update_field(section="consent", field="access_control.SUPPORT_WORKER.until_date"
 #### Dialogue flow for per-role fields
 
 After setting `selected_roles`, loop through **each selected role in order**:
-1. Ask which information types this role can see.
-2. Ask the purpose of access (offer the three display options as choices).
+1. Ask which information types this role can see → call `update_field` for `allowed_information` → wait for `ok: true`.
+2. Ask the purpose of access (offer three choices: `Support Delivery`, `Scheduling and Rostering`, `Reporting and NDIS Audit`) → call `update_field` for `purpose` → wait for `ok: true`.
 3. Ask how long access lasts (`While receiving services` or `Until a specific date`).
-4. If `Until a specific date` — ask for the date in plain English, convert to `YYYY-MM-DD`.
+   - **MANDATORY: as soon as the participant answers step 3, call `update_field` for `timeframe` FIRST (before asking anything else).**
+   - If they say "while receiving services" → `update_field(section="consent", field="access_control.<ROLE>.timeframe", value="WHILE_RECEIVING_SERVICE")` → wait for `ok: true`.
+   - If they say "until a specific date" → `update_field(section="consent", field="access_control.<ROLE>.timeframe", value="UNTIL_DATE")` → wait for `ok: true` → ONLY THEN ask for the date.
+4. If timeframe = `UNTIL_DATE`: ask for the date in plain English → convert to `YYYY-MM-DD` → call `update_field` for `until_date` → wait for `ok: true`.
+
+**Critical ordering rule:** You MUST call `update_field` for `timeframe` BEFORE asking for `until_date`. Never ask "what date?" without first saving the `UNTIL_DATE` timeframe via a tool call. If the tool call fails, report the error — do not silently skip the save.
 
 Once all roles are fully configured, proceed to `allowed_media_usage` if not yet set.
 
