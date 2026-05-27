@@ -1,0 +1,114 @@
+{
+  "version": "v1",
+  "step_id": "personal_information",
+  "step_label": "Personal Information",
+  "progress_percent": 20,
+  "voice_coverage": [],
+  "voice_repeatable_sections": ["emergency_contacts"],
+  "sections": [
+    {
+      "id": "basics",
+      "label": "About you",
+      "fields": [
+        {"id": "full_name", "type": "text", "label": "Full Name", "required": true},
+        {"id": "email", "type": "email", "label": "Email Address", "required": true},
+        {"id": "phone", "type": "phone", "label": "Phone Number", "format": "+61", "required": true},
+        {"id": "date_of_birth", "type": "date", "label": "Date of Birth", "required": true},
+        {
+          "id": "gender",
+          "type": "enum",
+          "label": "Gender",
+          "required": true,
+          "options": ["Male", "Female", "Non-binary", "Prefer not to say", "Other"]
+        },
+        {"id": "about_me", "type": "textarea", "label": "About Me", "required": false},
+        {"id": "preferred_language", "type": "text", "label": "Preferred Language", "required": true},
+        {"id": "interpreter_required", "type": "boolean", "label": "Interpreter Required", "required": true, "default": false},
+        {
+          "id": "interpreter_language",
+          "type": "text",
+          "label": "Interpreter Language",
+          "required": false,
+          "visible_if": {"interpreter_required": true}
+        }
+      ]
+    },
+    {
+      "id": "home_address",
+      "label": "Home address",
+      "fields": [
+        {"id": "address", "type": "text", "label": "Street Address", "required": true},
+        {
+          "id": "state",
+          "type": "enum",
+          "label": "State",
+          "required": true,
+          "options": ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"]
+        },
+        {"id": "city", "type": "text", "label": "City / Suburb", "required": true},
+        {"id": "zip_code", "type": "text", "label": "Postcode", "required": true, "pattern": "^\\d{4}$"}
+      ]
+    },
+    {
+      "id": "service_address",
+      "label": "Service address",
+      "copy_from_if_flagged": "home_address",
+      "flag_field": {
+        "id": "service_same_as_home",
+        "type": "boolean",
+        "label": "Service address same as home address",
+        "required": false,
+        "default": true
+      },
+      "fields": [
+        {
+          "id": "address",
+          "type": "text",
+          "label": "Service Street Address",
+          "required": false,
+          "visible_if": {"service_same_as_home": false}
+        },
+        {
+          "id": "state",
+          "type": "enum",
+          "label": "State",
+          "required": false,
+          "options": ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"],
+          "visible_if": {"service_same_as_home": false}
+        },
+        {
+          "id": "city",
+          "type": "text",
+          "label": "City / Suburb",
+          "required": false,
+          "visible_if": {"service_same_as_home": false}
+        },
+        {
+          "id": "zip_code",
+          "type": "text",
+          "label": "Postcode",
+          "required": false,
+          "pattern": "^\\d{4}$",
+          "visible_if": {"service_same_as_home": false}
+        }
+      ]
+    },
+    {
+      "id": "emergency_contacts",
+      "label": "Emergency contacts",
+      "repeatable": {"min": 1, "max": 5},
+      "item_fields": [
+        {"id": "name", "type": "text", "label": "Contact Name", "required": true},
+        {
+          "id": "relation",
+          "type": "enum",
+          "label": "Relationship",
+          "required": true,
+          "options": ["Parent", "Sibling", "Partner", "Friend", "Carer", "Other"]
+        },
+        {"id": "email", "type": "email", "label": "Contact Email", "required": true},
+        {"id": "phone", "type": "phone", "label": "Contact Phone", "format": "+61", "required": true}
+      ]
+    }
+  ]
+}

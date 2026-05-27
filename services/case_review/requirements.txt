@@ -1,0 +1,7 @@
+fastapi==0.136.1
+httpx==0.28.1
+protobuf==7.34.1
+pydantic==2.13.3
+pydantic_settings==2.14.0
+SQLAlchemy==2.0.36
+structlog==25.5.0

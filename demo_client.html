@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SENA Voice Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 620px; margin: 50px auto; padding: 0 20px; background: #f9fafb; }
+    h1   { font-size: 1.4rem; color: #111; margin-bottom: 4px; }
+    p    { color: #6b7280; font-size: .9rem; margin-top: 0; }
+    .status { padding: 12px 16px; border-radius: 8px; margin: 14px 0; font-size: .95rem; font-weight: 500; }
+    .idle  { background: #e5e7eb; color: #374151; }
+    .live  { background: #d1fae5; color: #065f46; }
+    .speak { background: #dbeafe; color: #1e40af; }
+    .error { background: #fee2e2; color: #991b1b; }
+    .card  { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; margin:10px 0; }
+    .card h3 { margin:0 0 10px; font-size:.85rem; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; }
+    button { padding: 14px 22px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin: 4px; }
+    .btn-start { background: #059669; color: #fff; }
+    .btn-stop  { background: #dc2626; color: #fff; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    #log { font-size: .75rem; color: #6b7280; margin-top: 14px; max-height: 200px;
+           overflow-y: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; }
+
+    /* Mic indicator */
+    .mic-dot {
+      display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+      background: #9ca3af; margin-right: 8px; vertical-align: middle;
+    }
+    .mic-dot.live { background: #dc2626; animation: pulse 1.2s infinite; }
+    .mic-dot.speaking { background: #2563eb; }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.5); }
+      50%      { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
+    }
+  </style>
+</head>
+<body>
+  <h1>SENA Voice Onboarding — Dev Test</h1>
+  <p>Press <b>Start</b>, then just speak. Gemini listens continuously and replies when you pause — like Siri or Google Assistant.</p>
+
+  <div id="status" class="status idle"><span id="dot" class="mic-dot"></span>Ready</div>
+
+  <div>
+    <button id="startBtn" class="btn-start" onclick="startSession()">Start Conversation</button>
+    <button id="stopBtn"  class="btn-stop"  onclick="stopSession()" style="display:none">End Conversation</button>
+  </div>
+
+  <div class="card">
+    <h3>How to use</h3>
+    <p style="margin:0;color:#374151;font-size:.9rem">
+      1. Click <b>Start Conversation</b> and allow mic access.<br>
+      2. Greet the assistant — say "hi" or "hello".<br>
+      3. Answer its questions naturally. It detects when you stop speaking.<br>
+      4. Click <b>End Conversation</b> when done.
+    </p>
+  </div>
+
+  <div id="log"></div>
+
+<script>
+/* ── state ── */
+let ws, sessionId;
+let mediaStream, micCtx, processor, micSource, silentGain;
+let playCtx = null, playHead = 0;
+let streaming = false;
+let assistantSpeaking = false;
+
+/* ── helpers ── */
+function log(msg) {
+  const d = document.getElementById('log');
+  const r = document.createElement('div');
+  r.textContent = new Date().toLocaleTimeString() + ' — ' + msg;
+  d.insertBefore(r, d.firstChild);
+}
+function setStatus(msg, cls, dotCls) {
+  const el = document.getElementById('status');
+  const dot = document.getElementById('dot');
+  el.className = 'status ' + cls;
+  // preserve dot element
+  el.innerHTML = '<span id="dot" class="mic-dot ' + (dotCls || '') + '"></span>' + msg;
+}
+
+/* ── audio conversion ── */
+function floatTo16BitPCM(f32) {
+  const buf  = new ArrayBuffer(f32.length * 2);
+  const view = new DataView(buf);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return buf;
+}
+function downsampleTo16k(f32, fromRate) {
+  if (fromRate === 16000) return f32;
+  const ratio = fromRate / 16000;
+  const out   = new Float32Array(Math.floor(f32.length / ratio));
+  for (let i = 0; i < out.length; i++) out[i] = f32[Math.floor(i * ratio)];
+  return out;
+}
+
+/* ── playback (24kHz PCM16 from Gemini) ──
+   Resilient to suspended AudioContext: queue chunks while resuming,
+   lookahead buffer prevents scheduling in the past, logs byte counts. */
+let audioBytesThisTurn = 0;
+let pendingResume = null;
+
+function ensurePlayCtxRunning() {
+  if (!playCtx) return Promise.resolve();
+  if (playCtx.state === 'running') return Promise.resolve();
+  if (!pendingResume) pendingResume = playCtx.resume().finally(() => { pendingResume = null; });
+  return pendingResume;
+}
+
+// Linear-interpolation upsample from 24kHz → ctxRate, so createBuffer uses
+// the device-native sample rate and bypasses the browser resampler entirely.
+function upsampleTo(ctxRate, f32src) {
+  if (ctxRate === 24000) return f32src;
+  const ratio = 24000 / ctxRate;
+  const outLen = Math.floor(f32src.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const srcIdx = i * ratio;
+    const i0 = Math.floor(srcIdx);
+    const i1 = Math.min(i0 + 1, f32src.length - 1);
+    const frac = srcIdx - i0;
+    out[i] = f32src[i0] * (1 - frac) + f32src[i1] * frac;
+  }
+  return out;
+}
+
+async function playPCM16(arrayBuffer) {
+  if (!playCtx) return;
+  await ensurePlayCtxRunning();            // wait for clock to tick before scheduling
+  const int16 = new Int16Array(arrayBuffer);
+  const f32   = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768.0;
+
+  const rate = playCtx.sampleRate;
+  const upsampled = upsampleTo(rate, f32);
+  const buf = playCtx.createBuffer(1, upsampled.length, rate);
+  buf.getChannelData(0).set(upsampled);
+
+  const src = playCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(playCtx.destination);
+
+  // 80 ms lookahead so the first buffer after a resume isn't scheduled in the past
+  const LOOKAHEAD = 0.08;
+  const earliest  = playCtx.currentTime + LOOKAHEAD;
+  const startAt   = Math.max(earliest, playHead);
+  src.start(startAt);
+  playHead = startAt + buf.duration;
+  audioBytesThisTurn += arrayBuffer.byteLength;
+}
+
+// Quick speaker-chain test: 300ms beep at 440Hz to confirm output works.
+function playTestBeep() {
+  if (!playCtx) return;
+  const osc = playCtx.createOscillator();
+  const gain = playCtx.createGain();
+  osc.frequency.value = 440;
+  gain.gain.value = 0.15;
+  osc.connect(gain);
+  gain.connect(playCtx.destination);
+  osc.start();
+  osc.stop(playCtx.currentTime + 0.3);
+  log('🔔 test beep — if you did NOT hear this, speaker/tab is muted');
+}
+
+/* ── start ── */
+async function startSession() {
+  document.getElementById('startBtn').disabled = true;
+  setStatus('Connecting…', 'idle', '');
+
+  // 1. Create AudioContext for PLAYBACK in the user gesture (unlocks autoplay).
+  //    Do NOT force sampleRate — let browser pick device-native rate;
+  //    we create Gemini buffers at 24000 Hz and the browser resamples.
+  playCtx  = new AudioContext();
+  try { await playCtx.resume(); } catch {}
+  playHead = playCtx.currentTime;
+  log('Play ctx: state=' + playCtx.state + ' rate=' + playCtx.sampleRate);
+  playTestBeep();   // 300ms 440Hz tone — if you don't hear it, speakers/tab muted
+
+  // 2. Request mic
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+  } catch (err) {
+    setStatus('Mic permission denied: ' + err.message, 'error', '');
+    document.getElementById('startBtn').disabled = false;
+    return;
+  }
+
+  // 3. Create session on server
+  try {
+    const res = await fetch('/session', { method: 'POST' });
+    const data = await res.json();
+    sessionId = data.session_id;
+    log('Session: ' + sessionId);
+  } catch (e) {
+    setStatus('Cannot reach server — is uvicorn running?', 'error', '');
+    cleanupMic();
+    document.getElementById('startBtn').disabled = false;
+    return;
+  }
+
+  // 4. Open WebSocket
+  ws = new WebSocket('ws://' + location.host + '/live/' + sessionId);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    log('WebSocket open — streaming mic continuously');
+    setStatus('Listening — just start talking', 'live', 'live');
+    document.getElementById('startBtn').style.display = 'none';
+    document.getElementById('stopBtn').style.display  = 'inline-block';
+    startMicStreaming();
+  };
+
+  ws.onmessage = async (evt) => {
+    if (evt.data instanceof ArrayBuffer) {
+      await playPCM16(evt.data);
+    } else {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === 'turn_start') {
+          audioBytesThisTurn = 0;
+          await ensurePlayCtxRunning();
+          // Only reset playHead if it's in the past (prior turn finished)
+          if (playHead < playCtx.currentTime) playHead = playCtx.currentTime;
+          assistantSpeaking = true;
+          setStatus('Assistant speaking…', 'speak', 'speaking');
+          log('▶ assistant reply starting (ctx=' + playCtx.state + ' rate=' + playCtx.sampleRate + ')');
+        } else if (msg.type === 'turn_complete') {
+          assistantSpeaking = false;
+          setStatus('Listening — just start talking', 'live', 'live');
+          log('✓ assistant reply done (' + audioBytesThisTurn + ' bytes, ctx=' + playCtx.state + ')');
+        } else if (msg.type === 'interrupted') {
+          assistantSpeaking = false;
+          playHead = playCtx.currentTime;
+          setStatus('Listening — just start talking', 'live', 'live');
+          log('⚠ interrupted (you spoke over the assistant)');
+        } else if (msg.type === 'error') {
+          setStatus('Error: ' + msg.message, 'error', '');
+          log('Error: ' + msg.message);
+        }
+      } catch (e) { log('msg parse error: ' + e.message); }
+    }
+  };
+
+  ws.onclose = (e) => {
+    log('WS closed code=' + e.code);
+    streaming = false;
+    cleanupMic();
+    resetUI();
+  };
+  ws.onerror = () => {
+    setStatus('WebSocket error', 'error', '');
+    cleanupMic();
+    resetUI();
+  };
+}
+
+/* ── continuous mic streaming (shares playCtx — one AudioContext only) ── */
+function startMicStreaming() {
+  micCtx     = playCtx;   // reuse — avoids dual-context output conflict on Windows
+  const rate = micCtx.sampleRate;
+  micSource  = micCtx.createMediaStreamSource(mediaStream);
+  processor  = micCtx.createScriptProcessor(2048, 1, 1);
+
+  streaming = true;
+  let chunkCount = 0;
+  processor.onaudioprocess = (ev) => {
+    if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+    const down = downsampleTo16k(ev.inputBuffer.getChannelData(0), rate);
+    ws.send(floatTo16BitPCM(down));
+    chunkCount++;
+    if (chunkCount === 1) log('Mic streaming at ' + rate + ' Hz → 16 kHz');
+  };
+
+  // Route mic → processor → silent gain → destination
+  // (ScriptProcessor only fires when connected to destination; gain=0 prevents feedback)
+  silentGain = micCtx.createGain();
+  silentGain.gain.value = 0;
+  micSource.connect(processor);
+  processor.connect(silentGain);
+  silentGain.connect(micCtx.destination);
+}
+
+function cleanupMic() {
+  streaming = false;
+  try { processor   && processor.disconnect(); } catch {}
+  try { micSource   && micSource.disconnect(); } catch {}
+  try { silentGain  && silentGain.disconnect(); } catch {}
+  // DO NOT close micCtx — it's shared with playCtx
+  try { mediaStream && mediaStream.getTracks().forEach(t => t.stop()); } catch {}
+  processor = micSource = silentGain = micCtx = mediaStream = null;
+}
+
+/* ── stop ── */
+function stopSession() {
+  streaming = false;
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'end_session' }));
+      ws.close();
+    }
+  } catch {}
+  cleanupMic();
+  try { playCtx && playCtx.close(); } catch {}
+  playCtx = null;
+  resetUI();
+  setStatus('Disconnected', 'idle', '');
+}
+
+function resetUI() {
+  document.getElementById('startBtn').style.display = 'inline-block';
+  document.getElementById('startBtn').disabled      = false;
+  document.getElementById('stopBtn').style.display  = 'none';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+[project]
+name = "sena-voice"
+version = "0.1.0"
+description = "SENA Voice Dictation Service (Flow B)"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.32.1",
+  "pydantic==2.10.3",
+  "pydantic-settings==2.7.0",
+  "sqlalchemy[asyncio]==2.0.36",
+  "asyncpg==0.30.0",
+  "redis[hiredis]==5.2.1",
+  "boto3==1.35.80",
+  "botocore==1.35.80",
+  "PyJWT[crypto]==2.10.1",
+  "livekit-api==0.8.2",
+  "httpx==0.28.1",
+  "structlog==24.4.0",
+  "python-dateutil==2.9.0.post0",
+  "orjson==3.10.12",
+  "google-genai>=1.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.4",
+  "pytest-asyncio==0.24.0",
+  "pytest-cov==6.0.0",
+  "anyio==4.7.0",
+  "ruff==0.8.4",
+  "mypy==1.13.0"
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"

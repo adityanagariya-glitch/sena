@@ -1,0 +1,957 @@
+[
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/case-note/get-by-shift/{shiftId}",
+    "description": "Get client participants with case note status by shift",
+    "parameters": [
+      {
+        "name": "shiftId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift identifier"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client Participants with CaseNote by Shift successful",
+      "data": [
+        {
+          "clientId": "dab57916-9863-4b49-ba39-92441547ba5b",
+          "clientName": "John Smith",
+          "clientProfilePictureUrl": "https://example-bucket.s3.amazonaws.com/clients/profile/john.jpg",
+          "caseNoteId": "e03fae42-c051-4830-9805-23d75e7950c6"
+        },
+        {
+          "clientId": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+          "clientName": "Jane Doe",
+          "clientProfilePictureUrl": null,
+          "caseNoteId": null
+        }
+      ],
+      "timestamp": "2026-03-24T06:41:46.491Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/details",
+    "description": "Get staff details for the logged-in user",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Staff Details successful",
+      "data": {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "createdAt": "2026-05-15T04:46:48.398Z",
+        "updatedAt": "2026-05-15T04:46:48.398Z",
+        "deletedAt": "2026-05-15T04:46:48.398Z",
+        "user": {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "createdAt": "2026-05-15T04:46:48.398Z",
+          "updatedAt": "2026-05-15T04:46:48.398Z",
+          "deletedAt": "2026-05-15T04:46:48.398Z",
+          "email": "user@example.com",
+          "status": "pending"
+        },
+        "type": "member",
+        "staffType": "support_worker",
+        "comment": "string",
+        "fullName": "John Kat",
+        "preferredName": "John",
+        "dateOfBirth": "2026-05-15",
+        "gender": "Male",
+        "phone": "+1234567890",
+        "address": "string",
+        "city": "string",
+        "state": "string",
+        "zipCode": 90001,
+        "dateOfJoining": "2026-05-15",
+        "culturalBackground": "string",
+        "languagesSpoken": [
+          "English",
+          "Spanish"
+        ],
+        "interpreterRequired": true,
+        "role": "string",
+        "verificationMethod": "string",
+        "link": "string",
+        "linkExpiry": "2026-05-15T04:46:48.398Z",
+        "experience": "string",
+        "emergencyContactName": "string",
+        "emergencyContact": "string",
+        "bankName": "string",
+        "accountHolderName": "string",
+        "bsb": "string",
+        "accountNumber": "string",
+        "superFundName": "string",
+        "superFundAbn": "string",
+        "memberNumber": "string",
+        "profilePictureUrl": "string",
+        "isSingleUseLink": true,
+        "default": true,
+        "status": "invited",
+        "currentOnboardingStep": 3
+      },
+      "timestamp": "2026-05-15T04:46:48.398Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/get-all-organizationMembers-clients-visitors",
+    "description": "Get all organization members, clients, and their visitors",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value: 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value: 20"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by name across organization members and clients"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/team/get-all-staff-members",
+    "description": "Get all staff members of the organization (no pagination). PRIMARY ENDPOINT FOR LOOKING UP A STAFF MEMBER BY NAME OR FILTERING BY STAFF TYPE — pass the name in the `search` query param to filter at the backend (faster than fetching all + matching locally). Supports optional name search and optional staffType filter. Omit staffType to return all staff.",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "description": "Filter staff by name (case-insensitive). USE THIS whenever the user asks about a staff member by name (e.g. 'find Sarah', 'show me John's profile')."
+      },
+      {
+        "name": "staffType",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "enum": ["in_office", "support_worker"],
+        "description": "Filter by staff type. Omit to return all staff. Allowed values: in_office (only in-office staff), support_worker (only support workers)."
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization-role/get-all-organization-roles",
+    "description": "Get all organization roles",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "sortByName",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByCreatedAt",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByTotalAssignees",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/list/all-clients",
+    "description": "Get all clients without pagination. PRIMARY ENDPOINT FOR LOOKING UP A CLIENT BY NAME OR ID — pass the name in the `search` query param to filter at the backend (faster than fetching all + matching locally). Supports filtering by one or more statuses and excluding statuses. All three params accept single value, comma-separated, or repeated params.",
+    "parameters": [
+      {
+        "name": "statusIs",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "description": "Include only clients with these statuses. Single value (e.g. 'onboarded'), comma-separated ('onboarded,pending_verification'), or repeated. Common values: onboarded, pending_verification, invited, rejected."
+      },
+      {
+        "name": "statusIsNot",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "description": "Exclude clients with these statuses. Same formats as statusIs. Common values: rejected, invited."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "description": "Search by client name (matches first / last / preferred name). USE THIS whenever the user asks about a client by name (e.g. 'Tanishq', 'John Doe'). Backend does the matching — no need to fetch all clients."
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/my-clients",
+    "description": "Get all clients belonging to the authenticated organization",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "sortByName",
+        "type": "array<string>",
+        "required": false
+      },
+      {
+        "name": "sortByPlanStartDate",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByCity",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "clientStatus",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization/department/get-all",
+    "description": "Get all departments",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "sortByName",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByMemberCount",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByCreatedBy",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByHeadOfDepartment",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByCreatedAt",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "teamMembers",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "memberName",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "createdBy",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "headOfDepartment",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization/role/get-organizaiton-roles/{id}",
+    "description": "Get all roles for a specific organization",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "ID of the organization"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get all roles for organization successful",
+      "data": {
+        "roles": [
+          {
+            "id": "44fc3f32-5923-4573-80b4-f2ce9b5f097d",
+            "createdAt": "2025-11-19T08:40:40.675Z",
+            "updatedAt": "2025-11-19T08:56:26.852Z",
+            "deletedAt": null,
+            "name": "Manager1",
+            "isSystemRole": false
+          }
+        ]
+      },
+      "timestamp": "2025-11-20T08:03:19.540Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/role/{id}",
+    "description": "Get role by ID",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "The ID of the role to retrieve"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get role by ID successful",
+      "data": {
+        "role": {
+          "id": "44fc3f32-5923-4573-80b4-f2ce9b5f097d",
+          "createdAt": "2025-11-19T08:40:40.675Z",
+          "updatedAt": "2025-11-19T08:56:26.852Z",
+          "deletedAt": null,
+          "name": "Manager1",
+          "isSystemRole": false
+        }
+      },
+      "timestamp": "2025-11-20T08:06:41.472Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/staff/get-all-staff-members",
+    "description": "Get all staff members of the organization (no pagination)",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Filter staff by name (case-insensitive)."
+      },
+      {
+        "name": "staffType",
+        "type": "string",
+        "required": false,
+        "description": "Filter by staff type. Omit to return all staff. - in_office \u2014 only in-office staff - support_worker \u2014 only support workers"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All Members successful",
+      "data": [
+        {
+          "id": "2fffcc1b-bf5b-44a3-877d-675f72a9ce7e",
+          "fullName": "Dustin Mckee",
+          "profilePictureUrl": null
+        },
+        {
+          "id": "9d8b85c1-cbc4-42dd-9247-f4b17084b524",
+          "fullName": "Talon Jennings",
+          "profilePictureUrl": null
+        },
+        {
+          "id": "36a36413-1bf5-48ea-9770-2e3aab5b09b5",
+          "fullName": "Martena Oneill",
+          "profilePictureUrl": null
+        },
+        {
+          "id": "61a7a9df-e27a-4d2b-8357-403c2f1497f9",
+          "fullName": "Denton Hays",
+          "profilePictureUrl": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/.../image.jpg"
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/support-coordinator/clients",
+    "description": "Paginated client list with assigned support coordinators",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value: 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value: 10"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByName",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "sortByPlanStartDate",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "sortByCity",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "clientStatus",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization/support-worker/by-client/{clientId}",
+    "description": "Get all support worker mappings for a client",
+    "parameters": [
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID whose support worker mappings should be returned."
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/organization/view-profile",
+    "description": "View logged-in organization member profile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Organization Member By ID successful",
+      "data": {
+        "member": {
+          "id": "23329ad2-bdec-416d-87f8-892fd2b5e9c0",
+          "createdAt": "2025-11-13T08:18:08.286Z",
+          "updatedAt": "2025-11-14T04:51:39.171Z",
+          "deletedAt": null,
+          "organization": {
+            "id": "4075d838-2e2a-4031-bb53-e76b4c4a2a14",
+            "createdAt": "2025-11-13T08:18:08.256Z",
+            "updatedAt": "2025-11-14T07:56:01.478Z",
+            "deletedAt": null,
+            "businessName": "a",
+            "tradingName": "BrightCare",
+            "abnNumber": "98765432109",
+            "ndisRegistrationNumber": "123456789",
+            "businessEmail": "meet.trivedi@techeniac.com",
+            "businessPhone": "+61 400 789 451",
+            "headOfficeAddress": "45 George Street, Parramatta NSW 2150",
+            "operatingStates": [
+              "NSW",
+              "VIC",
+              "QLD"
+            ],
+            "website": "https://www.brightcare.com.au",
+            "coreSupports": [
+              "Assistance with Daily Life",
+              "Household Tasks",
+              "Transport Services"
+            ],
+            "accommodationAndSpecialistSupport": [
+              "Supported Independent Living",
+              "Short Term Accommodation"
+            ],
+            "capacityBuilding": [
+              "Therapeutic Supports",
+              "Community Participation",
+              "Employment Related Assessment"
+            ],
+            "subscription_id": null,
+            "policyType": null,
+            "policyNumber": null,
+            "coverageAmount": null,
+            "expiryDate": null,
+            "certificateOfCurrency": null,
+            "status": "rectification_requested",
+            "remarks": null
+          },
+          "user": {
+            "id": "c601118f-4e1c-40c4-9fae-43ab928fdb6f",
+            "createdAt": "2025-11-13T08:18:08.229Z",
+            "updatedAt": "2025-11-13T08:18:08.229Z",
+            "deletedAt": null,
+            "email": "test4@gmail.com",
+            "status": "pending"
+          },
+          "type": "owner",
+          "fullName": "John Doe",
+          "preferredName": null,
+          "dateOfBirth": "1995-08-21",
+          "gender": null,
+          "phone": "9876543210",
+          "address": "123 Example Street, Mumbai",
+          "department": null,
+          "dateOfJoining": null,
+          "roleId": null,
+          "culturalBackground": null,
+          "languagesSpoken": null,
+          "interpreterRequired": false,
+          "role": "member",
+          "verificationMethod": null,
+          "accessLevel": null,
+          "link": null,
+          "linkExpiry": null,
+          "isSingleUseLink": false,
+          "documents": null,
+          "status": "pending"
+        },
+        "email": "test4@gmail.com"
+      },
+      "timestamp": "2025-11-14T08:01:45.108Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/sena-admin-role/get-all-sena-admin-roles",
+    "description": "Get all Sena Admin Roles",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by role name"
+      },
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page"
+      },
+      {
+        "name": "sortByName",
+        "type": "string",
+        "required": false,
+        "description": "Sort by role name (a = ascending, d = descending)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All Sena Admin Roles successful",
+      "data": {
+        "data": [
+          {
+            "id": "970c6be1-1a3f-4f46-929f-c3845048f48e",
+            "createdAt": "2026-02-19T10:13:41.207Z",
+            "updatedAt": "2026-02-19T10:27:40.030Z",
+            "deletedAt": null,
+            "name": "support_staff",
+            "description": null,
+            "isSystemRole": false,
+            "roleType": "senaAdminRole"
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 1,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2026-02-19T10:36:20.367Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/sena-admin-role/role-permissions/{roleId}",
+    "description": "Get permissions by role ID",
+    "parameters": [
+      {
+        "name": "roleId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Role ID"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Page number"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records per page"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Role Permissions successful",
+      "data": {
+        "data": [
+          {
+            "id": "5e8c1a4b-e5bb-4939-b1f1-4be19bacd2a2",
+            "createdAt": "2026-01-20T10:01:01.145Z",
+            "updatedAt": "2026-01-20T10:01:01.145Z",
+            "deletedAt": null,
+            "resource": "leave",
+            "action": "approve"
+          },
+          {
+            "id": "2602c172-740c-45fd-9235-a0192000903d",
+            "createdAt": "2026-01-20T10:01:01.145Z",
+            "updatedAt": "2026-01-20T10:01:01.145Z",
+            "deletedAt": null,
+            "resource": "leave",
+            "action": "reject"
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 2,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2026-01-20T12:00:26.087Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/super-admin/get-profile",
+    "description": "Get Super Admin profile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Super Admin profile fetched successfully",
+      "data": {
+        "id": "e3f11332-74dc-4d3c-aa28-c0f7ef3cf221",
+        "name": "Admin User",
+        "email": "admin@example.com",
+        "phone": "+91 9876543210",
+        "profileImage": "https://s3.amazonaws.com/bucket/profile.png",
+        "createdAt": "2025-01-12T10:20:30.000Z",
+        "updatedAt": "2025-11-06T12:28:21.000Z"
+      },
+      "timestamp": "string"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/user-type/{id}",
+    "description": "Get user type by ID",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "ID of the user type"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get user type by ID successful",
+      "data": {
+        "message": "User type retrieved successfully",
+        "data": {
+          "id": "09b5ec0c-76fa-42a0-b5b6-56d9e096bb47",
+          "createdAt": "2025-10-28T11:49:55.948Z",
+          "updatedAt": "2025-10-28T11:49:55.948Z",
+          "deletedAt": null,
+          "type": "superAdmin"
+        }
+      },
+      "timestamp": "2025-10-28T11:53:08.865Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization-role/my-roles",
+    "description": "Get all roles for the currently authenticated user. Returns all roles assigned to the user across all organizations. Supports pagination, optional search, and sorting by role name, organization name, assignedBy, and assignedAt.",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "in": "query",
+        "default": 1,
+        "description": "Page number"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "in": "query",
+        "default": 10,
+        "description": "Number of records per page"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "description": "Search by role name or organization name"
+      },
+      {
+        "name": "sortByRoleName",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "enum": ["a", "d"],
+        "description": "Sort by role name (a = ASC, d = DESC)"
+      },
+      {
+        "name": "sortByOrgName",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "enum": ["a", "d"],
+        "description": "Sort by organization name (a = ASC, d = DESC)"
+      },
+      {
+        "name": "sortByAssignedBy",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "enum": ["a", "d"],
+        "description": "Sort by assignee name (a = ASC, d = DESC)"
+      },
+      {
+        "name": "sortByAssignedAt",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "enum": ["a", "d"],
+        "description": "Sort by assignment time (a = ASC, d = DESC)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Current User Roles successful",
+      "data": {
+        "data": [
+          {
+            "roleId": "0cade050-3c08-4236-b58f-94fa4e958741",
+            "roleName": "h2",
+            "organizationId": "5b8e2ed7-050f-45e2-83ee-f7009ac34a34",
+            "organizationName": "James Lee",
+            "assignedBy": "Timon Dean",
+            "assignedAt": "2026-02-10T12:17:28.174Z"
+          },
+          {
+            "roleId": "d08c788f-2454-4852-b226-55888140f6b8",
+            "roleName": "super_admin",
+            "organizationId": "019dd42e-f86a-4676-8a40-414ff54e0820",
+            "organizationName": "Orla Bell",
+            "assignedBy": null,
+            "assignedAt": "2026-02-10T12:17:28.174Z"
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 2,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/members-list",
+    "description": "Get list of organization members (all, in-office, or support workers). Returns members for the authenticated user's organization. Optionally filter by staffType query param. Omit staffType to get all members.",
+    "parameters": [
+      {
+        "name": "staffType",
+        "type": "string",
+        "required": false,
+        "in": "query",
+        "enum": ["all", "in_office", "support_worker"],
+        "description": "Filter by staff type. Omit for all members. Allowed values: all, in_office, support_worker."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Organization members fetched successfully",
+      "data": {
+        "members": [
+          {
+            "id": "uuid",
+            "firstName": "string",
+            "lastName": "string",
+            "email": "string",
+            "staffType": "in_office",
+            "role": "string"
+          }
+        ]
+      },
+      "timestamp": "2026-05-25T00:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/get-all-organizaions",
+    "description": "Get all organizations for the logged-in owner. Retrieves organizations linked to the authenticated owner and returns organization ID and business name.",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Organizations by Owner ID successful",
+      "data": {
+        "message": "Organizations fetched successfully",
+        "organizations": [
+          {
+            "id": "4075d838-2e2a-4031-bb53-e76b4c4a2a14",
+            "businessName": "ABC Enterprises"
+          }
+        ]
+      },
+      "timestamp": "2025-11-14T10:51:40.801Z"
+    }
+  },
+  [
+  {
+    "method": "GET",
+    "path": "/organization/shift/calendar",
+    "description": "Get calendar view of shifts grouped by staff or participant",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": true,
+        "description": "Start of date range as a full UTC ISO datetime (inclusive)."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": true,
+        "description": "End of date range as a full UTC ISO datetime (inclusive)."
+      },
+      {
+        "name": "groupBy",
+        "type": "string",
+        "required": false,
+        "description": "Group results by staff members or client participants (default staff)"
+      },
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 10)"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Optional search by staff/participant name"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Calendar View successful",
+      "data": {
+        "items": [
+          {
+            "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "fullName": "string",
+            "profilePictureUrl": "string",
+            "email": "string",
+            "occurrences": [
+              {
+                "shiftId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "date": "2026-05-26",
+                "startTime": "2026-05-26T09:35:07.035Z",
+                "endTime": "2026-05-26T09:35:07.035Z",
+                "isCancelled": true,
+                "client": {},
+                "staff": [
+                  {}
+                ]
+              }
+            ]
+          }
+        ],
+        "total": 0,
+        "page": 0,
+        "limit": 0
+      },
+      "timestamp": "2026-05-26T09:35:07.035Z"
+    }
+  }
+]
+]
