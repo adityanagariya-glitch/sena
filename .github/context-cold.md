@@ -30,36 +30,28 @@ sena-ai\services\case_review\tests\test_repo.py ← __future__, unittest, case_r
 sena-ai\services\case_review\tests\test_routes.py ← __future__, fastapi, tests, pytest
 sena-ai\services\ocr\src\ocr\main.py ← fastapi
 sena-ai\services\onboarding\src\onboarding\api\deps.py ← __future__, redis, onboarding
+sena-ai\services\onboarding\src\onboarding\api\routes.py ← __future__, fastapi, pydantic, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\core\logging.py ← __future__, structlog
-sena-ai\services\onboarding\src\onboarding\core\settings.py ← __future__, pydantic_settings
 sena-ai\services\onboarding\src\onboarding\main.py ← __future__, fastapi, onboarding
 sena-ai\services\onboarding\src\onboarding\models\cross_screen_summary.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\models\form_state.py ← __future__, pydantic, onboarding
+sena-ai\services\onboarding\src\onboarding\models\schema_spec.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\models\session_bootstrap.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py ← __future__, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\repositories\user_context_repo.py ← __future__, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\services\coverage.py ← __future__, onboarding
 sena-ai\services\onboarding\src\onboarding\services\cross_screen_context.py ← __future__, onboarding
 sena-ai\services\onboarding\src\onboarding\services\field_apply.py ← __future__, onboarding, structlog
-sena-ai\services\onboarding\src\onboarding\services\gemini_live.py ← __future__, fastapi, google, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\services\grounding.py ← __future__, google
 sena-ai\services\onboarding\src\onboarding\services\resumption.py ← __future__, structlog
 sena-ai\services\onboarding\src\onboarding\services\screen_context.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\services\validators\base.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\services\webhook.py ← __future__, httpx, structlog
-sena-ai\services\onboarding\tests\conftest.py ← __future__, fakeredis, fastapi, httpx, onboarding
 sena-ai\services\onboarding\tests\test_cross_screen_context.py ← __future__, onboarding
-sena-ai\services\onboarding\tests\test_errors_endpoint.py ← __future__, pytest
-sena-ai\services\onboarding\tests\test_field_apply.py ← __future__, onboarding
 sena-ai\services\onboarding\tests\test_gemini_live.py ← __future__, unittest, onboarding, pytest, pytest_asyncio
 sena-ai\services\onboarding\tests\test_grounding.py ← __future__, google, onboarding
 sena-ai\services\onboarding\tests\test_resumption.py ← __future__, fakeredis, onboarding, pytest, pytest_asyncio
-sena-ai\services\onboarding\tests\test_routes.py ← __future__, unittest, pytest
-sena-ai\services\onboarding\tests\test_schema.py ← __future__, pydantic, onboarding, pytest
 sena-ai\services\onboarding\tests\test_screen_context.py ← __future__, pydantic, onboarding, pytest
-sena-ai\services\onboarding\tests\test_screen_state_skip.py ← __future__, onboarding, pytest
-sena-ai\services\onboarding\tests\test_sequencing.py ← __future__, onboarding, pytest
-sena-ai\services\onboarding\tests\test_state_repo.py ← __future__, onboarding, pytest
 sena-ai\services\onboarding\tests\test_webhook.py ← __future__, unittest, onboarding, pytest
 sena-ai\services\voice\src\voice\api\deps.py ← __future__, redis, sqlalchemy, voice
 sena-ai\services\voice\src\voice\api\routes.py ← __future__, fastapi, sqlalchemy, voice
@@ -438,6 +430,24 @@ h3 `error`
 h2 Close Codes
 ```
 
+### sena-ai\services\onboarding\FLUTTER_DEV_DELETE_REPEATABLE_ROW.md
+```
+h1 Flutter Dev Handoff — Repeatable-Row Deletion via Voice
+h2 1. Trigger flow (server-side, for context)
+h2 2. WebSocket event contracts
+h3 `row_deleted` (delta event — primary trigger)
+h3 `state` (full snapshot — reconciliation)
+h2 3. Required Flutter handler
+h2 4. Required UX behaviour
+h2 5. Sequence with `field_updated` / re-numbering
+h2 6. Manual test recipe
+h2 7. Open work (track on your side)
+h2 8. Server contract summary (one-line)
+code-fence plain
+code-fence jsonc
+code-fence dart
+```
+
 ### sena-ai\services\onboarding\pyproject.toml
 ```
 table [project]
@@ -463,14 +473,25 @@ key target-version
 def get_repo() → FormStateRepo
 ```
 
+### sena-ai\services\onboarding\src\onboarding\api\routes.py
+```
+class CreateSessionRequest(BaseModel) {participant_id*, step*, schema*}
+class CreateSessionResponse(BaseModel) {session_id*, ws_url*, expires_at*}
+class UpdateStateRequest(BaseModel) {values*}
+class ClientValidationErrorRequest(BaseModel) {input_method*, ts*}
+async def health_live() → dict
+POST /v1/onboarding/session  →  create_session()
+GET /v1/onboarding/session/{session_id}/state  →  get_state()
+PUT /v1/onboarding/session/{session_id}/state  →  update_state()
+POST /v1/onboarding/session/{session_id}/complete  →  complete_session()
+GET /v1/onboarding/_diag/bucket  →  diag_bucket()
+GET /health/live  →  health_live()
+GET /health/ready  →  health_ready()
+```
+
 ### sena-ai\services\onboarding\src\onboarding\core\logging.py
 ```
 def configure_logging(level: str) → None
-```
-
-### sena-ai\services\onboarding\src\onboarding\core\settings.py
-```
-class OnboardingSettings(BaseSettings) {model_config?, service_version?, environment?, debug?, host?, onboarding_port?}
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\main.py
@@ -490,11 +511,20 @@ class CrossScreenContext(BaseModel) {model_config?, summaries?, schema_version?}
 ### sena-ai\services\onboarding\src\onboarding\models\form_state.py
 ```
 class FieldSource(str, Enum)
-class FieldValue(BaseModel) {value*, source?, input_method?, confidence?, turn_id?, updated_at?}
-class EscalationRecord(BaseModel) {reason*, transcript_excerpt?, timestamp?}
+class FieldValue(BaseModel) {value*}
+class EscalationRecord(BaseModel) {reason*}
 class CompletionStats(BaseModel) {required_total*, required_filled*, optional_total*, optional_filled*}
-class TranscriptEntry(BaseModel) {speaker*, text*, turn_id*, timestamp?}
-class FormState(BaseModel) {session_id*, step_id*, participant_id*, tenant_id?, locale?, started_at?}
+class TranscriptEntry(BaseModel) {speaker*, text*, turn_id*}
+class FormState(BaseModel) {session_id*, step_id*, participant_id*, pending_validation_errors*}
+```
+
+### sena-ai\services\onboarding\src\onboarding\models\schema_spec.py
+```
+class FieldType(str, Enum)
+class FieldSpec(BaseModel) {id*, type*}
+class RepeatableConfig(BaseModel)
+class SectionSpec(BaseModel) {id*, label*}
+class StepSchema(BaseModel) {step_id*, step_label*, sections*}
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\models\session_bootstrap.py
@@ -539,12 +569,6 @@ def render_for_prompt(bucket: CrossScreenContext | list[StepSummary], *, now: da
 def build_envelope(section_id: str, field_id: str, value: object, *, row_index: int | None, confidence: float, schema: StepSchema, enforced: bool, input_method: Literal["typed", "voice"] | None) → dict | None  # Build a field_apply envelope for emission to the Flutter cli
 ```
 
-### sena-ai\services\onboarding\src\onboarding\services\gemini_live.py
-```
-class GeminiLiveSession
-  async def run() → None
-```
-
 ### sena-ai\services\onboarding\src\onboarding\services\grounding.py
 ```
 def build_live_tools(function_decls: list[dict[str, Any]], *, grounding_enabled: bool) → list[types.Tool]  # Returns the tools list to attach to LiveConnectConfig
@@ -578,15 +602,6 @@ class ValidationRejection(BaseModel) {code*, reason_human*, suggested_fix?, allo
 async def fire_webhook(url: str, event: str, payload: dict, secret: str, max_retries: int) → bool  # POST payload to url with retry
 ```
 
-### sena-ai\services\onboarding\tests\conftest.py
-```
-def personal_info_schema() → dict
-def medical_schema() → dict
-async def fake_redis()
-async def repo(fake_redis)
-async def async_client(fake_redis)
-```
-
 ### sena-ai\services\onboarding\tests\test_cross_screen_context.py
 ```
 class TestAllowlistContract
@@ -608,30 +623,6 @@ class TestTokenBudgetSmoke
   def test_full_6_step_render_well_under_threshold()
 class TestRenderCap
   def test_only_last_five_steps_rendered()
-```
-
-### sena-ai\services\onboarding\tests\test_errors_endpoint.py
-```
-class TestErrorsEndpoint
-  async def test_happy_path_returns_204(async_client, fake_redis)
-  async def test_ttl_is_about_seven_days(async_client, fake_redis)
-  async def test_missing_input_method_returns_422(async_client)
-  async def test_extra_field_rejected_with_422(async_client)
-  async def test_invalid_input_method_value_returns_422(async_client)
-  async def test_missing_session_returns_404(async_client)
-  async def test_wrong_tenant_returns_403(async_client)
-  async def test_voice_input_method_accepted(async_client, fake_redis)
-class TestErrorsRepoCompanion
-  async def test_read_empty_when_no_errors(repo)
-```
-
-### sena-ai\services\onboarding\tests\test_field_apply.py
-```
-def test_envelope_includes_input_method_when_voice()
-def test_envelope_includes_input_method_when_typed()
-def test_envelope_omits_input_method_when_none()
-def test_envelope_required_keys_present()
-def test_envelope_returns_none_when_blocked_by_coverage()
 ```
 
 ### sena-ai\services\onboarding\tests\test_gemini_live.py
@@ -667,42 +658,6 @@ def test_build_replay_format()
 def test_build_replay_skips_empty_text()
 ```
 
-### sena-ai\services\onboarding\tests\test_routes.py
-```
-class TestCreateSession
-  async def test_creates_session(async_client)
-  async def test_initial_state_accepted(async_client)
-class TestGetState
-  async def test_get_existing_state(async_client)
-  async def test_get_missing_returns_404(async_client)
-class TestUpdateState
-  async def test_update_succeeds_when_ws_unlocked(async_client)
-  async def test_update_returns_409_when_ws_locked(async_client, fake_redis)
-class TestCompleteSession
-  async def test_complete_fires_webhook(async_client)
-class TestHealth
-  async def test_live(async_client)
-  async def test_ready(async_client)
-def personal_schema_payload() → dict
-```
-
-### sena-ai\services\onboarding\tests\test_schema.py
-```
-class TestFieldSpec
-  def test_enum_requires_options()
-  def test_valid_enum()
-  def test_visible_if_stored()
-class TestSectionSpec
-  def test_repeatable_requires_item_fields()
-  def test_non_repeatable_requires_fields()
-  def test_is_repeatable()
-class TestFixtureSchemas
-  def test_fixture_valid(filename)
-  def test_personal_info_required_count()
-  def test_personal_info_step_progress()
-def load_fixture(name: str) → dict
-```
-
 ### sena-ai\services\onboarding\tests\test_screen_context.py
 ```
 def test_render_all_fields()
@@ -719,52 +674,6 @@ def test_app_context_too_long_raises()
 def test_payload_hash_same_input_same_hash()
 def test_payload_hash_different_input_different_hash()
 def test_payload_hash_key_order_independent()
-```
-
-### sena-ai\services\onboarding\tests\test_screen_state_skip.py
-```
-def test_seeded_state_skips_filled_required_fields(schema_file: Path) → None  # Pipeline #1 — bootstrap
-def test_screen_field_status_filled_overrides_empty_state(schema_file: Path) → None  # Pipeline #2 — when FormState is empty but `screen_field_stat
-def test_bootstrap_value_appears_in_rendered_system_prompt(schema_file: Path) → None  # Pipeline #3 — end-to-end smoke
-def test_screen_field_status_does_not_affect_unrelated_paths() → None  # Negative control — marking one path "filled" must NOT cause 
-```
-
-### sena-ai\services\onboarding\tests\test_sequencing.py
-```
-class _FakeRep
-  def __init__(min_val: int) → None
-class _FakeSection
-  def __init__(is_repeatable: bool, rep_min: int | None) → None
-def test_next_optional_field_returns_first_empty_optional_in_schema_order() → None  # With no values filled, next_optional_field points at the fir
-def test_next_optional_field_returns_none_when_all_optionals_filled() → None  # When every optional field has a value, returns None
-def test_section_min_unmet_non_repeatable() → None
-def test_section_min_unmet_min_zero() → None
-def test_section_min_unmet_min_one_no_rows() → None
-def test_section_min_unmet_min_one_one_row() → None
-def test_section_min_unmet_min_two_one_row() → None
-def test_section_min_unmet_none_values() → None
-def test_section_min_unmet_dict_values() → None
-```
-
-### sena-ai\services\onboarding\tests\test_state_repo.py
-```
-class TestCreateAndGet
-  async def test_roundtrip(repo)
-  async def test_missing_session_returns_none(repo)
-  async def test_schema_roundtrip(repo)
-class TestStateUpdate
-  async def test_set_field_and_save(repo)
-  async def test_repeatable_field(repo)
-class TestWsLock
-  async def test_acquire_and_release(repo)
-  async def test_second_acquire_fails(repo)
-class TestTranscript
-  async def test_append_and_get(repo)
-class TestResumption
-  async def test_save_and_retrieve(repo)
-  async def test_missing_handle_returns_none(repo)
-def personal_schema() → StepSchema
-def make_state(session_id: str) → FormState
 ```
 
 ### sena-ai\services\onboarding\tests\test_webhook.py

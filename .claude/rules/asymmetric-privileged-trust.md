@@ -46,6 +46,12 @@ Self-check (asymmetric gate):
 | `sena-doc-writer` | Grounded file:line that exists | Cannot claim symbol exists without grep verification |
 | `sena-code-reviewer` | Auto-block signature match | Gut-feel block — must escalate, not auto-reject |
 | `sena-engineering-collaborator` | Past failure citation (issues-solved / lessons / archived plan) | Cannot add phases without explicit risk citation |
+| `sena-brainstorm` | `file:line` for "existing surface to extend" on every proposed path | Cannot reject a path without naming the conflict (rule / past failure / lesson) — "feels wrong" doesn't qualify |
+| `sena-tradeoffs` | Benchmark URL / repo grep / installed-dep evidence for each table cell | Cannot recommend Option B over installed Option A without a specific measured reason (Rule 1) |
+| `sena-debug` | `issues-solved/INDEX.md` signature match OR Five-Whys chain anchored in user-reported facts | Cannot dismiss user's hypothesis without a diagnostic command they can run |
+| `sena-postmortem` | Timeline entry / log line / deploy-in-window for every Five-Why step | Cannot name an individual; "human error" is never an acceptable root cause |
+| `sena-approve` | Specific `sena-lints.md` row + `file:line` for every finding | Cannot APPROVE with 🔴/🟠 findings; cannot DENY with vague "feels off" — must cite a lint |
+| `sena-explain` | Context7 doc URL / `file:line` / arxiv section anchor for every claim | Cannot fall back to training memory when verification fails — must mark `Unverified:` |
 
 ### 2. Feature implementation (all current + future AI features)
 

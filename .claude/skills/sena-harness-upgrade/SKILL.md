@@ -51,7 +51,8 @@ Then run the phases below in order. Use plan mode for any phase that touches >3 
 - [ ] Historical log entries in `memory/sena-memory.md` and `memory/decisions.md` are LEFT untouched (they accurately describe past state).
 
 ### Phase 3 — Agent namespace audit
-- [ ] List `.claude/agents/*.md`. Every filename MUST start with `sena-` prefix.
+- [ ] List `.claude/agents/*.md`. **Expect 20 agents** as of 2026-05-26 (14 pipeline + 6 reality-check: `sena-brainstorm`, `sena-tradeoffs`, `sena-debug`, `sena-postmortem`, `sena-approve`, `sena-explain`).
+- [ ] Every filename MUST start with `sena-` prefix.
 - [ ] For each agent file, verify `name:` frontmatter matches the filename's stem (e.g. file `sena-implementer.md` → `name: sena-implementer`).
 - [ ] If any agent lacks the prefix or has mismatch, run the rename sub-routine in `REFERENCE.md` §3.
 
@@ -104,11 +105,12 @@ Then run the phases below in order. Use plan mode for any phase that touches >3 
 - [ ] If new agents were added since the last cycle, add new rows. Template in `REFERENCE.md` §5.
 
 ### Phase 5.5 — Slash commands inventory
-- [ ] List `.claude/commands/*.md`. Two required sets:
-  - **Workflow commands (6):** `sena-harness-upgrade.md`, `sena-plan.md`, `sena-feature-ship.md`, `sena-audit.md`, `sena-status.md`, `sena-learn.md` (session reflection — captures Claude's mistakes to lessons.md).
+- [ ] List `.claude/commands/*.md`. Three required sets:
+  - **Core workflow commands (6):** `sena-harness-upgrade.md`, `sena-plan.md`, `sena-feature-ship.md`, `sena-audit.md`, `sena-status.md`, `sena-learn.md`.
+  - **Reality-Check workflow (6, adopted from Reality-Check Senior pack 2026-05-26):** `sena-brainstorm.md` (sounding board — ask 3 questions, propose 2-3 paths, never write code), `sena-tradeoffs.md` (steelman + table + recommendation), `sena-debug.md` (Socratic root-cause walk; complements `sena-log-analyzer`), `sena-postmortem.md` (blameless 5-Whys with three-tier action items, writes to `issues-solved/`), `sena-approve.md` (sign-off gate — DENIED/CONDITIONAL/APPROVED defaulting to DENY; walks `sena-lints.md` silently), `sena-explain.md` (verified deep teaching via Context7, 7-section structure).
   - **Direct-agent shortcuts (14, one per agent):** `sena-planner.md`, `sena-task-breaker.md`, `sena-implementer.md`, `sena-business-reviewer.md`, `sena-security-reviewer.md`, `sena-bug-fixer.md`, `sena-optimization-reviewer.md`, `sena-cleaner.md`, `sena-git-committer.md`, `sena-log-analyzer.md`, `sena-researcher.md`, `sena-doc-writer.md`, `sena-code-reviewer.md`, `sena-engineering-collaborator.md`.
   - **Pre-existing (preserve, do not auto-recreate):** `solve.md`.
-- [ ] Total expected: 21 files (6 workflow + 14 direct-agent + 1 generic `solve`). Missing any → recreate from `REFERENCE.md` §16.
+- [ ] Total expected: 27 files (6 core + 6 reality-check + 14 direct-agent + 1 generic `solve`). Missing any → recreate from `REFERENCE.md` §16.
 - [ ] For each command file, verify frontmatter has `description:` field. Verify `allowed-tools:` is scoped (`Agent` for direct shortcuts; `Skill, Read, Edit, Write, ...` for workflow commands).
 - [ ] Verify each direct-agent shortcut routes to its matching `subagent_type: sena-<agent>` via the Agent tool.
 - [ ] Verify each command references current agent names (`@agent-sena-*`, NOT pre-prefix names).

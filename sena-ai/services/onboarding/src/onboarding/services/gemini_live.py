@@ -44,6 +44,28 @@ from onboarding.services.screen_context import (
 )
 from onboarding.services.tools import FUNCTION_DECLS
 
+# Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
+# path (e.g. shared/ hasn't been pip-installed editable into the venv), fall
+# back to a no-op stub. AI critical path NEVER fails due to telemetry.
+# To enable real logging: `pip install -e sena-ai/shared/` from repo root.
+try:
+    from sena_common.usage_logger import UsageFeature, emit_usage
+except ImportError:
+    import enum
+
+    class UsageFeature(str, enum.Enum):
+        VOICE_ONBOARDING = "voice_onboarding"
+        CASE_NOTE_DRAFTING = "case_note_drafting"
+        CASE_NOTE_SUMMARY = "case_note_summary"
+        INCIDENT_REPORT_ANALYSIS = "incident_report_analysis"
+        AI_CHAT = "ai_chat"
+        PSR_SUMMARY = "psr_summary"
+        MONTHLY_REPORT = "monthly_report"
+        STAFF_DOC_EXTRACTION = "staff_doc_extraction"
+
+    def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
+        return None
+
 if TYPE_CHECKING:
     from onboarding.models.turn_payload import TurnPayload
     from onboarding.repositories.state_repo import FormStateRepo
@@ -103,6 +125,19 @@ class GeminiLiveSession:
         # Set True after the summary step fires; no further watchdog cues until
         # a real user utterance arrives. Prevents the "keeps speaking" loop.
         self._silence_exhausted: bool = False
+        # Phase 1 usage logging — Gemini Live emits cumulative usage_metadata
+        # on receive events. Track last-emitted-cumulative so each turn_complete
+        # logs only its DELTA (the per-turn token cost). Cumulative-to-delta
+        # math is correct even if some events arrive without metadata.
+        self._usage_emitted_prompt: int = 0
+        self._usage_emitted_response: int = 0
+        self._usage_emitted_cached: int = 0
+        # Latest cumulative read from msg.usage_metadata — updated on EVERY
+        # receive event that carries one. Read at turn_complete time.
+        self._usage_cum_prompt: int = 0
+        self._usage_cum_response: int = 0
+        self._usage_cum_cached: int = 0
+        self._tool_calls_in_turn: int = 0
         # Diagnostic — proves the system_instruction is unique per session.
         # If two consecutive sessions log the same sha8, the prompt builder
         # is leaking state across requests; that would be the cross-screen
@@ -582,8 +617,29 @@ class GeminiLiveSession:
             while True:
                 loop_iter += 1
                 async for msg in session.receive():
+                    # ── Usage telemetry (Phase 1) — cumulative per session ──
+                    # `msg.usage_metadata` may arrive on any event; we keep the
+                    # latest cumulative read and emit the delta at turn_complete.
+                    _um = getattr(msg, "usage_metadata", None)
+                    if _um is not None:
+                        self._usage_cum_prompt = int(
+                            getattr(_um, "prompt_token_count", 0) or 0
+                        )
+                        self._usage_cum_response = int(
+                            getattr(_um, "response_token_count", 0)
+                            or getattr(_um, "candidates_token_count", 0)
+                            or 0
+                        )
+                        self._usage_cum_cached = int(
+                            getattr(_um, "cached_content_token_count", 0) or 0
+                        )
+
                     # ── Tool calls (Phase C) — handled before server_content ──
                     if self._tools and getattr(msg, "tool_call", None):
+                        # Count the number of function calls in this batch — used in
+                        # the per-turn usage emit at turn_complete.
+                        _calls = getattr(msg.tool_call, "function_calls", None) or []
+                        self._tool_calls_in_turn += len(_calls)
                         await self._handle_tool_call(session, msg.tool_call)
                         if self._tools.step_completed:
                             # Let queued agent audio flush, then end loop
@@ -730,10 +786,38 @@ class GeminiLiveSession:
                                 self._turn_id,
                                 self._session_id,
                             )
+
+                            # ── Phase 1 usage emit — per turn delta ──────────
+                            # Cumulative-to-delta math. If any event in this
+                            # turn carried usage_metadata, the cumulative
+                            # totals advanced; the delta is this turn's cost.
+                            d_prompt = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
+                            d_response = max(0, self._usage_cum_response - self._usage_emitted_response)
+                            d_cached = max(0, self._usage_cum_cached - self._usage_emitted_cached)
+                            if d_prompt or d_response or d_cached or chunk_count or self._tool_calls_in_turn:
+                                emit_usage(
+                                    tenant_id="phase1_tbd",  # TODO Phase 1.5: thread from assert_session_owner
+                                    user_id=None,
+                                    feature=UsageFeature.VOICE_ONBOARDING,
+                                    model=settings.gemini_live_model_id,
+                                    session_id=self._session_id,
+                                    prompt_tokens=d_prompt,
+                                    response_tokens=d_response,
+                                    cached_tokens=d_cached,
+                                    tool_call_count=self._tool_calls_in_turn,
+                                    success=True,
+                                    turn_id=self._turn_id,
+                                    audio_chunks_out=chunk_count,
+                                )
+                                self._usage_emitted_prompt = self._usage_cum_prompt
+                                self._usage_emitted_response = self._usage_cum_response
+                                self._usage_emitted_cached = self._usage_cum_cached
+
                             self._turn_id += 1
                             chunk_count = 0
                             turn_started = False
                             self._gemini_is_speaking = False
+                            self._tool_calls_in_turn = 0
                             # Reset silence timer — user gets a fresh window after each agent turn
                             self._last_audio_at = time.monotonic()
                             if self._tools:

@@ -1,6 +1,6 @@
 ---
 title: Persistent Task List
-updated: 2026-05-25
+updated: 2026-05-26
 ---
 
 > **Clean slate — 2026-05-14.** Voice assistance (feature A) shipped to EC2; Case Review
@@ -19,6 +19,18 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 ---
 
 ## Active
+
+### #3 — Centralised AI usage logging for client credit model (2026-05-26)
+- **Status:** plan-drafted-awaiting-task-breaker
+- **Priority:** P1 (client billing dependency; immediate estimates already delivered)
+- **Plan:** `.claude/plans/usage-logging/PLAN.md` (12 subtasks, full STRIDE threat model, NDIS check, rollback flag)
+- **Client-facing estimates (shippable now):** `.claude/plans/usage-logging/TOKEN_ESTIMATES_FOR_CLIENT.md` — back-of-envelope tier sizing for 4 tiers × 8 features × 30/60-min durations. Marked ENGINEERING ESTIMATE. To be replaced with measured per-org data once logger ships + collects 4 weeks.
+- **Locked design decisions:** track-only / invoice-in-arrears (no real-time enforcement, zero AI critical-path latency) · two pipelines (per-session in Postgres ai-db `usage_events` for billing-hot, per-turn in CloudWatch Logs for forensic-cold) · new shared `sena_common.usage_logger` module reused by all 3 services · onboarding gains a Postgres dependency (new env var + AsyncSession factory).
+- **Scope:** `migrations/` (new Alembic up/down for `usage_events` table + `usage_feature` enum + RLS on `app.current_tenant`) · `shared/sena_common/` (logger + ORM model) · `services/voice/services/bedrock_service.py` (wrap `invoke_model`) · `services/onboarding/services/gemini_live.py` (capture `usage_metadata` per turn) · `services/case_review/services/llm/{classifier,summarizer}.py` (wrap `generate_content`) · `services/case_review/api/routes.py` (new `/v1/usage/by-org` + `/v1/usage/by-feature` endpoints) · sweeper job for abandoned sessions
+- **Features instrumented:** voice_onboarding · case_note_drafting · case_note_summary · incident_report_analysis · psr_summary · monthly_report (6 of 8). Reserves enum slots for ai_chat (#5) + staff_doc_extraction (#8) which aren't built yet.
+- **Open questions before task-breaker:** AI Chat model choice (#5) · staff-doc multimodal token billing (#8) · per-turn delta on WS disconnect (S11 sweeper covers it but billing-accuracy sign-off needed) · CloudWatch→S3 export pipeline ownership (likely ops not eng) · /v1/usage/* endpoint auth model · stale rule fix in `.claude/rules/database.md` (RLS var is `app.current_tenant` not `app.current_tenant_id`)
+- **Followup (P2):** ~2 days work to derive historical estimates from AWS Cost Explorer + GCP billing API for an early client-facing data point before the logger collects 4 weeks.
+- **Next step:** route to `@agent-sena-task-breaker` to convert S1–S12 into atomic JSON tasks for `@agent-sena-implementer`.
 
 ### #2 — Option D state-channel fix for Gemini hallucination (2026-05-25)
 - **Status:** server-side-shipped-pending-flutter-commit

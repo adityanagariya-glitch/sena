@@ -72,12 +72,13 @@ A task is only complete when:
 
 | Area | Count | Path |
 |------|-------|------|
-| Agents | 14 (all `sena-*` prefixed) | `.claude/agents/` |
+| Agents | **20** (all `sena-*` prefixed) — 14 pipeline agents + 6 reality-check agents (`sena-brainstorm`, `sena-tradeoffs`, `sena-debug`, `sena-postmortem`, `sena-approve`, `sena-explain` — promoted from slash commands to agents 2026-05-26 for context isolation) | `.claude/agents/` |
 | Skills (project-local) | 1 — `sena-harness-upgrade` | `.claude/skills/sena-harness-upgrade/` |
-| Slash commands (project-local) | 21 — 6 workflow (`sena-harness-upgrade`, `sena-plan`, `sena-feature-ship`, `sena-audit`, `sena-status`, `sena-learn` — session reflection / mistake capture) + 14 direct-agent shortcuts (one per agent: `sena-planner`, `sena-task-breaker`, `sena-implementer`, `sena-business-reviewer`, `sena-security-reviewer`, `sena-bug-fixer`, `sena-optimization-reviewer`, `sena-cleaner`, `sena-git-committer`, `sena-log-analyzer`, `sena-researcher`, `sena-doc-writer`, `sena-code-reviewer`, `sena-engineering-collaborator`) + 1 generic (`solve`) | `.claude/commands/` |
+| Slash commands (project-local) | 27 — 6 workflow (`sena-harness-upgrade`, `sena-plan`, `sena-feature-ship`, `sena-audit`, `sena-status`, `sena-learn`) + 6 reality-check shims (`sena-brainstorm`, `sena-tradeoffs`, `sena-debug`, `sena-postmortem`, `sena-approve`, `sena-explain` — thin Agent-tool routers to the matching agents) + 14 direct-agent shortcuts + 1 generic (`solve`) | `.claude/commands/` |
 | Rules — path-scoped autoload | 9 — `api.md` (FastAPI routes), `database.md` (Postgres/Redis), `service-onboarding.md`, `service-voice.md`, `service-case-review.md`, `gemini.md` (hook-gated), `build-and-run.md`, `deployment.md`, `demo-stack.md` | `.claude/rules/` |
 | Rules — trigger-phrase autoload | 2 — `add-component.md` ("I am adding X"), `external-tools.md` (gstack / browser / specify / hivemind) | `.claude/rules/` |
-| Rules — canonical always-referenced | 3 — `principal-engineer.md` (5 non-negotiables + 10 orchestration sections + asymmetric trust pointer), `sena-rules.md` (this file), `asymmetric-privileged-trust.md` (SDAR-inspired gating for all agents + future features) | `.claude/rules/` |
+| Rules — canonical always-referenced | 4 — `principal-engineer.md` (5 non-negotiables + 10 orchestration sections + asymmetric trust pointer), `sena-rules.md` (this file), `asymmetric-privileged-trust.md` (SDAR-inspired gating), `sena-lints.md` (severity-labeled checklist consumed by `/sena-approve`, reviewers, harness Phase 4) | `.claude/rules/` |
+| Output styles | 2 — `terse.md` (code-only shorthand) + `reality-check.md` (Reality-Check Senior — three-block verdict/findings/follow-ups, terse staff-engineer voice). Toggle via `/output-style <name>`. | `.claude/output-styles/` |
 | Memory — append-only logs | 3 — `sena-memory.md` (activity), `decisions.md` (rationale), `lessons.md` (user-correction patterns) | `.claude/memory/` |
 | Tasks files | 3 — `TASKS.md` (active queue), `ARCHIVE.md` (closed features), `followups.md` (out-of-scope observations) | `.claude/tasks/` |
 | Plans | empty by design between features — see `.claude/plans/README.md` | `.claude/plans/` |

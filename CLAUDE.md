@@ -256,6 +256,12 @@ This rule fires when the request matches ANY of the rows below. The full pipelin
 | Current third-party docs / library API / framework upgrade research | `@agent-sena-researcher` |
 | Writing/updating CLAUDE.md / TASKS.md / SESSION_START.md / FLUTTER docs / README / handoff docs | `@agent-sena-doc-writer` |
 | Ad-hoc external diff or non-SENA-path PR review (SHIP/FIX/BLOCK) | `@agent-sena-code-reviewer` |
+| Stuck / exploring options / starting a new feature — needs 3 clarifying questions + 2-3 paths (NO code) | `@agent-sena-brainstorm` |
+| Comparing 2-3 options (libraries / patterns / models) — steelman + table + recommendation | `@agent-sena-tradeoffs` |
+| Bug / error / mysterious behaviour BEFORE you have a stack trace — Socratic root-cause walk | `@agent-sena-debug` (use `@agent-sena-log-analyzer` FIRST if you have a trace) |
+| Incident retrospective — blameless 5-Whys + three-tier prevent/detect/recover with owners and ETAs | `@agent-sena-postmortem` |
+| Sign-off gate before commit / `/sena-feature-ship` / staging — DENIED/CONDITIONAL/APPROVED verdict from `sena-lints.md` | `@agent-sena-approve` |
+| Deep verified explanation of a concept / library / pattern (Context7-verified, 7-section structure) | `@agent-sena-explain` |
 
 **Exception:** trivial single-line edits, status questions, follow-ups on already-routed work, or direct-conversation requests may stay in the main thread.
 

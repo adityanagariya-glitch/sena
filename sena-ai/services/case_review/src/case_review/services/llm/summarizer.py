@@ -10,6 +10,7 @@ Uses response_schema for reliable JSON extraction — no manual parsing.
 Model: SENA_AI_GEMINI_MODEL_ID (default: gemini-3-flash-preview, standard generate_content — NOT Live API)
 """
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,25 @@ import structlog
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
+
+# Phase 1 telemetry — opt-in by install. Stub if sena_common not on path.
+try:
+    from sena_common.usage_logger import UsageFeature, emit_usage
+except ImportError:
+    import enum
+
+    class UsageFeature(str, enum.Enum):
+        VOICE_ONBOARDING = "voice_onboarding"
+        CASE_NOTE_DRAFTING = "case_note_drafting"
+        CASE_NOTE_SUMMARY = "case_note_summary"
+        INCIDENT_REPORT_ANALYSIS = "incident_report_analysis"
+        AI_CHAT = "ai_chat"
+        PSR_SUMMARY = "psr_summary"
+        MONTHLY_REPORT = "monthly_report"
+        STAFF_DOC_EXTRACTION = "staff_doc_extraction"
+
+    def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
+        return None
 
 from case_review.models.schemas import CaseNoteDTO
 
@@ -72,10 +92,18 @@ async def summarise(
     *,
     api_key: str,
     model_id: str,
+    tenant_id: str = "phase1_tbd",
+    user_id: str | None = None,
+    session_id: str | None = None,
+    feature: UsageFeature = UsageFeature.CASE_NOTE_SUMMARY,
 ) -> SummaryResult:
     """
     Compress past_summary + new_notes into an updated rolling summary.
     Returns SummaryResult with summary_text and metadata dict.
+
+    `feature` defaults to CASE_NOTE_SUMMARY but accepts PSR_SUMMARY or
+    MONTHLY_REPORT so the same summariser feeds three of the client's billable
+    features without duplication. Pass the right value from the route handler.
     """
     prompt = (
         _load_prompt()
@@ -87,14 +115,44 @@ async def summarise(
 
     log.info("summariser.call", model=model_id, new_note_count=len(new_notes))
 
-    response = client.models.generate_content(
+    start = time.perf_counter()
+    try:
+        response = client.models.generate_content(
+            model=model_id,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=_GeminiSummaryOutput,
+                temperature=0.2,
+            ),
+        )
+    except Exception as exc:
+        emit_usage(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            feature=feature,
+            model=model_id,
+            session_id=session_id,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            success=False,
+            failure_reason=type(exc).__name__,
+        )
+        raise
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    um = getattr(response, "usage_metadata", None)
+    emit_usage(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        feature=feature,
         model=model_id,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_GeminiSummaryOutput,
-            temperature=0.2,
-        ),
+        session_id=session_id,
+        prompt_tokens=int(getattr(um, "prompt_token_count", 0) or 0),
+        response_tokens=int(getattr(um, "candidates_token_count", 0) or 0),
+        cached_tokens=int(getattr(um, "cached_content_token_count", 0) or 0),
+        latency_ms=latency_ms,
+        success=True,
+        new_note_count=len(new_notes),
     )
 
     raw = response.text
