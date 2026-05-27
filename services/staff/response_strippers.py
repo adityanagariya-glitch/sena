@@ -148,6 +148,62 @@ def strip_client_list(raw):
     }
 
 
+def _first_present(d, keys):
+    """Return the first non-empty value among keys, else None."""
+    for k in keys:
+        v = d.get(k)
+        if v:
+            return v
+    return None
+
+
+def strip_client_search(raw):
+    """Strip /organization/client/search — client-list shape plus the clinical
+    dimensions a search typically filters on (diagnosis, mobility, medication),
+    so the LLM can explain WHY each client matched without a follow-up fetch."""
+    clients = _find_records_list(raw)
+    total = _find_total(raw) or len(clients)
+    page = 1
+    total_pages = None
+    if isinstance(raw, dict):
+        for k in ("page", "currentPage", "pageNumber"):
+            if isinstance(raw.get(k), (int, float)):
+                page = int(raw[k])
+                break
+        for k in ("totalPages", "pages", "lastPage"):
+            if isinstance(raw.get(k), (int, float)):
+                total_pages = int(raw[k])
+                break
+
+    def _strip(c):
+        med = c.get("medicalProfile") or c.get("medical_profile") or {}
+        if not isinstance(med, dict):
+            med = {}
+        return {
+            "id": c.get("id") or c.get("_id") or c.get("clientId"),
+            "name": _full_name(c),
+            "ndis": c.get("ndisNumber") or c.get("ndis_number"),
+            "status": c.get("status") or c.get("onboardingStatus") or c.get("clientStatus"),
+            "gender": c.get("gender"),
+            "suburb": _addr_short(c.get("address") or c.get("primaryAddress") or {}),
+            "diagnosis": _first_present(c, ["primaryDiagnosis", "diagnosis"])
+            or _first_present(med, ["primaryDiagnosis", "diagnosis"]),
+            "mobility": _first_present(c, ["mobility", "mobilityType", "mobilityStatus"])
+            or _first_present(med, ["mobilityStatus", "mobility"]),
+            "medications": _first_present(c, ["medications", "medication", "currentMedications"])
+            or _first_present(med, ["medications", "medication"]),
+        }
+
+    return {
+        "total": total,
+        "showing": len(clients),
+        "page": page,
+        "total_pages": total_pages,
+        "clients": [_strip(c) for c in clients if isinstance(c, dict)],
+        "status_breakdown": _count_by(clients, ["status", "onboardingStatus", "clientStatus"]),
+    }
+
+
 def strip_staff_list(raw):
     """Strip staff list endpoints — keep id, name, role, member_type, status."""
     staff = _find_records_list(raw)
@@ -332,6 +388,7 @@ STRIPPERS = [
     (re.compile(r"/organization/client/my-clients$"), strip_client_list),
     (re.compile(r"/organization/client/list$"), strip_client_list),
     (re.compile(r"/organization/client/board-view$"), strip_client_list),
+    (re.compile(r"/organization/client/search$"), strip_client_search),
     # Staff lists
     (re.compile(r"/organization/staff/get-all-staff-members$"), strip_staff_list),
     (re.compile(r"/organization-member/team/get-all-staff-members$"), strip_staff_list),

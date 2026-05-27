@@ -26,6 +26,7 @@ from tools.clients.get_client_details import TOOL as _T_GET_CLIENT_DETAILS
 from tools.clients.get_client_support_workers import TOOL as _T_GET_CLIENT_SW
 from tools.clients.get_client_guardians import TOOL as _T_GET_CLIENT_GUARDIANS
 from tools.clients.filter_clients_by_criteria import TOOL as _T_FILTER_CLIENTS
+from tools.clients.search_clients import TOOL as _T_SEARCH_CLIENTS
 
 # ---- Cross-section / shared ----
 from tools.shared.find_person import TOOL as _T_FIND_PERSON
@@ -53,6 +54,7 @@ ALL_TOOLS: list[ToolSpec] = [
     _T_GET_CLIENT_SW,
     _T_GET_CLIENT_GUARDIANS,
     _T_FILTER_CLIENTS,
+    _T_SEARCH_CLIENTS,
     _T_FIND_PERSON,
     _T_LIST_MY_ORGS,
     _T_GET_POLICY,

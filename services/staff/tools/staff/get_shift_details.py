@@ -70,9 +70,13 @@ def _run(inputs):
 TOOL = ToolSpec(
     name="get_shift_details",
     description=(
-        "Get full details for ONE specific shift by ID. Use when the user has "
-        "already seen a shift listing and asks for more info on a specific one "
-        "('show me that shift', 'details on shift X')."
+        "Retrieve COMPLETE shift details: title, participants (clients), support workers, "
+        "health professionals, location, agenda, notes, and all assignment information. "
+        "Use when:\n"
+        "- User asks about a specific shift by ID\n"
+        "- User asks 'who am I working with?' / 'with whom?' / 'who's assigned?' — "
+        "detail endpoint has complete assignment data\n"
+        "- You need to verify or clarify shift assignments/participants"
     ),
     input_schema={
         "type": "object",

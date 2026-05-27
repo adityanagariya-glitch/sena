@@ -16,7 +16,6 @@ fixed schema is worth defining (cohort filter is the hot path for analytics
 queries).
 """
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from typing import Any, Optional
 
@@ -26,6 +25,7 @@ from config import VERBOSE
 from state import user_context
 from api_router import call_target_api, construct_api_url
 from tools.base import ToolSpec, ToolResult
+from tools._common import parallel_map
 
 
 # ---- Typed client schema (only the fields we filter on) ----
@@ -367,15 +367,6 @@ def _run(inputs):
             error="Missing required input: criteria (a dict of filter conditions).",
         )
 
-    user_type = (user_context.get("user_type") or "").lower()
-    if user_type not in ("admin", "staff"):
-        return ToolResult(
-            error=(
-                "This cohort filter is only available to admins and in-office "
-                "staff. As a client/support worker, you don't have a list-of-others view."
-            )
-        )
-
     if VERBOSE:
         print(f"[filter_clients] criteria={criteria}", file=sys.stderr)
 
@@ -390,13 +381,8 @@ def _run(inputs):
     if VERBOSE:
         print(f"[filter_clients] fetching {len(ids)} client details in parallel", file=sys.stderr)
 
-    # 2. Parallel detail fetch (network is the bottleneck — concurrency wins)
-    records = []
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        for fut in as_completed([ex.submit(_fetch_one, cid) for cid in ids]):
-            item = fut.result()
-            if item is not None:
-                records.append(item)
+    # 2. Parallel detail fetch using shared utility
+    records = parallel_map(ids, _fetch_one, tool_name="filter_clients", item_label="client_ids")
 
     # 3. Filter
     matches = []
@@ -465,8 +451,8 @@ TOOL = ToolSpec(
         "Use for NDIS cohort analysis like: 'female clients under 21', 'Aboriginal "
         "clients with autism in Sydney', 'wheelchair users aged 8-12', 'clients "
         "with diabetes', 'clients with peanut allergies', 'clients in Frankston', "
-        "'clients with seizure history'. Admin / in-office staff only. Slower than "
-        "other queries (fetches each client's full profile), but caches for 10 minutes."
+        "'clients with seizure history'. The backend API will enforce access control. "
+        "Slower than other queries (fetches each client's full profile), but caches for 10 minutes."
     ),
     input_schema={
         "type": "object",

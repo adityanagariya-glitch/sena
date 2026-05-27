@@ -72,6 +72,18 @@ def _timeframe_to_range(timeframe, from_date=None, to_date=None):
             next_month_first = first_of_month.replace(month=first_of_month.month + 1)
         last_of_month = next_month_first - timedelta(days=1)
         return _aus_to_utc_iso(first_of_month), _aus_to_utc_iso(_end_of_day(last_of_month))
+    if timeframe == "next_month":
+        first_of_this_month = today.replace(day=1)
+        if first_of_this_month.month == 12:
+            first_of_next = first_of_this_month.replace(year=first_of_this_month.year + 1, month=1)
+        else:
+            first_of_next = first_of_this_month.replace(month=first_of_this_month.month + 1)
+        if first_of_next.month == 12:
+            first_of_after = first_of_next.replace(year=first_of_next.year + 1, month=1)
+        else:
+            first_of_after = first_of_next.replace(month=first_of_next.month + 1)
+        last_of_next = first_of_after - timedelta(days=1)
+        return _aus_to_utc_iso(first_of_next), _aus_to_utc_iso(_end_of_day(last_of_next))
     if timeframe == "date_range":
         if not from_date or not to_date:
             return None, None
@@ -159,9 +171,64 @@ def _run(inputs):
         )
 
     stripped = strip_api_response(path, raw, verbose=VERBOSE)
+
+    # ---- AUTO-ENRICH: Fetch full details for sparse shifts ----
+    # If shifts have empty staff/client arrays and there are few (<= 5),
+    # fetch get_shift_details for each to give the LLM complete data upfront.
+    # This way, when user asks "with whom", we already have the answer.
+    enriched_data = stripped
+    try:
+        shifts_list = stripped.get("data", []) if isinstance(stripped, dict) else []
+
+        # Only auto-enrich if we have a reasonable number of shifts to enrich
+        if isinstance(shifts_list, list) and 1 <= len(shifts_list) <= 5:
+            # Check if shifts look sparse (empty staff/client/title)
+            has_sparse = any(
+                not s.get("title") or not s.get("staff") or not s.get("client")
+                for s in shifts_list
+                if isinstance(s, dict)
+            )
+
+            if has_sparse and VERBOSE:
+                print(f"[list_org_shifts] Auto-enriching {len(shifts_list)} sparse shifts with details...", file=sys.stderr)
+
+            if has_sparse:
+                # Enrich each sparse shift with full details
+                enriched_shifts = []
+                for shift in shifts_list:
+                    if isinstance(shift, dict) and shift.get("id"):
+                        shift_id = shift["id"]
+                        # Fetch full details
+                        detail_path = "/organization/shift/details/{id}"
+                        detail_url = construct_api_url(detail_path, {"id": shift_id})
+                        detail_response = call_target_api(method="GET", url=detail_url)
+
+                        # Merge detail data into shift (detail takes precedence)
+                        if isinstance(detail_response, dict) and not detail_response.get("error"):
+                            detail_data = detail_response.get("data", detail_response)
+                            merged = {**shift, **detail_data}
+                            enriched_shifts.append(merged)
+                        else:
+                            enriched_shifts.append(shift)  # Keep original if detail fetch fails
+                    else:
+                        enriched_shifts.append(shift)
+
+                # Replace data with enriched version
+                if isinstance(enriched_data, dict) and "data" in enriched_data:
+                    enriched_data["data"] = enriched_shifts
+    except Exception as e:
+        if VERBOSE:
+            print(f"[list_org_shifts] Auto-enrich failed (non-fatal): {e}", file=sys.stderr)
+        # Silently fall back to original data
+
     return ToolResult(
-        data=stripped,
-        meta={"path": path, "query_params": query_params, "timeframe": timeframe},
+        data=enriched_data,
+        meta={
+            "path": path,
+            "query_params": query_params,
+            "timeframe": timeframe,
+            "auto_enriched": True if enriched_data != stripped else False,
+        },
     )
 
 
@@ -189,12 +256,13 @@ TOOL = ToolSpec(
                     "next_week",
                     "last_week",
                     "this_month",
+                    "next_month",
                     "date_range",
                 ],
                 "description": (
                     "Aussie-friendly timeframe. 'arvo' = this afternoon, "
-                    "'sarvo' = same as arvo, 'date_range' requires from_date "
-                    "and to_date."
+                    "'sarvo' = same as arvo, 'next_month' = next calendar month, "
+                    "'date_range' requires from_date and to_date."
                 ),
             },
             "from_date": {

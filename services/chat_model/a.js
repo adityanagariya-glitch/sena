@@ -2,8 +2,7 @@
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 const targetPaths = [
   // ─── Authentication & Roles ───
-  '/organization/support-coordinator/clients',
-  '/organization/support-worker/by-client/{clientId}',
+  '/organization/shift/calendar',
 ];
     
     const results = [];

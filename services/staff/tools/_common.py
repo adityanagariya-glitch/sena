@@ -138,3 +138,55 @@ def flat_list(d: Dict[str, Any], keys: tuple = ("data", "items", "records", "res
             return val
 
     return []
+
+
+def parallel_map(
+    items: List[Any],
+    func: Callable[[Any], Any],
+    max_workers: Optional[int] = None,
+    tool_name: str = "tool",
+    item_label: str = "item",
+) -> List[Any]:
+    """Apply a function to items in parallel (e.g., fetch each ID from a list).
+
+    Args:
+        items: List of items to process
+        func: Callable that takes one item and returns a result (or None on error)
+        max_workers: Max concurrent threads (default: min(len(items), 20))
+        tool_name: Tool name for logging (e.g., "filter_clients")
+        item_label: Label for logging (e.g., "client_ids")
+
+    Returns:
+        List of non-None results (filtered)
+    """
+    if not items:
+        return []
+
+    max_workers = max_workers or min(len(items), 20)
+    t0 = time.time()
+
+    print(
+        f"[{tool_name}] ▶ parallel map  {item_label}={len(items)}",
+        file=_TERMINAL,
+        flush=True,
+    )
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(func, item) for item in items]
+
+        success_count = 0
+        for fut in as_completed(futures):
+            result = fut.result()
+            if result is not None:
+                results.append(result)
+                success_count += 1
+
+    elapsed_ms = int((time.time() - t0) * 1000)
+    print(
+        f"[{tool_name}] ✓ parallel map done  ({elapsed_ms}ms)  collected={success_count}/{len(items)}",
+        file=_TERMINAL,
+        flush=True,
+    )
+
+    return results
