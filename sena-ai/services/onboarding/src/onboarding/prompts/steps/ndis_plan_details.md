@@ -76,16 +76,36 @@ If provided, must parse as positive number, integer part ≤9 digits.
 
 Default new row: `{support_category: PERSONAL_CARE, frequency: AS_REQUIRED}`.
 
-#### `preferred_schedule` — nested day → time slots (per row)
+#### `preferred_schedule` — VOICE-MUTABLE (set days + times by voice)
 
-- Days: `MO`, `TU`, `WE`, `TH`, `FR`, `SA`, `SU` (display: Mon, Tue, …).
-- At least one day must have ≥1 time slot per support item.
-- Per day: up to 5 time slots.
-- Each slot: `start_time`, `end_time` in HH:mm 24h. `end_time > start_time` strictly.
-- Slots on the same day for the same item MUST NOT overlap.
+You CAN set the schedule by voice — do NOT tell the participant to use the
+screen. Call `update_field` with `field="preferred_schedule"`,
+`repeatable_index=<row>`, and `value` as an ARRAY of day objects:
 
-Time-slot capture is complex — when the participant wants to set or change
-a schedule, repeat back day + start + end for confirmation before saving.
+```
+update_field(
+  section="support_schedule",
+  field="preferred_schedule",
+  repeatable_index=0,
+  value=[
+    {"day": "MO", "slots": [{"start": "09:00", "end": "12:00"}]},
+    {"day": "SA", "slots": [{"start": "14:00", "end": "16:30"}]}
+  ]
+)
+```
+
+Rules:
+- `day`: `MO`, `TU`, `WE`, `TH`, `FR`, `SA`, `SU` (English day names also accepted).
+- `slots`: ≥1 per day. Each slot needs BOTH `start` and `end` in 24-hour `HH:mm`.
+- `end` MUST be strictly after `start`.
+- This call REPLACES the whole schedule for that row — always send the full
+  desired set of days+slots, not a delta.
+- At least one day with one slot is required per support item.
+
+Capture flow: ask which days, then for each day the start + end time. Convert
+spoken times to 24-hour `HH:mm` ("9am"→`09:00`, "half past 2 in the
+afternoon"→`14:30`). Repeat back day + start + end before saving. Then make
+ONE `update_field` call with the full array.
 
 ### Walk-through order for a new support_schedule row
 

@@ -122,15 +122,26 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
     {
         "name": "submit_step",
         "description": (
-            "Submit the current step. Mobile checks every required field "
-            "and cross-field rule. Returns {ok:true} or "
-            "{ok:false, blockers:[{path,label,reason},...]}. "
-            "On blockers, read the FIRST blocker's reason verbatim and ask "
-            "the user to fix it."
+            "Advance or go back a step. Default (direction='forward' or "
+            "omitted) submits the current step: mobile checks every required "
+            "field and cross-field rule, returns {ok:true} or "
+            "{ok:false, blockers:[{path,label,reason},...]}; on blockers read "
+            "the FIRST blocker's reason verbatim and ask the user to fix it. "
+            "Set direction='back' when the participant asks to go to the "
+            "PREVIOUS step / 'go back' / 'previous page' — mobile saves the "
+            "current screen then navigates back. No confirmation needed for "
+            "back; still pass the participant's exact words."
         ),
         "parameters": {
             "type": "object",
-            "properties": {"confirmation_transcript": {"type": "string"}},
+            "properties": {
+                "confirmation_transcript": {"type": "string"},
+                "direction": {
+                    "type": "string",
+                    "enum": ["forward", "back"],
+                    "description": "forward = submit & advance (default); back = previous step",
+                },
+            },
             "required": ["confirmation_transcript"],
         },
     },

@@ -134,10 +134,11 @@ You: *"Got Prince. What's their relationship to you?"*
 - "Remove that row / delete the second medication" → `delete_row(section, row_index)`. One row + no index → mobile defaults to 0. Multi-row + no index → ask which one.
 - Min-zero repeatables (morning_routine, evening_routine, medical_history) are optional. Offer once. On decline, move on.
 
-## 5. Submitting
+## 5. Submitting & going back
 
-- "Submit / I'm done / that's everything" → `submit_step(confirmation_transcript=<user's exact words>)`.
+- "Submit / I'm done / that's everything / next" → `submit_step(confirmation_transcript=<user's exact words>)` (direction defaults to forward).
 - On `{ok: false, blockers: [...]}` — speak the **first** blocker's `reason` verbatim. Treat that blocker's `path` as the next field to ask. After the user fixes it, the new `[TURN]` arrives and you may retry `submit_step`.
+- "Go back / previous step / take me back / the page before" → `submit_step(confirmation_transcript=<user's exact words>, direction="back")`. On `{ok: true}` say something brief like *"Sure, taking you back."* and stop. No validation runs on back — it always succeeds if a previous step exists.
 
 ## 6. Seven tools
 
