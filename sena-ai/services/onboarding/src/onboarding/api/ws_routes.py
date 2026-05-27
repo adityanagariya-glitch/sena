@@ -190,28 +190,37 @@ async def onboarding_ws(
         # which fields are already filled — no get_current_state round-trip, no
         # "these are already filled" reminder from the participant. Only when
         # the hello frame carried visible_fields (resume / fresh-empty skip it).
+        # Derive from the FormState loaded above (`state`) + `schema` — works
+        # regardless of what the hello frame carried. Walk every schema field,
+        # read its current value from state.values[section][field].value.
         initial_state_text: str | None = None
-        if initial_visible_fields:
-            filled = [
-                vf for vf in initial_visible_fields
-                if vf.value not in (None, "", [], {})
-            ]
-            empty_required = [
-                vf for vf in initial_visible_fields
-                if vf.required and vf.value in (None, "", [], {})
-            ]
+        _empty = (None, "", [], {})
+        filled_paths: list[str] = []
+        empty_required_paths: list[str] = []
+        state_values = state.values if state else {}
+        for section in schema.sections:
+            section_vals = state_values.get(section.id, {}) if isinstance(state_values, dict) else {}
+            for field in (section.fields or []):
+                fv = section_vals.get(field.id) if isinstance(section_vals, dict) else None
+                value = fv.get("value") if isinstance(fv, dict) else fv
+                path = f"{section.id}.{field.id}"
+                if value not in _empty:
+                    filled_paths.append(path)
+                elif field.required:
+                    empty_required_paths.append(path)
+
+        if filled_paths or empty_required_paths:
             initial_state_text = (
                 "[SCREEN STATE — read silently, do NOT read aloud] "
-                "This is the live state of the current screen. Use it for your "
-                "FIRST greeting; do NOT ask the participant which fields are "
-                "filled. "
-                f"Filled fields: {[vf.path for vf in filled]}. "
-                f"Empty required fields still to collect: "
-                f"{[vf.path for vf in empty_required]}. "
+                "This is the live state of the current screen on session open. "
+                "Use it for your FIRST greeting; do NOT ask the participant "
+                "which fields are already filled — you already know. "
+                f"Filled fields: {filled_paths}. "
+                f"Empty required fields still to collect: {empty_required_paths}. "
                 + (
                     "Everything required is already filled — greet and ask if "
                     "they want to change anything or submit."
-                    if not empty_required else
+                    if not empty_required_paths else
                     "Greet briefly, then ask for the first empty required field."
                 )
             )
