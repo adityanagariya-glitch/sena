@@ -121,14 +121,18 @@ class GeminiLiveSession:
         self._gemini_is_speaking: bool = False
         # Kickoff audio-suppression shield. gemini-3.1-flash-live-preview has a
         # known VAD bug: if the participant talks over the model's OPENING
-        # greeting, the interrupt cancels the turn with zero output chunks and
-        # the VAD then wedges — it stops emitting input_transcription for the
-        # rest of the session (cookbook issue #1197). Workaround: drop inbound
-        # mic frames for a short window right after the greeting kicks off so
-        # the opening can't be barged-into. Set when the first model audio of
-        # the session arrives; epoch seconds, 0 = shield inactive.
-        self._kickoff_suppress_until: float = 0.0
-        self._kickoff_done: bool = False
+        # greeting, the interrupt cancels turn 0 with zero output chunks and the
+        # VAD then wedges — it stops emitting input_transcription for the rest of
+        # the session (cookbook issue #1197). Workaround: DROP every inbound mic
+        # frame from session open until the FIRST agent turn fully completes
+        # (turn_complete with audio). A short timed window was not enough — the
+        # barge-in frames arrive BEFORE the first model audio (before any timer
+        # could arm), so we gate on turn completion instead of a clock.
+        # True = still in the opening, suppress mic. Flipped False on first
+        # real turn_complete (chunks > 0). A trailing grace timer also clears it
+        # in case the opener produces no audio at all.
+        self._kickoff_shield_active: bool = True
+        self._kickoff_grace_until: float = 0.0
         # Voice protocol — preserve the words Gemini was saying when interrupted
         # so the next turn can address the interruption AND the unfinished thought.
         # Injected as a hidden [INTERRUPTED] text turn right after the cut-off.
@@ -270,6 +274,10 @@ class GeminiLiveSession:
                 await session.send_realtime_input(text=self._initial_state_text)
                 log.info("initial_state_seeded session=%s", self._session_id)
             self._last_audio_at = time.monotonic()
+            # Hard cap on the kickoff shield: if the opener never produces a
+            # turn_complete (e.g. silent / model stalls), lift the shield after
+            # 8 s so the participant is never permanently muted.
+            self._kickoff_grace_until = time.monotonic() + 8.0
             b2g = asyncio.create_task(self._browser_to_gemini(session))
             g2b = asyncio.create_task(self._gemini_to_browser(session))
             silence = asyncio.create_task(self._silence_monitor(session))
@@ -305,16 +313,23 @@ class GeminiLiveSession:
                     # silence period restarts the full warn → summary cycle.
                     self._silence_warned = False
                     self._silence_exhausted = False
-                    # Kickoff shield (cookbook #1197): for the first ~2.5s of the
-                    # opening greeting, drop inbound mic frames so the user can't
-                    # barge-in over it. Barging the opening interrupts turn 0 with
-                    # zero chunks and wedges Gemini's VAD for the whole session
-                    # (no more input_transcription). ONLY the opening is shielded.
-                    if (
-                        self._kickoff_suppress_until
-                        and time.monotonic() < self._kickoff_suppress_until
-                    ):
-                        continue
+                    # Kickoff shield (cookbook #1197): drop EVERY inbound mic
+                    # frame until the opening agent turn finishes. Barging the
+                    # opening interrupts turn 0 with zero chunks and wedges
+                    # Gemini's VAD for the whole session (no more
+                    # input_transcription). Gating on turn-completion (not a
+                    # timer) is required because the barge-in frames land before
+                    # the first model audio. The 8 s grace cap lifts the shield
+                    # if the opener never completes.
+                    if self._kickoff_shield_active:
+                        if time.monotonic() >= self._kickoff_grace_until:
+                            self._kickoff_shield_active = False
+                            log.info(
+                                "kickoff_shield_lifted reason=grace session=%s",
+                                self._session_id,
+                            )
+                        else:
+                            continue
                     # Send all audio unconditionally — Gemini's VAD + START_OF_ACTIVITY_INTERRUPTS
                     # handles barge-in natively. The old _agent_speaking echo gate blocked user
                     # audio after turn N+1 model audio arrived, causing VAD to stop firing.
@@ -710,20 +725,6 @@ class GeminiLiveSession:
                                         # in manual-VAD mode and otherwise
                                         # corrupts VAD state. Echo is fully
                                         # handled by Flutter mic mute.
-                                        # Arm the kickoff shield on the FIRST
-                                        # model audio of the session only — the
-                                        # opening greeting. 2.5s per cookbook
-                                        # #1197 workaround. Later turns are not
-                                        # shielded (barge-in is fine there).
-                                        if not self._kickoff_done:
-                                            self._kickoff_done = True
-                                            self._kickoff_suppress_until = (
-                                                time.monotonic() + 2.5
-                                            )
-                                            log.info(
-                                                "kickoff_shield_armed session=%s window=2.5s",
-                                                self._session_id,
-                                            )
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 
@@ -832,6 +833,18 @@ class GeminiLiveSession:
                                 self._turn_id,
                                 self._session_id,
                             )
+                            # Lift the kickoff shield once the opening turn has
+                            # actually SPOKEN (chunks > 0). A zero-chunk turn_
+                            # complete is the interrupted/empty opener — keep the
+                            # shield up so the (now-armed) real greeting on the
+                            # retry is still protected.
+                            if self._kickoff_shield_active and chunk_count > 0:
+                                self._kickoff_shield_active = False
+                                log.info(
+                                    "kickoff_shield_lifted reason=opener_spoke turn=%d session=%s",
+                                    self._turn_id,
+                                    self._session_id,
+                                )
 
                             # ── Phase 1 usage emit — per turn delta ──────────
                             # Cumulative-to-delta math. If any event in this
