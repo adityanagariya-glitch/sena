@@ -1,4 +1,8 @@
-"""get_client_details — full profile for one specific client by ID."""
+"""get_client_details — full profile for one specific client by ID.
+
+Eager loading: fetches client profile + support workers + guardians in parallel,
+so the LLM sees all related data immediately without requiring separate follow-up calls.
+"""
 import re
 import sys
 
@@ -7,6 +11,7 @@ from state import user_context
 from api_router import call_target_api, construct_api_url
 from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
+from tools._common import parallel_fetch
 
 
 _UUID_RE = re.compile(
@@ -49,8 +54,32 @@ def _run(inputs):
     if VERBOSE:
         print(f"[get_client_details] client_id={client_id} path={path}", file=sys.stderr)
 
-    url = construct_api_url(path, placeholders)
-    raw = call_target_api(method="GET", url=url, query_params={})
+    # ---- EAGER LOADING: fetch client + support workers + guardians in parallel ----
+    # Avoids the follow-up question "show me their support workers" by having the
+    # data ready immediately. All three are typically small responses.
+    fetchers = [
+        {
+            "label": "client",
+            "url": construct_api_url(path, placeholders),
+            "params": {},
+        },
+        {
+            "label": "support_workers",
+            "url": construct_api_url("/mobile/client/get-support-workers/{clientId}", {"clientId": client_id}),
+            "params": {},
+        },
+        {
+            "label": "guardians",
+            "url": construct_api_url("/mobile/client/get-guardians/{clientId}", {"clientId": client_id}),
+            "params": {},
+        },
+    ]
+    
+    results = parallel_fetch(fetchers, tool_name="get_client_details")
+    
+    raw = results.get("client", {})
+    raw_workers = results.get("support_workers", {})
+    raw_guardians = results.get("guardians", {})
 
     if isinstance(raw, dict) and raw.get("error"):
         return ToolResult(
@@ -58,8 +87,22 @@ def _run(inputs):
             meta={"status_code": raw.get("status_code"), "path": path},
         )
 
-    # Bypass stripper — LLM reads field names directly from the raw response.
-    return ToolResult(data=raw, meta={"path": path, "client_id": client_id})
+    # Bundle all related data so LLM sees complete context
+    bundled = {
+        "client_profile": raw,
+        "support_workers": raw_workers if not isinstance(raw_workers, dict) or not raw_workers.get("error") else None,
+        "guardians": raw_guardians if not isinstance(raw_guardians, dict) or not raw_guardians.get("error") else None,
+        "_note": "Support workers and guardians are eagerly loaded and bundled with the profile. If the user asks follow-up questions about them, you already have the data — no need to call separate tools.",
+    }
+    
+    return ToolResult(
+        data=bundled,
+        meta={
+            "path": path,
+            "client_id": client_id,
+            "eager_loaded": ["support_workers", "guardians"],
+        },
+    )
 
 
 TOOL = ToolSpec(

@@ -28,7 +28,7 @@ def _short_inputs(inputs: Dict[str, Any]) -> str:
     except Exception:
         s = str(inputs)
     if len(s) > 200:
-        s = s[:200] + "…"
+        s = s[:200]
     return s
 
 
@@ -36,11 +36,11 @@ def run_tool(name: str, inputs: Dict[str, Any]) -> ToolResult:
     """Look up the tool by name and execute it. Never raises — returns
     ToolResult with `error` set if anything goes wrong."""
     inputs = inputs or {}
-    print(f"[TOOL] ▶ {name}({_short_inputs(inputs)})", file=_TERMINAL, flush=True)
+    print(f"[TOOL] > {name}({_short_inputs(inputs)})", file=_TERMINAL, flush=True)
 
     tool = TOOLS_BY_NAME.get(name)
     if not tool:
-        print(f"[TOOL] ✗ {name}  unknown tool", file=_TERMINAL, flush=True)
+        print(f"[TOOL] X {name}  unknown tool", file=_TERMINAL, flush=True)
         return ToolResult(
             error=f"Unknown tool '{name}'. The LLM should pick a different tool.",
             next_hint="Tool not found — try a different approach.",
@@ -51,7 +51,7 @@ def run_tool(name: str, inputs: Dict[str, Any]) -> ToolResult:
         result = tool.run(inputs)
         if not isinstance(result, ToolResult):
             print(
-                f"[TOOL] ✗ {name}  returned non-ToolResult ({type(result).__name__})",
+                f"[TOOL] X {name}  returned non-ToolResult ({type(result).__name__})",
                 file=_TERMINAL, flush=True,
             )
             return ToolResult(
@@ -59,7 +59,7 @@ def run_tool(name: str, inputs: Dict[str, Any]) -> ToolResult:
             )
 
         elapsed_ms = int((time.time() - t0) * 1000)
-        status = "✗ ERR " if result.error else "✓ OK  "
+        status = "X ERR " if result.error else "✓ OK  "
         # Show a brief preview of meta info to make traces readable
         meta_preview = ""
         if result.meta:
@@ -69,7 +69,7 @@ def run_tool(name: str, inputs: Dict[str, Any]) -> ToolResult:
         print(f"[TOOL] {status}{name}  ({elapsed_ms}ms){meta_preview}", file=_TERMINAL, flush=True)
         return result
     except Exception as e:
-        print(f"[TOOL] ✗ EXC {name}  {type(e).__name__}: {e}", file=_TERMINAL, flush=True)
+        print(f"[TOOL] X EXC {name}  {type(e).__name__}: {e}", file=_TERMINAL, flush=True)
         return ToolResult(
             error=f"Tool '{name}' crashed: {type(e).__name__}: {e}",
             next_hint="Tool execution failed unexpectedly. Apologise to the user and suggest they try again.",

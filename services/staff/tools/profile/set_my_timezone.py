@@ -15,25 +15,27 @@ from config import VERBOSE
 from tools.base import ToolSpec, ToolResult
 
 
-# City / state / abbreviation → IANA mapping.
-# Keys must be lowercase; matching is case-insensitive substring.
 _LOCATION_TO_IANA = {
     # NSW
     "sydney": "Australia/Sydney",
     "nsw": "Australia/Sydney",
     "new south wales": "Australia/Sydney",
-    "wollongong": "Australia/Sydney",
     "newcastle": "Australia/Sydney",
-    # ACT — shares NSW rules
-    "canberra": "Australia/Sydney",
+    "wollongong": "Australia/Sydney",
+    "central coast": "Australia/Sydney",
+    "broken hill": "Australia/Broken_Hill",
+
+    # ACT
+    "canberra": "Australia/Sydney",      # or Australia/Canberra
     "act": "Australia/Sydney",
-    "australian capital territory": "Australia/Sydney",
+
     # VIC
     "melbourne": "Australia/Melbourne",
     "vic": "Australia/Melbourne",
     "victoria": "Australia/Melbourne",
     "geelong": "Australia/Melbourne",
-    # QLD (no DST)
+
+    # QLD
     "brisbane": "Australia/Brisbane",
     "qld": "Australia/Brisbane",
     "queensland": "Australia/Brisbane",
@@ -41,25 +43,34 @@ _LOCATION_TO_IANA = {
     "sunshine coast": "Australia/Brisbane",
     "cairns": "Australia/Brisbane",
     "townsville": "Australia/Brisbane",
-    "toowoomba": "Australia/Brisbane",
-    # SA (30-min offset)
+
+    # SA
     "adelaide": "Australia/Adelaide",
     "sa": "Australia/Adelaide",
     "south australia": "Australia/Adelaide",
-    # WA (no DST)
+
+    # WA
     "perth": "Australia/Perth",
     "wa": "Australia/Perth",
     "western australia": "Australia/Perth",
-    "fremantle": "Australia/Perth",
+    "eucla": "Australia/Eucla",
+
     # TAS
     "hobart": "Australia/Hobart",
     "tas": "Australia/Hobart",
     "tasmania": "Australia/Hobart",
-    "launceston": "Australia/Hobart",
-    # NT (no DST)
+
+    # NT
     "darwin": "Australia/Darwin",
     "nt": "Australia/Darwin",
     "northern territory": "Australia/Darwin",
+
+    # External
+    "norfolk island": "Pacific/Norfolk",
+    "christmas island": "Indian/Christmas",
+    "cocos islands": "Indian/Cocos",
+    "cocos": "Indian/Cocos",
+    "lord howe": "Australia/Lord_Howe",
 }
 
 # Valid IANA zones we'll accept directly (case-insensitive match against lowercased input)
@@ -71,8 +82,9 @@ _VALID_IANA = {
     "australia/perth",
     "australia/hobart",
     "australia/darwin",
+    "australia/lord_howe",
+    "australia/eucla",
 }
-
 
 def _resolve(input_str: str) -> str | None:
     """Map a user-supplied location/timezone string to a canonical IANA zone."""

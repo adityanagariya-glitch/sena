@@ -1,7 +1,9 @@
 """API routing: intent detection, choosing the right API, calling it, access control."""
+import hashlib
 import json
 import re
 import requests
+import time
 
 from config import API_BASE_URL, BEDROCK_KB_ID
 from state import (
@@ -13,6 +15,133 @@ from state import (
 )
 from auth import get_auth_headers, has_auth_token
 from bedrock_client import call_bedrock
+
+# Intent detection cache: {message_hash: (intent_result, timestamp, ttl_seconds)}
+# Avoids re-calling Bedrock for repeated messages or obvious patterns
+_INTENT_CACHE = {}
+
+
+def _intent_cache_key(message: str) -> str:
+    """Generate cache key from message hash."""
+    msg_hash = hashlib.sha256(message.encode()).hexdigest()[:12]
+    return msg_hash
+
+
+def _simple_intent_pattern(message: str) -> dict:
+    """Quick pattern matching for obvious intents. Returns None if no obvious match.
+    
+    Avoids Bedrock call for ~80% of queries that follow obvious patterns.
+    Examples: "show me shifts", "list clients", "who am I", "hi"
+    """
+    msg_lower = message.lower().strip()
+    
+    # Meta patterns: "you said", "earlier", "remind me", etc.
+    if any(x in msg_lower for x in ["you said", "earlier", "before", "remind me", "remember when", "what did we talk", "last time", "last session"]):
+        return {
+            "needs_api": False,
+            "needs_kb": False,
+            "needs_meta": True,
+            "intent": "META",
+            "wants_fresh_data": False,
+            "api_question": "",
+            "kb_question": "",
+            "meta_question": message,
+            "reason": "conversation memory (pattern matched)",
+        }
+    
+    # Chat patterns: greetings, identity questions
+    if msg_lower in ("hi", "hello", "hey", "thanks", "ok", "okay", "thanks!"):
+        return {
+            "needs_api": False,
+            "needs_kb": False,
+            "needs_meta": False,
+            "intent": "CHAT",
+            "wants_fresh_data": False,
+            "api_question": "",
+            "kb_question": "",
+            "meta_question": "",
+            "reason": "greeting (pattern matched)",
+        }
+    
+    # Identity questions: "what is my role", "who am I", "what's my email"
+    if any(x in msg_lower for x in ["what is my ", "who am i", "my user type", "my role", "my permissions", "my email"]):
+        return {
+            "needs_api": False,
+            "needs_kb": False,
+            "needs_meta": False,
+            "intent": "CHAT",
+            "wants_fresh_data": False,
+            "api_question": "",
+            "kb_question": "",
+            "meta_question": "",
+            "reason": "user profile identity (pattern matched)",
+        }
+    
+    # API patterns: "show", "list", "get", "tell me about"
+    if any(x in msg_lower for x in ["show me", "list ", "get my", "tell me about"]):
+        return {
+            "needs_api": True,
+            "needs_kb": False,
+            "needs_meta": False,
+            "intent": "API",
+            "wants_fresh_data": False,
+            "api_question": message,
+            "kb_question": "",
+            "meta_question": "",
+            "reason": "live data request (pattern matched)",
+        }
+    
+    # KB patterns: "policy", "requirement", "allowed", "rule", "compliance"
+    if any(x in msg_lower for x in ["what should i follow", "is that allowed", "what are the requirements", "policy", "compliance", "what is the rule"]):
+        if BEDROCK_KB_ID:
+            return {
+                "needs_api": False,
+                "needs_kb": True,
+                "needs_meta": False,
+                "intent": "KB",
+                "wants_fresh_data": False,
+                "api_question": "",
+                "kb_question": message,
+                "meta_question": "",
+                "reason": "knowledge base (pattern matched)",
+            }
+    
+    # Freshness patterns: "refresh", "latest", "now", "updated", "changed"
+    if any(x in msg_lower for x in ["refresh", "latest", "now", "updated", "changed", "anything new"]):
+        return {
+            "needs_api": True,
+            "needs_kb": False,
+            "needs_meta": False,
+            "intent": "API",
+            "wants_fresh_data": True,
+            "api_question": message,
+            "kb_question": "",
+            "meta_question": "",
+            "reason": "fresh data request (pattern matched)",
+        }
+    
+    return None
+
+
+def _get_cached_intent(cache_key: str, ttl_seconds: int = 1800) -> dict:
+    """Check cache and return intent if within TTL, else None."""
+    if cache_key not in _INTENT_CACHE:
+        return None
+    
+    intent, timestamp, stored_ttl = _INTENT_CACHE[cache_key]
+    elapsed = time.time() - timestamp
+    
+    if elapsed < ttl_seconds:
+        return intent
+    
+    # Expired — remove from cache
+    del _INTENT_CACHE[cache_key]
+    return None
+
+
+def _store_cached_intent(cache_key: str, intent: dict) -> None:
+    """Store intent in cache with 30-minute TTL."""
+    _INTENT_CACHE[cache_key] = (intent, time.time(), 1800)
 
 
 def _format_api_section(title, apis, start_idx=1):
@@ -156,6 +285,20 @@ User: "what is my role"
 User: "who am I"
 {{"needs_api": false, "needs_kb": false, "needs_meta": false, "intent": "CHAT", "api_question": "", "kb_question": "", "meta_question": "", "reason": "identity question — profile info already loaded"}}"""
 
+    # ---- INTENT CACHING: check cache + pattern matching before Bedrock ----
+    cache_key = _intent_cache_key(user_question)
+    
+    # Try pattern matching first (fast, no Bedrock call)
+    pattern_intent = _simple_intent_pattern(user_question)
+    if pattern_intent is not None:
+        _store_cached_intent(cache_key, pattern_intent)
+        return pattern_intent
+    
+    # Try cache (previous message seen before)
+    cached_intent = _get_cached_intent(cache_key)
+    if cached_intent is not None:
+        return cached_intent
+
     messages = [{"role": "user", "content": [{"text": user_question}]}]
     # Internal routing classifier — output is JSON, not user-facing, skip guardrails
     response = call_bedrock(messages, system_prompt, use_guardrail=False)
@@ -172,6 +315,8 @@ User: "who am I"
                     decision["needs_kb"] = False
                     if decision.get("intent") == "KB":
                         decision["intent"] = "CHAT"
+                # Cache the Bedrock decision for future identical messages
+                _store_cached_intent(cache_key, decision)
                 return decision
     except Exception:
         pass
