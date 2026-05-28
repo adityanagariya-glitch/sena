@@ -20,7 +20,7 @@ _UUID_RE = re.compile(
 )
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     client_id = (inputs or {}).get("client_id")
     if not client_id:
         return ToolResult(error="Missing required input: client_id.")

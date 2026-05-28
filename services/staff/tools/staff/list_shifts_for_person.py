@@ -78,7 +78,7 @@ def _resolve_range(timeframe, from_date, to_date):
     return _this_week_range_utc()
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     inputs = inputs or {}
     name = (inputs.get("name") or "").strip()
     timeframe = (inputs.get("timeframe") or "this_week").strip().lower()

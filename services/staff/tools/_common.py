@@ -3,10 +3,11 @@
 This module provides reusable helpers for tools that make multiple API calls.
 Centralizing these reduces code duplication and ensures consistent logging.
 """
+import asyncio
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 from config import VERBOSE
 from api_router import call_target_api
@@ -16,10 +17,10 @@ _TERMINAL = sys.__stderr__
 
 
 def parallel_fetch(
-    fetchers: List[Dict[str, Any]],
-    max_workers: Optional[int] = None,
+    fetchers: list[dict[str, Any]],
+    max_workers: int | None = None,
     tool_name: str = "tool",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run multiple API calls in parallel. Thread-safe + logs to terminal.
 
     Args:
@@ -90,7 +91,7 @@ def parallel_fetch(
     return results
 
 
-def dedup_by_id(records: List[Dict[str, Any]], id_keys: tuple = ("id", "_id", "ID")) -> List[Dict[str, Any]]:
+def dedup_by_id(records: list[dict[str, Any]], id_keys: tuple = ("id", "_id", "ID")) -> list[dict[str, Any]]:
     """Remove duplicate records by ID. Keeps first occurrence.
 
     Args:
@@ -122,11 +123,13 @@ def dedup_by_id(records: List[Dict[str, Any]], id_keys: tuple = ("id", "_id", "I
     return deduped
 
 
-def flat_list(d: Dict[str, Any], keys: tuple = ("data", "items", "records", "results", "shifts", "clients", "staff")) -> List[Any]:
+def flat_list(d: dict[str, Any] | list | None, keys: tuple = ("data", "items", "records", "results", "shifts", "clients", "staff")) -> list[Any]:
     """Extract the first non-empty list from a response dict.
 
     Handles common SENA envelope patterns. Returns empty list if no list found.
     """
+    if d is None:
+        return []
     if isinstance(d, list):
         return d
     if not isinstance(d, dict):
@@ -141,12 +144,12 @@ def flat_list(d: Dict[str, Any], keys: tuple = ("data", "items", "records", "res
 
 
 def parallel_map(
-    items: List[Any],
+    items: list[Any],
     func: Callable[[Any], Any],
-    max_workers: Optional[int] = None,
+    max_workers: int | None = None,
     tool_name: str = "tool",
     item_label: str = "item",
-) -> List[Any]:
+) -> list[Any]:
     """Apply a function to items in parallel (e.g., fetch each ID from a list).
 
     Args:
@@ -190,3 +193,111 @@ def parallel_map(
     )
 
     return results
+
+
+# ---- Async Variants (for Phase 3A parallelization) ----
+
+async def parallel_fetch_async(
+    fetchers: list[dict[str, Any]],
+    max_workers: int | None = None,
+    tool_name: str = "tool",
+) -> dict[str, Any]:
+    """Async variant of parallel_fetch using asyncio.gather for concurrent API calls."""
+    if not fetchers:
+        return {}
+
+    max_workers = max_workers or min(len(fetchers), 20)
+    t0 = time.time()
+
+    # Log the parallel batch start
+    labels = [f["label"] for f in fetchers]
+    print(
+        f"[{tool_name}] ▶ async parallel batch  fetchers={len(fetchers)}  labels={labels}",
+        file=_TERMINAL,
+        flush=True,
+    )
+
+    # Create async tasks for each fetcher
+    async def fetch_one(fetcher: dict[str, Any]) -> tuple[str, Any]:
+        label = fetcher["label"]
+        url = fetcher["url"]
+        params = fetcher.get("params") or {}
+        method = fetcher.get("method", "GET").upper()
+
+        result = await asyncio.to_thread(
+            call_target_api,
+            method=method,
+            url=url,
+            query_params=params if method == "GET" else None,
+            body_params=params if method in ("POST", "PUT") else None,
+        )
+        return label, result
+
+    # Run all fetches in parallel
+    tasks = [fetch_one(f) for f in fetchers]
+    results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Assemble results dict
+    results = {}
+    success_count = 0
+    for item in results_list:
+        if isinstance(item, Exception):
+            # Handle exception from gather
+            continue
+        label, result = item
+        if isinstance(result, dict) and not result.get("error"):
+            success_count += 1
+        results[label] = result
+
+    elapsed_ms = int((time.time() - t0) * 1000)
+    error_count = len(results) - success_count
+
+    status_emoji = "✓" if error_count == 0 else "⚠" if success_count > 0 else "✗"
+    print(
+        f"[{tool_name}] {status_emoji} async parallel batch done  ({elapsed_ms}ms)  "
+        f"ok={success_count}  err={error_count}",
+        file=_TERMINAL,
+        flush=True,
+    )
+
+    return results
+
+
+async def parallel_map_async(
+    items: list[Any],
+    func: Callable[[Any], Any],
+    max_workers: int | None = None,
+    tool_name: str = "tool",
+    item_label: str = "item",
+) -> list[Any]:
+    """Async variant of parallel_map using asyncio.gather."""
+    if not items:
+        return []
+
+    t0 = time.time()
+
+    print(
+        f"[{tool_name}] ▶ async parallel map  {item_label}={len(items)}",
+        file=_TERMINAL,
+        flush=True,
+    )
+
+    # Create async tasks for each item
+    async def map_one(item: Any) -> Any | None:
+        return await asyncio.to_thread(func, item)
+
+    tasks = [map_one(item) for item in items]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Filter out None results and exceptions
+    filtered = [r for r in results if r is not None and not isinstance(r, Exception)]
+    success_count = len(filtered)
+
+    elapsed_ms = int((time.time() - t0) * 1000)
+    print(
+        f"[{tool_name}] ✓ async parallel map done  ({elapsed_ms}ms)  collected={success_count}/{len(items)}",
+        file=_TERMINAL,
+        flush=True,
+    )
+
+    return filtered

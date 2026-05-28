@@ -27,7 +27,7 @@ def _strip_organizations(raw):
     }
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     path = "/organization/get-all-organizaions"
 
     if VERBOSE:

@@ -339,7 +339,7 @@ def _pick_mobile_type(timeframe, shift_filter):
     return "allshift"
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     inputs = inputs or {}
     timeframe = inputs.get("timeframe")
     if not timeframe:

@@ -12,7 +12,7 @@ from api_router import call_target_api, construct_api_url
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     url = construct_api_url("/auth/user-type", {})
     raw = call_target_api(method="GET", url=url)
 

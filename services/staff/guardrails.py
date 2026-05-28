@@ -1,9 +1,12 @@
 """Bedrock Guardrails helpers — input/output scanning + persistence scrubbing."""
 from config import bedrock_runtime, GUARDRAILS
+from agents_types import GuardRailResponse
 
 
-def _last_user_text(messages):
+def _last_user_text(messages: list[dict] | None) -> str:
     """Pull most-recent user message text for input guardrails."""
+    if not messages:
+        return ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
             for part in msg.get("content", []) or []:
@@ -12,7 +15,7 @@ def _last_user_text(messages):
     return ""
 
 
-def _apply_guardrail(gid, version, text, source):
+def _apply_guardrail(gid: str, version: str, text: str | None, source: str) -> str | None:
     """Run a single guardrail via apply_guardrail. Returns block message or None if passed."""
     if not text:
         return None
@@ -34,7 +37,7 @@ def _apply_guardrail(gid, version, text, source):
         return None
 
 
-def _scrub_for_persistence(text):
+def _scrub_for_persistence(text: str | None) -> str | None:
     """Run text through the primary Guardrail (OUTPUT) before storing.
 
     If the guardrail anonymises/redacts, store the redacted version. Raw

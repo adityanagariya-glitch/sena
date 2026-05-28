@@ -13,7 +13,7 @@ from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     inputs = inputs or {}
     user_type = (user_context.get("user_type") or "").lower()
     if user_type != "admin":

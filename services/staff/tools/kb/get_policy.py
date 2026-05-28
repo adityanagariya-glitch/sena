@@ -15,7 +15,7 @@ from tools.base import ToolSpec, ToolResult
 from kb_query import query_kbs
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     topic = (inputs or {}).get("topic", "").strip()
     if not topic:
         return ToolResult(error="Missing required input: topic.")

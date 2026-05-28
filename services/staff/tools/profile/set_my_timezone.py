@@ -106,7 +106,7 @@ def _resolve(input_str: str) -> str | None:
     return None
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     raw = (inputs or {}).get("timezone_or_location", "").strip()
     if not raw:
         return ToolResult(error="Missing required input: timezone_or_location.")

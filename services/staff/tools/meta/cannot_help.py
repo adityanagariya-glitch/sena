@@ -2,7 +2,7 @@
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     reason = (inputs or {}).get("reason", "").strip()
     return ToolResult(
         data={"reason": reason or "Out of scope"},

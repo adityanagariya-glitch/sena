@@ -26,6 +26,8 @@ import time
 import boto3
 from botocore.exceptions import ClientError
 
+from agents_types import DeploymentStatusResponse
+
 # Reuse the project's region default
 try:
     from config import REGION as DEFAULT_REGION
@@ -33,7 +35,7 @@ except Exception:
     DEFAULT_REGION = "ap-southeast-2"
 
 
-def deploy_strategy_enabled_memory(region_name, memory_name, description, event_expiry_days):
+def deploy_strategy_enabled_memory(region_name: str, memory_name: str, description: str, event_expiry_days: int) -> str | None:
     """Create a new memory resource with USER_PREFERENCE + SEMANTIC + SUMMARY strategies."""
     control_client = boto3.client("bedrock-agentcore-control", region_name=region_name)
 

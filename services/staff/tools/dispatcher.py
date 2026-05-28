@@ -20,7 +20,7 @@ from tools.registry import TOOLS_BY_NAME
 from activity_log import _TERMINAL
 
 
-def _short_inputs(inputs: Dict[str, Any]) -> str:
+def _short_inputs(inputs: dict[str, Any] | None) -> str:
     """One-line summary of tool inputs for the terminal log."""
     if not inputs:
         return "{}"
@@ -33,7 +33,7 @@ def _short_inputs(inputs: Dict[str, Any]) -> str:
     return s
 
 
-def run_tool(name: str, inputs: Dict[str, Any]) -> ToolResult:
+def run_tool(name: str, inputs: dict[str, Any] | None) -> ToolResult:
     """Look up the tool by name and execute it. Never raises — returns
     ToolResult with `error` set if anything goes wrong."""
     inputs = inputs or {}

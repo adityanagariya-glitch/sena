@@ -55,7 +55,7 @@ def _pick_path(shift_id):
     return "/organization-member/shift/details/{id}"
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     shift_id = (inputs or {}).get("shift_id")
     if not shift_id:
         return ToolResult(error="Missing required input: shift_id.")

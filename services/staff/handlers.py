@@ -2,6 +2,7 @@
 
 The top-level router dispatches to one of these based on detected intent.
 """
+import asyncio
 import json
 import sys
 
@@ -29,7 +30,7 @@ from style_guide import (
     ANSWER_DIRECTLY,
     AUSSIE_VOICE,
 )
-from kb_query import query_kbs
+from kb_query import query_kbs, query_kbs_async
 
 
 SOURCE_LEAK_FALLBACK = (
