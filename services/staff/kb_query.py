@@ -14,6 +14,7 @@ Cost: ~1.1× single-KB (extra retrieve calls are cheap; one generate stays).
 """
 from __future__ import annotations
 
+import asyncio
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable
@@ -23,7 +24,7 @@ from config import (
     BEDROCK_KB_IDS,
     bedrock_agent_runtime,
 )
-from bedrock_client import call_bedrock, call_bedrock_stream
+from bedrock_client import call_bedrock, call_bedrock_stream, call_bedrock_async, call_bedrock_stream_async
 
 
 # Top-N chunks to keep per KB before merging
@@ -203,4 +204,69 @@ def query_kbs(question: str, system_prompt: str, kb_ids: Iterable[str] | None = 
     # internal text (the call_bedrock_stream still applies guardrails on the
     # final output). Use streaming so the user sees tokens as they arrive.
     answer = call_bedrock_stream(messages, system_prompt=final_system_prompt, use_guardrail=True)
+    return answer or "", merged
+
+
+# ---- Async Variants (for parallelization in Phase 3A) ----
+
+async def _retrieve_one_async(kb_id: str, question: str) -> list[dict]:
+    """Async variant of _retrieve_one using asyncio.to_thread."""
+    return await asyncio.to_thread(_retrieve_one, kb_id, question)
+
+
+async def _retrieve_parallel_async(question: str, kb_ids: Iterable[str]) -> list[dict]:
+    """Async variant of _retrieve_parallel using asyncio.gather."""
+    kb_ids = list(kb_ids)
+    if not kb_ids:
+        return []
+    if len(kb_ids) == 1:
+        return await _retrieve_one_async(kb_ids[0], question)
+
+    # Parallelize all KB retrievals with asyncio.gather
+    tasks = [_retrieve_one_async(kb, question) for kb in kb_ids]
+    results = await asyncio.gather(*tasks)
+    chunks: list[dict] = []
+    for chunk_list in results:
+        chunks.extend(chunk_list)
+    return chunks
+
+
+async def query_kbs_async(question: str, system_prompt: str, kb_ids: Iterable[str] | None = None) -> tuple[str, list[dict]]:
+    """Async variant of query_kbs using asyncio-based retrieval."""
+    if kb_ids is None:
+        kb_ids = BEDROCK_KB_IDS
+
+    kb_ids = [k for k in (kb_ids or []) if k]
+    if not kb_ids:
+        return "", []
+
+    # Rewrite query (use thread pool since it's Bedrock-based)
+    search_query = _rewrite_query_for_retrieval(question)
+
+    if VERBOSE:
+        print(f"[kb-query] async: retrieving from {len(kb_ids)} KB(s) in parallel", file=sys.stderr)
+
+    # Parallel async retrieval
+    all_chunks = await _retrieve_parallel_async(search_query, kb_ids)
+    merged = _merge_top_k(all_chunks)
+
+    if VERBOSE:
+        per_kb = {}
+        for c in all_chunks:
+            per_kb[c["kb_id"]] = per_kb.get(c["kb_id"], 0) + 1
+        print(f"[kb-query] async: retrieved {len(all_chunks)} chunks ({per_kb}), kept top {len(merged)}", file=sys.stderr)
+
+    if not merged:
+        return "", []
+
+    # Embed merged chunks in the system prompt
+    chunk_block = _format_chunks_for_prompt(merged)
+    final_system_prompt = (
+        f"{system_prompt}\n\n"
+        f"Internal reference material (do not mention to the user):\n{chunk_block}"
+    )
+
+    messages = [{"role": "user", "content": [{"text": question}]}]
+    # Use async streaming variant
+    answer = await call_bedrock_stream_async(messages, system_prompt=final_system_prompt, use_guardrail=True)
     return answer or "", merged

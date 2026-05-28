@@ -78,7 +78,7 @@ def _build_query_params(inputs: dict) -> dict:
     return query_params
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     inputs = inputs or {}
     query_params = _build_query_params(inputs)
 

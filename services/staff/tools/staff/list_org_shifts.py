@@ -15,6 +15,7 @@ from state import user_context, current_timezone
 from api_router import call_target_api, construct_api_url
 from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
+from tools._common import parallel_fetch, flat_list
 
 
 def _user_tz():
@@ -172,13 +173,13 @@ def _run(inputs):
 
     stripped = strip_api_response(path, raw, verbose=VERBOSE)
 
-    # ---- AUTO-ENRICH: Fetch full details for sparse shifts ----
+    # ---- AUTO-ENRICH: Fetch full details for sparse shifts (PARALLEL) ----
     # If shifts have empty staff/client arrays and there are few (<= 5),
-    # fetch get_shift_details for each to give the LLM complete data upfront.
+    # fetch get_shift_details for each in PARALLEL to give the LLM complete data upfront.
     # This way, when user asks "with whom", we already have the answer.
     enriched_data = stripped
     try:
-        shifts_list = stripped.get("data", []) if isinstance(stripped, dict) else []
+        shifts_list = flat_list(stripped, keys=("data", "shifts", "items"))
 
         # Only auto-enrich if we have a reasonable number of shifts to enrich
         if isinstance(shifts_list, list) and 1 <= len(shifts_list) <= 5:
@@ -189,33 +190,42 @@ def _run(inputs):
                 if isinstance(s, dict)
             )
 
-            if has_sparse and VERBOSE:
-                print(f"[list_org_shifts] Auto-enriching {len(shifts_list)} sparse shifts with details...", file=sys.stderr)
-
             if has_sparse:
-                # Enrich each sparse shift with full details
-                enriched_shifts = []
-                for shift in shifts_list:
+                if VERBOSE:
+                    print(f"[list_org_shifts] Auto-enriching {len(shifts_list)} sparse shifts (parallel)...", file=sys.stderr)
+
+                # Build parallel fetch list for all sparse shifts
+                fetchers = []
+                shift_ids_to_indices: dict[str, int] = {}
+                for idx, shift in enumerate(shifts_list):
                     if isinstance(shift, dict) and shift.get("id"):
                         shift_id = shift["id"]
-                        # Fetch full details
                         detail_path = "/organization/shift/details/{id}"
                         detail_url = construct_api_url(detail_path, {"id": shift_id})
-                        detail_response = call_target_api(method="GET", url=detail_url)
+                        fetchers.append({
+                            "label": f"shift_{shift_id}",
+                            "url": detail_url,
+                            "method": "GET",
+                        })
+                        shift_ids_to_indices[f"shift_{shift_id}"] = idx
 
-                        # Merge detail data into shift (detail takes precedence)
-                        if isinstance(detail_response, dict) and not detail_response.get("error"):
-                            detail_data = detail_response.get("data", detail_response)
-                            merged = {**shift, **detail_data}
-                            enriched_shifts.append(merged)
-                        else:
-                            enriched_shifts.append(shift)  # Keep original if detail fetch fails
-                    else:
-                        enriched_shifts.append(shift)
+                # Fetch all shift details in parallel
+                if fetchers:
+                    detail_responses = parallel_fetch(fetchers, tool_name="list_org_shifts")
 
-                # Replace data with enriched version
-                if isinstance(enriched_data, dict) and "data" in enriched_data:
-                    enriched_data["data"] = enriched_shifts
+                    # Merge detail data into shifts
+                    enriched_shifts = list(shifts_list)  # Start with copies
+                    for label, detail_response in detail_responses.items():
+                        idx = shift_ids_to_indices.get(label)
+                        if idx is not None and isinstance(detail_response, dict):
+                            if not detail_response.get("error"):
+                                detail_data = detail_response.get("data", detail_response)
+                                merged = {**enriched_shifts[idx], **detail_data}
+                                enriched_shifts[idx] = merged
+
+                    # Replace data with enriched version
+                    if isinstance(enriched_data, dict) and "data" in enriched_data:
+                        enriched_data["data"] = enriched_shifts
     except Exception as e:
         if VERBOSE:
             print(f"[list_org_shifts] Auto-enrich failed (non-fatal): {e}", file=sys.stderr)

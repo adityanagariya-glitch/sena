@@ -66,23 +66,34 @@ BEDROCK_KB_IDS = [kb.strip() for kb in _kb_id_raw.split(",") if kb.strip()]
 BEDROCK_KB_ID = BEDROCK_KB_IDS[0] if BEDROCK_KB_IDS else ""
 
 _INFERENCE_PROFILE_PREFIXES = ("global.", "us.", "eu.", "apac.", "us-gov.", "au.")
+_KB_ARN_CACHE: str | None = None
 
 
-def _build_kb_model_arn():
+def _build_kb_model_arn() -> str:
+    global _KB_ARN_CACHE
+    if _KB_ARN_CACHE:
+        return _KB_ARN_CACHE
+
     override = os.getenv("SENA_AI_BEDROCK_KB_MODEL_ARN", "").strip()
     if override:
+        _KB_ARN_CACHE = override
         return override
+
     # KB uses its own model (Sonnet 4) to avoid legacy model restrictions
     model_for_kb = KB_MODEL_ID
     if model_for_kb.startswith(_INFERENCE_PROFILE_PREFIXES):
         try:
             sts = boto3.client("sts", region_name=REGION)
             account_id = sts.get_caller_identity()["Account"]
-            return f"arn:aws:bedrock:{REGION}:{account_id}:inference-profile/{model_for_kb}"
+            _KB_ARN_CACHE = f"arn:aws:bedrock:{REGION}:{account_id}:inference-profile/{model_for_kb}"
+            return _KB_ARN_CACHE
         except Exception as e:
             print(f"[bedrock-kb] STS get_caller_identity failed: {e}")
             print(f"[bedrock-kb] falling back to foundation-model ARN — KB calls may fail")
-    return f"arn:aws:bedrock:{REGION}::foundation-model/{model_for_kb}"
+
+    arn = f"arn:aws:bedrock:{REGION}::foundation-model/{model_for_kb}"
+    _KB_ARN_CACHE = arn
+    return arn
 
 
 BEDROCK_KB_MODEL_ARN = _build_kb_model_arn()
@@ -109,10 +120,33 @@ except Exception as e:
     print(f"[memory] AgentCore client init failed: {e}", file=__import__("sys").stderr)
 
 try:
-    dynamodb = boto3.resource("dynamodb", region_name=REGION)
-    chat_audit_table = dynamodb.Table(CHAT_AUDIT_TABLE) if CHAT_AUDIT_TABLE else None
-    session_table = dynamodb.Table(SESSION_TABLE_NAME) if SESSION_TABLE_NAME else None
+    dynamodb_client = boto3.client("dynamodb", region_name=REGION)
+    # Create lightweight table wrapper objects that delegate to client (faster than resource)
+    class _DDBTable:
+        def __init__(self, table_name: str | None, client):
+            self.name = table_name
+            self.client = client
+
+        def get_item(self, Key: dict):
+            if not self.name or not self.client:
+                raise ValueError("Table not configured")
+            return self.client.get_item(TableName=self.name, Key=Key)
+
+        def put_item(self, Item: dict):
+            if not self.name or not self.client:
+                raise ValueError("Table not configured")
+            return self.client.put_item(TableName=self.name, Item=Item)
+
+        def query(self, **kwargs):
+            if not self.name or not self.client:
+                raise ValueError("Table not configured")
+            kwargs["TableName"] = self.name
+            return self.client.query(**kwargs)
+
+    chat_audit_table = _DDBTable(CHAT_AUDIT_TABLE, dynamodb_client) if CHAT_AUDIT_TABLE else None
+    session_table = _DDBTable(SESSION_TABLE_NAME, dynamodb_client) if SESSION_TABLE_NAME else None
 except Exception as e:
+    dynamodb_client = None
     chat_audit_table = None
     session_table = None
     print(f"[memory] DynamoDB client init failed: {e} — falling back to local session file",

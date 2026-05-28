@@ -3,6 +3,7 @@
 Also contains the memory-first gate (`_try_answer_from_memory`) and verification
 detection (`_skip_memory_gate`) used by the top-level router.
 """
+import asyncio
 import json
 import re
 import sys
@@ -847,3 +848,87 @@ def _skip_memory_gate(user_question):
         if word in lower_q:
             return True
     return False
+
+
+# ---- Async Variants (for parallelization in Phase 3A) ----
+
+async def _persist_agentcore_async(user_question: str, assistant_text: str) -> None:
+    """Async variant of AgentCore write using asyncio.to_thread."""
+    if not (AGENTCORE_MEMORY_ID and bedrock_agentcore):
+        return
+
+    try:
+        clean_user = _scrub_for_persistence(user_question) or user_question
+        clean_assistant = _scrub_for_persistence(assistant_text) or assistant_text
+        now = datetime.now(timezone.utc)
+
+        params = {
+            "memoryId": AGENTCORE_MEMORY_ID,
+            "actorId": _actor_id(),
+            "sessionId": _session_id(),
+            "eventTimestamp": now,
+            "payload": [
+                {"conversational": {"role": "USER", "content": {"text": clean_user}}},
+                {"conversational": {"role": "ASSISTANT", "content": {"text": clean_assistant}}},
+            ],
+            "clientToken": str(uuid.uuid4()),
+        }
+        resp = await asyncio.to_thread(bedrock_agentcore.create_event, **params)
+        event_id = (resp.get("event") or {}).get("eventId")
+        if event_id and VERBOSE:
+            print(f"[memory] async: AgentCore event written", file=sys.stderr)
+    except Exception as e:
+        print(f"[memory] async: AgentCore create_event failed: {e}", file=sys.stderr)
+
+
+async def _persist_ddb_async(user_question: str, assistant_text: str, mode: str, api_path: str | None, api_response: dict | None) -> None:
+    """Async variant of DynamoDB write using asyncio.to_thread."""
+    if not (chat_audit_table and mode == "API" and api_response is not None):
+        return
+
+    try:
+        clean_user = _scrub_for_persistence(user_question) or user_question
+        clean_assistant = _scrub_for_persistence(assistant_text) or assistant_text
+        now = datetime.now(timezone.utc)
+        turn_id = str(uuid.uuid4())
+        expires_at = int((now + timedelta(days=CHAT_AUDIT_TTL_DAYS)).timestamp())
+
+        item = {
+            "pk": _actor_id(),
+            "sk": f"{now.isoformat()}#{turn_id}",
+            "turn_id": turn_id,
+            "mode": mode,
+            "api_path": api_path or "",
+            "user_text": clean_user,
+            "assistant_text": clean_assistant,
+            "api_response_json": json.dumps(api_response)[:380_000],
+            "expires_at": expires_at,
+        }
+        await asyncio.to_thread(chat_audit_table.put_item, Item=item)
+        if VERBOSE:
+            print(f"[memory] async: DDB audit row written", file=sys.stderr)
+    except Exception as e:
+        print(f"[memory] async: DDB put_item failed: {e}", file=sys.stderr)
+
+
+async def _persist_turn_async(user_question: str, assistant_text: str, mode: str, api_path: str | None = None, api_response: dict | None = None) -> None:
+    """Async variant of _persist_turn that parallelizes AgentCore + DDB writes.
+
+    Runs both persistence operations concurrently using asyncio.gather().
+    """
+    if not assistant_text:
+        return
+
+    clean_user = _scrub_for_persistence(user_question) or user_question
+    clean_assistant = _scrub_for_persistence(assistant_text) or assistant_text
+
+    # 1) In-memory (synchronous — must be done immediately for same-process recall)
+    conversation_history.append({"role": "user", "content": [{"text": clean_user}]})
+    conversation_history.append({"role": "assistant", "content": [{"text": clean_assistant}]})
+
+    # 2) & 3) AgentCore + DDB in parallel
+    await asyncio.gather(
+        _persist_agentcore_async(user_question, assistant_text),
+        _persist_ddb_async(user_question, assistant_text, mode, api_path, api_response),
+        return_exceptions=True,
+    )

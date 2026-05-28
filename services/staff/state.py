@@ -16,9 +16,23 @@ Use `get_apis_for_user()` to fetch the section-relevant API set for the current
 logged-in user. AVAILABLE_APIS is kept as the union for backward compatibility.
 """
 import json
+import sys
+import hashlib
 from pathlib import Path
+from typing import TypedDict
+from difflib import SequenceMatcher
 
 _api_dir = Path(__file__).parent
+
+
+class UserTypeResponse(TypedDict, total=False):
+    """Schema for GET /auth/user-type response."""
+    userType: str
+    isISW: bool
+    isSupportWorker: bool
+    staffType: str | None
+    organizationType: str | None
+
 
 # Section-specific API definitions
 COMMON_APIS = json.load(open(_api_dir / 'common_apis.json'))
@@ -147,40 +161,127 @@ def get_apis_for_user(user_type=None, staff_type=None, roles=None):
     return AVAILABLE_APIS
 
 
-def _derive_legacy_user_type(user_type_raw, is_isw, is_support_worker):
-    """Map the canonical /auth/user-type `userType` to the legacy value the rest
-    of the codebase branches on (admin/staff/isw/client/guardian/lister/unknown).
+# ---- ALGO 1: Schema Fingerprinting (detects API structure changes) ----
 
-    Centralised here so the brittle role-name guessing in auth.py is no longer the
-    source of truth — the API is.
-    """
+EXPECTED_SCHEMA_FIELDS = {"userType", "isISW", "isSupportWorker", "staffType", "organizationType"}
+REQUIRED_FIELDS = {"userType", "isISW", "isSupportWorker"}
+
+
+def _compute_schema_fingerprint(data: dict) -> str | None:
+    """Hash of actual response field names + types. Detects additions/removals/type changes."""
+    if not isinstance(data, dict):
+        return None
+    keys = sorted(data.keys())
+    types = ",".join(type(data[k]).__name__ for k in keys)
+    fingerprint = hashlib.sha256(f"{keys}:{types}".encode()).hexdigest()[:8]
+    return fingerprint
+
+
+def _validate_schema(data: dict) -> tuple[bool, list[str], list[str]]:
+    """Check API response schema. Returns (is_valid, missing_fields, extra_fields)."""
+    if not isinstance(data, dict):
+        return False, list(REQUIRED_FIELDS), []
+
+    actual_fields = set(data.keys())
+    missing = REQUIRED_FIELDS - actual_fields
+    extra = actual_fields - EXPECTED_SCHEMA_FIELDS
+
+    return len(missing) == 0, list(missing), list(extra)
+
+
+# ---- ALGO 2: Fuzzy String Matching (detects userType renames) ----
+
+KNOWN_USER_TYPES = {"superAdmin", "serviceProvider", "organizationMember", "client", "visitor", "lister"}
+
+
+def _fuzzy_match_user_type(incoming_type: str | None, threshold: float = 0.8) -> tuple[str | None, float]:
+    """Find closest known userType by similarity. Returns (matched_type, score) or (None, score)."""
+    if not incoming_type:
+        return None, 0.0
+
+    if incoming_type in KNOWN_USER_TYPES:
+        return incoming_type, 1.0
+
+    matches = [
+        (known, SequenceMatcher(None, incoming_type, known).ratio())
+        for known in KNOWN_USER_TYPES
+    ]
+    matches.sort(key=lambda x: x[1], reverse=True)
+
+    best_match, score = matches[0] if matches else (None, 0.0)
+    return (best_match, score) if score >= threshold else (None, score)
+
+
+# ---- END ALGOS ----
+
+
+def _derive_legacy_user_type(user_type_raw: str | None, is_isw: bool, is_support_worker: bool) -> str:
+    """Map canonical /auth/user-type userType to legacy value (admin/staff/isw/client/guardian/lister/unknown)."""
     ut = (user_type_raw or "").strip()
-    if ut == "superAdmin":
-        return "admin"
-    if ut == "serviceProvider":
-        return "isw" if is_isw else "admin"        # ISW = field mobile; org owner = admin dashboard
-    if ut == "organizationMember":
-        return "staff" if is_support_worker else "admin"  # support worker = field; in_office/all = admin
-    if ut == "client":
-        return "client"
-    if ut == "visitor":
-        return "guardian"
-    if ut == "lister":
-        return "lister"
-    return "unknown"
+    match ut:
+        case "superAdmin":
+            return "admin"
+        case "serviceProvider":
+            return "isw" if is_isw else "admin"
+        case "organizationMember":
+            return "staff" if is_support_worker else "admin"
+        case "client":
+            return "client"
+        case "visitor":
+            return "guardian"
+        case "lister":
+            return "lister"
+        case _:
+            return "unknown"
 
 
-def apply_user_type_context(data):
-    """Store the canonical /auth/user-type response into user_context and derive
-    the legacy `user_type`. `data` is the API's `data` object:
-        {userType, staffType, organizationType, isISW, isSupportWorker}
+def apply_user_type_context(data: UserTypeResponse | dict) -> bool:
+    """Store canonical /auth/user-type response into user_context and derive legacy user_type.
+
+    Applies two hardening algorithms:
+    1. Schema Fingerprinting — detects API structure changes (field additions/removals)
+    2. Fuzzy String Matching — detects userType value renames (isw → isw-worker)
     """
     if not isinstance(data, dict):
-        return
-    user_type_raw = data.get("userType")
+        return False
+
+    # ALGO 1: Validate schema structure
+    is_valid, missing, extra = _validate_schema(data)
+    if missing:
+        print(
+            f"[SCHEMA_ERROR] Missing required fields: {missing}. "
+            f"Expected schema: {REQUIRED_FIELDS}",
+            file=sys.stderr,
+        )
+        return False
+    if extra:
+        print(
+            f"[SCHEMA_WARNING] Extra fields in API response: {extra}. "
+            f"Expected only: {EXPECTED_SCHEMA_FIELDS}",
+            file=sys.stderr,
+        )
+
+    user_type_raw = data.get("userType", "").strip()
     staff_type = data.get("staffType")
     is_isw = bool(data.get("isISW"))
     is_support_worker = bool(data.get("isSupportWorker"))
+
+    # ALGO 2: Fuzzy match userType in case of renames
+    if user_type_raw and user_type_raw not in KNOWN_USER_TYPES:
+        matched, score = _fuzzy_match_user_type(user_type_raw)
+        if matched:
+            print(
+                f"[FUZZY_MATCH] userType '{user_type_raw}' matched to '{matched}' "
+                f"(similarity={score:.2f}). API may have renamed the value.",
+                file=sys.stderr,
+            )
+            user_type_raw = matched
+        else:
+            print(
+                f"[FUZZY_MATCH_FAILED] userType '{user_type_raw}' has no close match (score={score:.2f}). "
+                f"Proceeding with unknown role.",
+                file=sys.stderr,
+            )
 
     user_context["user_type_raw"] = user_type_raw
     if staff_type is not None:
@@ -189,3 +290,5 @@ def apply_user_type_context(data):
     user_context["is_isw"] = is_isw
     user_context["is_support_worker"] = is_support_worker
     user_context["user_type"] = _derive_legacy_user_type(user_type_raw, is_isw, is_support_worker)
+
+    return True

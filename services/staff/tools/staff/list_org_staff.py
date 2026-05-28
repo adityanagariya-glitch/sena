@@ -17,7 +17,7 @@ from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     inputs = inputs or {}
     search = (inputs.get("search") or "").strip()
     staff_type = (inputs.get("staff_type") or "").strip()

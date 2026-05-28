@@ -1,4 +1,5 @@
 """API routing: intent detection, choosing the right API, calling it, access control."""
+import asyncio
 import hashlib
 import json
 import re
@@ -15,19 +16,20 @@ from state import (
 )
 from auth import get_auth_headers, has_auth_token
 from bedrock_client import call_bedrock
+from agents_types import APIRouteResponse, APIErrorResponse
 
 # Intent detection cache: {message_hash: (intent_result, timestamp, ttl_seconds)}
 # Avoids re-calling Bedrock for repeated messages or obvious patterns
 _INTENT_CACHE = {}
 
 
-def _intent_cache_key(message: str) -> str:
+def _intent_cache_key(message: str | None) -> str:
     """Generate cache key from message hash."""
-    msg_hash = hashlib.sha256(message.encode()).hexdigest()[:12]
+    msg_hash = hashlib.sha256((message or "").encode()).hexdigest()[:12]
     return msg_hash
 
 
-def _simple_intent_pattern(message: str) -> dict:
+def _simple_intent_pattern(message: str | None) -> dict | None:
     """Quick pattern matching for obvious intents. Returns None if no obvious match.
     
     Avoids Bedrock call for ~80% of queries that follow obvious patterns.
@@ -123,7 +125,7 @@ def _simple_intent_pattern(message: str) -> dict:
     return None
 
 
-def _get_cached_intent(cache_key: str, ttl_seconds: int = 1800) -> dict:
+def _get_cached_intent(cache_key: str, ttl_seconds: int = 1800) -> dict | None:
     """Check cache and return intent if within TTL, else None."""
     if cache_key not in _INTENT_CACHE:
         return None
@@ -195,7 +197,7 @@ def get_api_description():
     return api_text
 
 
-def detect_route(user_question):
+def detect_route(user_question: str | None) -> dict:
     """Unified router: intent + multi-source detection in ONE Bedrock call.
 
     Replaces the separate detect_intent + detect_hybrid_intent pair. Caller
@@ -848,5 +850,17 @@ def check_access(api_path):
     for path in allowed_paths:
         if path in api_path:
             return True
+
+
+# ---- Async Variants (for parallelization in Phase 3A) ----
+
+async def detect_route_async(user_question: str | None) -> dict:
+    """Async variant of detect_route using asyncio.to_thread."""
+    return await asyncio.to_thread(detect_route, user_question)
+
+
+async def find_best_api_async(user_question) -> dict | None:
+    """Async variant of find_best_api using asyncio.to_thread."""
+    return await asyncio.to_thread(find_best_api, user_question)
 
     return False

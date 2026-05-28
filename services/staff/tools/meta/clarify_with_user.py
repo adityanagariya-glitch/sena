@@ -2,7 +2,7 @@
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     question = (inputs or {}).get("question", "").strip()
     if not question:
         return ToolResult(error="Missing required input: question.")

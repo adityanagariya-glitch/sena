@@ -22,7 +22,7 @@ from tools.base import ToolSpec, ToolResult
 _VALID_KINDS = ("name", "format_pref", "general")
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     inputs = inputs or {}
     fact = (inputs.get("fact") or "").strip()
     kind = (inputs.get("kind") or "general").strip().lower()

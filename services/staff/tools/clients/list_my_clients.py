@@ -14,7 +14,7 @@ from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     page = (inputs or {}).get("page") or 1
     limit = (inputs or {}).get("limit") or 50
 

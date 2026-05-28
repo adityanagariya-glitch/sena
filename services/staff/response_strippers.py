@@ -8,8 +8,10 @@ Endpoints without a specific mapping fall through to a generic depth-3 truncator
 import re
 import sys
 
+from agents_types import ResponseTypeResponse
 
-def _walk_data(raw):
+
+def _walk_data(raw: dict | list | None) -> dict | list | None:
     """Unwrap common API response envelopes (e.g. {"data": {...}})."""
     if not isinstance(raw, dict):
         return raw
@@ -20,7 +22,7 @@ def _walk_data(raw):
     return raw
 
 
-def _find_records_list(node, depth=0, max_depth=6):
+def _find_records_list(node: dict | list | None, depth: int = 0, max_depth: int = 6) -> list[dict]:
     """Deep-search a response for the first list-of-dicts (the actual records).
 
     Looks for the records list at any depth — handles {data: {data: {list: [...]}}},

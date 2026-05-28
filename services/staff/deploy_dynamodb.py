@@ -37,13 +37,15 @@ import time
 import boto3
 from botocore.exceptions import ClientError
 
+from agents_types import DeploymentStatusResponse
+
 try:
     from config import REGION as DEFAULT_REGION
 except Exception:
     DEFAULT_REGION = "ap-southeast-2"
 
 
-def _table_status(dynamodb, table_name):
+def _table_status(dynamodb, table_name: str) -> tuple[bool, str | None]:
     """Return (exists: bool, status: str|None) for the table."""
     try:
         resp = dynamodb.describe_table(TableName=table_name)
@@ -54,7 +56,7 @@ def _table_status(dynamodb, table_name):
         raise
 
 
-def _ttl_status(dynamodb, table_name):
+def _ttl_status(dynamodb, table_name: str) -> str:
     """Return TTL status string ('ENABLED', 'ENABLING', 'DISABLED', 'DISABLING')."""
     try:
         resp = dynamodb.describe_time_to_live(TableName=table_name)
@@ -64,7 +66,7 @@ def _ttl_status(dynamodb, table_name):
         return "UNKNOWN"
 
 
-def deploy_session_table(region_name, table_name):
+def deploy_session_table(region_name: str, table_name: str) -> None:
     """Create the session-id DynamoDB table with 90-day TTL — idempotent."""
     dynamodb = boto3.client("dynamodb", region_name=region_name)
 

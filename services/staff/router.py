@@ -16,13 +16,14 @@ from api_router import detect_route, find_best_api
 from handlers import process_api_call, process_kb_query, process_meta_query, process_normal_chat, process_hybrid_query
 from guardrails import _apply_guardrail
 from bedrock_client import call_bedrock
+from agents_types import APIRouteResponse
 
 # Agent mode toggle — set SENA_AI_AGENT_MODE=on to use the new tool-based agent
 # loop, or =off (default) to keep the legacy detect_route + find_best_api path.
 _AGENT_MODE = os.getenv("SENA_AI_AGENT_MODE", "off").strip().lower()
 
 
-def _is_legitimate_ndis_query(user_question):
+def _is_legitimate_ndis_query(user_question: str | None) -> bool:
     """LLM-based content gate. Decides whether the question is a legitimate NDIS
     work query OR contains racism/sexual content/hate speech/off-topic chatter.
 

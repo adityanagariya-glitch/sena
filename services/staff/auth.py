@@ -13,9 +13,10 @@ from datetime import datetime
 
 from config import API_BASE_URL
 from state import user_context, apply_user_type_context
+from agents_types import AuthResponse
 
 
-def _fetch_and_apply_user_type(headers=None):
+def _fetch_and_apply_user_type(headers: dict | None = None) -> bool:
     """Fetch the authoritative user-type context from GET /auth/user-type and
     store it (canonical fields + derived legacy user_type).
 
@@ -39,7 +40,7 @@ def _fetch_and_apply_user_type(headers=None):
     return False
 
 
-def _hydrate_user_timezone():
+def _hydrate_user_timezone() -> None:
     """After successful auth, populate user_context['timezone'] from persistent
     storage if a non-expired entry exists. Non-fatal — if memory or DDB is
     unreachable, timezone stays None and the agent uses the Sydney fallback
@@ -61,10 +62,10 @@ def _hydrate_user_timezone():
         print(f"  Timezone hydrate skipped ({type(e).__name__}: {e})", file=sys.stderr)
 
 # Will be replaced after successful login.
-jwt_token = ""
+jwt_token: str = ""
 
 
-def get_auth_headers():
+def get_auth_headers() -> dict[str, str]:
     """Get authorization headers"""
     return {
         "Content-Type": "application/json",
@@ -75,13 +76,15 @@ def get_auth_headers():
     }
 
 
-def has_auth_token():
+def has_auth_token() -> bool:
     """True when this process has a bearer token loaded for backend API calls."""
     return bool((jwt_token or "").strip())
 
 
-def decode_jwt(token):
+def decode_jwt(token: str | None) -> dict | None:
     """Decode JWT token to extract claims (without verification)"""
+    if not token:
+        return None
     try:
         parts = token.split('.')
         if len(parts) != 3:
@@ -99,7 +102,7 @@ def decode_jwt(token):
         return None
 
 
-def login_user(email, password):
+def login_user(email: str, password: str) -> bool:
     """Login with email and password"""
     print(f"\n[LOGIN] Authenticating {email}...")
 
@@ -182,10 +185,14 @@ def login_user(email, password):
         return False
 
 
-def authenticate_with_jwt(token):
+def authenticate_with_jwt(token: str | None) -> bool:
     """Authenticate using a JWT token directly"""
     global jwt_token
     print(f"\n[JWT AUTH] Authenticating with provided token...")
+
+    if not token:
+        print("  Error: No token provided")
+        return False
 
     try:
         claims = decode_jwt(token)
@@ -269,7 +276,7 @@ def authenticate_with_jwt(token):
         return False
 
 
-def authenticate_user():
+def authenticate_user() -> bool:
     """Authenticate user and fetch profile info based on role"""
     print("\n[AUTHENTICATION] Fetching user information...")
 

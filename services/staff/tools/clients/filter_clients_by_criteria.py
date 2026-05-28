@@ -360,7 +360,7 @@ def _record_matches(item, criteria):
     return True, generic_matches[:5]
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     criteria = (inputs or {}).get("criteria") or {}
     if not isinstance(criteria, dict) or not criteria:
         return ToolResult(

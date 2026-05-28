@@ -161,7 +161,7 @@ def _llm_match(query, directory):
     return []
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     query = (inputs or {}).get("query", "").strip()
     type_filter = (inputs or {}).get("type", "auto").lower()
 

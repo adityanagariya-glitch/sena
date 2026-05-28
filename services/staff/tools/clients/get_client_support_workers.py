@@ -7,7 +7,7 @@ from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     client_id = (inputs or {}).get("client_id")
     if not client_id:
         return ToolResult(error="Missing required input: client_id.")

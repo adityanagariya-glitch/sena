@@ -7,6 +7,7 @@ LLM until it emits a final text response for the user.
 Public entry: `process_query_agent(user_question)` — drop-in for router's
 process_query handlers.
 """
+import asyncio
 import json
 import sys
 import time
@@ -22,6 +23,7 @@ from memory import _persist_turn, _format_user_profile
 from agent_prompts import _core_prompt, _skills_for_question
 from tools.registry import bedrock_tool_config
 from tools.dispatcher import run_tool
+from agents_types import StopReasonResponse
 
 
 # How many tool-call iterations to allow before giving up (prevents infinite loops).
@@ -57,12 +59,12 @@ _IN_SCOPE_WORK_TERMS = (
 )
 
 
-def _looks_like_work_query(text):
+def _looks_like_work_query(text: str | None) -> bool:
     q = (text or "").lower()
     return any(term in q for term in _IN_SCOPE_WORK_TERMS)
 
 
-def _work_query_snag_message(text):
+def _work_query_snag_message(text: str | None) -> str:
     q = (text or "").lower()
     if (
         "organisation" in q or "organization" in q or " org" in q
@@ -85,12 +87,12 @@ def _work_query_snag_message(text):
     )
 
 
-def _build_user_profile_block():
+def _build_user_profile_block() -> str | None:
     """Tier-2 system prompt — per-user, cached separately."""
     return _format_user_profile()
 
 
-def _bedrock_messages_from_history():
+def _bedrock_messages_from_history() -> list[dict]:
     """Convert the in-memory conversation_history into Bedrock messages format."""
     messages = []
     # Bedrock requires alternating user/assistant; the conversation_history is
@@ -111,7 +113,7 @@ def _bedrock_messages_from_history():
     return messages
 
 
-def _content_blocks_with_tool_use(message):
+def _content_blocks_with_tool_use(message: dict) -> tuple[list[str], list[dict]]:
     """Extract { text_blocks: [...], tool_use_blocks: [...] } from a Bedrock assistant message."""
     text_blocks = []
     tool_use_blocks = []
@@ -123,7 +125,7 @@ def _content_blocks_with_tool_use(message):
     return text_blocks, tool_use_blocks
 
 
-def process_query_agent(user_question):
+def process_query_agent(user_question: str) -> str:
     """Agentic processing of a user query.
 
     Returns the final string answer (already printed to the user via streaming
@@ -216,24 +218,27 @@ def process_query_agent(user_question):
             file=_TERMINAL, flush=True,
         )
 
-        # Guardrail intervention — short-circuit
-        if stop_reason == "guardrail_intervened":
-            message = response.get("output", {}).get("message", {})
-            text_blocks, _ = _content_blocks_with_tool_use(message)
-            guardrail_text = " ".join(text_blocks).strip()
-            if _looks_like_work_query(user_question):
-                final_text = _work_query_snag_message(user_question)
-            else:
-                final_text = guardrail_text or (
-                    "I can only help with SENA and NDIS-related questions. Please ask "
-                    "about shifts, clients, payroll, policies, or other NDIS topics."
-                )
-            break
+        # Pattern match on stop_reason — handle guardrail intervention early
+        match stop_reason:
+            case "guardrail_intervened":
+                message = response.get("output", {}).get("message", {})
+                text_blocks, _ = _content_blocks_with_tool_use(message)
+                guardrail_text = " ".join(text_blocks).strip()
+                if _looks_like_work_query(user_question):
+                    final_text = _work_query_snag_message(user_question)
+                else:
+                    final_text = guardrail_text or (
+                        "I can only help with SENA and NDIS-related questions. Please ask "
+                        "about shifts, clients, payroll, policies, or other NDIS topics."
+                    )
+                break
+            case _:
+                pass
 
         assistant_message = response.get("output", {}).get("message", {})
         text_blocks, tool_use_blocks = _content_blocks_with_tool_use(assistant_message)
 
-        # No tool calls → this is the final answer
+        # Handle end_turn or no tool calls
         if stop_reason == "end_turn" or not tool_use_blocks:
             final_text = "\n".join(t for t in text_blocks if t).strip()
             if not final_text:
@@ -291,3 +296,61 @@ def process_query_agent(user_question):
     print(f"\nSena: {final_text}")
     _persist_turn(user_question, final_text, mode="AGENT")
     return final_text
+
+
+# ---- Async Tool Dispatch (for parallelization in Phase 3A) ----
+
+async def _run_tool_async(name: str, inputs: dict) -> tuple[str, dict, object]:
+    """Async variant of run_tool using asyncio.to_thread.
+
+    Returns (tool_name, tool_use_id, result) for gathering.
+    """
+    return await asyncio.to_thread(run_tool, name, inputs)
+
+
+async def _dispatch_tools_parallel(tool_use_blocks: list[dict]) -> list[dict]:
+    """Parallelize tool dispatch using asyncio.gather when multiple tools are requested.
+
+    When the LLM picks multiple tools (2+), run them concurrently instead of
+    sequentially. Single tools run via to_thread for consistency.
+    """
+    if not tool_use_blocks:
+        return []
+
+    from activity_log import _TERMINAL
+
+    # Create async tasks for each tool
+    tasks = []
+    tool_metadata = []  # Track (name, tool_use_id) for result assembly
+    for tu in tool_use_blocks:
+        tool_name = tu.get("name", "")
+        tool_use_id = tu.get("toolUseId", "")
+        tool_input = tu.get("input") or {}
+        tasks.append(_run_tool_async(tool_name, tool_input))
+        tool_metadata.append((tool_name, tool_use_id))
+
+    # Run all tools in parallel
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Assemble tool result blocks
+    tool_result_blocks = []
+    for i, (result, (tool_name, tool_use_id)) in enumerate(zip(results, tool_metadata)):
+        if isinstance(result, Exception):
+            print(f"[TOOL] X ERR {tool_name}  {type(result).__name__}: {result}", file=_TERMINAL, flush=True)
+            tool_result_blocks.append({
+                "toolResult": {
+                    "toolUseId": tool_use_id,
+                    "content": [{"json": {"error": str(result)}}],
+                    "status": "error",
+                }
+            })
+        else:
+            tool_result_blocks.append({
+                "toolResult": {
+                    "toolUseId": tool_use_id,
+                    "content": [{"json": result.to_dict()}],
+                    "status": "error" if result.error else "success",
+                }
+            })
+
+    return tool_result_blocks

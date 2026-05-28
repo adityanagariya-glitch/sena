@@ -6,7 +6,7 @@ from state import user_context
 from tools.base import ToolSpec, ToolResult
 
 
-def _run(inputs):
+def _run(inputs: dict | None) -> ToolResult:
     if VERBOSE:
         print("[my_profile] reading user_context", file=sys.stderr)
 
