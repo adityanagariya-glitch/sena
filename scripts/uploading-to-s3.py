@@ -1,9 +1,10 @@
 import boto3
 import os
 
-s3 = boto3.client("s3", region_name="ap-southeast-2")
+from config import REGION, BUCKET_NAME
 
-BUCKET_NAME  = "sena-policy-docs"
+s3 = boto3.client("s3", region_name=REGION)
+
 LOCAL_FOLDER = r"C:\Users\BAPS\Documents\SENA_RAG\policies"  
 
 # All formats supported by Bedrock KB

@@ -49,6 +49,28 @@
     },
 
     {
+      "user_id":   "u-prospect-sw-01",
+      "login_id":  "prospect\\emma.thomas",
+      "full_name": "Emma Thomas",
+      "org_id":    "org_prospect",
+      "role":      "support_worker",
+      "password":  "Test@2468",
+      "active":    true,
+      "notes":     "Prospect support worker — should only access Prospect + NDIS docs"
+    },
+
+    {
+      "user_id":   "u-prospect-co-01",
+      "login_id":  "prospect\\daniel.kim",
+      "full_name": "Daniel Kim",
+      "org_id":    "org_prospect",
+      "role":      "coordinator",
+      "password":  "Test@2468",
+      "active":    true,
+      "notes":     "Prospect coordinator"
+    },
+
+    {
       "user_id":   "u-admin-01",
       "login_id":  "ndis\\admin.super",
       "full_name": "Super Admin",
