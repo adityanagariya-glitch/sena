@@ -15,8 +15,9 @@ from tools.base import ToolResult
 from tools.registry import TOOLS_BY_NAME
 
 
-# Terminal-direct — bypasses any redirect_stderr() context manager.
-_TERMINAL = sys.__stderr__
+# Terminal-direct — bypasses any redirect_stderr() context manager,
+# AND tees to /tmp/sena_activity.log so Streamlit's uvicorn capture can't hide it.
+from activity_log import _TERMINAL
 
 
 def _short_inputs(inputs: Dict[str, Any]) -> str:

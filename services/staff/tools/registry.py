@@ -9,6 +9,7 @@ from tools.base import ToolSpec
 
 # ---- Profile / identity tools ----
 from tools.profile.my_profile import TOOL as _T_MY_PROFILE
+from tools.profile.get_user_type import TOOL as _T_GET_USER_TYPE
 from tools.profile.set_my_timezone import TOOL as _T_SET_MY_TIMEZONE
 from tools.profile.remember_about_me import TOOL as _T_REMEMBER_ABOUT_ME
 
@@ -41,6 +42,7 @@ from tools.meta.cannot_help import TOOL as _T_CANNOT_HELP
 
 ALL_TOOLS: list[ToolSpec] = [
     _T_MY_PROFILE,
+    _T_GET_USER_TYPE,
     _T_SET_MY_TIMEZONE,
     _T_REMEMBER_ABOUT_ME,
     _T_LIST_MY_SHIFTS,

@@ -734,6 +734,24 @@
   },
   {
     "method": "GET",
+    "path": "/auth/user-type",
+    "description": "Detect the full type context of the authenticated user. AUTHORITATIVE persona/role lookup — use this to know WHO the logged-in user is. No params. Returns userType (one of superAdmin, lister, serviceProvider, organizationMember, client, visitor) plus staffType (support_worker / in_office / all / null), organizationType (organization / independent_support_worker / null), and the convenience flags isISW and isSupportWorker. organizationMember: check isSupportWorker (true = field support worker, false = in-office/all). serviceProvider: check isISW (true = independent support worker, false = registered organisation). All other userTypes need no further checks.",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get user type context",
+      "data": {
+        "userType": "organizationMember",
+        "staffType": "support_worker",
+        "organizationType": "organization",
+        "isISW": false,
+        "isSupportWorker": true
+      },
+      "timestamp": "2026-05-27T10:39:21.294Z"
+    }
+  },
+  {
+    "method": "GET",
     "path": "/organization-role/my-roles",
     "description": "Get all roles for the currently authenticated user. Returns all roles assigned to the user across all organizations. Supports pagination, optional search, and sorting by role name, organization name, assignedBy, and assignedAt.",
     "parameters": [
@@ -878,7 +896,6 @@
       "timestamp": "2025-11-14T10:51:40.801Z"
     }
   },
-  [
   {
     "method": "GET",
     "path": "/organization/shift/calendar",
@@ -953,5 +970,4 @@
       "timestamp": "2026-05-26T09:35:07.035Z"
     }
   }
-]
 ]

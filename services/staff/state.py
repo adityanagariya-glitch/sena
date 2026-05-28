@@ -33,7 +33,13 @@ user_context = {
     "user_id": None,
     "organization_id": None,
     "roles": [],
-    "user_type": None,
+    "user_type": None,        # legacy normalised value (admin/staff/isw/client/guardian/...)
+    # Canonical context from GET /auth/user-type (authoritative source of truth).
+    "user_type_raw": None,    # e.g. organizationMember / serviceProvider / client / visitor / superAdmin / lister
+    "staff_type": None,       # support_worker / in_office / all / None
+    "organization_type": None,  # organization / independent_support_worker / None
+    "is_isw": False,
+    "is_support_worker": False,
     "email": None,
     "authenticated": False,
     # Set by the frontend (lat/lng → IANA tz). Code reading this should fall
@@ -139,3 +145,47 @@ def get_apis_for_user(user_type=None, staff_type=None, roles=None):
 
     # Unknown persona → everything (safe default; backend enforces access)
     return AVAILABLE_APIS
+
+
+def _derive_legacy_user_type(user_type_raw, is_isw, is_support_worker):
+    """Map the canonical /auth/user-type `userType` to the legacy value the rest
+    of the codebase branches on (admin/staff/isw/client/guardian/lister/unknown).
+
+    Centralised here so the brittle role-name guessing in auth.py is no longer the
+    source of truth — the API is.
+    """
+    ut = (user_type_raw or "").strip()
+    if ut == "superAdmin":
+        return "admin"
+    if ut == "serviceProvider":
+        return "isw" if is_isw else "admin"        # ISW = field mobile; org owner = admin dashboard
+    if ut == "organizationMember":
+        return "staff" if is_support_worker else "admin"  # support worker = field; in_office/all = admin
+    if ut == "client":
+        return "client"
+    if ut == "visitor":
+        return "guardian"
+    if ut == "lister":
+        return "lister"
+    return "unknown"
+
+
+def apply_user_type_context(data):
+    """Store the canonical /auth/user-type response into user_context and derive
+    the legacy `user_type`. `data` is the API's `data` object:
+        {userType, staffType, organizationType, isISW, isSupportWorker}
+    """
+    if not isinstance(data, dict):
+        return
+    user_type_raw = data.get("userType")
+    staff_type = data.get("staffType")
+    is_isw = bool(data.get("isISW"))
+    is_support_worker = bool(data.get("isSupportWorker"))
+
+    user_context["user_type_raw"] = user_type_raw
+    if staff_type is not None:
+        user_context["staff_type"] = staff_type
+    user_context["organization_type"] = data.get("organizationType")
+    user_context["is_isw"] = is_isw
+    user_context["is_support_worker"] = is_support_worker
+    user_context["user_type"] = _derive_legacy_user_type(user_type_raw, is_isw, is_support_worker)

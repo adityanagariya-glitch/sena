@@ -69,3 +69,10 @@ graphify-out/
 *.md
 *.txt
 !requirements.txt
+.claudeignore
+.code-review-graphignore
+.graphifyignore
+.cursorrules
+.windsurfrules
+.opencode.json
+.qoder/mcp.json

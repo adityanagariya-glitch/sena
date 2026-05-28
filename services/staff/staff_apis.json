@@ -413,7 +413,7 @@
         "name": "filter",
         "type": "string",
         "required": false,
-        "description": "Available values : draft, scheduled, ongoing, completed, cancelled"
+        "description": "Optional status filter. ONLY these values are valid: draft, scheduled, ongoing, completed, cancelled. NEVER pass \"thisweek\" \u2014 that is for /organization/shift/list-view/type, not this endpoint. For a date window use from/to instead."
       },
       {
         "name": "page",

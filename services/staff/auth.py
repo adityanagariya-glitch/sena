@@ -12,7 +12,31 @@ import sys
 from datetime import datetime
 
 from config import API_BASE_URL
-from state import user_context
+from state import user_context, apply_user_type_context
+
+
+def _fetch_and_apply_user_type(headers=None):
+    """Fetch the authoritative user-type context from GET /auth/user-type and
+    store it (canonical fields + derived legacy user_type).
+
+    The API is the source of truth; on any failure we keep whatever was inferred
+    earlier so auth never hard-fails over this lookup. Returns True on success.
+    """
+    try:
+        headers = headers or get_auth_headers()
+        resp = requests.get(f"{API_BASE_URL}/auth/user-type", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            body = resp.json()
+            data = body.get("data") if isinstance(body, dict) else None
+            if data:
+                apply_user_type_context(data)
+                print(f"  User-type (authoritative): {data}")
+                return True
+        else:
+            print(f"  /auth/user-type returned {resp.status_code}")
+    except Exception as e:
+        print(f"  /auth/user-type fetch failed: {e}")
+    return False
 
 
 def _hydrate_user_timezone():
@@ -234,6 +258,8 @@ def authenticate_with_jwt(token):
         print(f"  User: {user_context['email']}")
         print(f"  User ID: {user_context['user_id']}")
         print(f"  Organization: {user_context['organization_id']}")
+        # Authoritative user-type from the API overrides the role-name inference above.
+        _fetch_and_apply_user_type()
         user_context["authenticated"] = True
         _hydrate_user_timezone()
         return True
@@ -348,6 +374,9 @@ def authenticate_user():
                 or user_context.get("organization_id")
             )
             user_context["email"] = profile_data.get("email") or user_context.get("email")
+
+            # Authoritative user-type from the API overrides the role-name inference above.
+            _fetch_and_apply_user_type(headers)
 
             print(f"  User Type: {user_context['user_type']}")
             print(f"  User ID: {user_context['user_id']}")

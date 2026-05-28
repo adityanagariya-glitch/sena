@@ -410,21 +410,38 @@ IMPORTANT CONTEXT — This user is FIELD STAFF / SUPPORT WORKER:
     ENTITY RESOLUTION:
     If the user references an entity by name (e.g. "Client Aryan", "that shift") and the recent conversation contains the matching ID, use that ID in `parameters`. If the ID is not visible in the conversation, pick a search/list endpoint with the name as a filter parameter instead.
 
-    SHIFT LIST-VIEW ENDPOINT RULES (/organization/shift/list-view/type, /organization-member/shift/list-view, /isw/shift/list-view and similar):
-    - `type` is REQUIRED. Pick ONE of: "draft", "scheduled", "thisweek", "completed".
-    - "thisweek" → shifts within the current week (Mon-Sun). NO from/to needed.
-    - "scheduled" → upcoming shifts EXCLUDING this week. REQUIRES from/to.
-    - "completed" → past completed shifts. REQUIRES from/to.
-    - "draft" → unfinalised shifts. from/to optional.
-    - `from` and `to` MUST be UTC ISO with the literal "Z" suffix — example: "2026-05-01T00:00:00.000Z"
-    - NEVER use Australian timezone offset (+10:00 / +11:00) in the API params. Reason in Australian time but ALWAYS emit UTC Z values.
-    - The user is in Australia — when they say "today" or "this week", that means today/this week in AUSTRALIAN local time. Compute the date boundaries in Australian time, THEN convert to UTC Z.
+    SHIFT QUERIES — pick the endpoint by the user's persona stated above. Using the wrong family will be denied by access control.
 
-    TYPE-PICKING EXAMPLES (no date) — for shift queries:
-    - "my shifts", "what shifts do i have", "shifts" → type="thisweek" (default to current week)
-    - "upcoming shifts", "shifts next week", "future shifts" → type="scheduled" + from=tomorrow 00:00 AUS in UTC, to=+30 days in UTC
-    - "completed shifts", "past shifts", "shifts last week" → type="completed" + from/to covering that range in UTC
-    - "draft shifts" → type="draft"
+    * ADMIN / in-office org member:
+      - /organization/shift/list-view/type   (org-wide; query `type` REQUIRED, one of draft/scheduled/thisweek/completed)
+      - /organization-member/shift/list-view (the admin's OWN shifts as a member; use `from`+`to`)
+
+    * SUPPORT WORKER (staffType=support_worker — legacy user_type "staff"):
+      - /mobile/staff-shift/this-week-shifts   (this week; NO params needed)
+      - /mobile/staff-shift/all-shifts         (any range; `from`+`to`; optional `search`)
+      - /mobile/staff-shift/calendar-view      (any range; `from`+`to`)
+      NEVER call /organization/shift/* — admin-only, will be denied.
+
+    * ISW (independent support worker):
+      - /mobile/isw-shift/this-week-shifts
+      - /isw/shift/list-view                   (any range; `from`+`to`; optional `filter`)
+      NEVER call /organization/shift/* — admin-only.
+
+    * CLIENT / GUARDIAN:
+      - /mobile/client-shift/this-week-shifts
+      - /mobile/client-shift/all-shifts        (any range; `from`+`to`)
+      - /mobile/visitor/*                      (guardian-only profile/shift views)
+
+    Param rules (apply where the param exists):
+    - `type` is ONLY on /organization/shift/list-view/type. Allowed: draft, scheduled, thisweek, completed. "thisweek" → no from/to needed; "scheduled"/"completed" REQUIRE from/to; "draft" optional.
+    - `filter` is ONLY on /organization-member/shift/list-view and /isw/shift/list-view. Allowed: draft, scheduled, ongoing, completed, cancelled. filter="thisweek" is INVALID — returns 400.
+    - `from`/`to` MUST be UTC ISO with literal "Z" suffix, e.g. "2026-05-01T00:00:00.000Z". NEVER emit an Australian offset.
+    - "today" / "this week" / "last week" / "the month" mean those windows in AUSTRALIAN local time — compute boundaries there, then convert to UTC Z.
+
+    PHRASING → ENDPOINT (combine with persona above):
+    - "my shifts", "shifts this week" → the persona's *-this-week-shifts endpoint when available; otherwise from/to covering this week.
+    - "last week" / "next week" / "the month" → the persona's all-shifts/list-view endpoint with from/to covering that range.
+    - "draft/ongoing/completed/cancelled shifts" → admin uses /organization/shift/list-view/type with type=...; staff/ISW use their list-view with filter=... (NOT "thisweek").
 
     DATE EXAMPLES (today is {today_str}):
     - "today" → from = {today_start_utc}, to = {today_end_utc}
@@ -612,7 +629,7 @@ def _format_meta_preview(meta, max_keys=6):
 # backend is logged here so the launching terminal always shows what the agent
 # is doing in real time. Imported once; used unconditionally.
 import sys as _sys
-_TERMINAL = _sys.__stderr__
+from activity_log import _TERMINAL  # tees to stderr + /tmp/sena_activity.log
 
 
 def _short_url(url):
