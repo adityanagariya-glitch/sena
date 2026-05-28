@@ -131,9 +131,9 @@ def process_query_agent(user_question):
     """
     start = time.time()
 
-    # Terminal-direct stream — bypasses Streamlit's redirect_stderr so the
-    # launching shell always sees the agent's per-turn activity.
-    _TERMINAL = sys.__stderr__
+    # Terminal-direct stream — bypasses Streamlit's redirect_stderr AND tees to
+    # /tmp/sena_activity.log so the launching shell always sees per-turn activity.
+    from activity_log import _TERMINAL
     print(f"\n[AGENT] ━━━ user: {user_question!r}", file=_TERMINAL, flush=True)
 
     # Tier 1 — small core prompt, cached (identity, voice, today, principles)
@@ -239,6 +239,12 @@ def process_query_agent(user_question):
             if not final_text:
                 final_text = "Sorry, I couldn't put together an answer for that."
             break
+
+        # Show the model's tool selection for this iteration — names + a short
+        # preview of the inputs, so it's clear WHY each [TOOL] line that follows
+        # was run (rather than just seeing the dispatch line in isolation).
+        picks = ", ".join(tu.get("name", "?") for tu in tool_use_blocks)
+        print(f"[AGENT] iter {iterations} picked tools: [{picks}]", file=_TERMINAL, flush=True)
 
         # tool_use stop reason — append the assistant message and run each tool
         messages.append({

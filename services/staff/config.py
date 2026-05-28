@@ -18,14 +18,10 @@ VERBOSE = os.getenv("SENA_AI_VERBOSE", "").lower() in ("1", "true", "yes")
 
 REGION = "ap-southeast-2"
 #MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-MODEL_ID = "au.anthropic.claude-haiku-4-5-20251001-v1:0"
+MODEL_ID = "au.anthropic.claude-sonnet-4-6"
 API_BASE_URL = "https://dev-api.isena.org/api"
 KB_MODEL_ID = MODEL_ID
 
-# ---- Bedrock Guardrails config ----
-# Stack multiple guardrails: first one rides on converse() (free), rest run via apply_guardrail.
-# Env format: SENA_AI_BEDROCK_GUARDRAIL_IDS="id1:version1,id2:version2,..."
-# Backward-compat: also reads SENA_AI_BEDROCK_GUARDRAIL_ID + _VERSION as a single entry.
 def _parse_guardrails():
     raw = os.getenv("SENA_AI_BEDROCK_GUARDRAIL_IDS", "").strip()
     if raw:
@@ -53,17 +49,17 @@ if GUARDRAILS:
 else:
     print("[bedrock-guardrails] no guardrails configured — set SENA_AI_BEDROCK_GUARDRAIL_IDS to enable")
 
+BEDROCK_API_KEY = os.getenv("BEDROCK_API_KEY", "")  # <-- or hardcode: "ABSK...
+
+if BEDROCK_API_KEY:
+    os.environ["AWS_BEARER_TOKEN_BEDROCK"] = BEDROCK_API_KEY
+    if VERBOSE:
+        print("[bedrock] using Bedrock API key (bearer token)")
 
 # ---- AWS clients ----
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
 bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=REGION)
 
-
-# ---- Bedrock Knowledge Base config ----
-# Set SENA_AI_BEDROCK_KB_ID to enable RAG over policy/privacy/staff docs in S3.
-# Multi-KB support: comma-separated list (e.g. "kb1,kb2,kb3"). Queries hit all
-# KBs in parallel via the `retrieve` API; chunks are merged top-K by score and
-# fed into a single generate call.
 _kb_id_raw = os.getenv("SENA_AI_BEDROCK_KB_ID", "").strip()
 BEDROCK_KB_IDS = [kb.strip() for kb in _kb_id_raw.split(",") if kb.strip()]
 # Backward compat — first KB is the "primary" id; truthy when ANY KB configured.
@@ -102,9 +98,6 @@ AGENTCORE_SESSION_TTL_HOURS = int(os.getenv("SENA_AI_AGENTCORE_SESSION_TTL_HOURS
 CHAT_AUDIT_TABLE = os.getenv("SENA_AI_CHAT_AUDIT_TABLE", "").strip()
 CHAT_AUDIT_TTL_DAYS = int(os.getenv("SENA_AI_CHAT_AUDIT_TTL_DAYS", "30"))
 
-# Shared sessionId store (created via deploy_dynamodb.py). When set, the staff
-# service stores per-actor session_id rows in DynamoDB instead of the local
-# .memory_sessions.json — survives container restarts + multi-process workers.
 SESSION_TABLE_NAME = os.getenv("SENA_AI_SESSION_TABLE", "").strip()
 # Row TTL (DDB native auto-delete) — matches AgentCore raw-event retention.
 SESSION_ROW_TTL_DAYS = int(os.getenv("SENA_AI_SESSION_ROW_TTL_DAYS", "90"))
