@@ -69,7 +69,7 @@ If provided, must parse as positive number, integer part ≤9 digits.
 | field id (per row) | type | required | enum values (wire) | validation |
 |---|---|---|---|---|
 | `support_name` | text | yes | — | required, max 100 chars |
-| `support_category` | enum | yes | `CORE_SUPPORTS`, `CAPACITY_BUILDING`, `CAPITAL_SUPPORTS`, `TRANSPORT` | required |
+| `support_category` | enum | yes | `PERSONAL_CARE`, `COMMUNITY_ACCESS`, `CAPACITY_BUILDING`, `TRANSPORT` | required |
 | `description` | textarea | no | — | if filled: min 5, max 255 chars |
 | `frequency` | enum | yes | `AS_REQUIRED`, `DAILY`, `WEEKLY`, `FORTNIGHTLY`, `MONTHLY`, `ONCE_OFF` | required |
 | `duration_hours` | number | yes | — | integer 1–24 |

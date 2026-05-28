@@ -68,10 +68,16 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
                     ),
                 },
                 "value": {
+                    "type": "string",
                     "description": (
-                        "The captured value. Dates as YYYY-MM-DD. Enums "
-                        "must match enum_values exactly (case-sensitive). "
-                        "Multi-enums as array."
+                        "The captured value, ALWAYS encoded as a string. "
+                        "Numbers (NDIS number '309362545', durations '8') → "
+                        "decimal-digit string. Dates → 'YYYY-MM-DD'. Enums → "
+                        "exact case-sensitive enum_values entry. Booleans → "
+                        "'true'/'false'. Multi-enums → JSON array string "
+                        "'[\"A\",\"B\"]'. NEVER emit a raw integer/boolean — "
+                        "wrap in quotes. The mobile sink converts to the "
+                        "target field type."
                     ),
                 },
                 "repeatable_index": {
@@ -122,24 +128,25 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
     {
         "name": "submit_step",
         "description": (
-            "Advance or go back a step. Default (direction='forward' or "
-            "omitted) submits the current step: mobile checks every required "
-            "field and cross-field rule, returns {ok:true} or "
+            "Submit the current step and advance to the next. Mobile checks "
+            "every required field + cross-field rule, returns {ok:true} or "
             "{ok:false, blockers:[{path,label,reason},...]}; on blockers read "
             "the FIRST blocker's reason verbatim and ask the user to fix it. "
-            "Set direction='back' when the participant asks to go to the "
-            "PREVIOUS step / 'go back' / 'previous page' — mobile saves the "
-            "current screen then navigates back. No confirmation needed for "
-            "back; still pass the participant's exact words."
+            "Backward navigation by voice is TEMPORARILY DISABLED — if the "
+            "participant asks to go back / previous step / previous page, "
+            "say: 'Going back by voice is paused — please tap the back arrow "
+            "on the screen.' Do NOT call submit_step with direction='back'."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "confirmation_transcript": {"type": "string"},
+                # `direction` retained in schema for forward-compat but only
+                # "forward" is accepted while voice back-nav is paused.
                 "direction": {
                     "type": "string",
-                    "enum": ["forward", "back"],
-                    "description": "forward = submit & advance (default); back = previous step",
+                    "enum": ["forward"],
+                    "description": "Only forward is supported right now.",
                 },
             },
             "required": ["confirmation_transcript"],
@@ -204,7 +211,86 @@ class ToolDispatcher:
         if name not in _KNOWN_TOOLS:
             log.warning("unknown_tool_called", tool=name)
             return {"ok": False, "reason": f"Unknown tool: {name}", "code": "unknown_tool"}
+
+        # Pre-flight arg shape check. The Live API tool-runtime returns a
+        # synthetic "(System Error: Please fix the argument type for `value`.)"
+        # message when the model emits a malformed call — the model has been
+        # observed reading that error aloud to the participant. Catching the
+        # bad shape here and returning a clean {ok:false, reason} lets the
+        # model recover via the normal rejection path without any meta-text
+        # ever entering its context.
+        validation_err = _preflight_validate(name, args)
+        if validation_err is not None:
+            log.info(
+                "tool_arg_preflight_rejected", tool=name, reason=validation_err,
+            )
+            return {
+                "ok": False,
+                "reason": validation_err,
+                "code": "arg_validation",
+            }
+
         result = await self._bridge.dispatch(name, args)
         if name == "submit_step" and result.get("ok") is True:
             self.step_completed = True
         return result
+
+
+def _preflight_validate(name: str, args: dict[str, Any]) -> str | None:
+    """Return a human-friendly reason if args are malformed, else None.
+
+    Catches the common Gemini Live argument-shape mistakes BEFORE the call
+    reaches the mobile bridge, so the runtime never emits its parenthetical
+    error template into the model's context.
+    """
+    if name in ("update_field", "clear_field"):
+        section = args.get("section")
+        field = args.get("field")
+        if not isinstance(section, str) or not section:
+            return "section must be a non-empty string."
+        if not isinstance(field, str) or not field:
+            return "field must be a non-empty string."
+        idx = args.get("repeatable_index")
+        if idx is not None and not isinstance(idx, int):
+            return "repeatable_index must be an integer."
+    if name == "update_field":
+        # `value` may be string / number / bool / list / null depending on the
+        # field type — the only outright illegal shape is `dict` or a missing
+        # arg. Mobile validates the semantic type per field. Tool schema asks
+        # the model to send a string; if it sends a bare int/bool/float anyway
+        # (observed: NDIS number sent as int → Gemini SDK emits "Argument
+        # 'value' had unspecified type (model generated STRING)" and the model
+        # then parrots that error to the user), coerce it here so the mobile
+        # bridge always receives a string.
+        if "value" not in args:
+            return "value is required for update_field."
+        v = args["value"]
+        if isinstance(v, dict):
+            return (
+                "value must be a scalar (string, number, boolean) or an array "
+                "for multi-enum fields. Pass the user-supplied value directly."
+            )
+        if isinstance(v, bool):
+            args["value"] = "true" if v else "false"
+        elif isinstance(v, (int, float)):
+            # int(309362545) → "309362545"; float(8.0) → "8" not "8.0".
+            args["value"] = (
+                str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
+            )
+    if name == "add_row":
+        if not isinstance(args.get("section"), str) or not args.get("section"):
+            return "section must be a non-empty string for add_row."
+    if name == "delete_row":
+        if not isinstance(args.get("section"), str) or not args.get("section"):
+            return "section must be a non-empty string for delete_row."
+        idx = args.get("row_index")
+        if idx is not None and not isinstance(idx, int):
+            return "row_index must be an integer."
+    if name == "submit_step":
+        ct = args.get("confirmation_transcript")
+        if not isinstance(ct, str) or not ct.strip():
+            return (
+                "confirmation_transcript must be the participant's exact words "
+                "confirming submission."
+            )
+    return None

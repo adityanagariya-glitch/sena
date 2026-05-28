@@ -26,6 +26,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -91,6 +92,60 @@ class GeminiLiveSession:
 
     The WS lock is NOT managed here — ws_routes.py acquires/releases it.
     """
+
+    # Patterns that mean the model parroted Gemini tool-runtime meta-text
+    # back to the participant. Observed in production: agent said
+    #   "(System Error: Please fix the argument type for `value`.)"
+    #   "(Standard error response.) Sorry, I'm having a bit of trouble..."
+    # These are validation errors the model should silently recover from,
+    # NOT speak aloud. We drop them from the transcript that crosses to
+    # mobile and inject a system correction so the model retries with a
+    # valid tool call. Patterns are deliberately tight — phrases the model
+    # would never use in legitimate participant-facing speech.
+    _SYSTEM_LEAK_PATTERNS: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\(System\s+Error[^)]*\)", re.IGNORECASE),
+        re.compile(r"\(Standard\s+error[^)]*\)", re.IGNORECASE),
+        re.compile(r"please\s+fix\s+the\s+argument\s+type[^.]*\.?", re.IGNORECASE),
+        # Orphan tail after the leading `(System Error:` is stripped — e.g.
+        # `... in function call 'update_field') Thanks Aditya, I've...`. Match
+        # from start-of-string OR start-of-sentence through the first `)`.
+        re.compile(
+            r"(?:^|(?<=[\.\!\?\s]))[^()]{0,80}?in\s+function\s+call\s+['\"][^'\"]+['\"]\)\s*",
+            re.IGNORECASE,
+        ),
+        # `(model generated <TYPE>)` leak shape (without the opening
+        # `(System Error:` prefix). Argument-type complaints from Gemini.
+        re.compile(
+            r"\(?model\s+generated\s+[A-Z]+\)?\s*",
+            re.IGNORECASE,
+        ),
+        # `Argument 'value' had unspecified type ...` — full sentence form.
+        re.compile(
+            r"argument\s+['\"]?\w+['\"]?\s+had\s+unspecified\s+type[^.]*\.?",
+            re.IGNORECASE,
+        ),
+    )
+
+    @classmethod
+    def _scrub_system_leaks(cls, text: str) -> tuple[str, bool]:
+        """Strip Gemini tool-runtime meta-text from agent transcript.
+
+        Returns the cleaned text + a flag indicating whether anything was
+        stripped (caller uses the flag to inject a corrective system
+        instruction so the model retries the failed tool call with a
+        valid argument shape instead of speaking the error to the user).
+        """
+        if not text:
+            return text, False
+        leaked = False
+        cleaned = text
+        for pat in cls._SYSTEM_LEAK_PATTERNS:
+            new = pat.sub("", cleaned)
+            if new != cleaned:
+                leaked = True
+                cleaned = new
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" .;:,—-")
+        return cleaned, leaked
 
     def __init__(
         self,
@@ -751,29 +806,42 @@ class GeminiLiveSession:
                             interrupted_intent: str | None = None
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
-                                interrupted_intent = full_text.strip() or None
+                                cleaned_text, leaked = self._scrub_system_leaks(
+                                    full_text,
+                                )
+                                if leaked:
+                                    log.warning(
+                                        "agent_system_leak_scrubbed_on_interrupt "
+                                        "session=%s original=%r cleaned=%r",
+                                        self._session_id,
+                                        full_text,
+                                        cleaned_text,
+                                    )
+                                interrupted_intent = cleaned_text.strip() or None
+                                emit_text = cleaned_text or ""
                                 log.info(
                                     "AGENT_SAID(interrupted) %r session=%s",
-                                    full_text,
+                                    emit_text,
                                     self._session_id,
                                 )
-                                await self._ws.send_text(
-                                    json.dumps(
-                                        {
-                                            "type": "agent_said",
-                                            "text": full_text,
-                                        }
+                                if emit_text:
+                                    await self._ws.send_text(
+                                        json.dumps(
+                                            {
+                                                "type": "agent_said",
+                                                "text": emit_text,
+                                            }
+                                        )
                                     )
-                                )
-                                await self._repo.append_transcript(
-                                    self._session_id,
-                                    {
-                                        "speaker": "agent",
-                                        "text": full_text,
-                                        "turn_id": self._turn_id,
-                                    },
-                                    ttl_sec=settings.session_max_sec,
-                                )
+                                    await self._repo.append_transcript(
+                                        self._session_id,
+                                        {
+                                            "speaker": "agent",
+                                            "text": emit_text,
+                                            "turn_id": self._turn_id,
+                                        },
+                                        ttl_sec=settings.session_max_sec,
+                                    )
                                 agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "interrupted"}))
                             turn_started = False
@@ -815,29 +883,60 @@ class GeminiLiveSession:
                         if sc.turn_complete:
                             turn_text = ""
                             if agent_transcript_buf:
-                                turn_text = "".join(agent_transcript_buf)
+                                raw_text = "".join(agent_transcript_buf)
+                                cleaned_text, leaked = self._scrub_system_leaks(
+                                    raw_text,
+                                )
+                                if leaked:
+                                    log.warning(
+                                        "agent_system_leak_scrubbed session=%s "
+                                        "original=%r cleaned=%r",
+                                        self._session_id,
+                                        raw_text,
+                                        cleaned_text,
+                                    )
+                                    with contextlib.suppress(Exception):
+                                        await session.send_realtime_input(
+                                            text=(
+                                                "[SYSTEM CORRECTION] Your last "
+                                                "tool call was rejected by the "
+                                                "function-call validator "
+                                                "(usually wrong type for "
+                                                "`value`: must be string for "
+                                                "text/date/enum, array for "
+                                                "multi_enum, boolean for "
+                                                "interpreter_required, integer "
+                                                "for repeatable_index only). "
+                                                "DO NOT speak this error to the "
+                                                "participant. Silently fix the "
+                                                "argument shape and re-emit the "
+                                                "tool call."
+                                            )
+                                        )
+                                turn_text = cleaned_text or ""
                                 log.info(
                                     "AGENT_SAID %r session=%s",
                                     turn_text,
                                     self._session_id,
                                 )
-                                await self._ws.send_text(
-                                    json.dumps(
-                                        {
-                                            "type": "agent_said",
-                                            "text": turn_text,
-                                        }
+                                if turn_text:
+                                    await self._ws.send_text(
+                                        json.dumps(
+                                            {
+                                                "type": "agent_said",
+                                                "text": turn_text,
+                                            }
+                                        )
                                     )
-                                )
-                                await self._repo.append_transcript(
-                                    self._session_id,
-                                    {
-                                        "speaker": "agent",
-                                        "text": turn_text,
-                                        "turn_id": self._turn_id,
-                                    },
-                                    ttl_sec=settings.session_max_sec,
-                                )
+                                    await self._repo.append_transcript(
+                                        self._session_id,
+                                        {
+                                            "speaker": "agent",
+                                            "text": turn_text,
+                                            "turn_id": self._turn_id,
+                                        },
+                                        ttl_sec=settings.session_max_sec,
+                                    )
                                 agent_transcript_buf.clear()
                             # Phantom-failure guard: the model claimed a save
                             # failed but never called update_field this turn.
