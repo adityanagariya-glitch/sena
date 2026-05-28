@@ -38,6 +38,7 @@ from tools.kb.get_policy import TOOL as _T_GET_POLICY
 from tools.memory.recall_conversation import TOOL as _T_RECALL_CONVERSATION
 from tools.meta.clarify_with_user import TOOL as _T_CLARIFY
 from tools.meta.cannot_help import TOOL as _T_CANNOT_HELP
+from tools.meta.get_current_time import TOOL as _T_GET_CURRENT_TIME
 
 
 ALL_TOOLS: list[ToolSpec] = [
@@ -63,6 +64,7 @@ ALL_TOOLS: list[ToolSpec] = [
     _T_RECALL_CONVERSATION,
     _T_CLARIFY,
     _T_CANNOT_HELP,
+    _T_GET_CURRENT_TIME,
 ]
 
 TOOLS_BY_NAME: dict[str, ToolSpec] = {t.name: t for t in ALL_TOOLS}

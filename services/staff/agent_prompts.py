@@ -366,6 +366,19 @@ If the resolver tool can't map the input, offer the user the friendly list: Sydn
 """
 
 
+def _skill_time():
+    return """## Time skill (active because the user asked about the current time)
+
+Whenever the user asks "what time is it", "time", "current time", "what's the time", etc. → `get_current_time()`.
+
+The tool returns the current time in their timezone, whether it's daytime or nighttime, and the timezone name.
+Format your response naturally: "It's 3:45 PM in Melbourne right now — good afternoon!" or just "3:45 PM (Melbourne, daytime)".
+
+If the user wants to change their timezone first, guide them: "First, let me set your timezone to Brisbane, then I'll show you the time there."
+Then call `set_my_timezone(timezone_or_location="Brisbane")`, wait for confirmation, then `get_current_time()` to show the updated time.
+"""
+
+
 # Keyword triggers for each skill block. Lowercase substring match against
 # the user's question. Over-triggering is fine (each block is small); the
 # goal is to avoid loading a huge prompt for every turn.
@@ -406,6 +419,10 @@ _KW_TZ = (
     "based in", "located in", "my location",
     "set my time", "my time zone",
 )
+_KW_TIME = (
+    "time", "what time", "what's the time", "whats the time",
+    "current time", "what's the current time", "whats the current time",
+)
 _AUS_LOCATIONS = (
     "sydney", "melbourne", "brisbane", "perth",
     "adelaide", "hobart", "darwin", "canberra",
@@ -436,5 +453,7 @@ def _skills_for_question(user_question: str) -> str:
         parts.append(_skill_organizations())
     if any(kw in q for kw in _KW_TZ) or any(loc in q for loc in _AUS_LOCATIONS):
         parts.append(_skill_timezone())
+    if any(kw in q for kw in _KW_TIME):
+        parts.append(_skill_time())
 
     return "\n\n".join(parts)
