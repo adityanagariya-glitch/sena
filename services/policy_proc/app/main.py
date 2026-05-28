@@ -177,51 +177,6 @@ def health():
     return {"status": "ok"}
 
 
-# # ── Query (non-streaming) ──────────────────────────────────────────────────────
-
-# @app.post("/query")
-# def query(req: QueryRequest, authorization: str = Header(default=None)):
-#     claims  = decode_token(authorization)
-#     user_id = claims["user_id"]
-#     org_id  = claims["org_id"]
-#     role    = claims["role"]
-#     actor_id = f"{org_id}/{user_id}"
-#     session_id    = req.session_id or str(uuid.uuid4())
-#     session_title = req.session_title or req.question[:60]
-
-#     if not req.question.strip():
-#         raise HTTPException(status_code=400, detail="question cannot be empty")
-
-#     logger.info(f"Query | user={user_id} | org={org_id} | role={role} | q={req.question[:60]}")
-
-#     result = run_pipeline(
-#         question    = req.question,
-#         session_id  = session_id,
-#         user_id     = user_id,
-#         org_id      = org_id,
-#         role        = role,
-#         is_new_chat = req.is_new_chat,
-#     )
-
-#     answer       = result.get("answer")
-#     sources      = result.get("sources", [])
-#     blocked      = result.get("blocked", False)
-#     block_reason = result.get("block_reason")
-#     label        = result.get("classification", {}).get("label")
-#     clean_sources = [s.split("/")[-1] for s in sources]
-
-#     return {
-#         "answer":       answer,
-#         "sources":      clean_sources,
-#         "blocked":      blocked,
-#         "block_reason": block_reason,
-#         "session_id":   result.get("session_id", session_id),
-#         "label":        label,
-#         "confidence":   result.get("classification", {}).get("confidence"),
-#         "_identity":    {"user_id": user_id, "org_id": org_id, "role": role},
-#     }
-
-
 # ── Query (streaming) ──────────────────────────────────────────────────────────
 
 @app.post("/query/stream")
@@ -249,114 +204,34 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
     logger.info(f"Stream | user={user_id} | org={org_id} | role={role} | q={question[:60]}")
 
     def event_stream():
-        # Step 1: Classify
         try:
-            classification = classify(question)
+            result = run_pipeline(
+                question    = question,
+                session_id  = session_id,
+                user_id     = actor_id,
+                org_id      = org_id,
+                role        = role,
+                is_new_chat = req.is_new_chat,
+            )
         except Exception as exc:
-            logger.error(f"Classifier error: {exc}")
-            classification = {"label": "NDIS", "confidence": 0.5}
-
-        blocked, block_message = should_block(classification)
-        if blocked:
-            save_memory(
-            actor_id,
-            session_id,
-            question,
-            block_message,
-            []
-        )
-            yield f"data: {json.dumps({'type': 'blocked', 'text': block_message, 'label': classification.get('label')})}\n\n"
-            return
-
-        # Step 2: New session
-        if req.is_new_chat:
-            try:
-                create_session(actor_id, session_id, question)
-            except Exception as exc:
-                logger.error(f"Session create error: {exc}")
-
-        # Step 3: Memory
-        try:
-            memory_ctx = get_memory_context(actor_id, session_id, question)
-            recent_turns  = memory_ctx["recent_turns"]
-            agentcore_ctx = memory_ctx["agentcore_ctx"]
-        except Exception as exc:
-            logger.error(f"Memory read error: {exc}")
-            recent_turns  = ""
-            agentcore_ctx = ""
-
-        # Step 4: Retrieve
-        try:
-            chunks, context, sources = retrieve(question, org_id=org_id, role=role)
-        except Exception as exc:
-            logger.error(f"Retrieval error: {exc}")
+            logger.error(f"Pipeline error: {exc}")
             yield f"data: {json.dumps({'type': 'error', 'text': MESSAGES['ERROR']})}\n\n"
             return
 
-        if is_context_empty(context):
-            save_memory(
-            actor_id,
-            session_id,
-            question,
-            MESSAGES["NOT_IN_KB"],
-            []
-        )
-            yield f"data: {json.dumps({'type': 'blocked', 'text': MESSAGES['NOT_IN_KB'], 'label': 'NOT_IN_KB'})}\n\n"
+        answer       = result.get("answer", "")
+        sources      = result.get("sources", [])
+        blocked      = result.get("blocked", False)
+        block_reason = result.get("block_reason")
+        label        = result.get("classification", {}).get("label")
+
+        yield f"data: {json.dumps({'type': 'meta', 'session_id': result.get('session_id', session_id), 'label': label, 'sources': sources, '_identity': {'user_id': user_id, 'org_id': org_id, 'role': role}})}\n\n"
+
+        if blocked:
+            yield f"data: {json.dumps({'type': 'blocked', 'text': answer, 'label': block_reason or label})}\n\n"
             return
 
-        clean_sources = [s.split("/")[-1] for s in sources]
-
-        # Step 5: Metadata event
-        yield f"data: {json.dumps({'type': 'meta', 'session_id': session_id, 'label': classification.get('label'), 'sources': clean_sources, '_identity': {'user_id': user_id, 'org_id': org_id, 'role': role}})}\n\n"
-        
-        # # DEBUG
-        # print(f"\n=== CONTEXT SENT TO GENERATOR ===\n{context[:1000]}\n=== END CONTEXT ===\n")
-
-        # Step 6: Generate (streaming)
-        full_answer   = []
-        final_blocked = False
-        for chunk in generate_stream(
-            question,
-            context,
-            recent_turns,
-            agentcore_ctx
-        ):
-            ctype = chunk.get("type")
-            # token
-            if ctype == "token":
-                text = chunk.get("text", "")
-                full_answer.append(text)
-                yield (
-                    f"data: "
-                    f"{json.dumps({'type': 'token', 'text': text})}\n\n"
-                )
-            # blocked
-            elif ctype == "blocked":
-                final_blocked = True
-                yield (
-                    f"data: "
-                    f"{json.dumps({'type': 'blocked', 'text': chunk.get('text', '')})}\n\n"
-                )
-            # error
-            elif ctype == "error":
-                final_blocked = True
-                yield (
-                    f"data: "
-                    f"{json.dumps({'type': 'error', 'text': chunk.get('text', '')})}\n\n"
-                )
-            # done
-            elif ctype == "done":
-                yield (
-                    f"data: "
-                    f"{json.dumps({'type': 'done', 'stop_reason': chunk.get('stop_reason', 'end_turn')})}\n\n"
-                )
-        # Step 7: Save memory + log conversation
-        final_text = "".join(full_answer)
-        if not final_blocked and final_text:
-            try:
-                save_memory(actor_id, session_id, question, final_text, clean_sources)
-            except Exception as exc:
-                logger.error(f"Memory save error: {exc}")
+        yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'stop_reason': 'end_turn'})}\n\n"
 
     return StreamingResponse(
         event_stream(),

@@ -1,10 +1,9 @@
 import boto3
 import time
 
-bedrock_agent = boto3.client("bedrock-agent", region_name="ap-southeast-2")
+from config import REGION, KB_ID, DS_ID
 
-KB_ID = "KFWSFMVU8U"
-DS_ID = "CWJ8UCZSCY"
+bedrock_agent = boto3.client("bedrock-agent", region_name=REGION)
 
 job = bedrock_agent.start_ingestion_job(
     knowledgeBaseId=KB_ID,
