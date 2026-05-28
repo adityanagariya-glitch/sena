@@ -42,7 +42,13 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
-from onboarding.models.turn_payload import Participant, StepInfo, TurnPayload
+from onboarding.models.turn_payload import (
+    NextTarget,
+    Participant,
+    StepInfo,
+    TurnPayload,
+    VisibleField,
+)
 from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
@@ -139,14 +145,120 @@ async def onboarding_ws(
         }))
 
         # ── 6. Build system prompt + tool dispatcher + run Gemini bridge ──────
-        participant_display_name = (
+        # Resolve participant display name with FormState override.
+        #
+        # Mobile sends `participant_display_name` in the POST bootstrap, but
+        # that value comes from the cached profile and goes stale within a
+        # single session the moment the agent calls `update_field(section=
+        # "basics", field="full_name", ...)`. Without this override, the next
+        # session would greet the user with their OLD name (observed 2026-05-28
+        # — user renamed "Aditya" → "Ethan" in session 1, mobile re-POSTed
+        # session 2 with the stale "Aditya Nagariya", and the opener said
+        # "Hi Aditya"). The mobile fix is theirs to ship; this is defense in
+        # depth so the backend self-heals from its own FormState.
+        bootstrap_display_name = (
             bootstrap.participant_display_name
             if bootstrap and bootstrap.participant_display_name
             else ""
         )
+        formstate_full_name = ""
+        if isinstance(state.values, dict):
+            basics = state.values.get("basics")
+            if isinstance(basics, dict):
+                _fn = basics.get("full_name")
+                if isinstance(_fn, dict):
+                    _fn = _fn.get("value")
+                if isinstance(_fn, str) and _fn.strip():
+                    formstate_full_name = _fn.strip()
+        # FormState wins when present — it's the live truth on this server.
+        participant_display_name = formstate_full_name or bootstrap_display_name
         participant_first_name = (
             participant_display_name.split(" ", 1)[0] if participant_display_name else ""
         )
+        if formstate_full_name and formstate_full_name != bootstrap_display_name:
+            log.info(
+                "participant_name_override session=%s bootstrap_name=%r formstate_name=%r",
+                session_id,
+                bootstrap_display_name,
+                formstate_full_name,
+            )
+
+        # Build visible_fields + next_target from the FormState that mobile
+        # just seeded via POST /v1/onboarding/session. This snapshot is the
+        # agent's source of truth UNTIL the first function_response arrives;
+        # the system prompt's Section 1 rule then makes the tool reply
+        # supersede this block (Option D refresh path).
+        #
+        # Repeatable sections are rendered as one VisibleField per (row, field)
+        # using the canonical `<section>[<index>].<field>` path shape so the
+        # agent uses the same path it does for update_field calls.
+        _empty = (None, "", [], {})
+        visible_fields: list[VisibleField] = []
+        next_target: NextTarget | None = None
+        state_values = state.values if state else {}
+
+        def _value_of(fv: object) -> object | None:
+            if isinstance(fv, dict):
+                return fv.get("value")
+            return fv
+
+        def _is_empty(v: object | None) -> bool:
+            return v in _empty
+
+        def _record(field, value, path: str, *, section: str | None = None,
+                    repeatable_index: int | None = None) -> None:
+            nonlocal next_target
+            visible_fields.append(
+                VisibleField(
+                    path=path,
+                    label=field.label or field.id,
+                    type=field.type,
+                    required=field.required,
+                    readonly=field.readonly,
+                    value=None if _is_empty(value) else value,
+                    enum_values=field.options,
+                    repeatable_index=repeatable_index,
+                    section=section,
+                )
+            )
+            if (
+                next_target is None
+                and field.required
+                and not field.readonly
+                and _is_empty(value)
+            ):
+                next_target = NextTarget(
+                    path=path,
+                    label=field.label or field.id,
+                    reason="next_required",
+                )
+
+        for section in schema.sections:
+            if section.is_repeatable:
+                rows = state_values.get(section.id) if isinstance(state_values, dict) else None
+                rows = rows if isinstance(rows, list) else []
+                # Render every row that exists in FormState. Empty/new
+                # repeatable sections render nothing — the agent uses add_row
+                # to grow the list and update_field with repeatable_index to
+                # fill it.
+                for idx, row in enumerate(rows):
+                    row_vals = row if isinstance(row, dict) else {}
+                    for field in (section.item_fields or []):
+                        value = _value_of(row_vals.get(field.id))
+                        path = f"{section.id}[{idx}].{field.id}"
+                        _record(
+                            field,
+                            value,
+                            path,
+                            section=section.id,
+                            repeatable_index=idx,
+                        )
+            else:
+                section_vals = state_values.get(section.id, {}) if isinstance(state_values, dict) else {}
+                section_vals = section_vals if isinstance(section_vals, dict) else {}
+                for field in (section.fields or []):
+                    value = _value_of(section_vals.get(field.id))
+                    _record(field, value, f"{section.id}.{field.id}")
 
         initial_turn = TurnPayload(
             participant=Participant(
@@ -166,8 +278,8 @@ async def onboarding_ws(
                 else "new_user"
             ),
             prior_steps=(bootstrap.prior_pages if bootstrap and bootstrap.prior_pages else {}),
-            visible_fields=[],
-            next_target=None,
+            visible_fields=visible_fields,
+            next_target=next_target,
         )
 
         system_instruction = build_system_prompt(
@@ -186,54 +298,6 @@ async def onboarding_ws(
             on_incident=_on_incident,
         )
 
-        # Seed the model with the live screen state so its FIRST greeting knows
-        # which fields are already filled — no get_current_state round-trip, no
-        # "these are already filled" reminder from the participant. Only when
-        # the hello frame carried visible_fields (resume / fresh-empty skip it).
-        # Derive from the FormState loaded above (`state`) + `schema` — works
-        # regardless of what the hello frame carried. Walk every schema field,
-        # read its current value from state.values[section][field].value.
-        initial_state_text: str | None = None
-        _empty = (None, "", [], {})
-        filled_paths: list[str] = []
-        empty_required_paths: list[str] = []
-        state_values = state.values if state else {}
-        for section in schema.sections:
-            section_vals = state_values.get(section.id, {}) if isinstance(state_values, dict) else {}
-            for field in (section.fields or []):
-                fv = section_vals.get(field.id) if isinstance(section_vals, dict) else None
-                value = fv.get("value") if isinstance(fv, dict) else fv
-                path = f"{section.id}.{field.id}"
-                if value not in _empty:
-                    filled_paths.append(path)
-                elif field.required:
-                    empty_required_paths.append(path)
-
-        if filled_paths or empty_required_paths:
-            if not empty_required_paths:
-                _action = (
-                    "Everything required is already filled. Greet briefly and "
-                    "ask if they want to change anything or submit. Do NOT walk "
-                    "through fields one by one."
-                )
-            else:
-                _first = empty_required_paths[0]
-                _action = (
-                    f"START by asking for THIS field only: {_first}. "
-                    "Do NOT start from the top of the form. Do NOT ask about any "
-                    "field listed as already filled. Skip every filled field and "
-                    "ask only the empty required ones, in the order listed."
-                )
-            initial_state_text = (
-                "[SCREEN STATE — read silently, do NOT read aloud] "
-                "This is the live state of the current screen on session open. "
-                "You already know what is filled — never ask the participant "
-                "which fields are done. "
-                f"Already filled (SKIP these, do NOT ask): {filled_paths}. "
-                f"Empty required fields to collect IN THIS ORDER: {empty_required_paths}. "
-                + _action
-            )
-
         live_session = GeminiLiveSession(
             websocket=websocket,
             session_id=session_id,
@@ -242,7 +306,6 @@ async def onboarding_ws(
             tool_dispatcher=tool_dispatcher,
             replay_context=replay_context or None,
             mobile_bridge=mobile_bridge,
-            initial_state_text=initial_state_text,
         )
         await live_session.run()
 

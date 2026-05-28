@@ -117,3 +117,44 @@ def test_prompt_step_rules_placeholder_consumed() -> None:
     """Placeholder must never leak into the rendered prompt."""
     out = build_system_prompt(_minimal_turn())
     assert "__STEP_RULES__" not in out
+
+
+def test_prompt_mode_rules_placeholder_consumed() -> None:
+    """__MODE_RULES__ must always be substituted, even with no mode file present."""
+    out = build_system_prompt(_minimal_turn())
+    assert "__MODE_RULES__" not in out
+
+
+def test_prompt_fresh_mode_when_all_required_empty() -> None:
+    """All required fields null → fresh-mode rules load."""
+    out = build_system_prompt(_minimal_turn())
+    assert "MODE: FRESH FORM" in out
+    assert "MODE: UPDATE FORM" not in out
+
+
+def test_prompt_update_mode_when_required_field_filled() -> None:
+    """Any required non-readonly field with a value → update-mode rules load."""
+    tp = _minimal_turn()
+    tp.visible_fields[0].value = "Aditya Nagariya"
+    out = build_system_prompt(tp)
+    assert "MODE: UPDATE FORM" in out
+    assert "MODE: FRESH FORM" not in out
+
+
+def test_prompt_mode_ignores_readonly_filled_fields() -> None:
+    """A filled readonly field must NOT flip the form into update-mode."""
+    tp = _minimal_turn()
+    tp.visible_fields[0].readonly = True
+    tp.visible_fields[0].value = "locked-id-123"
+    tp.visible_fields.append(
+        VisibleField(
+            path="basics.full_name",
+            label="Full Name",
+            type="text",
+            required=True,
+            readonly=False,
+            value=None,
+        )
+    )
+    out = build_system_prompt(tp)
+    assert "MODE: FRESH FORM" in out

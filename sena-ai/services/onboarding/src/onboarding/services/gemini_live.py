@@ -101,7 +101,6 @@ class GeminiLiveSession:
         tool_dispatcher: ToolDispatcher | None = None,
         replay_context: str | None = None,
         mobile_bridge: MobileBridge | None = None,
-        initial_state_text: str | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -110,12 +109,20 @@ class GeminiLiveSession:
         self._tools = tool_dispatcher
         self._replay_context = replay_context
         self._mobile_bridge = mobile_bridge
-        # Hidden text turn injected at session open so the model greets from the
-        # REAL screen state without the participant having to say "these are
-        # already filled" and without waiting for a get_current_state round-trip.
-        self._initial_state_text = initial_state_text
+        # Bootstrap state lives in system_instruction (rendered by
+        # prompt_builder._bootstrap_state_json). No realtime text injection at
+        # session-open — that triggered a phantom model turn that conflicted
+        # with the opener and could wedge VAD on barge-in. Mid-session refresh
+        # rides function_response.state per Option D.
         self._current_turn: TurnPayload | None = None
         self._turn_id = 0
+        # Phantom-failure guard: the model sometimes claims a save FAILED
+        # ("having trouble saving", age-math rejection) without ever emitting
+        # update_field — most often on date_of_birth and interpreter_required.
+        # When a turn's spoken text trips a failure phrase but no tool call
+        # fired, we inject a correction. Capped per field to avoid a loop if the
+        # model keeps refusing.
+        self._phantom_failure_corrections = 0
         self._last_screen_hash: str | None = None
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
@@ -266,13 +273,9 @@ class GeminiLiveSession:
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
                 log.debug("replay_context_injected session=%s", self._session_id)
-            # Seed the live screen state as a hidden context turn so the model's
-            # FIRST greeting already knows which fields are filled — no
-            # get_current_state round-trip, no "these are already filled"
-            # reminder from the participant.
-            if self._initial_state_text:
-                await session.send_realtime_input(text=self._initial_state_text)
-                log.info("initial_state_seeded session=%s", self._session_id)
+            # Initial screen state is embedded in system_instruction (see
+            # prompt_builder._bootstrap_state_json). NO realtime injection here —
+            # avoids the phantom turn-0 that wedged VAD on barge-in.
             self._last_audio_at = time.monotonic()
             # Hard cap on the kickoff shield: if the opener never produces a
             # turn_complete (e.g. silent / model stalls), lift the shield after
@@ -466,10 +469,16 @@ class GeminiLiveSession:
             f"[SCREEN VALIDATION] The screen rejected the value stored for {loc}: "
             f"{reason_human} — re-ask the participant for a corrected value (Rule 7)."
         )
-        # N-3 race fix: flush any in-flight audio buffer before injecting text
-        # so the [SCREEN VALIDATION] hint cannot be concatenated into the user's
-        # current utterance and misread as their speech by Gemini's VAD.
-        await session.send_realtime_input(audio_stream_end=True)
+        # Inject the validation hint as a text turn only. Do NOT send
+        # audio_stream_end here: this session uses automatic VAD, where
+        # audio_stream_end is not honoured and corrupts VAD/turn state.
+        # When validation_failed fires during a multi-field clear (e.g. the
+        # service_address all-or-none rule firing mid clear_field batch) right
+        # after a barge-in interrupted turn, two back-to-back audio_stream_end
+        # injections wedge Gemini so it never starts another turn — session
+        # stays alive, audio keeps streaming up, but no further
+        # turn_start/agent_said. Matches the text-only injection used by
+        # _handle_screen_state and the silence cue.
         await session.send_realtime_input(text=injection)
         log.info(
             "validation_failed_injected session=%s loc=%s code=%s",
@@ -687,6 +696,9 @@ class GeminiLiveSession:
                         # the per-turn usage emit at turn_complete.
                         _calls = getattr(msg.tool_call, "function_calls", None) or []
                         self._tool_calls_in_turn += len(_calls)
+                        # A real tool call resets the phantom-failure budget so
+                        # each new field gets a fresh correction allowance.
+                        self._phantom_failure_corrections = 0
                         await self._handle_tool_call(session, msg.tool_call)
                         if self._tools.step_completed:
                             # Let queued agent audio flush, then end loop
@@ -801,18 +813,19 @@ class GeminiLiveSession:
 
                         # ── Turn complete ──────────────────────────────────────
                         if sc.turn_complete:
+                            turn_text = ""
                             if agent_transcript_buf:
-                                full_text = "".join(agent_transcript_buf)
+                                turn_text = "".join(agent_transcript_buf)
                                 log.info(
                                     "AGENT_SAID %r session=%s",
-                                    full_text,
+                                    turn_text,
                                     self._session_id,
                                 )
                                 await self._ws.send_text(
                                     json.dumps(
                                         {
                                             "type": "agent_said",
-                                            "text": full_text,
+                                            "text": turn_text,
                                         }
                                     )
                                 )
@@ -820,12 +833,16 @@ class GeminiLiveSession:
                                     self._session_id,
                                     {
                                         "speaker": "agent",
-                                        "text": full_text,
+                                        "text": turn_text,
                                         "turn_id": self._turn_id,
                                     },
                                     ttl_sec=settings.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
+                            # Phantom-failure guard: the model claimed a save
+                            # failed but never called update_field this turn.
+                            # Force it to actually call the tool.
+                            await self._maybe_correct_phantom_failure(session, turn_text)
                             await self._ws.send_text(json.dumps({"type": "turn_complete"}))
                             log.info(
                                 "turn_complete chunks=%d turn=%d session=%s",
@@ -1058,6 +1075,115 @@ class GeminiLiveSession:
             log.exception("collect_pending_labels_failed session=%s", self._session_id)
             return []
 
+    # ── Private: phantom-save guard ──────────────────────────────────────────
+    #
+    # Two failure modes the model hits when it speaks about a save without
+    # actually calling update_field:
+    #
+    #   (a) phantom_failure — "having trouble saving", "made a slip up"
+    #       Model invents a save failure → user retries → loop.
+    #
+    #   (b) phantom_success — "saved that", "got it, updated to X"
+    #       Model claims the save worked but never called the tool, so
+    #       FormState diverges from what the participant believes is saved.
+    #
+    # Both fire only when tool_calls_in_turn == 0. Capped at 2 corrections per
+    # session so a stuck model can't be ping-ponged forever.
+    _SAVE_FAILURE_MARKERS = (
+        "trouble saving",
+        "problem saving",
+        "couldn't save",
+        "could not save",
+        "couldn't get that saved",
+        "having trouble",
+        "had a problem saving",
+        "didn't save",
+        "outside the valid range",
+        "made a slip up",
+        "slip up",
+    )
+
+    # Phrases that imply a save / change just completed. Substring match.
+    # Tight enough to skip generic acknowledgements ("right you are" alone is
+    # too ambiguous — paired with "I've"/"saved" it's a claim of action).
+    _SAVE_SUCCESS_MARKERS = (
+        "i've saved",
+        "i have saved",
+        "i've updated",
+        "i have updated",
+        "i've changed",
+        "i've recorded",
+        "saved that",
+        "saved your",
+        "updated your",
+        "updated to",
+        "changed it to",
+        "got it, i've",
+        "got it. i've",
+        "all updated",
+        "all saved",
+        "that's saved",
+        "that's updated",
+    )
+
+    async def _maybe_correct_phantom_failure(
+        self, session: genai.live.AsyncSession, turn_text: str
+    ) -> None:
+        """If the agent spoke about a save (success or failure) without a tool
+        call this turn, force it to actually call update_field. Phantom-failure
+        is the original symptom; phantom-success was observed in the 2026-05-28
+        logs (model said "saved that" / "updated to X" with zero tool_calls,
+        leaving FormState out of sync with what the participant heard). Capped
+        to avoid a ping-pong if the model keeps refusing."""
+        if self._tool_calls_in_turn > 0:
+            return  # real tool call happened — nothing phantom
+        if not turn_text:
+            return
+        lowered = turn_text.lower()
+        is_failure_claim = any(m in lowered for m in self._SAVE_FAILURE_MARKERS)
+        is_success_claim = any(m in lowered for m in self._SAVE_SUCCESS_MARKERS)
+        if not (is_failure_claim or is_success_claim):
+            return
+        if self._phantom_failure_corrections >= 2:
+            log.warning(
+                "phantom_save_correction_capped session=%s — model kept "
+                "speaking about saves without calling update_field",
+                self._session_id,
+            )
+            return
+        self._phantom_failure_corrections += 1
+        kind = "failure" if is_failure_claim else "success"
+        log.info(
+            "phantom_save_detected session=%s kind=%s correction=%d text=%r",
+            self._session_id,
+            kind,
+            self._phantom_failure_corrections,
+            turn_text,
+        )
+        if is_failure_claim:
+            correction = (
+                "[SYSTEM CORRECTION] You just told the participant a value could "
+                "not be saved, but you did NOT call update_field this turn — so "
+                "nothing was actually attempted. You do not validate values "
+                "yourself; mobile does. Call update_field now with the value "
+                "the participant gave (dates as YYYY-MM-DD, booleans as "
+                "true/false). Only report a failure if the tool itself returns "
+                "ok:false, then speak its reason verbatim."
+            )
+        else:
+            correction = (
+                "[SYSTEM CORRECTION] You just told the participant a value was "
+                "saved/updated, but you did NOT call update_field this turn — "
+                "so nothing was actually saved. The FormState still holds the "
+                "old value. Call update_field NOW with the value the "
+                "participant gave (use the exact path from visible_fields; "
+                "dates as YYYY-MM-DD, booleans as true/false, enums matching "
+                "enum_values verbatim). On the next turn, only confirm AFTER "
+                "the tool returns ok:true."
+            )
+        with contextlib.suppress(Exception):
+            await session.send_realtime_input(text=correction)
+
     # ── Private: tool_call handling (Phase C) ────────────────────────────────
 
     async def _handle_tool_call(
@@ -1079,6 +1205,12 @@ class GeminiLiveSession:
         responses: list[types.FunctionResponse] = []
         for call in function_calls:
             args_dict = dict(call.args) if call.args else {}
+            log.info(
+                "TOOL_CALL tool=%s args=%r session=%s",
+                call.name,
+                args_dict,
+                self._session_id,
+            )
             try:
                 result = await self._tools.dispatch(call.name, args_dict)
             except Exception:
@@ -1092,6 +1224,12 @@ class GeminiLiveSession:
                     "reason": "Internal dispatch error",
                     "code": "dispatch_error",
                 }
+            log.info(
+                "TOOL_RESULT tool=%s ok=%s session=%s",
+                call.name,
+                result.get("ok"),
+                self._session_id,
+            )
             responses.append(
                 types.FunctionResponse(
                     id=call.id,

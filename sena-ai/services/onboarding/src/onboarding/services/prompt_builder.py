@@ -1,53 +1,55 @@
 """Renders the v2 onboarding system prompt.
 
-Mobile owns schema + validation + state. The builder substitutes 5 simple
+Mobile owns schema + validation + state. The builder substitutes 6 simple
 placeholders into a fixed template:
   __STEP_LABEL__              — step.label for the persona line
   __VOICE_COVERAGE_SECTION__  — empty or a one-line whitelist
   __GROUNDING_SECTION__       — empty or Google Search blurb
+  __MODE_RULES__              — fresh-form vs update-form behaviour fragment
+                                 (see prompts/modes/)
   __STEP_RULES__              — per-step behavior fragment (see prompts/steps/)
   __TURN_JSON__               — bootstrap state (header-only when tool state
                                  channel enabled; full TurnPayload when flag off)
 
-Per-step rules live in `prompts/steps/{step_id}.md`. Edit one file per step.
-Missing file = empty section (no step-specific rules). The base template stays
-free of step-specific logic.
+Per-step rules live in `prompts/steps/{step_id}.md`. Mode rules live in
+`prompts/modes/{fresh,update}.md`. Edit one file per step/mode. Missing file =
+empty section. The base template stays free of step- or mode-specific logic.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from onboarding.core.settings import settings
-from onboarding.models.turn_payload import TurnPayload
+from onboarding.models.turn_payload import TurnPayload, VisibleField
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 _TEMPLATE_PATH = _PROMPTS_DIR / "onboarding_system.md"
 _STEPS_DIR = _PROMPTS_DIR / "steps"
+_MODES_DIR = _PROMPTS_DIR / "modes"
 
 
 def _bootstrap_state_json(turn: TurnPayload) -> str:
     """Render the bootstrap state block for the system prompt.
 
-    When the tool state channel is enabled (Option D — default), the
-    bootstrap is HEADER-ONLY: participant + step + next_target +
-    bootstrap_mode. No visible_fields data, since those go stale immediately
-    and cause hallucinations (see ISSUE_AND_SOLUTION.md §3). The model's
-    source of truth becomes the most recent function_response.state field,
-    populated by Flutter.
+    At session-open we embed the FULL TurnPayload — participant + step +
+    bootstrap_mode + visible_fields (with values from mobile's bootstrap
+    payload) + next_target. The values are fresh at t=0 by definition
+    (mobile sent them milliseconds ago in POST /v1/onboarding/session) so
+    staleness does not apply yet.
 
-    When the feature flag is off, falls back to the full TurnPayload JSON
-    for rollback safety (legacy hallucination-prone behaviour).
+    Mid-session refresh stays on the tool-reply channel (Option D): every
+    function_response carries a fresh `state` payload, which overrides this
+    block per system prompt Section 1. This block is the agent's view of
+    the form ONLY until the first tool call returns.
+
+    The legacy header-only mode is retained behind the off flag for
+    rollback, but is no longer the default behaviour.
     """
     if not settings.onboarding_tool_state_channel:
         return turn.model_dump_json()
 
-    bootstrap = turn.model_dump(
-        mode="json",
-        include={"participant", "step", "next_target", "bootstrap_mode"},
-    )
-    return json.dumps(bootstrap)
+    return turn.model_dump_json()
 
 
 def _voice_coverage_section(voice_coverage: list[str] | None) -> str:
@@ -81,6 +83,38 @@ def _step_rules_section(step_id: str) -> str:
     return f"\n{body}\n"
 
 
+def _detect_form_mode(visible_fields: list[VisibleField]) -> str:
+    """Classify bootstrap as `fresh` or `update`.
+
+    `update` — any required non-readonly field already has a non-null value
+              (mobile sent pre-filled data; agent is editing, not collecting).
+    `fresh`  — every required non-readonly field is empty (first-time capture).
+
+    Repeatable rows that exist with values count as updates too — a single
+    populated emergency_contacts[0].name flips the whole step to update mode.
+    Keeps the model focused on the genuinely-empty fields and removes the long
+    "ask first empty field" preamble that derails when the form is already
+    largely filled (which is the case for every screen handoff in practice).
+    """
+    for vf in visible_fields:
+        if not vf.required or vf.readonly:
+            continue
+        if vf.value not in (None, "", [], {}):
+            return "update"
+    return "fresh"
+
+
+def _mode_rules_section(mode: str) -> str:
+    """Load `prompts/modes/{mode}.md` if present, else empty."""
+    fragment_path = _MODES_DIR / f"{mode}.md"
+    if not fragment_path.is_file():
+        return ""
+    body = fragment_path.read_text(encoding="utf-8").strip()
+    if not body:
+        return ""
+    return f"\n{body}\n"
+
+
 def build_system_prompt(
     turn: TurnPayload,
     *,
@@ -88,10 +122,12 @@ def build_system_prompt(
     voice_coverage: list[str] | None = None,
 ) -> str:
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    mode = _detect_form_mode(turn.visible_fields)
     return (
         template.replace("__STEP_LABEL__", turn.step.label)
         .replace("__VOICE_COVERAGE_SECTION__", _voice_coverage_section(voice_coverage))
         .replace("__GROUNDING_SECTION__", _grounding_section(grounding_enabled))
+        .replace("__MODE_RULES__", _mode_rules_section(mode))
         .replace("__STEP_RULES__", _step_rules_section(turn.step.id))
         .replace("__TURN_JSON__", _bootstrap_state_json(turn))
     )

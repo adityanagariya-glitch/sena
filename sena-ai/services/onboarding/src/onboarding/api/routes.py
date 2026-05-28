@@ -224,29 +224,56 @@ async def create_session(
                 }
                 for s in bucket.summaries
             }
-            # Resolve participant_display_name with voice-update freshness.
-            # Priority order (highest → lowest):
-            #   1. Most-recent summary that captured a name via voice
-            #      (voice updates flow into the cross-screen bucket and the
-            #      latest one is the user's current preference)
-            #   2. The bootstrap-supplied display name from Flutter
-            #   3. Empty (greeting falls back to "Hi there" downstream)
+            # Resolve participant_display_name. Priority order (highest → lowest):
+            #   1. `current_page_values["basics.full_name"]` from THIS bootstrap
+            #      — the live screen state mobile is showing right now. Always
+            #      current because Flutter refreshes `ClientHomeController.
+            #      client.value` after every voice session (refreshClientProfile).
+            #   2. The bootstrap-supplied `participant_display_name`.
+            #   3. Most-recent bucket summary that has a `name` (legacy fallback
+            #      for sessions where mobile didn't send a name).
+            #   4. Empty → greeting falls back to "Hi there".
             #
-            # Regression context (2026-05-20): user said "my name is John"
-            # in a prior session; Flutter's local cache still held the old
-            # name and posted it as participant_display_name; the agent
-            # kept greeting the user by the pre-update name. The voice
-            # update lives in the bucket — promote it above the bootstrap.
-            hydrated_name: str | None = None
-            for s in sorted(
-                bucket.summaries, key=lambda x: x.step_number, reverse=True,
-            ):
-                candidate = s.verbatim.get("name")
-                if isinstance(candidate, str) and candidate.strip():
-                    hydrated_name = candidate.strip().split()[0]
-                    break
+            # Regression context (2026-05-28): the bucket retained an old
+            # "Aditya" summary from a session that completed BEFORE the
+            # rename → Ethan got committed via update_field. With the previous
+            # bucket-first ordering the prompt kept greeting "Hi Aditya" even
+            # though mobile, FormState, and the API profile all agreed on
+            # "Ethan Brown". The earlier (2026-05-20) Flutter-cache-stale
+            # regression is now handled by the mobile-side refresh after
+            # every session, so mobile is no longer a stale source.
+            current_full_name: str | None = None
+            cpv = bootstrap.current_page_values or {}
+            raw_name = cpv.get("basics.full_name")
+            current_full_name_full = ""
+            if isinstance(raw_name, str) and raw_name.strip():
+                current_full_name_full = raw_name.strip()
+                current_full_name = current_full_name_full.split()[0]
+            elif bootstrap.participant_display_name:
+                current_full_name_full = bootstrap.participant_display_name.strip()
+                current_full_name = current_full_name_full.split()[0] if current_full_name_full else None
+
+            hydrated_name: str | None = current_full_name
             if not hydrated_name:
-                hydrated_name = bootstrap.participant_display_name
+                for s in sorted(
+                    bucket.summaries, key=lambda x: x.step_number, reverse=True,
+                ):
+                    candidate = s.verbatim.get("name")
+                    if isinstance(candidate, str) and candidate.strip():
+                        hydrated_name = candidate.strip().split()[0]
+                        current_full_name_full = candidate.strip()
+                        break
+
+            # Sweep `prior_pages`: overwrite every stale `name` in old summaries
+            # so the prompt's prior_steps block can't recall an outdated value
+            # when the agent answers "what's my name". The bucket is keyed by
+            # (tenant_id, participant_id) so all summaries belong to the same
+            # person — current name is the truthful one for every summary.
+            if current_full_name_full:
+                for step_key, step_payload in hydrated_prior.items():
+                    if isinstance(step_payload, dict) and "name" in step_payload:
+                        step_payload["name"] = current_full_name_full
+
             bootstrap = bootstrap.model_copy(update={
                 "mode": "page_handoff",
                 "prior_pages": hydrated_prior,
