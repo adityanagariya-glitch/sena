@@ -1,0 +1,11 @@
+{
+    "timestamp": "2026-05-14 05:02",
+    "notes": "Baseline on 13 questions",
+    "scores": {
+        "faithfulness": 0.74,
+        "answer_relevancy": 0.50,
+        "context_precision": 0.37,
+        "context_recall": 0.33,
+        "answer_correctness": 0.28
+    }
+}

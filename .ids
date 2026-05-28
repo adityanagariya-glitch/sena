@@ -1,0 +1,23 @@
+Data Source ID: CWJ8UCZSCY
+Knowledge Base ID: KFWSFMVU8U
+
+Role ARN: arn:aws:iam::038848608811:role/sena-bedrock-kb-role
+
+Save this Role ARN: arn:aws:iam::038848608811:role/sena-bedrock-kb-role
+
+S3 bucket for raw docs: sena-policy-docs
+S3 bucket for vectors: sena-s3-vectors-bucket
+Vector index inside vector bucket: my-rag-index
+IAM role for Bedrock KB: sena-bedrock-kb-role
+Bedrock KB: sena-rag-kb
+Data source linking KB->S3: sena-s3-docs-source-v2
+
+JOB_ID=JSG8OHC0PC
+JOB_ID=VF6WZTVNS4
+Job ID=CDPNODWHRC
+
+       
+sena-rag-guardrail: j9x9dysm5m3h
+version: Draft
+
+Memory ID: senaPolicyProceduresMemory-FGIxWL6gih

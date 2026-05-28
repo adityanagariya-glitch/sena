@@ -1,0 +1,90 @@
+[
+  {
+    "timestamp": "2026-05-18 12:14",
+    "notes": "fixed classifier Q1/Q10 + Nova Micro reranker",
+    "scores": {
+      "faithfulness": 0.7791,
+      "answer_relevancy": 0.6726,
+      "context_precision": 0.7273,
+      "context_recall": 0.6123,
+      "answer_correctness": 0.4535
+    }
+  },
+  {
+    "timestamp": "2026-05-19 10:45",
+    "notes": "with memory and removed default topic guardrails",
+    "scores": {
+      "faithfulness": 0.7438,
+      "answer_relevancy": 0.7091,
+      "context_precision": 0.7273,
+      "context_recall": 0.5721,
+      "answer_correctness": 0.4547
+    }
+  },
+  {
+    "timestamp": "2026-05-19 17:52",
+    "notes": "query rewriter, system prompt tuning and metadata filtering",
+    "scores": {
+      "faithfulness": 0.523,
+      "answer_relevancy": 0.6414,
+      "context_precision": 0.8125,
+      "context_recall": 0.6315,
+      "answer_correctness": 0.4045
+    }
+  },
+  {
+    "timestamp": "2026-05-20 11:59",
+    "notes": "orgs level policy + ndis policies : gold dataset v1",
+    "scores": {
+      "faithfulness": 0.6693,
+      "answer_relevancy": 0.5706,
+      "context_precision": 0.7636,
+      "context_recall": 0.6845,
+      "answer_correctness": 0.5708
+    }
+  },
+  {
+    "timestamp": "2026-05-21 10:41",
+    "notes": "generation model: haiku-4.5",
+    "scores": {
+      "faithfulness": 0.5495,
+      "answer_relevancy": 0.463,
+      "context_precision": 0.7636,
+      "context_recall": 0.6939,
+      "answer_correctness": 0.4804
+    }
+  },
+  {
+    "timestamp": "2026-05-21 15:54",
+    "notes": "same as system prompt",
+    "scores": {
+      "faithfulness": 0.5704,
+      "answer_relevancy": 0.4991,
+      "context_precision": 0.7455,
+      "context_recall": 0.6909,
+      "answer_correctness": 0.5175
+    }
+  },
+  {
+    "timestamp": "2026-05-21 17:37",
+    "notes": "changed eval prompt to match system prompt and used the same prompt for data generation v2",
+    "scores": {
+      "faithfulness": 0.6403,
+      "answer_relevancy": 0.5295,
+      "context_precision": 0.7636,
+      "context_recall": 0.6785,
+      "answer_correctness": 0.5293
+    }
+  },
+  {
+    "timestamp": "2026-05-26 18:25",
+    "notes": "crisper prompts",
+    "scores": {
+      "faithfulness": 0.6598,
+      "answer_relevancy": 0.4626,
+      "context_precision": 0.7636,
+      "context_recall": 0.693,
+      "answer_correctness": 0.552
+    }
+  }
+]
