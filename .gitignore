@@ -79,3 +79,5 @@ graphify-out/
 .opencode.json
 .qoder/mcp.json
 *.log
+
+servicesai_chatbot/templates/shell.html
