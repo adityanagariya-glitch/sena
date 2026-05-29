@@ -77,5 +77,3 @@ graphify-out/
 .opencode.json
 .qoder/mcp.json
 *.log
-services/ai_chatbot/logs/staff_ui.log
-services/ai_chatbot/logs/staff_ui.log
