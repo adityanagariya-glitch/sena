@@ -1,25 +1,19 @@
-# Main Project Configuration (pyproject.toml)
-# 
-# Project: sena-ai
-# Description: Multi-service backend for Sena AI platform
-# 
-# Package Structure:
-# - sena-common: Shared library with DB, middleware, schemas
-# - services/ocr: OCR document processing service
-# 
-# Key Features Configured:
-# - Monorepo setup with workspace packages
-# - Development tools: pytest, ruff, mypy
-# - Database: AsyncPG with SQLAlchemy ORM
-# - Web framework: FastAPI with Uvicorn
-# - Logging: structlog for structured logging
-# - Migrations: Alembic for schema versioning
-#
-# This replaces: [project]
+[project]
 name = "sena-ai"
 version = "0.1.0"
 description = "Sena AI/ML Backend — workspace root"
 requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.29.0",
+    "structlog>=24.1.0",
+    "pydantic>=2.6.0",
+]
+
+[tool.setuptools.packages.find]
+exclude = ["migrations*", "tests*"]
 
 [tool.ruff]
 target-version = "py312"

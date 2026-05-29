@@ -38,6 +38,8 @@ Thumbs.db
 htmlcov/
 .mypy_cache/
 
+sena-ai/
+
 # Alembic
 migrations/versions/*.pyc
 
