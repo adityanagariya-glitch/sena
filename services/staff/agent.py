@@ -298,7 +298,7 @@ def process_query_agent(user_question: str) -> str:
     return final_text
 
 
-# ---- Async Tool Dispatch (for parallelization in Phase 3A) ----
+# ---- Async Tool Dispatch (for parallelization) ----
 
 async def _run_tool_async(name: str, inputs: dict) -> tuple[str, dict, object]:
     """Async variant of run_tool using asyncio.to_thread.

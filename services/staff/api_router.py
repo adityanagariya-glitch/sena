@@ -852,7 +852,7 @@ def check_access(api_path):
             return True
 
 
-# ---- Async Variants (for parallelization in Phase 3A) ----
+# ---- Async Variants (for parallelization) ----
 
 async def detect_route_async(user_question: str | None) -> dict:
     """Async variant of detect_route using asyncio.to_thread."""
@@ -862,5 +862,3 @@ async def detect_route_async(user_question: str | None) -> dict:
 async def find_best_api_async(user_question) -> dict | None:
     """Async variant of find_best_api using asyncio.to_thread."""
     return await asyncio.to_thread(find_best_api, user_question)
-
-    return False
