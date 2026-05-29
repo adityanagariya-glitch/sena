@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SENA Assistant</title>
+  <style>
+    :root { --bar: 52px; --bg: #0a0a0a; --panel: #171717; --border: #2a2a2a;
+            --fg: #f5f5f5; --muted: #a3a3a3; --accent: #2563eb; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg);
+                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #bar { height: var(--bar); display: flex; align-items: center; gap: 8px;
+           padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+    #bar .brand { font-weight: 600; color: var(--fg); letter-spacing: -0.02em;
+                  margin-right: 16px; font-size: 15px; }
+    .seg { display: inline-flex; background: #0e0e0e; border: 1px solid var(--border);
+           border-radius: 10px; padding: 3px; }
+    .seg button { appearance: none; border: 0; background: transparent; color: var(--muted);
+                  font-size: 13px; font-weight: 500; padding: 7px 16px; border-radius: 8px;
+                  cursor: pointer; transition: background .12s, color .12s; }
+    .seg button.active { background: var(--accent); color: #fff; }
+    .seg button:not(.active):hover { color: var(--fg); }
+    #status { margin-left: auto; font-size: 12px; color: #525252; }
+    #frames { position: absolute; top: var(--bar); left: 0; right: 0; bottom: 0; }
+    iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+    iframe.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <span class="brand">SENA</span>
+    <div class="seg" role="tablist">
+      <button id="tab-staff" class="active" onclick="show('staff')">Staff</button>
+      <button id="tab-policy" onclick="show('policy')">Policy &amp; Procedure</button>
+    </div>
+    <span id="status"></span>
+  </div>
+
+  <div id="frames">
+    <!-- Both mounted at load and kept warm; toggling only flips visibility so
+         switching is instant and each app keeps its own logged-in session. -->
+    <iframe id="frame-staff" src="{{ staff_url }}" title="Staff assistant"></iframe>
+    <iframe id="frame-policy" class="hidden" src="{{ policy_url }}" title="Policy &amp; Procedure assistant"></iframe>
+  </div>
+
+  <script>
+    function show(which) {
+      const isStaff = which === 'staff';
+      document.getElementById('frame-staff').classList.toggle('hidden', !isStaff);
+      document.getElementById('frame-policy').classList.toggle('hidden', isStaff);
+      document.getElementById('tab-staff').classList.toggle('active', isStaff);
+      document.getElementById('tab-policy').classList.toggle('active', !isStaff);
+    }
+
+    // Lightweight readiness hint (does not block the iframes from loading).
+    async function poll() {
+      try {
+        const r = await fetch('/healthz');
+        const d = await r.json();
+        const down = Object.entries(d.children || {}).filter(([, ok]) => !ok).map(([n]) => n);
+        document.getElementById('status').textContent = down.length ? ('starting: ' + down.join(', ')) : '';
+        if (down.length) setTimeout(poll, 2000);
+      } catch (e) { setTimeout(poll, 2000); }
+    }
+    poll();
+  </script>
+</body>
+</html>
