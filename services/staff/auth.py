@@ -132,7 +132,7 @@ def login_user(email: str, password: str) -> bool:
         if response.status_code == 200:
             login_data = response.json()
 
-            # FIX 2: response shape is { "data": { "accessToken": "..." } }
+            # response shape is { "data": { "accessToken": "..." } }
             data = login_data.get("data", {}) or {}
             global jwt_token
             jwt_token = data.get("accessToken") or data.get("access_token") or data.get("token")
@@ -234,7 +234,7 @@ def authenticate_with_jwt(token: str | None) -> bool:
                             headers=headers,
                             timeout=10,
                         )
-                        print(f"    Role lookup response: {role_response.status_code}")
+                        print(f"Role lookup response: {role_response.status_code}")
 
                         if role_response.status_code == 200:
                             role_data = role_response.json()

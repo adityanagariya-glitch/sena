@@ -221,7 +221,7 @@ def call_bedrock(messages: list[dict], system_prompt: str | None = None, user_pr
         return None
 
 
-# ---- Async Variants (for parallelization in Phase 3A) ----
+# ---- Async Variants (for parallelization) ----
 
 async def call_bedrock_async(messages: list[dict], system_prompt: str | None = None, user_profile: str | None = None, use_guardrail: bool = True) -> str | None:
     """Async variant of call_bedrock using asyncio.to_thread to wrap sync boto3 calls."""

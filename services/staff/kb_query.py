@@ -4,13 +4,6 @@ Implements Option B from the multi-KB plan: parallel `retrieve` across all
 configured Bedrock Knowledge Bases, merge top-K chunks by score, then a single
 streaming generate call with the merged context.
 
-Latency profile (~2 KBs):
-  - retrieve (parallel)        ≈ 400 ms  (max of the two)
-  - merge / dedupe             ≈ 10 ms
-  - converse_stream generate   ≈ 1.5–3 s
-  - total                      ≈ 2.0–3.5 s  (same as single-KB baseline)
-
-Cost: ~1.1× single-KB (extra retrieve calls are cheap; one generate stays).
 """
 from __future__ import annotations
 
@@ -207,7 +200,7 @@ def query_kbs(question: str, system_prompt: str, kb_ids: Iterable[str] | None = 
     return answer or "", merged
 
 
-# ---- Async Variants (for parallelization in Phase 3A) ----
+# ---- Async Variants (for parallelization) ----
 
 async def _retrieve_one_async(kb_id: str, question: str) -> list[dict]:
     """Async variant of _retrieve_one using asyncio.to_thread."""

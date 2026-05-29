@@ -850,7 +850,7 @@ def _skip_memory_gate(user_question):
     return False
 
 
-# ---- Async Variants (for parallelization in Phase 3A) ----
+# ---- Async Variants (for parallelization) ----
 
 async def _persist_agentcore_async(user_question: str, assistant_text: str) -> None:
     """Async variant of AgentCore write using asyncio.to_thread."""

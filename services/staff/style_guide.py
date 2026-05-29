@@ -104,11 +104,6 @@ Never use: "Best", "Best wishes", "Warmest regards", "Respectfully yours"
 - Match their formality: corporate clients up one notch, but keep warmth
 """
 
-# ============================================================================
-# REUSABLE PROMPT FRAGMENTS — import these wherever a system prompt is built.
-# Single source of truth: fix a rule here, every prompt benefits.
-# ============================================================================
-
 AUS_ENGLISH_BANNER = """🇦🇺 **ALWAYS REPLY IN AUSTRALIAN ENGLISH.** Use Aussie spelling (organisation, recognise, behaviour, colour, centre, licence, programme, defence, travelled). Dates DD/MM/YYYY. Currency $X.XX AUD. Reply in Aus English regardless of how the user writes or which language they switch to — never translate, never produce US spellings."""
 
 
