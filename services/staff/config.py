@@ -120,36 +120,16 @@ except Exception as e:
     print(f"[memory] AgentCore client init failed: {e}", file=__import__("sys").stderr)
 
 try:
-    dynamodb_client = boto3.client("dynamodb", region_name=REGION)
-    # Create lightweight table wrapper objects that delegate to client (faster than resource)
-    class _DDBTable:
-        def __init__(self, table_name: str | None, client):
-            self.name = table_name
-            self.client = client
-
-        def get_item(self, Key: dict):
-            if not self.name or not self.client:
-                raise ValueError("Table not configured")
-            return self.client.get_item(TableName=self.name, Key=Key)
-
-        def put_item(self, Item: dict):
-            if not self.name or not self.client:
-                raise ValueError("Table not configured")
-            return self.client.put_item(TableName=self.name, Item=Item)
-
-        def query(self, **kwargs):
-            if not self.name or not self.client:
-                raise ValueError("Table not configured")
-            kwargs["TableName"] = self.name
-            return self.client.query(**kwargs)
-
-    chat_audit_table = _DDBTable(CHAT_AUDIT_TABLE, dynamodb_client) if CHAT_AUDIT_TABLE else None
-    session_table = _DDBTable(SESSION_TABLE_NAME, dynamodb_client) if SESSION_TABLE_NAME else None
+    # High-level resource API: callers pass raw Python values
+    # ({"actor_id": "abc"} instead of {"actor_id": {"S": "abc"}}).
+    dynamodb_resource = boto3.resource("dynamodb", region_name=REGION)
+    chat_audit_table = dynamodb_resource.Table(CHAT_AUDIT_TABLE) if CHAT_AUDIT_TABLE else None
+    session_table = dynamodb_resource.Table(SESSION_TABLE_NAME) if SESSION_TABLE_NAME else None
 except Exception as e:
-    dynamodb_client = None
+    dynamodb_resource = None
     chat_audit_table = None
     session_table = None
-    print(f"[memory] DynamoDB client init failed: {e} — falling back to local session file",
+    print(f"[memory] DynamoDB resource init failed: {e} — falling back to local session file",
           file=__import__("sys").stderr)
 
 if AGENTCORE_MEMORY_ID and bedrock_agentcore:

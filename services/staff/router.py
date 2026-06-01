@@ -6,8 +6,10 @@ user turn. Memory-first gate and unified intent routing run in parallel
 memory answer when one exists, otherwise routes by the detected intent.
 """
 import os
+import re
 import sys
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
 from config import VERBOSE, BEDROCK_KB_ID, GUARDRAILS
@@ -21,6 +23,248 @@ from agents_types import APIRouteResponse
 # Agent mode toggle — set SENA_AI_AGENT_MODE=on to use the new tool-based agent
 # loop, or =off (default) to keep the legacy detect_route + find_best_api path.
 _AGENT_MODE = os.getenv("SENA_AI_AGENT_MODE", "off").strip().lower()
+
+# ─── Input sanitisation: prompt-injection / smuggling defence ──────────────
+
+# Invisible / formatting code-points used in prompt-injection smuggling.
+# Expanded list — covers every documented invisible-character vector
+# (zero-width, bidi, deprecated controls, fillers, ALL variation selectors,
+# Tags block). Membership check is a single set lookup.
+_INVISIBLE_CODEPOINTS = frozenset([
+    0x00AD,                                         # SOFT HYPHEN
+    0x034F,                                         # COMBINING GRAPHEME JOINER (CGJ)
+    0x061C,                                         # ARABIC LETTER MARK (ALM)
+    0x115F, 0x1160,                                 # HANGUL CHOSEONG/JUNGSEONG FILLER
+    0x17B4, 0x17B5,                                 # KHMER VOWEL INHERENT AQ/AA
+    0x180B, 0x180C, 0x180D, 0x180E,                 # MONGOLIAN FREE VARIATION SELECTORS
+    0x200B, 0x200C, 0x200D,                         # ZWSP, ZWNJ, ZWJ
+    0x200E, 0x200F,                                 # LRM, RLM
+    0x202A, 0x202B, 0x202C, 0x202D, 0x202E,         # Bidi overrides
+    0x2060, 0x2061, 0x2062, 0x2063, 0x2064,         # Word joiner & invisible ops
+    0x2066, 0x2067, 0x2068, 0x2069,                 # Isolate controls
+    0x206A, 0x206B, 0x206C, 0x206D, 0x206E, 0x206F, # Deprecated format controls
+    0xFEFF,                                         # ZWNBSP / BOM
+    0xFFA0,                                         # HALFWIDTH HANGUL FILLER
+    # Variation Selectors
+    *range(0xFE00, 0xFE10),                         # VS1 - VS16
+    *range(0xE0100, 0xE01F0),                       # VS17 - VS256
+    # Tags block (used for hidden payloads)
+    *range(0xE0000, 0xE0080),                       # Tags (E0000 - E007F)
+
+     # --- Interlinear Annotation (Rich Text Anchors) ---
+    0xFFF9, 0xFFFA, 0xFFFB,                         # Anchor, Separator, Terminator
+
+    # --- Shorthand Format Controls (Duployan) ---
+    0x1BCA0, 0x1BCA1, 0x1BCA2, 0x1BCA3,             # Overlap & Step controls
+
+    # --- Musical Symbol Layout Controls ---
+    0x1D173, 0x1D174,                               # Begin/End Beam
+    0x1D175, 0x1D176,                               # Begin/End Tie
+    0x1D177, 0x1D178,                               # Begin/End Slur
+    0x1D179, 0x1D17A,                               # Begin/End Phrase
+
+    # --- Ancient Script Formatting (Rarely Rendered) ---
+    0x070F,                                         # Syriac Abbreviation Mark
+    0x13430, 0x13431,                               # Egyptian Hieroglyph Joiners (Vertical/Horizontal)
+    0x13432, 0x13433, 0x13434, 0x13435,             # Egyptian Hieroglyph Insertion Controls
+    0x13436, 0x13437, 0x13438,                      # Egyptian Hieroglyph Overlays/Segments
+])
+
+
+def _is_smuggling_codepoint(cp: int) -> bool:
+    """Codepoints used to hide instructions in plain text."""
+    return cp in _INVISIBLE_CODEPOINTS
+
+
+def _is_emoji_or_pictograph(ch: str) -> bool:
+    """Broad emoji / pictograph / dingbat detection."""
+    cp = ord(ch)
+    if 0x1F000 <= cp <= 0x1FFFF:                    # emoji & supp. symbols
+        return True
+    if 0x2600 <= cp <= 0x27BF:                      # misc symbols + dingbats
+        return True
+    if 0x2300 <= cp <= 0x23FF:                      # misc technical (incl. ⏰ etc)
+        return True
+    if 0x1F1E6 <= cp <= 0x1F1FF:                    # regional indicators (flags)
+        return True
+    return unicodedata.category(ch) == "So"          # Symbol-other (catch-all)
+
+
+# OWASP LLM01 — cap input at ~10k chars (defeats buried-injection / context flood).
+_MAX_INPUT_LEN = 10_000
+# Collapse 4+ repeats of the same char ("ignoooore previous") down to 3.
+_REPEAT_RUN_RE = re.compile(r"(.)\1{3,}")
+# Collapse runs of spaces/tabs (don't touch newlines — they're semantically real).
+_SPACE_RUN_RE = re.compile(r"[ \t]{2,}")
+
+
+def _scrub_input(raw: str) -> str:
+    """Strip smuggling chars, control chars, emoji; NFKC-normalise; flatten fuzz patterns."""
+    if not raw:
+        return ""
+    # NFKC collapses homoglyphs and compatibility forms to a canonical shape.
+    text = unicodedata.normalize("NFKC", raw)
+    out = []
+    for ch in text:
+        cp = ord(ch)
+        if _is_smuggling_codepoint(cp):
+            continue
+        if _is_emoji_or_pictograph(ch):
+            continue
+        if ch in ("\n", "\t", "\r"):
+            out.append(ch)
+            continue
+        cat = unicodedata.category(ch)
+        if cat in ("Cc", "Cf", "Co", "Cn"):           # control / format / private / unassigned
+            continue
+        out.append(ch)
+    text = "".join(out)
+    # Flatten fuzzing: collapse any 4+ run of one char down to a single char
+    text = _REPEAT_RUN_RE.sub(r"\1", text)
+    # Collapse multi-space runs (OWASP recommendation).
+    text = _SPACE_RUN_RE.sub(" ", text)
+    # Hard length cap.
+    if len(text) > _MAX_INPUT_LEN:
+        text = text[:_MAX_INPUT_LEN]
+    return text
+
+
+# Prompt-injection / jailbreak phrases. Case-insensitive. Conservative — these
+# are documented adversarial patterns (OWASP LLM01, promptingguide.ai, etc.),
+# not generic English that a legitimate NDIS worker would write.
+# NOTE: `\W+` between word-tokens (instead of `\s+`) so punctuation-padded
+# attacks like "IGNORE! all previous! instructions!!!" still match.
+_INJECTION_PATTERNS = (
+    r"ignore\W+(all\W+|the\W+|your\W+)?(previous|prior|above|earlier)\W+(instructions?|prompts?|messages?|context|rules?)",
+    r"disregard\W+(all\W+|the\W+|your\W+)?(previous|prior|above|earlier|system)\W+(instructions?|prompts?|rules?)",
+    r"forget\W+(everything|all|your|the|previous|prior|earlier)(\W+(you\W+know|instructions?|rules?|context))?",
+    r"you\W+are\W+now\W+(?!an?\W+NDIS|the\W+SENA)",
+    r"new\W+(instructions?|system\W+prompt|rules?)\W*[:.\-]",
+    r"\bSYSTEM\s*[:>]\s*\S",                          # forged system tag
+    r"\[(SYSTEM|ADMIN|INST|/?INST)\]",                # bracketed pseudo-tags
+    r"<\|im_start\|>|<\|im_end\|>|<\|endoftext\|>",   # ChatML control tokens
+    r"</?\s*(system|assistant|instructions?)\s*>",    # XML-style role hijack
+    r"override\W+(your|the|all)\W+(instructions?|rules?|guardrails?|safety)",
+    r"\bjailbreak\b|\bDAN\W+mode\b|developer\W+mode\W+(enabled|on)",
+    r"(reveal|print|show|repeat|output|leak|expose|display)\W+(your\W+|the\W+)?(system\W+)?(prompt|instructions?|rules?|guidelines?)",
+    r"act\W+as\W+(if\W+you\W+(are|were)|an?\W+(?!NDIS|SENA))",
+    r"pretend\W+(you\W+are|to\W+be|that\W+you)",
+    r"role[-\W]?play\W+as\W+",
+    r"do\W+anything\W+now",
+    r"bypass\W+(your\W+|the\W+|all\W+)?(filters?|guardrails?|safety|restrictions?)",
+    r"simulate\W+a\W+(different|new|unrestricted)\W+(ai|assistant|model)",
+    # ── Indirect system-prompt extraction (avoids the word "ignore") ──
+    r"repeat\W+(the\W+|all\W+)?(text|messages?|content|words?|prompt)\W+(above|before|prior)",
+    r"what\W+(was|is|were|are)\W+your\W+(initial|original|first|earlier|prior|system)\W+(prompt|instructions?|messages?|rules?)",
+    r"starting\W+with\W+['\"]?\s*you\W+are",
+    r"(recap|summari[sz]e|paraphrase|rephrase)\W+(your\W+|the\W+)?(system\W+)?(prompt|instructions?|rules?)",
+    r"what\W+(are|were)\W+you\W+(told|instructed|programmed|configured)\W+to\W+(do|say|be)",
+    r"translate\W+(this|the\W+(above|following)).{0,80}?as\W+['\"]",          # "translate ... as 'X'"
+    r"output\W+everything\W+(above|before|that\W+came\W+before)",
+    r"what\W+(comes|came)\W+before\W+this\W+(message|prompt|conversation)",
+    r"verbatim\W+(repeat|copy|output|print)",
+)
+_INJECTION_RE = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
+
+# Encoded payloads — long base64 / hex blobs that may smuggle instructions.
+_BASE64_BLOB = re.compile(r"(?:[A-Za-z0-9+/]{60,}={0,2})")
+_HEX_BLOB = re.compile(r"(?:0x)?[0-9a-fA-F]{60,}")
+
+
+def _safe_reply(reply: str, mode: str) -> str:
+    """Run final reply through the output sanitiser (style_guide.sanitize_output).
+    On leak detection, the reply is replaced with a safe fallback; we log the
+    category that fired so it shows up in audit traces."""
+    from style_guide import sanitize_output
+    clean, leak_kind = sanitize_output(reply or "")
+    if leak_kind and VERBOSE:
+        print(
+            f"[content-gate] OUTPUT FILTER blocked leak (kind={leak_kind}) "
+            f"in {mode} path — reply replaced with safe fallback",
+            file=sys.stderr,
+        )
+    return clean
+
+
+def _check_injection(text: str) -> str:
+    """Returns reason ('injection' / 'encoded') or '' if clean."""
+    if not text:
+        return ""
+    if _INJECTION_RE.search(text):
+        return "injection"
+    if _BASE64_BLOB.search(text) or _HEX_BLOB.search(text):
+        return "encoded"
+    return ""
+
+
+# ─── Deterministic off-topic pattern gate ──────────────────────────────────
+
+
+_MATH_CHARS = set("0123456789+-*/=^%().,×÷ ")
+_OPERATOR_RE = re.compile(r"[+\-*/=^%×÷]")
+_WORD_RE = re.compile(r"[A-Za-z]{2,}")
+_DIGIT_RE = re.compile(r"\d")
+
+_CODE_KEYWORDS = (
+    "def ", "function ", "class ", "import ", "from ",
+    "const ", "let ", "var ", "return ", "} else", "elif ",
+    "console.log", "print(", "=> {", "</", "<?php", "#include",
+    "SELECT ", "INSERT INTO", "UPDATE ", "DELETE FROM", "WHERE ",
+    "public class", "private ", "protected ", "static void",
+    "npm install", "pip install", "git clone", "git commit",
+    "async def", "async function", "await ", "yield ",
+    "try {", "catch (", "except:", "raise ", "throw new",
+    "#!/", "use strict", "module.exports", "require(",
+    "FROM ", "JOIN ", "GROUP BY", "ORDER BY",
+    "if __name__", "self.", "this.",
+)
+
+
+def _looks_like_math(q: str) -> bool:
+    """Pure arithmetic expression with no English words (e.g. '7*8', '2+2-1')."""
+    s = q.strip()
+    if not s or len(s) > 120:
+        return False
+    if not _DIGIT_RE.search(s) or not _OPERATOR_RE.search(s):
+        return False
+    if _WORD_RE.search(s):  # Any 2+ letter word disqualifies — it's not pure math
+        return False
+    no_ws = re.sub(r"\s+", "", s)
+    if not no_ws:
+        return False
+    math_count = sum(1 for c in no_ws if c in _MATH_CHARS)
+    return math_count / len(no_ws) >= 0.90
+
+
+def _looks_like_code(q: str) -> bool:
+    """Pasted code/SQL snippet (any language). Two-signal rule keeps false positives down."""
+    if not q:
+        return False
+    if "```" in q:  # Fenced code block — unambiguous
+        return True
+    keyword_hits = sum(1 for kw in _CODE_KEYWORDS if kw in q)
+    if keyword_hits >= 2:
+        return True
+    lines = q.splitlines()
+    if len(lines) >= 3 and keyword_hits >= 1:
+        punct = sum(q.count(ch) for ch in "{};()=<>")
+        if punct >= max(8, len(q) // 25):
+            return True
+    # Single-line shape that's almost certainly code, not English
+    if re.match(r"^\s*(def|function|class|import|from|const|let|var|SELECT|INSERT|UPDATE|DELETE)\s+\w", q):
+        return True
+    return False
+
+
+def _off_topic_pattern(q: str | None) -> str:
+    """Returns 'math' / 'code' if the input is deterministically off-topic, else ''."""
+    if not q:
+        return ""
+    if _looks_like_math(q):
+        return "math"
+    if _looks_like_code(q):
+        return "code"
+    return ""
 
 
 def _is_legitimate_ndis_query(user_question: str | None) -> bool:
@@ -178,6 +422,43 @@ def process_query(user_question):
     if VERBOSE:
         print(f"\nProcessing: {user_question}")
 
+    # Step 0 — sanitise. Strip invisible / control / emoji smuggling chars,
+    # NFKC-normalise homoglyphs, then look for jailbreak / encoded payloads.
+    user_question = _scrub_input(user_question or "")
+    injection_kind = _check_injection(user_question)
+    if injection_kind:
+        msg = (
+            "I can't process that request. Please rephrase your question about "
+            "shifts, clients, staff, payroll, allowances, or NDIS policies."
+        )
+        if VERBOSE:
+            print(
+                f"[content-gate] injection-blocked ({injection_kind}) in "
+                f"{(time.time() - start_total) * 1000:.1f}ms — no LLM call",
+                file=sys.stderr,
+            )
+        print(f"\nSena: {msg}")
+        _persist_turn(user_question, msg, mode=f"INJECTION_BLOCKED_{injection_kind.upper()}")
+        return msg
+
+    # Deterministic pre-LLM gate — pure math / pasted code never reaches Bedrock.
+    pattern_kind = _off_topic_pattern(user_question)
+    if pattern_kind:
+        msg = (
+            "That's outside what I can help with — I'm set up for NDIS work "
+            "(shifts, clients, staff, payroll, allowances, policies). "
+            "Happy to dig into any of those for you."
+        )
+        if VERBOSE:
+            print(
+                f"[content-gate] pattern-blocked ({pattern_kind}) in "
+                f"{(time.time() - start_total) * 1000:.1f}ms — no LLM call",
+                file=sys.stderr,
+            )
+        print(f"\nSena: {msg}")
+        _persist_turn(user_question, msg, mode=f"PATTERN_BLOCKED_{pattern_kind.upper()}")
+        return msg
+
     skip_memory = _skip_memory_gate(user_question)
     actor_id = _actor_id()
 
@@ -207,19 +488,7 @@ def process_query(user_question):
         if is_legitimate and bedrock_block_msg:
             print(f"[timing] phase 2 (bedrock-gate, ran because llm-gate passed): ~0ms", file=sys.stderr)
 
-    # ---- Double-layer security with LLM-veto override ----
-    # The LLM gate is the SMART layer — it understands NDIS context (e.g. "female
-    # clients under 20" is a legitimate demographic filter for adolescent
-    # programs, support-worker gender matching, etc.). Bedrock's generic guardrail
-    # sometimes false-positives on these combinations. So:
-    #
-    #   - LLM blocks: hard block (LLM is contextually aware of what's harmful)
-    #   - LLM allows + Bedrock allows: pass
-    #   - LLM allows + Bedrock blocks: PASS (LLM veto — Bedrock false positive on legit NDIS filter)
-    #
-    # This means LLM is the authoritative gate; Bedrock is a secondary safety net
-    # only when the LLM also flags the query. Result: legitimate cohort filters
-    # (gender + age, cultural identity, medical conditions, etc.) all pass through.
+
     llm_blocked = not is_legitimate
     bedrock_blocked = bedrock_block_msg is not None
 
@@ -252,6 +521,7 @@ def process_query(user_question):
     if memory_answer:
         if VERBOSE:
             print("Mode: Memory (answered from prior conversation)")
+        memory_answer = _safe_reply(memory_answer, "memory")
         print(f"\nSena: {memory_answer}")
         _persist_turn(user_question, memory_answer, mode="MEMORY")
         return memory_answer
@@ -264,7 +534,7 @@ def process_query(user_question):
         total_time = time.time() - start_total
         if VERBOSE:
             print(f"[timing] total latency: {total_time:.2f}s", file=sys.stderr)
-        return result
+        return _safe_reply(result, "agent")
 
     needs_api = bool(route.get("needs_api"))
     needs_kb = bool(route.get("needs_kb")) and bool(BEDROCK_KB_ID)
@@ -294,7 +564,7 @@ def process_query(user_question):
             if VERBOSE:
                 sources = [name for name, on in (("API", needs_api), ("KB", needs_kb), ("META", needs_meta)) if on]
                 print(f"Mode: Hybrid ({' + '.join(sources)} combined)")
-            return process_hybrid_query(
+            return _safe_reply(process_hybrid_query(
                 user_question,
                 api_path,
                 api_method,
@@ -306,7 +576,7 @@ def process_query(user_question):
                 needs_meta=needs_meta,
                 api_parameters=api_parameters,
                 api_query_params=api_query_params,
-            )
+            ), "hybrid")
 
     # Single-source dispatch.
     intent = route.get("intent", "CHAT")
@@ -334,4 +604,4 @@ def process_query(user_question):
     total_time = time.time() - start_total
     if VERBOSE:
         print(f"[timing] total latency: {total_time:.2f}s", file=sys.stderr)
-    return result
+    return _safe_reply(result, "single-source")

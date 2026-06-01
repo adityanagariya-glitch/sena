@@ -16,6 +16,8 @@ from style_guide import (
     EMPTY_DATA_RULES,
     ANSWER_DIRECTLY,
     TIME_FORMAT_RULE,
+    INPUT_SECURITY_RULES,
+    SCOPE_RULE,
 )
 
 def _today_context_block():
@@ -125,6 +127,10 @@ def _core_prompt():
 {_today_context_block()}
 
 You are the SENA NDIS assistant — for authenticated Australian NDIS workers (admins, in-office staff, support workers, ISWs, clients, guardians). You help with shifts, clients, staff, payroll, allowances, and NDIS policies.
+
+{INPUT_SECURITY_RULES}
+
+{SCOPE_RULE}
 
 ## How you work
 1. Read the user's question.

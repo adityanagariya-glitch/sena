@@ -30,6 +30,35 @@ from tools.base import ToolSpec, ToolResult
 from tools._common import parallel_fetch
 
 
+def _role_labels_lower():
+    """Return user_context['roles'] as a list of lowercase string labels.
+
+    The JWT delivers roles as a list of DICTS (e.g.
+    [{"id":"...","version":"..."}] or [{"roleName":"owner",...}]) — calling
+    `.lower()` on a dict raises `AttributeError: 'dict' object has no
+    attribute 'lower'`. This helper unwraps each entry to its display label
+    first, so downstream lowercase comparisons never blow up regardless of
+    which shape arrived.
+    """
+    out = []
+    for r in (user_context.get("roles") or []):
+        if isinstance(r, str):
+            out.append(r.lower())
+        elif isinstance(r, dict):
+            label = (
+                r.get("roleName")
+                or r.get("name")
+                or r.get("role")
+                or r.get("id")
+                or ""
+            )
+            if label:
+                out.append(str(label).lower())
+        elif r is not None:
+            out.append(str(r).lower())
+    return out
+
+
 # Persona → clients-reference endpoint. We pair each shift fetch with the
 # clients endpoint the user has access to, so the LLM can cross-reference
 # client_id mentions in shift records when the shift response is sparse.
@@ -42,7 +71,7 @@ def _clients_ref_path_for_user():
     """
     user_type = (user_context.get("user_type") or "").lower()
     staff_type = (user_context.get("staff_type") or "").lower()
-    roles = [r.lower() for r in (user_context.get("roles") or [])]
+    roles = _role_labels_lower()
 
     if user_type == "client":
         # Participant viewing their own shifts — no "other clients" reference.
@@ -66,7 +95,7 @@ def _calendar_view_path_for_user():
     """
     user_type = (user_context.get("user_type") or "").lower()
     staff_type = (user_context.get("staff_type") or "").lower()
-    roles = [r.lower() for r in (user_context.get("roles") or [])]
+    roles = _role_labels_lower()
 
     if user_type == "client" or "guardian" in roles or user_type == "guardian":
         return "/mobile/client-shift/calendar-view"

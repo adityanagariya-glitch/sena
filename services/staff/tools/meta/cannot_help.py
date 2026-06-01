@@ -17,10 +17,15 @@ def _run(inputs: dict | None) -> ToolResult:
 TOOL = ToolSpec(
     name="cannot_help",
     description=(
-        "Use when the user's request is genuinely out of scope (off-topic, asking about "
-        "things SENA doesn't cover, or requesting actions you can't perform like editing "
-        "data). Do NOT use for content-gate violations (those are blocked upstream) — "
-        "only for legitimate but unsupportable requests."
+        "Use for ANY question whose answer doesn't live in a SENA tool (shifts, clients, "
+        "staff, organisations, policies/KB) AND isn't a personal-memory fact about this "
+        "user (name, preferences, timezone). This includes — but isn't limited to — "
+        "general maths, arithmetic, code/database/MongoDB help, debugging, recipes, "
+        "weather, world news, jokes, trivia, definitions of generic terms, opinions, or "
+        "software questions. Looking easy to answer (e.g. '2+2') does NOT make it "
+        "on-topic — refuse via this tool. Do NOT use for content-gate violations "
+        "(blocked upstream) or for actions SENA simply doesn't expose yet (say so "
+        "directly instead)."
     ),
     input_schema={
         "type": "object",

@@ -81,3 +81,5 @@ graphify-out/
 *.log
 
 servicesai_chatbot/templates/shell.html
+.kiro/
+.qoder/

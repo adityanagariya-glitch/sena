@@ -409,7 +409,29 @@ def _format_user_profile():
     if staff_type:
         lines.append(f"- Staff type: {staff_type}")
     if roles:
-        lines.append(f"- Granted roles: {', '.join(roles)}")
+        # roles can be a list of strings (legacy) OR a list of dicts from the
+        # JWT — e.g. [{"id": "...", "version": "..."}] or [{"roleName": "owner",
+        # "organizationName": "..."}]. Normalise to display strings before
+        # joining so we never blow up with
+        # "TypeError: sequence item 0: expected str instance, dict found".
+        role_labels = []
+        for r in roles:
+            if isinstance(r, str):
+                role_labels.append(r)
+            elif isinstance(r, dict):
+                label = (
+                    r.get("roleName")
+                    or r.get("name")
+                    or r.get("role")
+                    or r.get("id")
+                    or ""
+                )
+                if label:
+                    role_labels.append(str(label))
+            elif r is not None:
+                role_labels.append(str(r))
+        if role_labels:
+            lines.append(f"- Granted roles: {', '.join(role_labels)}")
     lines.append(f"- Organisation ID: {org}")
     lines.append("")
     lines.append("If the user asks 'what is my role', 'who am I', 'what are my permissions', 'my profile', etc. — answer from the fields above immediately. Do NOT trigger an API call.")
