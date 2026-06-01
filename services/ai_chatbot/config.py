@@ -80,11 +80,14 @@ def child_specs() -> list[dict]:
             "health_url": f"http://{CHILD_HOST}:{POLICY_API_PORT}/health",
         },
         {
-            "name": "staff_ui",
-            "argv": _streamlit_cmd("ui.py", STAFF_PORT, STAFF_PREFIX),
+            "name": "staff_api",
+            "argv": [
+                sys.executable, "-m", "uvicorn", "api_main:app",
+                "--host", CHILD_HOST, "--port", str(STAFF_PORT),
+            ],
             "cwd": str(STAFF_DIR),
-            "env": None,
-            "health_url": f"{STAFF_ORIGIN}/{STAFF_PREFIX}/_stcore/health",
+            "env": {"PYTHONPATH": str(REPO_ROOT)},
+            "health_url": f"http://{CHILD_HOST}:{STAFF_PORT}/health",
         },
         {
             "name": "policy_ui",

@@ -92,6 +92,31 @@ def _build_user_profile_block() -> str | None:
     return _format_user_profile()
 
 
+def _coerce_text(value) -> str:
+    """Unwrap any Bedrock 'text' value into a plain string.
+
+    Bedrock's Converse response normally returns text blocks as
+    `{"text": "string"}`, but in guardrail-augmented / wrapped responses the
+    value can come through as a nested dict — e.g. `{"text": {"text": "string"}}`
+    — or as a list of fragments. Blindly passing those to `.join()` raises
+    `TypeError: sequence item 0: expected str instance, dict found`.
+
+    This helper accepts any shape and returns a plain string, or '' if it
+    can't extract anything useful.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        # Nested {"text": ...} or guardrail-wrapped variants
+        inner = value.get("text") or value.get("content") or value.get("output")
+        return _coerce_text(inner)
+    if isinstance(value, list):
+        return "".join(_coerce_text(v) for v in value)
+    return str(value)
+
+
 def _bedrock_messages_from_history() -> list[dict]:
     """Convert the in-memory conversation_history into Bedrock messages format."""
     messages = []
@@ -105,21 +130,33 @@ def _bedrock_messages_from_history() -> list[dict]:
         content = turn.get("content") or []
         text_parts = []
         for part in content:
-            if isinstance(part, dict) and part.get("text"):
-                text_parts.append(part["text"])
-        if not text_parts:
+            if isinstance(part, dict) and part.get("text") is not None:
+                t = _coerce_text(part["text"])
+                if t and t.strip():                # Bedrock rejects whitespace-only text
+                    text_parts.append(t.strip())
+        joined = "\n".join(text_parts).strip()
+        if not joined:                              # skip whitespace-only turns entirely
             continue
-        messages.append({"role": role, "content": [{"text": "\n".join(text_parts)}]})
+        messages.append({"role": role, "content": [{"text": joined}]})
     return messages
 
 
 def _content_blocks_with_tool_use(message: dict) -> tuple[list[str], list[dict]]:
-    """Extract { text_blocks: [...], tool_use_blocks: [...] } from a Bedrock assistant message."""
+    """Extract { text_blocks: [...], tool_use_blocks: [...] } from a Bedrock assistant message.
+
+    `text_blocks` is always a list of plain strings — nested/wrapped text values
+    from Bedrock are flattened via _coerce_text so downstream `.join()` never
+    sees a dict.
+    """
     text_blocks = []
     tool_use_blocks = []
     for block in (message.get("content") or []):
+        if not isinstance(block, dict):
+            continue
         if "text" in block:
-            text_blocks.append(block["text"])
+            t = _coerce_text(block["text"])
+            if t:
+                text_blocks.append(t)
         elif "toolUse" in block:
             tool_use_blocks.append(block["toolUse"])
     return text_blocks, tool_use_blocks
@@ -162,11 +199,15 @@ def process_query_agent(user_question: str) -> str:
 
     tool_config = bedrock_tool_config()
 
-    # Seed messages: prior conversation + this new user turn
+    # Seed messages: prior conversation + this new user turn.
+    # Strip trailing/leading whitespace — Bedrock rejects whitespace-only text blocks.
     messages = _bedrock_messages_from_history()
+    user_text = (user_question or "").strip()
+    if not user_text:
+        return "Sorry — that came through blank. Could you type your question again?"
     messages.append({
         "role": "user",
-        "content": [{"text": user_question}],
+        "content": [{"text": user_text}],
     })
 
     final_text = ""
@@ -285,6 +326,18 @@ def process_query_agent(user_question: str) -> str:
             "'show my shifts this week' or 'tell me about <client name>'."
         )
 
+    # Output sanitiser — last gate. Catches accidental leak of secrets, model
+    # identity, system-prompt phrases, or tool-name enumeration. On match the
+    # whole reply is replaced with a safe fallback.
+    from style_guide import sanitize_output
+    final_text, leak_kind = sanitize_output(final_text)
+    if leak_kind:
+        print(
+            f"[AGENT] OUTPUT FILTER blocked leak (kind={leak_kind}) — "
+            f"reply replaced with safe fallback",
+            file=_TERMINAL, flush=True,
+        )
+
     total = time.time() - start
     reply_preview = final_text.replace("\n", " ")[:160]
     print(
@@ -294,7 +347,7 @@ def process_query_agent(user_question: str) -> str:
     )
 
     print(f"\nSena: {final_text}")
-    _persist_turn(user_question, final_text, mode="AGENT")
+    _persist_turn(user_question, final_text, mode="AGENT" if not leak_kind else f"OUTPUT_FILTERED_{leak_kind.upper()}")
     return final_text
 
 

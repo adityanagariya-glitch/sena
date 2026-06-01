@@ -11,6 +11,8 @@ Run:
 """
 import asyncio
 import contextlib
+import json
+import logging
 import os
 import signal
 import sys
@@ -18,16 +20,24 @@ import time
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Request, WebSocket, HTTPException, Header
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 import config
 from proxy import proxy_http, proxy_websocket
+from gateway_extensions import ServiceOrchestrator
+from pydantic import BaseModel, Field
 
 templates = Jinja2Templates(directory=str(config.TEMPLATES_DIR))
 
 _HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
+logger = logging.getLogger(__name__)
+
+
+class RouteRequest(BaseModel):
+    question: str
+    context: dict = Field(default_factory=dict)
 
 
 async def _wait_healthy(client: httpx.AsyncClient, url: str, timeout: float) -> bool:
@@ -121,6 +131,17 @@ async def lifespan(app: FastAPI):
     # Shared pooled client = lower latency (connection reuse) for proxy + health.
     app.state.client = httpx.AsyncClient(timeout=httpx.Timeout(None), follow_redirects=False)
     app.state.children = []
+
+    # Initialize service orchestrator for query routing
+    staff_url = os.getenv("STAFF_ORIGIN", "http://127.0.0.1:8601")
+    policy_url = os.getenv("POLICY_ORIGIN", "http://127.0.0.1:8602")
+    jwt_secret = os.getenv("JWT_SECRET", "sena-local-qa-secret-change-in-prod")
+    app.state.orchestrator = ServiceOrchestrator(
+        staff_url=staff_url,
+        policy_url=policy_url,
+        jwt_secret=jwt_secret,
+    )
+
     if config.MANAGE_CHILDREN:
         await _spawn_children(app)
     try:
@@ -159,6 +180,36 @@ async def healthz(request: Request):
         except Exception:
             results[spec["name"]] = False
     return JSONResponse({"gateway": True, "children": results})
+
+
+@app.post("/api/route")
+async def route_query(
+    req: RouteRequest,
+    authorization: str = Header(None),
+):
+    """Route a query through the service orchestrator with streaming response.
+
+    Requires JWT token in Authorization header: Bearer <token>
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    jwt_token = authorization.replace("Bearer ", "")
+    orchestrator: ServiceOrchestrator = app.state.orchestrator
+
+    async def event_stream():
+        try:
+            async for event in orchestrator.route_and_stream(
+                question=req.question,
+                jwt_token=jwt_token,
+                context=req.context or {},
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            logger.exception("Error in route_and_stream")
+            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 # ---- Bare-prefix redirects to trailing slash (Streamlit expects /staff/) ----

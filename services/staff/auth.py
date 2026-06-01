@@ -16,6 +16,44 @@ from state import user_context, apply_user_type_context
 from agents_types import AuthResponse
 
 
+def _normalise_roles(raw) -> list[str]:
+    """Convert whatever shape the JWT / API gives us into a flat list of
+    lowercase string role labels — the form every downstream consumer expects.
+
+    Tolerated inputs:
+      • ["owner", "admin"]                                — already strings
+      • [{"id": "uuid", "version": "..."}]                — bare JWT roles
+      • [{"roleName": "owner", "organizationName": "x"}]  — my-roles API
+      • [{"name": "manager"}] / [{"role": "..."}]
+      • Mixed lists, None, or other junk → safely dropped
+
+    Storing as a flat list of lowercase strings means `.lower()`, `.join()`,
+    `'guardian' in roles`, etc. all just work — no defensive code per consumer.
+    """
+    if not raw:
+        return []
+    out = []
+    for r in raw:
+        if isinstance(r, str):
+            label = r
+        elif isinstance(r, dict):
+            label = (
+                r.get("roleName")
+                or r.get("name")
+                or r.get("role")
+                or r.get("id")
+                or ""
+            )
+        elif r is None:
+            continue
+        else:
+            label = str(r)
+        label = str(label).strip().lower()
+        if label:
+            out.append(label)
+    return out
+
+
 def _fetch_and_apply_user_type(headers: dict | None = None) -> bool:
     """Fetch the authoritative user-type context from GET /auth/user-type and
     store it (canonical fields + derived legacy user_type).
@@ -258,7 +296,7 @@ def authenticate_with_jwt(token: str | None) -> bool:
                     except Exception as e:
                         print(f"    Could not fetch role {role_id}: {e}")
 
-        user_context["roles"] = roles if roles else roles_from_jwt
+        user_context["roles"] = _normalise_roles(roles if roles else roles_from_jwt)
         user_context["user_type"] = user_type
 
         print("  JWT authentication successful!")
@@ -298,11 +336,22 @@ def authenticate_user() -> bool:
                 if isinstance(roles_data, dict) and "data" in roles_data:
                     roles_data = roles_data["data"]
                 roles = roles_data if isinstance(roles_data, list) else roles
-                user_context["roles"] = roles
+                user_context["roles"] = _normalise_roles(roles)
         except Exception:
             pass
 
-        role_name = roles[0].get("name", "").lower() if roles else ""
+        # `roles` may be the raw dicts from /my-roles, OR (when that endpoint
+        # failed) the already-normalised lowercase strings we stored at login.
+        # Handle both shapes so we never crash here on a string.
+        role_name = ""
+        if roles:
+            first = roles[0]
+            if isinstance(first, dict):
+                role_name = (
+                    first.get("name") or first.get("roleName") or first.get("role") or ""
+                ).lower()
+            elif isinstance(first, str):
+                role_name = first.lower()
 
         # If login already gave us a user_type, prefer that; otherwise infer from role
         existing_type = user_context.get("user_type")
