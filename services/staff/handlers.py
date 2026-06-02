@@ -1,4 +1,4 @@
-"""Mode-specific query handlers: KB (RAG), meta-recall, normal chat, API.
+"""Mode-specific query handlers: meta-recall, normal chat, API.
 
 The top-level router dispatches to one of these based on detected intent.
 """
@@ -9,8 +9,6 @@ import sys
 from config import (
     bedrock_agentcore,
     AGENTCORE_MEMORY_ID,
-    BEDROCK_KB_ID,
-    BEDROCK_KB_IDS,
     GUARDRAILS,
     VERBOSE,
 )
@@ -30,8 +28,6 @@ from style_guide import (
     ANSWER_DIRECTLY,
     AUSSIE_VOICE,
 )
-from kb_query import query_kbs, query_kbs_async
-
 
 SOURCE_LEAK_FALLBACK = (
     "I don't have enough confirmed information to answer that fully right now. "
@@ -48,19 +44,7 @@ SOURCE_LEAK_PATTERNS = (
     "internal system data",
     "source data",
     "tool output",
-    "knowledge base",
-    "based on the documents",
-    "based on the information provided",
-    "information provided",
-    "provided data",
-    "the documents",
-    "retrieved",
-    "retrieval",
-    "search results",
-    "citations",
-    "s3://",
     "bedrock",
-    "rag",
 )
 
 def _hide_internal_sources(text):
@@ -71,115 +55,6 @@ def _hide_internal_sources(text):
     if any(pattern in lowered for pattern in SOURCE_LEAK_PATTERNS):
         return SOURCE_LEAK_FALLBACK
     return text
-
-# KB response cache — same pattern as the API cache. First call hits Bedrock,
-# subsequent calls within TTL reuse the answer. Keyed by normalized question.
-import time as _time_kb
-_KB_CACHE_TTL_SECONDS = 600  # 10 minutes
-_kb_cache = {}  # normalized_question → (timestamp, response)
-
-
-def _normalize_kb_question(q):
-    """Lowercase + strip punctuation/whitespace for fuzzy cache matching."""
-    import re as _re
-    return _re.sub(r'[^\w\s]', '', q.lower()).strip()
-
-
-def process_kb_query(user_question, wants_fresh_data=False):
-    """Answer using AWS Bedrock Knowledge Base(s) (multi-KB RAG) over S3 docs.
-
-    Uses kb_query.query_kbs which does:
-      1. Conversation-aware query rewriting (the orchestration step)
-      2. Parallel `retrieve` across every configured KB
-      3. Top-K merge by score
-      4. Single streaming `converse_stream` generate call
-    Guardrails are applied to both the prompt and the model response.
-
-    Cached responses are reused silently — no "I told you before" commentary.
-    `wants_fresh_data=True` bypasses the cache.
-    """
-    if not BEDROCK_KB_ID:
-        msg = "I don't have confirmed policy information available right now. Please check with your coordinator or team leader for the correct process."
-        print(f"\nSena: {msg}")
-        return msg
-
-    # Check KB cache first (silent reuse)
-    cache_key = _normalize_kb_question(user_question)
-    if not wants_fresh_data:
-        cached = _kb_cache.get(cache_key)
-        if cached and (_time_kb.time() - cached[0]) < _KB_CACHE_TTL_SECONDS:
-            if VERBOSE:
-                print(f"[kb-cache] HIT for: {user_question[:50]}", file=sys.stderr)
-            print(f"\nSena: {cached[1]}")
-            _persist_turn(user_question, cached[1], mode="KB")
-            return cached[1]
-
-    print("\nSena: ", end="", flush=True)
-
-    user_profile_block = _format_user_profile()
-    user_profile_section = f"\n\n{user_profile_block}\n" if user_profile_block else ""
-
-    # System prompt for the multi-KB merged-context generate call.
-    # Shared rules (privacy, identity, voice, etc.) imported from style_guide
-    # so every code path (agent / KB / API / hybrid) enforces the same rules.
-    kb_system_prompt = f"""{AUS_ENGLISH_BANNER}
-
-You are the SENA NDIS assistant answering staff and service providers about NDIS (National Disability Insurance Scheme) Australian disability services topics: shifts, clients, payroll, allowances, compliance, incident reporting, case notes, duty of care, restrictive practices, person-centred approaches, and related NDIS service delivery matters.{user_profile_section}
-
-Answer the user's question using ONLY the reference material that will be provided below. If the answer is not confirmed there, say "I don't have enough confirmed information to answer that" and give a practical next step. Never invent or guess.
-
-{ANSWER_DIRECTLY}
-
-{SOURCE_PRIVACY_PRINCIPLE}
-
-{IDENTITY_RULE}
-
-{AUSSIE_VOICE}"""
-
-    # Pre-check: extra guardrails on the user prompt
-    if len(GUARDRAILS) > 1:
-        for gid, ver in GUARDRAILS[1:]:
-            blocked = _apply_guardrail(gid, ver, user_question, "INPUT")
-            if blocked:
-                print(blocked)
-                return blocked
-
-    try:
-        if VERBOSE:
-            print(f"[bedrock-kb] multi-KB query ({len(BEDROCK_KB_IDS)} KBs) for: {user_question[:50]}...", file=sys.stderr)
-
-        # Parallel retrieve across all KBs + single merged generate call
-        text, _chunks = query_kbs(user_question, kb_system_prompt, kb_ids=BEDROCK_KB_IDS)
-        text = _hide_internal_sources((text or "").strip())
-
-        if not text:
-            fallback = "I don't have enough confirmed information to answer that right now. Please check with your coordinator or team leader for the correct process."
-            print(fallback)
-            return fallback
-
-        # Post-check: extra guardrails on the final response
-        if len(GUARDRAILS) > 1:
-            for gid, ver in GUARDRAILS[1:]:
-                blocked = _apply_guardrail(gid, ver, text, "OUTPUT")
-                if blocked:
-                    # KB content is already vetted — keep generated text if substantial
-                    print(f"\n[bedrock-guardrails] KB OUTPUT flagged by {gid}", file=sys.stderr)
-                    if not (text and len(text) > 20):
-                        print(blocked)
-                        return blocked
-
-        # Store in KB cache for silent reuse on repeat questions
-        _kb_cache[cache_key] = (_time_kb.time(), text)
-        if VERBOSE:
-            print(f"[kb-cache] STORED for: {user_question[:50]}", file=sys.stderr)
-        _persist_turn(user_question, text, mode="KB")
-        return text
-
-    except Exception as e:
-        err = "I don't have confirmed policy information available right now. Please check with your coordinator or team leader for the correct process."
-        print(f"[bedrock-kb] multi-KB query error: {type(e).__name__}: {e}", file=sys.stderr)
-        print(err)
-        return err
 
 def process_meta_query(user_question):
     """Answer meta-questions about the conversation history (this session + prior sessions).
@@ -681,29 +556,9 @@ def process_hybrid_query(
         if "error" in api_response:
             return _explain_api_error(user_question, {"api_path": api_path, "method": api_method}, api_response)
 
-    # Step 2: Fetch KB context if requested — multi-KB parallel retrieve
-    if needs_kb:
-        kb_system_prompt = f"""{AUSTRALIAN_ENGLISH} You are a SENA NDIS assistant providing policy and procedure context.
-
-        The user is asking about: {kb_question or user_question}
-
-        Provide ONLY the relevant policy, procedure, or requirement information from the reference material that will be provided. Be concise and practical.
-
-        If no relevant policy is confirmed, say "I don't have enough confirmed information to answer that" and give a practical next step. Do not invent procedures.
-
-        SOURCE PRIVACY — never mention documents, search results, knowledge bases, retrieval, citations, source data, or internal reference material. Do not say "based on the documents" or similar."""
-
-        try:
-            kb_text, _kb_chunks = query_kbs(
-                kb_question or user_question,
-                kb_system_prompt,
-                kb_ids=BEDROCK_KB_IDS,
-            )
-            kb_context = (kb_text or "").strip()
-        except Exception as e:
-            print(f"[bedrock-kb] multi-KB query error: {type(e).__name__}: {e}", file=sys.stderr)
-            print(f"\n[warning] KB context fetch failed — proceeding without policy context")
-            kb_context = ""
+    # Step 2: KB context fetch disabled — knowledge base not available for staff
+    # needs_kb should always be False from api_router (KB disabled system-wide)
+    kb_context = ""
 
     # Step 3: Fetch conversation memory if requested
     if needs_meta:

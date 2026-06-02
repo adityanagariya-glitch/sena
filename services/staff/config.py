@@ -20,7 +20,6 @@ REGION = "ap-southeast-2"
 #MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 MODEL_ID = "au.anthropic.claude-sonnet-4-6"
 API_BASE_URL = "https://dev-api.isena.org/api"
-KB_MODEL_ID = MODEL_ID
 
 def _parse_guardrails():
     raw = os.getenv("SENA_AI_BEDROCK_GUARDRAIL_IDS", "").strip()
@@ -58,49 +57,6 @@ if BEDROCK_API_KEY:
 
 # ---- AWS clients ----
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
-bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=REGION)
-
-_kb_id_raw = os.getenv("SENA_AI_BEDROCK_KB_ID", "").strip()
-BEDROCK_KB_IDS = [kb.strip() for kb in _kb_id_raw.split(",") if kb.strip()]
-# Backward compat — first KB is the "primary" id; truthy when ANY KB configured.
-BEDROCK_KB_ID = BEDROCK_KB_IDS[0] if BEDROCK_KB_IDS else ""
-
-_INFERENCE_PROFILE_PREFIXES = ("global.", "us.", "eu.", "apac.", "us-gov.", "au.")
-_KB_ARN_CACHE: str | None = None
-
-
-def _build_kb_model_arn() -> str:
-    global _KB_ARN_CACHE
-    if _KB_ARN_CACHE:
-        return _KB_ARN_CACHE
-
-    override = os.getenv("SENA_AI_BEDROCK_KB_MODEL_ARN", "").strip()
-    if override:
-        _KB_ARN_CACHE = override
-        return override
-
-    # KB uses its own model (Sonnet 4) to avoid legacy model restrictions
-    model_for_kb = KB_MODEL_ID
-    if model_for_kb.startswith(_INFERENCE_PROFILE_PREFIXES):
-        try:
-            sts = boto3.client("sts", region_name=REGION)
-            account_id = sts.get_caller_identity()["Account"]
-            _KB_ARN_CACHE = f"arn:aws:bedrock:{REGION}:{account_id}:inference-profile/{model_for_kb}"
-            return _KB_ARN_CACHE
-        except Exception as e:
-            print(f"[bedrock-kb] STS get_caller_identity failed: {e}")
-            print(f"[bedrock-kb] falling back to foundation-model ARN — KB calls may fail")
-
-    arn = f"arn:aws:bedrock:{REGION}::foundation-model/{model_for_kb}"
-    _KB_ARN_CACHE = arn
-    return arn
-
-
-BEDROCK_KB_MODEL_ARN = _build_kb_model_arn()
-if BEDROCK_KB_IDS:
-    print(f"[bedrock-kb] enabled — {len(BEDROCK_KB_IDS)} KB(s): {BEDROCK_KB_IDS}")
-else:
-    print("[bedrock-kb] disabled — set SENA_AI_BEDROCK_KB_ID to enable RAG")
 
 
 # ---- AgentCore Memory (24h session) + DynamoDB (30d raw audit, session store) ----

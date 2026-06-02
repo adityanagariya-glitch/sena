@@ -20,18 +20,13 @@ import time
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request, WebSocket, HTTPException, Header
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import config
-from proxy import proxy_http, proxy_websocket
 from gateway_extensions import ServiceOrchestrator
 from pydantic import BaseModel, Field
 
-templates = Jinja2Templates(directory=str(config.TEMPLATES_DIR))
-
-_HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
 logger = logging.getLogger(__name__)
 
 
@@ -155,22 +150,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SENA ai_chatbot gateway", version="1.0.0", lifespan=lifespan)
 
 
-# ---- Shell + health ----
+# ---- Health ----
 
-@app.get("/", response_class=HTMLResponse)
-async def shell(request: Request):
-    return templates.TemplateResponse(
-        request,
-        "shell.html",
-        {
-            "staff_url": f"/{config.STAFF_PREFIX}/",
-            "policy_url": f"/{config.POLICY_PREFIX}/",
-        },
-    )
+@app.get("/")
+async def root():
+    """The gateway is a JSON routing API now — no UI. Point clients at /api/route."""
+    return JSONResponse({
+        "service": "SENA ai_chatbot gateway",
+        "endpoints": {"route": "POST /api/route", "health": "GET /healthz"},
+    })
 
 
 @app.get("/healthz")
-async def healthz(request: Request):
+async def healthz():
     client: httpx.AsyncClient = app.state.client
     results = {}
     for spec in config.child_specs():
@@ -210,42 +202,6 @@ async def route_query(
             yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-# ---- Bare-prefix redirects to trailing slash (Streamlit expects /staff/) ----
-
-@app.get("/staff")
-async def _staff_root():
-    return RedirectResponse(url=f"/{config.STAFF_PREFIX}/")
-
-
-@app.get("/policy")
-async def _policy_root():
-    return RedirectResponse(url=f"/{config.POLICY_PREFIX}/")
-
-
-# ---- WebSocket proxy (register before HTTP catch-alls) ----
-
-@app.websocket("/staff/{path:path}")
-async def _staff_ws(ws: WebSocket, path: str):
-    await proxy_websocket(ws, config.STAFF_WS_ORIGIN)
-
-
-@app.websocket("/policy/{path:path}")
-async def _policy_ws(ws: WebSocket, path: str):
-    await proxy_websocket(ws, config.POLICY_WS_ORIGIN)
-
-
-# ---- HTTP proxy catch-alls ----
-
-@app.api_route("/staff/{path:path}", methods=_HTTP_METHODS)
-async def _staff_http(request: Request, path: str):
-    return await proxy_http(request, app.state.client, config.STAFF_ORIGIN)
-
-
-@app.api_route("/policy/{path:path}", methods=_HTTP_METHODS)
-async def _policy_http(request: Request, path: str):
-    return await proxy_http(request, app.state.client, config.POLICY_ORIGIN)
 
 
 if __name__ == "__main__":
