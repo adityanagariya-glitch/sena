@@ -33,8 +33,7 @@ from tools.clients.search_clients import TOOL as _T_SEARCH_CLIENTS
 from tools.shared.find_person import TOOL as _T_FIND_PERSON
 from tools.shared.list_my_organizations import TOOL as _T_LIST_MY_ORGS
 
-# ---- KB / Memory / Meta ----
-from tools.kb.get_policy import TOOL as _T_GET_POLICY
+# ---- Memory / Meta ----
 from tools.memory.recall_conversation import TOOL as _T_RECALL_CONVERSATION
 from tools.meta.clarify_with_user import TOOL as _T_CLARIFY
 from tools.meta.cannot_help import TOOL as _T_CANNOT_HELP
@@ -60,7 +59,6 @@ ALL_TOOLS: list[ToolSpec] = [
     _T_SEARCH_CLIENTS,
     _T_FIND_PERSON,
     _T_LIST_MY_ORGS,
-    _T_GET_POLICY,
     _T_RECALL_CONVERSATION,
     _T_CLARIFY,
     _T_CANNOT_HELP,

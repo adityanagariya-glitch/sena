@@ -12,10 +12,10 @@ import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
-from config import VERBOSE, BEDROCK_KB_ID, GUARDRAILS
+from config import VERBOSE, GUARDRAILS
 from memory import _try_answer_from_memory, _skip_memory_gate, _persist_turn, _fetch_user_preferences, _actor_id
 from api_router import detect_route, find_best_api
-from handlers import process_api_call, process_kb_query, process_meta_query, process_normal_chat, process_hybrid_query
+from handlers import process_api_call, process_meta_query, process_normal_chat, process_hybrid_query
 from guardrails import _apply_guardrail
 from bedrock_client import call_bedrock
 from agents_types import APIRouteResponse
@@ -27,9 +27,8 @@ _AGENT_MODE = os.getenv("SENA_AI_AGENT_MODE", "off").strip().lower()
 # ─── Input sanitisation: prompt-injection / smuggling defence ──────────────
 
 # Invisible / formatting code-points used in prompt-injection smuggling.
-# Expanded list — covers every documented invisible-character vector
-# (zero-width, bidi, deprecated controls, fillers, ALL variation selectors,
-# Tags block). Membership check is a single set lookup.
+# Practical attack vectors only — documented in OWASP LLM01, promptingguide.ai,
+# and observed in real adversarial prompts. Membership check is a single set lookup.
 _INVISIBLE_CODEPOINTS = frozenset([
     0x00AD,                                         # SOFT HYPHEN
     0x034F,                                         # COMBINING GRAPHEME JOINER (CGJ)
@@ -45,29 +44,11 @@ _INVISIBLE_CODEPOINTS = frozenset([
     0x206A, 0x206B, 0x206C, 0x206D, 0x206E, 0x206F, # Deprecated format controls
     0xFEFF,                                         # ZWNBSP / BOM
     0xFFA0,                                         # HALFWIDTH HANGUL FILLER
-    # Variation Selectors
+    # Variation Selectors (real attack vector)
     *range(0xFE00, 0xFE10),                         # VS1 - VS16
     *range(0xE0100, 0xE01F0),                       # VS17 - VS256
-    # Tags block (used for hidden payloads)
+    # Tags block (documented smuggling vector)
     *range(0xE0000, 0xE0080),                       # Tags (E0000 - E007F)
-
-     # --- Interlinear Annotation (Rich Text Anchors) ---
-    0xFFF9, 0xFFFA, 0xFFFB,                         # Anchor, Separator, Terminator
-
-    # --- Shorthand Format Controls (Duployan) ---
-    0x1BCA0, 0x1BCA1, 0x1BCA2, 0x1BCA3,             # Overlap & Step controls
-
-    # --- Musical Symbol Layout Controls ---
-    0x1D173, 0x1D174,                               # Begin/End Beam
-    0x1D175, 0x1D176,                               # Begin/End Tie
-    0x1D177, 0x1D178,                               # Begin/End Slur
-    0x1D179, 0x1D17A,                               # Begin/End Phrase
-
-    # --- Ancient Script Formatting (Rarely Rendered) ---
-    0x070F,                                         # Syriac Abbreviation Mark
-    0x13430, 0x13431,                               # Egyptian Hieroglyph Joiners (Vertical/Horizontal)
-    0x13432, 0x13433, 0x13434, 0x13435,             # Egyptian Hieroglyph Insertion Controls
-    0x13436, 0x13437, 0x13438,                      # Egyptian Hieroglyph Overlays/Segments
 ])
 
 
@@ -537,9 +518,8 @@ def process_query(user_question):
         return _safe_reply(result, "agent")
 
     needs_api = bool(route.get("needs_api"))
-    needs_kb = bool(route.get("needs_kb")) and bool(BEDROCK_KB_ID)
     needs_meta = bool(route.get("needs_meta"))
-    active_sources = sum([needs_api, needs_kb, needs_meta])
+    active_sources = sum([needs_api, needs_meta])
 
     # Hybrid path — 2+ sources combined into one response.
     if active_sources >= 2:
@@ -558,21 +538,21 @@ def process_query(user_question):
             else:
                 # API couldn't be resolved — drop it and re-evaluate hybrid viability.
                 needs_api = False
-                active_sources = sum([needs_api, needs_kb, needs_meta])
+                active_sources = sum([needs_api, needs_meta])
 
         if active_sources >= 2:
             if VERBOSE:
-                sources = [name for name, on in (("API", needs_api), ("KB", needs_kb), ("META", needs_meta)) if on]
+                sources = [name for name, on in (("API", needs_api), ("META", needs_meta)) if on]
                 print(f"Mode: Hybrid ({' + '.join(sources)} combined)")
             return _safe_reply(process_hybrid_query(
                 user_question,
                 api_path,
                 api_method,
                 route.get("api_question") or user_question,
-                route.get("kb_question") or user_question,
+                "",  # kb_question — KB disabled system-wide
                 meta_question=route.get("meta_question") or user_question,
                 needs_api=needs_api,
-                needs_kb=needs_kb,
+                needs_kb=False,
                 needs_meta=needs_meta,
                 api_parameters=api_parameters,
                 api_query_params=api_query_params,
@@ -588,10 +568,6 @@ def process_query(user_question):
         if VERBOSE:
             print("Mode: API Routing")
         result = process_api_call(user_question, wants_fresh_data=bool(route.get("wants_fresh_data")))
-    elif intent == "KB" and BEDROCK_KB_ID:
-        if VERBOSE:
-            print("Mode: Knowledge Base (RAG)")
-        result = process_kb_query(user_question, wants_fresh_data=bool(route.get("wants_fresh_data")))
     elif intent == "META":
         if VERBOSE:
             print("Mode: Meta (conversation recall)")

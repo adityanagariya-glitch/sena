@@ -57,9 +57,12 @@ class ServiceOrchestrator:
         except Exception as e:
             logger.warning(f"Failed to cache token: {e}")
 
-        # Route query
+        # Route query (chip category → direct + tool-scope, else Bedrock classify)
         routing = await route_query(question, context)
         logger.info(f"Query routed to: {routing['target_services']} ({routing['routing_reason']})")
+
+        # The effective question may be seeded (bare chip tap) or scope-prefixed.
+        effective_question = routing.get("question", question)
 
         # Yield routing metadata
         yield {
@@ -101,7 +104,7 @@ class ServiceOrchestrator:
                     **context,
                     "jwt_token": jwt_token,
                 }
-                async for event in adapter.call_streaming(question, ctx):
+                async for event in adapter.call_streaming(effective_question, ctx):
                     yield event
                 await record_success(service_name)
             except Exception as e:

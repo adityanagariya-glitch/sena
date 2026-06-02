@@ -6,7 +6,7 @@ import re
 import requests
 import time
 
-from config import API_BASE_URL, BEDROCK_KB_ID
+from config import API_BASE_URL
 from state import (
     user_context,
     conversation_history,
@@ -41,7 +41,7 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     if any(x in msg_lower for x in ["you said", "earlier", "before", "remind me", "remember when", "what did we talk", "last time", "last session"]):
         return {
             "needs_api": False,
-            "needs_kb": False,
+            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": True,
             "intent": "META",
             "wants_fresh_data": False,
@@ -55,7 +55,7 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     if msg_lower in ("hi", "hello", "hey", "thanks", "ok", "okay", "thanks!"):
         return {
             "needs_api": False,
-            "needs_kb": False,
+            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "CHAT",
             "wants_fresh_data": False,
@@ -69,7 +69,7 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     if any(x in msg_lower for x in ["what is my ", "who am i", "my user type", "my role", "my permissions", "my email"]):
         return {
             "needs_api": False,
-            "needs_kb": False,
+            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "CHAT",
             "wants_fresh_data": False,
@@ -83,7 +83,7 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     if any(x in msg_lower for x in ["show me", "list ", "get my", "tell me about"]):
         return {
             "needs_api": True,
-            "needs_kb": False,
+            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "API",
             "wants_fresh_data": False,
@@ -93,26 +93,11 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
             "reason": "live data request (pattern matched)",
         }
     
-    # KB patterns: "policy", "requirement", "allowed", "rule", "compliance"
-    if any(x in msg_lower for x in ["what should i follow", "is that allowed", "what are the requirements", "policy", "compliance", "what is the rule"]):
-        if BEDROCK_KB_ID:
-            return {
-                "needs_api": False,
-                "needs_kb": True,
-                "needs_meta": False,
-                "intent": "KB",
-                "wants_fresh_data": False,
-                "api_question": "",
-                "kb_question": message,
-                "meta_question": "",
-                "reason": "knowledge base (pattern matched)",
-            }
-    
     # Freshness patterns: "refresh", "latest", "now", "updated", "changed"
     if any(x in msg_lower for x in ["refresh", "latest", "now", "updated", "changed", "anything new"]):
         return {
             "needs_api": True,
-            "needs_kb": False,
+            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "API",
             "wants_fresh_data": True,
@@ -211,8 +196,6 @@ def detect_route(user_question: str | None) -> dict:
       api_question, kb_question, meta_question: standalone sub-questions
       reason: str
     """
-    kb_available = "yes" if BEDROCK_KB_ID else "no"
-
     recent_context = ""
     if conversation_history:
         snippets = []
@@ -229,24 +212,22 @@ def detect_route(user_question: str | None) -> dict:
 
     system_prompt = f"""You are routing a SENA NDIS assistant request. Decide which information source(s) the user's single message needs.
 
-User: type={user_context['user_type']}, roles={user_context['roles']}, org={user_context['organization_id']}.
-Knowledge base available: {kb_available}.{recent_context}
+User: type={user_context['user_type']}, roles={user_context['roles']}, org={user_context['organization_id']}.{recent_context}
 
 Sources:
 1. API — live application data: shifts, rosters, clients, staff, payroll, allowances, schedules, organisation records, support workers, guardians, incidents.
-2. KB  — documented knowledge: policies, procedures, requirements, standards, rules, compliance, code of conduct, privacy, NDIS practice standards, training material.
-3. META — conversation memory across THIS session AND prior sessions: what the user asked earlier, what was previously answered, "you said", "earlier", "before", "previous", "remind me", "last session", "last time", "what did we talk about", "what did I ask yesterday". The assistant has access to prior-session summaries via long-term memory, so don't treat "last session" as out-of-scope.
-4. CHAT — small talk, greetings, AND IMPORTANTLY: profile/identity questions about the logged-in user themselves ("what is my role", "who am I", "what's my email", "my user type", "my permissions"). These are answered from the user's own profile (already loaded), NOT from an API call.
+2. META — conversation memory across THIS session AND prior sessions: what the user asked earlier, what was previously answered, "you said", "earlier", "before", "previous", "remind me", "last session", "last time", "what did we talk about", "what did I ask yesterday". The assistant has access to prior-session summaries via long-term memory, so don't treat "last session" as out-of-scope.
+3. CHAT — small talk, greetings, AND IMPORTANTLY: profile/identity questions about the logged-in user themselves ("what is my role", "who am I", "what's my email", "my user type", "my permissions"). These are answered from the user's own profile (already loaded), NOT from an API call.
 
 Return JSON only:
 {{
   "needs_api": true|false,
-  "needs_kb": true|false,
+  "needs_kb": false,
   "needs_meta": true|false,
-  "intent": "API|KB|META|CHAT",
+  "intent": "API|META|CHAT",
   "wants_fresh_data": true|false,
   "api_question": "<standalone sub-question for live data, or empty>",
-  "kb_question": "<standalone sub-question for documented knowledge, or empty>",
+  "kb_question": "",
   "meta_question": "<standalone sub-question for conversation memory, or empty>",
   "reason": "<brief>"
 }}
@@ -257,20 +238,16 @@ Rules:
 - Memory-first: ONLY if the user uses explicit recall keywords ("you said", "earlier", "before", "previous", "remind me", "what did we talk about", "last time", "remember when"), set needs_meta=true AND intent=META. Past-tense framing alone is NOT enough — require the keyword.
 - Otherwise, set exactly one needs_* flag for single-source asks and match `intent` to it. Set 2+ flags for multi-source asks (intent should be the primary one).
 - If no data sources are needed (greetings, small talk, generic chat), set all needs_* to false AND intent=CHAT.
-- Infer KB need from intent words like "what should I follow", "is that allowed", "what are the requirements", "compliance", "policy" — topic overlap with prior answers does NOT mean the answer is in memory.
+- ALWAYS set needs_kb=false and kb_question="" — knowledge base is disabled for staff.
 - Preserve date/time/entity details in sub-questions, including typos like "tommow".
-- If knowledge base is not available, never set needs_kb=true or intent=KB.
 - Default bias: when in doubt between API and META, choose API — re-fetch is safer than returning stale information.
 
 Examples:
 User: "what is my shift tomorrow"
 {{"needs_api": true, "needs_kb": false, "needs_meta": false, "intent": "API", "api_question": "what is my shift tomorrow", "kb_question": "", "meta_question": "", "reason": "live shift data"}}
 
-User: "what is the cancellation policy"
-{{"needs_api": false, "needs_kb": true, "needs_meta": false, "intent": "KB", "api_question": "", "kb_question": "what is the cancellation policy", "meta_question": "", "reason": "documented policy"}}
-
-User: "what is my shift tommow and what is it policy"
-{{"needs_api": true, "needs_kb": true, "needs_meta": false, "intent": "API", "api_question": "what is my shift tommow", "kb_question": "what policy or procedure applies to my shift tommow?", "meta_question": "", "reason": "shift data and related policy"}}
+User: "what did you tell me about my shifts last time"
+{{"needs_api": false, "needs_kb": false, "needs_meta": true, "intent": "META", "api_question": "", "kb_question": "", "meta_question": "what did you tell me about my shifts last time", "reason": "conversation memory"}}
 
 User: "what is my shift tomorrow and what did you tell me earlier about breaks"
 {{"needs_api": true, "needs_kb": false, "needs_meta": true, "intent": "API", "api_question": "what is my shift tomorrow", "kb_question": "", "meta_question": "what did you tell me earlier about breaks?", "reason": "live shift data and prior conversation"}}
@@ -312,11 +289,10 @@ User: "who am I"
         if json_match:
             decision = json.loads(json_match.group())
             if isinstance(decision, dict):
-                # Force kb off if KB not configured (model occasionally ignores the rule).
-                if not BEDROCK_KB_ID:
-                    decision["needs_kb"] = False
-                    if decision.get("intent") == "KB":
-                        decision["intent"] = "CHAT"
+                # KB is disabled for staff — always force needs_kb=False
+                decision["needs_kb"] = False
+                if decision.get("intent") == "KB":
+                    decision["intent"] = "CHAT"
                 # Cache the Bedrock decision for future identical messages
                 _store_cached_intent(cache_key, decision)
                 return decision

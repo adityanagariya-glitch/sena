@@ -17,7 +17,6 @@ REPO_ROOT = SERVICES_DIR.parent   # /home/main/SENA — needed on PYTHONPATH for
 STAFF_DIR = Path(os.getenv("STAFF_DIR", SERVICES_DIR / "staff"))
 POLICY_DIR = Path(os.getenv("POLICY_DIR", SERVICES_DIR / "policy_proc"))
 
-TEMPLATES_DIR = _THIS_DIR / "templates"
 LOGS_DIR = Path(os.getenv("LOGS_DIR", _THIS_DIR / "logs"))
 
 # ---- Ports / bind ----
@@ -88,13 +87,6 @@ def child_specs() -> list[dict]:
             "cwd": str(STAFF_DIR),
             "env": {"PYTHONPATH": str(REPO_ROOT)},
             "health_url": f"http://{CHILD_HOST}:{STAFF_PORT}/health",
-        },
-        {
-            "name": "policy_ui",
-            "argv": _streamlit_cmd("app/streamlit_app.py", POLICY_PORT, POLICY_PREFIX),
-            "cwd": str(POLICY_DIR),
-            "env": None,
-            "health_url": f"{POLICY_ORIGIN}/{POLICY_PREFIX}/_stcore/health",
         },
     ]
     return specs
