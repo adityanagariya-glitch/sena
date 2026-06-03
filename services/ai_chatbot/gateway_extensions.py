@@ -36,9 +36,9 @@ class ServiceOrchestrator:
     ):
         """Initialize orchestrator with service URLs and a shared pooled client."""
         # Shared keep-alive pool — downstream calls reuse connections.
-        # Timeout: 30s total (if any single call takes >30s, likely hung); connect/read are stricter.
+        # Timeout: 60s total (staff agent loop can take 10-15s); connect is stricter.
         self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, connect=5.0, read=15.0),
+            timeout=httpx.Timeout(60.0, connect=5.0, read=30.0),
             limits=httpx.Limits(max_keepalive_connections=64, max_connections=128,
                                 keepalive_expiry=30.0),
         )
