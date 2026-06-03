@@ -18,17 +18,75 @@ Services:
   • "policy" — anything about policy/compliance/procedures/rules — INCLUDING
     policy questions about staff or clients ("staff leave policy"). policy_proc.
 """
+import asyncio
 import logging
 import json
+import os
+import time
+from collections import OrderedDict
+from pathlib import Path
 from typing import Dict, Any, Optional
 import boto3
+from botocore.config import Config as BotoConfig
 
 logger = logging.getLogger(__name__)
+
+
+try:
+    from dotenv import load_dotenv
+    _here = Path(__file__).resolve()
+    _staff_env = _here.parents[1] / "staff" / ".env"     # canonical key location
+    for _cand in (
+        Path.cwd() / ".env",
+        _here.parent / ".env",                            # services/ai_chatbot/.env
+        _here.parents[2] / ".env",                        # repo-root SENA/.env
+        _staff_env,
+    ):
+        if _cand.is_file():
+            load_dotenv(_cand, override=False)            # no break — accumulate keys
+except ImportError:
+    print("bedrock api not found", flush=True)
+
+_BEDROCK_API_KEY = os.getenv("BEDROCK_API_KEY", "")
+if _BEDROCK_API_KEY:
+    # setdefault: don't clobber a token already exported by the environment.
+    os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", _BEDROCK_API_KEY)
+    logger.info("[router] using Bedrock API key (bearer token) from staff/.env")
 
 # Same region + active inference-profile model as the staff service, via the
 # Converse API (legacy claude-3-haiku invoke_model is access-denied here).
 REGION = "ap-southeast-2"
-MODEL_ID = "au.anthropic.claude-sonnet-4-6"
+MODEL_ID = "au.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+# ── Classification cache
+_CACHE_MAX = 1024            # max distinct questions cached
+_CACHE_TTL = 3600.0          # seconds before a cached label is considered stale
+_classify_cache: "OrderedDict[str, tuple[Dict[str, Any], float]]" = OrderedDict()
+
+
+def _cache_key(question: str) -> str:
+    return " ".join((question or "").lower().split())
+
+
+def _cache_get(question: str) -> Optional[Dict[str, Any]]:
+    key = _cache_key(question)
+    hit = _classify_cache.get(key)
+    if hit is None:
+        return None
+    value, ts = hit
+    if (time.monotonic() - ts) > _CACHE_TTL:
+        _classify_cache.pop(key, None)
+        return None
+    _classify_cache.move_to_end(key)  # mark most-recently-used
+    return dict(value)
+
+
+def _cache_put(question: str, value: Dict[str, Any]) -> None:
+    key = _cache_key(question)
+    _classify_cache[key] = (dict(value), time.monotonic())
+    _classify_cache.move_to_end(key)
+    while len(_classify_cache) > _CACHE_MAX:
+        _classify_cache.popitem(last=False)  # evict least-recently-used
 
 # ── UI chip → service + scope (instant, no LLM) ─────────────────────────────────
 # The frontend sends a `category` when a chip is tapped. Each chip maps to a
@@ -91,15 +149,31 @@ def route_category(category: str) -> Optional[str]:
     return d["service"] if d else None
 
 
-# ── Bedrock client ──────────────────────────────────────────────────────────────
+# ── Bedrock client ──────
 _bedrock_client = None
 
 
 def get_bedrock_client():
-    """Lazy-load Bedrock runtime client."""
+    """Lazy-load Bedrock runtime client with a tuned connection pool.
+
+    - keep-alive connection pool (max_pool_connections) so concurrent classify
+      calls reuse TCP/TLS instead of re-handshaking;
+    - adaptive retries to ride out transient throttling without manual backoff;
+    - tight connect/read timeouts so a stalled call fails fast instead of
+      holding a worker.
+    """
     global _bedrock_client
     if _bedrock_client is None:
-        _bedrock_client = boto3.client("bedrock-runtime", region_name=REGION)
+        _bedrock_client = boto3.client(
+            "bedrock-runtime",
+            region_name=REGION,
+            config=BotoConfig(
+                max_pool_connections=32,
+                retries={"max_attempts": 3, "mode": "adaptive"},
+                connect_timeout=3,
+                read_timeout=12,
+            ),
+        )
     return _bedrock_client
 
 
@@ -141,11 +215,42 @@ Respond with ONLY a JSON object, no prose:
 {"service":"staff|policy|both|none","confidence":0.0-1.0,"reason":"short","priority":"staff|policy"}"""
 
 
+def _bedrock_classify_sync(question: str, model_id: str) -> Dict[str, Any]:
+    """Blocking Bedrock classify call. Run via asyncio.to_thread (see below)."""
+    client = get_bedrock_client()
+    resp = client.converse(
+        modelId=model_id,
+        system=[{"text": _SYSTEM_PROMPT}],
+        messages=[{"role": "user", "content": [{"text": f"Q: {question}"}]}],
+        inferenceConfig={"maxTokens": 200, "temperature": 0},
+    )
+    text = "".join(
+        b["text"] for b in resp["output"]["message"]["content"] if "text" in b
+    ).strip()
+    start, end = text.find("{"), text.rfind("}")
+    data = json.loads(text[start:end + 1] if start != -1 else text)
+    service = data.get("service", "staff")
+    if service not in ("staff", "policy", "both", "none"):
+        service = "staff"
+    return {
+        "service": service,
+        "confidence": float(data.get("confidence", 0.5)),
+        "reason": data.get("reason", ""),
+        "priority": data.get("priority", "staff"),
+    }
+
+
 async def classify_query(
     question: str,
     model_id: str = MODEL_ID,
 ) -> Dict[str, Any]:
     """Classify a free-text query dynamically via Bedrock.
+
+    Performance:
+      • deterministic (temp=0) → results are LRU-cached, so repeat questions
+        skip Bedrock entirely (0 latency, 0 cost);
+      • the blocking boto3 call runs in a worker thread (asyncio.to_thread) so it
+        NEVER stalls the event loop — other concurrent requests keep flowing.
 
     Returns: {"service": "staff|policy|both|none", "confidence": float,
               "reason": str, "priority": "staff|policy"}.
@@ -153,37 +258,24 @@ async def classify_query(
     if not (question or "").strip():
         return {"service": "none", "confidence": 1.0,
                 "reason": "Empty question.", "priority": "staff"}
-    try:
-        client = get_bedrock_client()
-        resp = client.converse(
-            modelId=model_id,
-            system=[{"text": _SYSTEM_PROMPT}],
-            messages=[{"role": "user", "content": [{"text": f"Q: {question}"}]}],
-            inferenceConfig={"maxTokens": 200, "temperature": 0},
-        )
-        text = "".join(
-            b["text"] for b in resp["output"]["message"]["content"] if "text" in b
-        ).strip()
 
-        try:
-            start, end = text.find("{"), text.rfind("}")
-            data = json.loads(text[start:end + 1] if start != -1 else text)
-            service = data.get("service", "staff")
-            if service not in ("staff", "policy", "both", "none"):
-                service = "staff"
-            return {
-                "service": service,
-                "confidence": float(data.get("confidence", 0.5)),
-                "reason": data.get("reason", ""),
-                "priority": data.get("priority", "staff"),
-            }
-        except (json.JSONDecodeError, ValueError):
-            # Parse failure is rare; don't silently drop a likely-valid query —
-            # default to staff (the primary work surface) rather than "none".
-            logger.warning(f"Failed to parse classifier response: {text!r}")
-            return {"service": "staff", "confidence": 0.3,
-                    "reason": "Unparseable classifier output; defaulting to staff.",
-                    "priority": "staff"}
+    cached = _cache_get(question)
+    if cached is not None:
+        cached["cached"] = True
+        return cached
+
+    try:
+        # Offload the synchronous boto3 call to a thread → event loop stays free.
+        result = await asyncio.to_thread(_bedrock_classify_sync, question, model_id)
+        _cache_put(question, result)
+        return result
+    except (json.JSONDecodeError, ValueError) as e:
+        # Parse failure is rare; don't silently drop a likely-valid query —
+        # default to staff (the primary work surface) rather than "none".
+        logger.warning(f"Failed to parse classifier response: {e}")
+        return {"service": "staff", "confidence": 0.3,
+                "reason": "Unparseable classifier output; defaulting to staff.",
+                "priority": "staff"}
     except Exception as e:
         logger.exception(f"Bedrock classification failed: {e}")
         return {"service": "none", "confidence": 0.0,

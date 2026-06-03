@@ -45,17 +45,10 @@ class PolicyAdapter(ServiceAdapter):
     async def call_streaming(
         self, question: str, ctx: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream query response from Policy /query/stream.
+        """Stream query response from Policy /query/stream (shared pooled client).
 
-        Policy service performs classification and may block queries.
-        Yields events with classification labels.
-
-        Args:
-            question: User question
-            ctx: Request context with jwt_token
-
-        Yields:
-            Event dicts (type, text, label, classification)
+        Policy service performs classification and may block queries; it yields
+        events with classification labels.
         """
         headers = {
             "Authorization": f"Bearer {ctx.get('jwt_token', '')}",
@@ -67,30 +60,5 @@ class PolicyAdapter(ServiceAdapter):
             "session_title": ctx.get("session_title"),
             "is_new_chat": ctx.get("is_new_chat", False),
         }
-
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self.base_url}/query/stream",
-                    json=payload,
-                    headers=headers,
-                ) as resp:
-                    resp.raise_for_status()
-                    # Parse SSE stream (data: {...}\n\n)
-                    buffer = ""
-                    async for chunk in resp.aiter_text():
-                        buffer += chunk
-                        while "\n\n" in buffer:
-                            line, buffer = buffer.split("\n\n", 1)
-                            if line.startswith("data: "):
-                                try:
-                                    import json
-                                    event = json.loads(line[6:])
-                                    yield event
-                                except Exception as e:
-                                    logger.warning(f"Failed to parse SSE event: {e}")
-
-        except Exception as e:
-            logger.exception(f"Policy /query/stream call failed: {e}")
-            yield {"type": "error", "text": str(e)}
+        async for event in self._stream_sse("/query/stream", payload, headers):
+            yield event

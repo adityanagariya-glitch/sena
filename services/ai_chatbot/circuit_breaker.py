@@ -9,7 +9,7 @@ import time
 from typing import Dict, Optional
 from enum import Enum
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class CircuitBreakerState:
     failure_count: int = 0
     success_count: int = 0
     last_failure_time: Optional[float] = None
-    last_state_change: datetime = field(default_factory=datetime.utcnow)
+    last_state_change: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __repr__(self) -> str:
         return (
@@ -79,7 +79,7 @@ async def record_success(service_name: str) -> None:
     # If in HALF_OPEN, transition to CLOSED
     if cb.state == CircuitState.HALF_OPEN:
         cb.state = CircuitState.CLOSED
-        cb.last_state_change = datetime.utcnow()
+        cb.last_state_change = datetime.now(timezone.utc)
         logger.info(f"Circuit breaker for {service_name} CLOSED (recovered)")
 
 
@@ -97,10 +97,23 @@ async def record_failure(
     cb.failure_count += 1
     cb.last_failure_time = time.time()
 
-    # Open circuit if threshold exceeded
+    # A failed probe while HALF_OPEN means the service is still down. Re-OPEN
+    # immediately and restart the recovery timer (last_failure_time, set above) —
+    # otherwise the breaker stays HALF_OPEN forever and lets EVERY request hit
+    # the dead service, defeating its purpose.
+    if cb.state == CircuitState.HALF_OPEN:
+        cb.state = CircuitState.OPEN
+        cb.last_state_change = datetime.now(timezone.utc)
+        logger.warning(
+            f"Circuit breaker for {service_name} re-OPENED "
+            f"(recovery probe failed)"
+        )
+        return
+
+    # Open the circuit if the failure threshold is reached while CLOSED.
     if cb.failure_count >= config.failure_threshold and cb.state == CircuitState.CLOSED:
         cb.state = CircuitState.OPEN
-        cb.last_state_change = datetime.utcnow()
+        cb.last_state_change = datetime.now(timezone.utc)
         logger.warning(
             f"Circuit breaker for {service_name} OPEN "
             f"({cb.failure_count} failures)"
@@ -139,7 +152,7 @@ async def can_call(
         ):
             cb.state = CircuitState.HALF_OPEN
             cb.success_count = 0
-            cb.last_state_change = datetime.utcnow()
+            cb.last_state_change = datetime.now(timezone.utc)
             logger.info(f"Circuit breaker for {service_name} HALF_OPEN (testing)")
             return True
         return False
