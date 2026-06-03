@@ -9,7 +9,7 @@ from typing import Optional
 # Service URLs
 # ────────────────────────────────────────────────────────────────────────────
 
-STAFF_API_URL = os.environ.get("STAFF_API_URL", "http://localhost:8001")
+STAFF_API_URL = os.environ.get("STAFF_API_URL", "http://localhost:8601")
 POLICY_API_URL = os.environ.get("POLICY_API_URL", "http://localhost:8000")
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ CB_HALF_OPEN_MAX_CALLS = int(os.environ.get("CB_HALF_OPEN_MAX_CALLS", "1"))
 
 BEDROCK_MODEL_ID = os.environ.get(
     "BEDROCK_MODEL_ID",
-    "anthropic.claude-3-haiku-20240307-v1:0",
+    "au.anthropic.claude-haiku-4-5-20251001-v1:0",
 )
 
 # ────────────────────────────────────────────────────────────────────────────

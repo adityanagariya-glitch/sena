@@ -176,7 +176,7 @@ def _call(url, token, question):
                     elif t == "blocked":
                         blocked = ev.get("text", "(blocked)")
                     elif t == "error":
-                        answer.append(f"\n⚠️ {ev.get('text', 'error')}")
+                        answer.append(f"\n {ev.get('text', 'error')}")
     except Exception as e:
         return f"(call failed: {type(e).__name__}: {e})"
     if blocked:

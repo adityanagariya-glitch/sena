@@ -29,6 +29,15 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+# uvloop: 10-40% faster event loop (production default). Set the policy at import
+# time, before any event loop is created. Must come AFTER `logger` is defined.
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    logger.info("[gateway] uvloop enabled (10-40% faster event loop)")
+except ImportError:
+    logger.warning("[gateway] uvloop not available, using standard asyncio")
+
 
 class RouteRequest(BaseModel):
     question: str
@@ -144,6 +153,8 @@ async def lifespan(app: FastAPI):
     finally:
         if config.MANAGE_CHILDREN:
             await _terminate_children(app)
+        with contextlib.suppress(Exception):
+            await app.state.orchestrator.aclose()
         await app.state.client.aclose()
 
 
@@ -186,7 +197,7 @@ async def route_query(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
-    jwt_token = authorization.replace("Bearer ", "")
+    jwt_token = authorization.removeprefix("Bearer ")
     orchestrator: ServiceOrchestrator = app.state.orchestrator
 
     async def event_stream():

@@ -56,7 +56,7 @@ def login_user(email: str, password: str) -> bool:
     global _token, _user_context, _last_error
     _last_error = None
 
-    logger.info(f"🔓 [AUTH] Authenticating {email}...")
+    logger.info(f"[AUTH] Authenticating {email}...")
 
     try:
         login_payload = {
@@ -75,10 +75,10 @@ def login_user(email: str, password: str) -> bool:
             f"{API_BASE_URL}/auth/ai/login",
             json=login_payload,
             headers=headers,
-            timeout=10,
+            timeout=15,
         )
 
-        logger.info(f"📬 [AUTH] API Response: {response.status_code}")
+        logger.info(f"[AUTH] API Response: {response.status_code}")
 
         if response.status_code == 200:
             login_data = response.json()
@@ -100,12 +100,12 @@ def login_user(email: str, password: str) -> bool:
                     "name": user.get("name", ""),
                 }
 
-                logger.info(f"✅ [AUTH] Login successful: {email}")
-                logger.info(f"📝 [AUTH] User context: {_user_context}")
+                logger.info(f" [AUTH] Login successful: {email}")
+                logger.info(f" [AUTH] User context: {_user_context}")
                 return True
             else:
                 _last_error = "API returned 200 but no access token was found in the response."
-                logger.error("❌ [AUTH] No token in response")
+                logger.error("[AUTH] No token in response")
                 return False
         else:
             # Surface the real API message (e.g. wrong password, validation error)
@@ -118,20 +118,20 @@ def login_user(email: str, password: str) -> bool:
             except Exception:
                 msg = response.text
             _last_error = f"API {response.status_code}: {msg}"
-            logger.error(f"❌ [AUTH] Login failed: {_last_error}")
+            logger.error(f"[AUTH] Login failed: {_last_error}")
             return False
 
     except requests.exceptions.ConnectionError:
         _last_error = f"Cannot connect to API: {API_BASE_URL}"
-        logger.error(f"❌ [AUTH] {_last_error}")
+        logger.error(f"[AUTH] {_last_error}")
         return False
     except requests.exceptions.Timeout:
         _last_error = "API request timed out."
-        logger.error(f"❌ [AUTH] {_last_error}")
+        logger.error(f"[AUTH] {_last_error}")
         return False
     except Exception as e:
         _last_error = f"{type(e).__name__}: {e}"
-        logger.error(f"❌ [AUTH] Login error: {_last_error}")
+        logger.error(f"[AUTH] Login error: {_last_error}")
         return False
 
 
@@ -147,10 +147,10 @@ def authenticate_with_jwt(token: str) -> bool:
     """
     global _token, _user_context
 
-    logger.info(f"🔐 [AUTH] Validating JWT token...")
+    logger.info(f"[AUTH] Validating JWT token...")
 
     if not token:
-        logger.error("❌ [AUTH] No token provided")
+        logger.error("[AUTH] No token provided")
         return False
 
     try:
@@ -160,11 +160,11 @@ def authenticate_with_jwt(token: str) -> bool:
             "token_source": "direct_jwt",
         }
 
-        logger.info(f"✅ [AUTH] JWT token accepted")
+        logger.info(f"[AUTH] JWT token accepted")
         return True
 
     except Exception as e:
-        logger.error(f"❌ [AUTH] JWT validation error: {e}")
+        logger.error(f"[AUTH] JWT validation error: {e}")
         return False
 
 
@@ -173,4 +173,4 @@ def logout():
     global _token, _user_context
     _token = None
     _user_context = {}
-    logger.info("🚪 [AUTH] Logged out")
+    logger.info("[AUTH] Logged out")

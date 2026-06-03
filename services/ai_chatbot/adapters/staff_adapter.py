@@ -1,7 +1,6 @@
 """Staff service adapter: HTTP calls with import fallback.
 
 Calls Staff API at /query/stream and /query with fallback to
-direct Python import for testing/local development.
 """
 import logging
 import asyncio
@@ -47,17 +46,7 @@ class StaffAdapter(ServiceAdapter):
     async def call_streaming(
         self, question: str, ctx: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream query response from Staff /query/stream.
-
-        Connects to Staff API and yields SSE events.
-
-        Args:
-            question: User question
-            ctx: Request context with jwt_token
-
-        Yields:
-            Event dicts parsed from SSE stream
-        """
+        """Stream query response from Staff /query/stream (shared pooled client)."""
         headers = {
             "Authorization": f"Bearer {ctx.get('jwt_token', '')}",
             "Content-Type": "application/json",
@@ -68,30 +57,5 @@ class StaffAdapter(ServiceAdapter):
             "session_title": ctx.get("session_title"),
             "is_new_chat": ctx.get("is_new_chat", False),
         }
-
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self.base_url}/query/stream",
-                    json=payload,
-                    headers=headers,
-                ) as resp:
-                    resp.raise_for_status()
-                    # Parse SSE stream (data: {...}\n\n)
-                    buffer = ""
-                    async for chunk in resp.aiter_text():
-                        buffer += chunk
-                        while "\n\n" in buffer:
-                            line, buffer = buffer.split("\n\n", 1)
-                            if line.startswith("data: "):
-                                try:
-                                    import json
-                                    event = json.loads(line[6:])
-                                    yield event
-                                except Exception as e:
-                                    logger.warning(f"Failed to parse SSE event: {e}")
-
-        except Exception as e:
-            logger.exception(f"Staff /query/stream call failed: {e}")
-            yield {"type": "error", "text": str(e)}
+        async for event in self._stream_sse("/query/stream", payload, headers):
+            yield event
