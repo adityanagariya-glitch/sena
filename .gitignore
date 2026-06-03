@@ -69,7 +69,6 @@ graphify-out/
 .remember
 *.md
 *.txt
-sena-ai/
 !requirements.txt
 .claudeignore
 .code-review-graphignore
@@ -78,6 +77,7 @@ sena-ai/
 .windsurfrules
 .opencode.json
 .qoder/mcp.json
+sena-ai/
 .kiro/
 .qoder/
 *.log

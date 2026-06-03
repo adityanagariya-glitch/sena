@@ -13,8 +13,13 @@ import json
 import logging
 import uuid
 
+<<<<<<< HEAD:services/policy_proc/scripts/lambda_function.py
 from services.policy_proc.scripts.pipeline import run_pipeline
 from services.policy_proc.scripts.memory   import create_session, get_sessions, get_turns, rename_session
+=======
+from pipeline import run_pipeline
+from memory   import create_session, get_sessions, get_turns, rename_session
+>>>>>>> 0632581 (changes in policy-proc):scripts/lambda_function.py
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
