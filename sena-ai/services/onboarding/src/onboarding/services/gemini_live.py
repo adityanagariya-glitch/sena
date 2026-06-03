@@ -329,6 +329,13 @@ class GeminiLiveSession:
                 g2b.cancel()
                 silence.cancel()
                 await asyncio.gather(g2b, silence, return_exceptions=True)
+                # client_stop cancels g2b before its final turn_complete emits,
+                # so flush the last turn's usage here. Telemetry never breaks
+                # teardown — swallow any error.
+                try:
+                    self._flush_pending_usage(reason="session_end")
+                except Exception:
+                    log.exception("usage_flush_failed session=%s", self._session_id)
         log.info("gemini_disconnected session=%s", self._session_id)
 
     # ── Private: client → Gemini ──────────────────────────────────────────────
@@ -682,6 +689,64 @@ class GeminiLiveSession:
                     }
                 )
             )
+
+    def _flush_pending_usage(self, *, reason: str) -> None:
+        """Emit any usage delta not yet flushed by a turn_complete.
+
+        Idempotent via the existing watermark advanced at turn_complete: if
+        cum == emitted all deltas are 0 and we early-return, so calling this
+        twice (turn_complete already ran, then session end) emits nothing the
+        second time. Guards on TOKEN deltas only — chunk_count is a g2b-local
+        not readable here, so audio_chunks_out is 0; the abandoned final turn's
+        tool calls are still counted faithfully because the watermark blocks any
+        double-emit. Why this exists: client_stop cancels g2b before its final
+        turn_complete runs, so the last turn's tokens would otherwise be lost.
+        """
+        d_prompt = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
+        d_response = max(0, self._usage_cum_response - self._usage_emitted_response)
+        d_cached = max(0, self._usage_cum_cached - self._usage_emitted_cached)
+        if not (d_prompt or d_response or d_cached):
+            return
+        d_prompt_audio = max(
+            0, self._usage_cum_prompt_audio - self._usage_emitted_prompt_audio
+        )
+        d_response_audio = max(
+            0, self._usage_cum_response_audio - self._usage_emitted_response_audio
+        )
+        emit_usage(
+            tenant_id=self._tenant_id or "unknown",
+            user_id=self._user_id,
+            feature=UsageFeature.VOICE_ONBOARDING,
+            model=settings.gemini_live_model_id,
+            session_id=self._session_id,
+            prompt_tokens=d_prompt,
+            response_tokens=d_response,
+            cached_tokens=d_cached,
+            prompt_audio_tokens=d_prompt_audio,
+            response_audio_tokens=d_response_audio,
+            tool_call_count=self._tool_calls_in_turn,
+            success=True,
+            turn_id=self._turn_id,
+            audio_chunks_out=0,
+            participant_id=self._participant_id,
+            step_id=(self._current_turn.step.id if self._current_turn else None),
+            step_number=(
+                self._current_turn.step.number if self._current_turn else None
+            ),
+        )
+        self._usage_emitted_prompt = self._usage_cum_prompt
+        self._usage_emitted_response = self._usage_cum_response
+        self._usage_emitted_cached = self._usage_cum_cached
+        self._usage_emitted_prompt_audio = self._usage_cum_prompt_audio
+        self._usage_emitted_response_audio = self._usage_cum_response_audio
+        log.info(
+            "usage_flushed reason=%s prompt=%d response=%d turn=%d session=%s",
+            reason,
+            d_prompt,
+            d_response,
+            self._turn_id,
+            self._session_id,
+        )
 
     # ── Private: Gemini → client ──────────────────────────────────────────────
 

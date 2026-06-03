@@ -16,10 +16,13 @@ paths:
 ```bash
 cd sena-ai
 cp .env.example .env                       # configure env vars
+pip install -e shared                       # sena-common — REQUIRED first; usage logging / DB / middleware live here
 pip install -e "services/voice[dev]"
 pip install -e "services/onboarding[dev]"
 pip install -e "services/case_review[dev]"
 ```
+
+> **`pip install -e shared` is not optional.** No service declares `sena-common` as a dependency, so if you skip it, imports like `sena_common.usage_logger` silently fall into their `ImportError` fallback (e.g. `emit_usage` becomes a no-op stub → zero token usage reaches MongoDB). Always install `shared` before the services.
 
 ## Infrastructure
 
@@ -62,6 +65,7 @@ PowerShell 5.1 has no `&&` operator. Use `;` + `$?`:
 ```powershell
 Set-Location sena-ai
 Copy-Item .env.example .env
+pip install -e shared                          # sena-common — REQUIRED first (see note above)
 pip install -e "services/voice[dev]"
 pip install -e "services/onboarding[dev]"
 pip install -e "services/case_review[dev]"
