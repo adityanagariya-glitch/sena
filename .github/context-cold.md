@@ -16,11 +16,8 @@ sena-ai\services\case_review\src\case_review\core\logging.py ← __future__, str
 sena-ai\services\case_review\src\case_review\core\settings.py ← __future__, pydantic_settings
 sena-ai\services\case_review\src\case_review\main.py ← __future__, fastapi, case_review
 sena-ai\services\case_review\src\case_review\models\case_note_field_schema.py ← __future__
-sena-ai\services\case_review\src\case_review\models\db.py ← __future__, sqlalchemy
 sena-ai\services\case_review\src\case_review\models\schemas.py ← __future__, pydantic
 sena-ai\services\case_review\src\case_review\repositories\review_repo.py ← __future__, sqlalchemy, case_review
-sena-ai\services\case_review\src\case_review\services\classify_service.py ← __future__, case_review, structlog
-sena-ai\services\case_review\src\case_review\services\context_service.py ← __future__, case_review, structlog
 sena-ai\services\case_review\tests\conftest.py ← __future__, unittest, fastapi, sqlalchemy, case_review
 sena-ai\services\case_review\tests\test_classify.py ← __future__, unittest, fastapi, case_review, tests
 sena-ai\services\case_review\tests\test_context_service.py ← __future__, unittest, fastapi, case_review, tests
@@ -28,8 +25,8 @@ sena-ai\services\case_review\tests\test_repo.py ← __future__, unittest, case_r
 sena-ai\services\case_review\tests\test_routes.py ← __future__, fastapi, tests, pytest
 sena-ai\services\ocr\src\ocr\main.py ← fastapi
 sena-ai\services\onboarding\src\onboarding\api\deps.py ← __future__, redis, onboarding
-sena-ai\services\onboarding\src\onboarding\api\routes.py ← __future__, fastapi, pydantic, onboarding, structlog
 sena-ai\services\onboarding\src\onboarding\core\logging.py ← __future__, structlog
+sena-ai\services\onboarding\src\onboarding\core\settings.py ← __future__, pydantic_settings
 sena-ai\services\onboarding\src\onboarding\main.py ← __future__, fastapi, onboarding
 sena-ai\services\onboarding\src\onboarding\models\cross_screen_summary.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\models\form_state.py ← __future__, pydantic, onboarding
@@ -45,12 +42,23 @@ sena-ai\services\onboarding\src\onboarding\services\resumption.py ← __future__
 sena-ai\services\onboarding\src\onboarding\services\screen_context.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\services\validators\base.py ← __future__, pydantic
 sena-ai\services\onboarding\src\onboarding\services\webhook.py ← __future__, httpx, structlog
+sena-ai\services\onboarding\tests\conftest.py ← __future__, fakeredis, httpx, onboarding, pytest_asyncio
 sena-ai\services\onboarding\tests\test_cross_screen_context.py ← __future__, onboarding
+sena-ai\services\onboarding\tests\test_e2e_missing_profile_photo.py ← __future__, onboarding, pytest
+sena-ai\services\onboarding\tests\test_errors_endpoint.py ← __future__
+sena-ai\services\onboarding\tests\test_field_apply.py ← __future__, onboarding
 sena-ai\services\onboarding\tests\test_gemini_live.py ← __future__, unittest, onboarding, pytest, pytest_asyncio
 sena-ai\services\onboarding\tests\test_grounding.py ← __future__, google, onboarding
+sena-ai\services\onboarding\tests\test_mobile_bridge.py ← __future__, onboarding, pytest
 sena-ai\services\onboarding\tests\test_resumption.py ← __future__, fakeredis, onboarding, pytest, pytest_asyncio
+sena-ai\services\onboarding\tests\test_routes.py ← __future__, unittest
+sena-ai\services\onboarding\tests\test_schema.py ← __future__, pydantic, onboarding, pytest
 sena-ai\services\onboarding\tests\test_screen_context.py ← __future__, pydantic, onboarding, pytest
+sena-ai\services\onboarding\tests\test_state_repo.py ← __future__, onboarding
+sena-ai\services\onboarding\tests\test_tools.py ← __future__, onboarding, pytest
+sena-ai\services\onboarding\tests\test_turn_payload.py ← __future__, pydantic, onboarding, pytest
 sena-ai\services\onboarding\tests\test_webhook.py ← __future__, unittest, onboarding, pytest
+sena-ai\services\onboarding\tests\test_ws_v2_handshake.py ← __future__, fakeredis, fastapi, onboarding, pytest
 sena-ai\services\voice\src\voice\api\deps.py ← __future__, redis, sqlalchemy, voice
 sena-ai\services\voice\src\voice\api\routes.py ← __future__, fastapi, sqlalchemy, voice
 sena-ai\services\voice\src\voice\api\ws_routes.py ← __future__, fastapi, voice
@@ -62,7 +70,6 @@ sena-ai\services\voice\src\voice\models\schemas.py ← __future__, pydantic
 sena-ai\services\voice\src\voice\repositories\voice_repo.py ← __future__, sqlalchemy, voice
 sena-ai\services\voice\src\voice\services\approval_service.py ← __future__, fastapi, sqlalchemy, voice
 sena-ai\services\voice\src\voice\services\auth_service.py ← __future__, fastapi, voice, jwt
-sena-ai\services\voice\src\voice\services\dictation_service.py ← __future__, fastapi, sqlalchemy, voice
 sena-ai\services\voice\src\voice\services\event_service.py ← __future__, voice, boto3
 sena-ai\services\voice\src\voice\services\gemini_live_service.py ← __future__, types, google, voice
 sena-ai\services\voice\src\voice\services\gemini_service.py ← __future__, fastapi, google, voice
@@ -191,6 +198,55 @@ key asyncio_mode
 key build-backend
 ```
 
+### sena-ai\SENA_IMPROVEMENTS_PLAN.md
+```
+h1 SENA Improvements — Receptionist Lift
+h2 What this system is (reference, not target)
+h2 Architectural pattern map
+h3 1. PromptBuilder as a FrameProcessor — state-machine-driven prompt swap
+h3 2. BaseIntegration + per-domain subclass tool registration
+h3 3. Pre-fetch + in-memory cache (SlotCache pattern)
+h3 4. Long-tool-call audio feedback
+h3 5. MasterDataConfig + PatientData per-call dataclass — eager domain context at session create
+h3 6. Per-call transcript file + S3 upload on close
+h3 7. Frame-level observability (LLMObs + Datadog) — selective
+h2 What NOT to borrow
+h2 Concrete diffs to apply
+h2 Onboarding back-port
+h2 One-line summary
+h2 Cross-references
+code-fence plain
+```
+
+### sena-ai\SENA_VOICE_IMPROVEMENTS_PLAN.md
+```
+h1 SENA Voice — Pattern Adoption Plan v2 (stay on Gemini Live)
+h2 What this revision changes from v1
+h2 Context
+h2 Gemini Live constraints (and how each constraint maps to a pattern)
+h2 Pattern catalogue (15 adopted, each mapped to file-level work)
+h3 Pattern 1 — Per-step focused prompts (rigid sectional template)
+h2 Task ← one-paragraph scope statement
+h2 OBJECTIVE ← optional, used by procedural prompts
+h3 INSTRUCTIONS ← numbered procedural steps
+h2 Communication Guidelines ← formatting rules (dates in words, no number speech)
+h2 Transfer Protocol ← when + how to escalate
+h2 Current Context ← interpolated runtime values
+h2 Patient Details / Appointment Type Instructions / Doctor List / etc.
+h3 Pattern 2 — Per-step tool subset
+h3 Pattern 3 — Mechanical VERIFICATION PROTOCOL template
+h2 CRITICAL — TERMINAL ACTION RULE (read this FIRST every turn)
+h3 Pattern 4 — "The tool call IS your reply" — zero-text-before-terminal-action rule
+h3 Pattern 5 — Disambiguation NOTE callouts
+h3 Pattern 6 — MULTI-BOOKING VERIFICATION recipe (count + match + list separately + honesty)
+h3 Pattern 7 — Math expressions in prompts (closed-form rules)
+h3 Pattern 8 — Closed-set decision shortcuts
+h3 Pattern 9 — Procedural STEP-BY-STEP runbooks
+h3 STEP 1: ACKNOWLEDGE PRE-FILLED DATA
+h3 STEP 2: COLLECT MISSING REQUIRED FIELDS (basics section)
+h3 STEP 3: COLLECT HOME ADDRESS
+```
+
 ### sena-ai\services\case_review\migrations\env.py
 ```
 def run_migrations_offline() → None
@@ -265,15 +321,6 @@ class FieldDef(TypedDict)
 def schema_as_text() → str  # Render field schema as a structured text block for prompt in
 ```
 
-### sena-ai\services\case_review\src\case_review\models\db.py
-```
-class Base(DeclarativeBase)
-class RollingSummary(Base)
-class ReviewSession(Base)
-class IncidentDraft(Base)
-class ReviewAuditLog(Base)
-```
-
 ### sena-ai\services\case_review\src\case_review\models\schemas.py
 ```
 class AuthContext(BaseModel) {tenant_id*, user_id*, roles?}
@@ -319,16 +366,6 @@ class ReviewRepo
   async def get_incident_draft(draft_id: uuid.UUID) → IncidentDraft | None
   async def confirm_incident_draft(draft_id: uuid.UUID) → IncidentDraft | None
   async def list_audit(review_session_id: uuid.UUID) → list[ReviewAuditLog]
-```
-
-### sena-ai\services\case_review\src\case_review\services\classify_service.py
-```
-async def classify_paragraph(*, repo: ReviewRepo, tenant_id: uuid.UUID, user_id: uuid.UUID, req: ClassifyRequest) → ClassifyResponse
-```
-
-### sena-ai\services\case_review\src\case_review\services\context_service.py
-```
-async def get_context(*, repo: ReviewRepo, client: CaseNoteClient, tenant_id: uuid.UUID, staff_id: uuid.UUID, client_id: uuid.UUID, limit: int) → ContextResponse  # Fetch + summarise case notes for a staff-client pair
 ```
 
 ### sena-ai\services\case_review\tests\conftest.py
@@ -397,6 +434,18 @@ def create_app() → FastAPI
 GET /health/live  →  health()
 ```
 
+### sena-ai\services\onboarding\DEV_SETUP.md
+```
+h1 SENA Onboarding — Exact Dev Setup
+h2 Uvicorn Command
+h2 ngrok Command
+h2 API Endpoint
+h2 Health Check
+h2 Notes
+code-fence powershell
+code-fence plain
+```
+
 ### sena-ai\services\onboarding\Dockerfile
 ```
 FROM python:3.12-slim
@@ -453,6 +502,35 @@ code-fence jsonc
 code-fence dart
 ```
 
+### sena-ai\services\onboarding\FLUTTER_HANDOFF_OPTION_D.md
+```
+h1 Flutter Handoff — Option D State Channel
+h2 1. Why this exists
+h2 2. The contract — what changes for Flutter
+h3 Change A — Every tool reply must carry `state`
+h3 Change B — Handle the new `get_current_state` tool
+h3 Change C — No change needed for `escalate_incident`
+h2 3. The `state` payload shape
+h3 Top-level
+h3 `participant`
+h3 `step`
+h3 `bootstrap_mode`
+h3 `visible_fields[]` (one object per field currently on screen)
+h3 `next_target` (nullable)
+h3 `last_rejection` (nullable)
+h3 `pending_confirmation` (nullable)
+h3 `prior_steps`
+h2 4. Worked example — 4-turn conversation
+h2 5. UI-driven update path
+h3 Path A (RECOMMENDED) — Synthetic `get_current_state` response
+h3 Path B (fallback) — Let Gemini self-trigger
+h2 6. What server is doing on its half
+h2 7. Feature flag
+h2 8. Acceptance checks for Flutter
+h2 9. Out of scope (do NOT implement)
+h2 10. References
+```
+
 ### sena-ai\services\onboarding\pyproject.toml
 ```
 table [project]
@@ -478,25 +556,14 @@ key target-version
 def get_repo() → FormStateRepo
 ```
 
-### sena-ai\services\onboarding\src\onboarding\api\routes.py
-```
-class CreateSessionRequest(BaseModel) {participant_id*, step*, schema*}
-class CreateSessionResponse(BaseModel) {session_id*, ws_url*, expires_at*}
-class UpdateStateRequest(BaseModel) {values*}
-class ClientValidationErrorRequest(BaseModel) {input_method*, ts*}
-async def health_live() → dict
-POST /v1/onboarding/session  →  create_session()
-GET /v1/onboarding/session/{session_id}/state  →  get_state()
-PUT /v1/onboarding/session/{session_id}/state  →  update_state()
-POST /v1/onboarding/session/{session_id}/complete  →  complete_session()
-GET /v1/onboarding/_diag/bucket  →  diag_bucket()
-GET /health/live  →  health_live()
-GET /health/ready  →  health_ready()
-```
-
 ### sena-ai\services\onboarding\src\onboarding\core\logging.py
 ```
 def configure_logging(level: str) → None
+```
+
+### sena-ai\services\onboarding\src\onboarding\core\settings.py
+```
+class OnboardingSettings(BaseSettings) {app_webhook_url?}
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\main.py
@@ -564,6 +631,36 @@ h3 Rule 4 — Exhaustive Entity Extraction (Multi-Value Capture)
 h3 Rule 5 — Proactive Optional Prompting
 h3 Rule 6 — Dynamic UI Updates
 h3 Rule 7 — Advisory Validation Feedback
+```
+
+### sena-ai\services\onboarding\src\onboarding\prompts\steps\lifestyle_requirements.md
+```
+h2 Step-specific rules — Requirements (Step 2)
+h3 Section: `requirements` — lifestyle text
+h3 Section: `requirements` — communication chips (multi-enum)
+h3 Section: `morning_routine` (repeatable, min 0, max 12 — OPTIONAL)
+h3 Walk-through for a morning_routine row — STRICT ORDER
+h3 Section: `evening_routine` (repeatable, min 0, max 12 — OPTIONAL)
+h3 Time format reference — voice utterances → wire value
+h3 Submission and progression — sequential only
+```
+
+### sena-ai\services\onboarding\src\onboarding\prompts\steps\medical_information.md
+```
+h2 Step-specific rules — Medical (Step 5)
+h3 Section: `medical_overview`
+h3 Section: `mobility`
+h3 Section: `allergies` (repeatable, min 1, max 10)
+h3 Section: `medications` (repeatable, min 1, max 10)
+h3 Section: `medical_history` (repeatable, min 1, max 10 — title-gated)
+h3 Walk-through order for repeatable rows
+h3 Enum strictness — read the list verbatim
+h3 Submission and progression — sequential only
+```
+
+### sena-ai\services\onboarding\src\onboarding\prompts\steps\README.md
+```
+h1 Per-step prompt fragments
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py
@@ -660,6 +757,13 @@ section#timeline
 section#flutter
 ```
 
+### sena-ai\services\onboarding\tests\conftest.py
+```
+async def fake_redis()
+async def repo(fake_redis)
+async def async_client(fake_redis)
+```
+
 ### sena-ai\services\onboarding\tests\test_cross_screen_context.py
 ```
 class TestAllowlistContract
@@ -683,6 +787,40 @@ class TestRenderCap
   def test_only_last_five_steps_rendered()
 ```
 
+### sena-ai\services\onboarding\tests\test_e2e_missing_profile_photo.py
+```
+class _ScriptedWS
+  def __init__(responses: dict[str, dict[str, Any]]) → None
+  async def send_text(payload: str) → None
+async def test_submit_with_missing_profile_photo_returns_blocker() → None
+async def test_submit_step_step_completed_stays_false_on_blocker() → None  # The dispatcher's step_completed flag must NOT flip when subm
+async def test_submit_step_step_completed_flips_on_clean_submit() → None  # Sanity check: a clean {ok: true} submission DOES flip step_c
+```
+
+### sena-ai\services\onboarding\tests\test_errors_endpoint.py
+```
+class TestErrorsEndpoint
+  async def test_happy_path_returns_204(async_client, fake_redis)
+  async def test_ttl_is_about_seven_days(async_client, fake_redis)
+  async def test_missing_input_method_returns_422(async_client)
+  async def test_extra_field_rejected_with_422(async_client)
+  async def test_invalid_input_method_value_returns_422(async_client)
+  async def test_missing_session_returns_404(async_client)
+  async def test_wrong_tenant_returns_403(async_client)
+  async def test_voice_input_method_accepted(async_client, fake_redis)
+class TestErrorsRepoCompanion
+  async def test_read_empty_when_no_errors(repo)
+```
+
+### sena-ai\services\onboarding\tests\test_field_apply.py
+```
+def test_envelope_includes_input_method_when_voice()
+def test_envelope_includes_input_method_when_typed()
+def test_envelope_omits_input_method_when_none()
+def test_envelope_required_keys_present()
+def test_envelope_returns_none_when_blocked_by_coverage()
+```
+
 ### sena-ai\services\onboarding\tests\test_gemini_live.py
 ```
 async def seeded_repo(fake_redis)
@@ -700,6 +838,17 @@ def test_empty_decls_grounding_on_returns_search_only()
 def test_function_decls_passed_through_unchanged()
 ```
 
+### sena-ai\services\onboarding\tests\test_mobile_bridge.py
+```
+class _FakeWS
+  def __init__() → None
+  async def send_text(payload: str) → None
+async def test_dispatch_round_trip_happy_path() → None
+async def test_dispatch_timeout_returns_validation_timeout() → None
+async def test_resolve_unknown_request_id_is_silently_ignored() → None
+async def test_dispatch_concurrent_requests_get_distinct_ids() → None
+```
+
 ### sena-ai\services\onboarding\tests\test_resumption.py
 ```
 async def repo()
@@ -714,6 +863,37 @@ def test_build_replay_fewer_than_n()
 def test_build_replay_uses_last_n_only()
 def test_build_replay_format()
 def test_build_replay_skips_empty_text()
+```
+
+### sena-ai\services\onboarding\tests\test_routes.py
+```
+class TestCreateSession
+  async def test_creates_session(async_client)
+  async def test_initial_state_accepted(async_client)
+class TestGetState
+  async def test_get_existing_state(async_client)
+  async def test_get_missing_returns_404(async_client)
+class TestUpdateState
+  async def test_update_succeeds_when_ws_unlocked(async_client)
+  async def test_update_returns_409_when_ws_locked(async_client, fake_redis)
+class TestCompleteSession
+  async def test_complete_fires_webhook(async_client)
+class TestHealth
+  async def test_live(async_client)
+  async def test_ready(async_client)
+def personal_schema_payload() → dict
+```
+
+### sena-ai\services\onboarding\tests\test_schema.py
+```
+class TestFieldSpec
+  def test_enum_requires_options()
+  def test_valid_enum()
+  def test_visible_if_stored()
+class TestSectionSpec
+  def test_repeatable_requires_item_fields()
+  def test_non_repeatable_requires_fields()
+  def test_is_repeatable()
 ```
 
 ### sena-ai\services\onboarding\tests\test_screen_context.py
@@ -734,6 +914,55 @@ def test_payload_hash_different_input_different_hash()
 def test_payload_hash_key_order_independent()
 ```
 
+### sena-ai\services\onboarding\tests\test_state_repo.py
+```
+class TestCreateAndGet
+  async def test_roundtrip(repo)
+  async def test_missing_session_returns_none(repo)
+  async def test_schema_roundtrip(repo)
+class TestStateUpdate
+  async def test_set_field_and_save(repo)
+  async def test_repeatable_field(repo)
+class TestWsLock
+  async def test_acquire_and_release(repo)
+  async def test_second_acquire_fails(repo)
+class TestTranscript
+  async def test_append_and_get(repo)
+class TestResumption
+  async def test_save_and_retrieve(repo)
+  async def test_missing_handle_returns_none(repo)
+def personal_schema() → StepSchema
+def make_state(session_id: str) → FormState
+```
+
+### sena-ai\services\onboarding\tests\test_tools.py
+```
+class _FakeBridge
+  def __init__(response: dict[str, Any]) → None
+  async def dispatch(tool: str, args: dict[str, Any]) → dict[str, Any]
+def test_function_decls_lists_exactly_six_tools() → None
+def test_function_decl_update_field_required_args() → None
+def test_function_decl_submit_step_requires_transcript() → None
+async def test_dispatch_update_field_forwards_to_bridge() → None
+async def test_dispatch_submit_step_returns_blockers_verbatim() → None
+async def test_dispatch_unknown_tool_returns_error() → None
+async def test_escalate_incident_does_not_call_bridge() → None
+async def test_step_completed_flips_on_successful_submit() → None
+async def test_step_completed_stays_false_when_submit_returns_blockers() → None
+async def test_step_completed_stays_false_for_non_submit_tools() → None
+def test_set_turn_id_stores_value() → None
+```
+
+### sena-ai\services\onboarding\tests\test_turn_payload.py
+```
+def test_turn_payload_parses_minimal_valid_payload() → None
+def test_turn_payload_rejects_unknown_field_type() → None
+def test_turn_payload_rejects_unknown_bootstrap_mode() → None
+def test_turn_payload_serialises_to_compact_json() → None
+def test_visible_field_enum_values_optional_for_text() → None
+def test_visible_field_enum_values_list_of_strings_for_enum() → None
+```
+
 ### sena-ai\services\onboarding\tests\test_webhook.py
 ```
 class TestFireWebhook
@@ -741,6 +970,14 @@ class TestFireWebhook
   async def test_retries_on_failure_then_succeeds()
   async def test_returns_false_after_all_retries()
   async def test_handles_connection_error()
+```
+
+### sena-ai\services\onboarding\tests\test_ws_v2_handshake.py
+```
+def ws_client()  # TestClient with a seeded session in fake-Redis
+def test_ws_rejects_v1_hello(ws_client) → None
+def test_ws_rejects_non_hello_first_frame(ws_client) → None
+def test_ws_rejects_invalid_json_first_frame(ws_client) → None
 ```
 
 ### sena-ai\services\onboarding\test_harness.html
@@ -903,11 +1140,6 @@ def get_auth_context_from_jwt(authorization: str | None) → AuthContext
 def require_roles(ctx: AuthContext, allowed: set[str]) → None
 ```
 
-### sena-ai\services\voice\src\voice\services\dictation_service.py
-```
-class DictationService
-```
-
 ### sena-ai\services\voice\src\voice\services\event_service.py
 ```
 class EventService
@@ -1031,4 +1263,33 @@ key description
 key requires-python
 key dependencies
 key build-backend
+```
+
+### sena-ai\VOICE_BRIDGE_EXTRACTION_PLAN.md
+```
+h1 Voice Bridge Extraction Plan
+h2 1. Why
+h2 2. Scope — what's truly generic vs domain-specific
+h3 Generic (moves to `shared/voice_bridge/`)
+h3 Domain-specific (stays per-service)
+h2 3. The protocol contract
+h2 4. Framework events vs domain events
+h2 5. Migration phases
+h3 Phase 1 — Move + rename (≈ 30 min, LOW risk)
+h3 Phase 2 — Protocol decouple (≈ 2 h, MEDIUM risk — the real work)
+h3 Phase 3 — Domain wrap (≈ 30 min, LOW risk)
+h3 Phase 4 — WS endpoint extraction (≈ 30 min, LOW risk)
+h3 Phase 5 — Verify (REQUIRED gate)
+h2 6. Decisions required before starting
+h3 6.1 Path
+h3 6.2 Cross-screen bucket scope
+h3 6.3 WS event vocabulary
+h3 6.4 Schema model (`models/schema_spec.py`)
+h3 6.5 Branch strategy
+h2 7. Definition of done
+h2 8. Risk register
+h2 9. What every future voice consumer writes
+h2 10. Out of scope
+h2 11. Reference files (what to read before starting)
+h2 12. Next action
 ```
