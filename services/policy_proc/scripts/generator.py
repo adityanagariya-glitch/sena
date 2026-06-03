@@ -2,8 +2,13 @@
 import boto3
 import logging
 
+<<<<<<< HEAD:services/policy_proc/scripts/generator.py
 from services.policy_proc.scripts.config import REGION, GENERATION_MODEL, MESSAGES
 from services.policy_proc.scripts.prompt import SYSTEM_PROMPTS, ACTIVE_PROMPT_VERSION
+=======
+from config import REGION, GENERATION_MODEL, MESSAGES
+from prompt import SYSTEM_PROMPTS, ACTIVE_PROMPT_VERSION
+>>>>>>> 0632581 (changes in policy-proc):scripts/generator.py
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +66,14 @@ Source rules:
 
 ## Current question
 {question}
+<<<<<<< HEAD:services/policy_proc/scripts/generator.py
+=======
+
+## Special instruction
+If the question is a greeting or conversational message (hi, hello, good morning, thanks, etc.)
+with no policy context available — respond warmly in 1 sentence and invite a policy question.
+Do not use the NOT_IN_KB message for greetings.
+>>>>>>> 0632581 (changes in policy-proc):scripts/generator.py
 """
     # Streaming generation
     try:

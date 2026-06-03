@@ -27,9 +27,29 @@ GENERATION_MODEL  = os.environ.get("GENERATION_MODEL",  "au.anthropic.claude-hai
 JUDGE_MODEL       = os.environ.get("JUDGE_MODEL",       "au.anthropic.claude-sonnet-4-6")
 EMBED_MODEL       = os.environ.get("EMBED_MODEL",       "amazon.titan-embed-text-v2:0")
 
+<<<<<<< HEAD:services/policy_proc/scripts/config.py
 # ── Retrieval ─────────────────────────────────────────────────────────────────
 NUM_RESULTS       = int(os.environ.get("NUM_RESULTS",  "10"))
 RERANK_TOP        = int(os.environ.get("RERANK_TOP",   "5"))
+=======
+# Bedrock native reranker - manual cross-region call
+RERANK_REGION = os.environ.get("RERANK_REGION", "ap-northeast-1")
+AMAZON_RERANK_MODEL_ID = os.environ.get(
+    "AMAZON_RERANK_MODEL_ID",
+    "amazon.rerank-v1:0"
+)
+AMAZON_RERANK_MODEL_ARN = os.environ.get(
+    "AMAZON_RERANK_MODEL_ARN",
+    f"arn:aws:bedrock:{RERANK_REGION}::foundation-model/{AMAZON_RERANK_MODEL_ID}"
+)
+
+# ── Retrieval ─────────────────────────────────────────────────────────────────
+NUM_RESULTS       = int(os.environ.get("NUM_RESULTS",  "20"))
+RERANK_TOP        = int(os.environ.get("RERANK_TOP",   "8"))
+RERANK_PROVIDER   = os.environ.get("RERANK_PROVIDER", "amazon")
+RERANK_COMPARE    = os.environ.get("RERANK_COMPARE", "true").lower() == "true"
+RERANK_LOG_PATH   = os.environ.get("RERANK_LOG_PATH", "logs/rerank_comparison.jsonl")
+>>>>>>> 0632581 (changes in policy-proc):scripts/config.py
 
 # ── S3 ────────────────────────────────────────────────────────────────────────
 BUCKET_NAME       = os.environ.get("BUCKET_NAME",  "sena-policy-docs")
@@ -39,12 +59,27 @@ REGISTRY_TABLE    = os.environ.get("REGISTRY_TABLE", "sena-doc-registry")
 
 # ── Messages ──────────────────────────────────────────────────────────────────
 MESSAGES = {
+<<<<<<< HEAD:services/policy_proc/scripts/config.py
     "OFF_TOPIC":  "I'm only able to assist with NDIS and organisation policy related questions.",
     "HARMFUL":    "I'm not able to help with that.",
     "SENSITIVE":  "That question contains sensitive information. Could you rephrase without personal details?",
     "NOT_IN_KB":  "I don't have the authority to answer that based on the information available to me.",
     "ERROR":      "Something went wrong. Please try again.",
     "BLOCKED":    "I'm not able to respond to that."
+=======
+    "OFF_TOPIC": "I can only help with NDIS and organisation policy questions.",
+    "HARMFUL":   "I'm not able to help with that.",
+    "SENSITIVE": (
+        "It looks like your message contains personal details. "
+        "Please rephrase your question without names, addresses, or ID numbers "
+        "and I'll do my best to help."
+    ),
+    "NOT_IN_KB": "Sorry, I don't have that information in the policy documents. Please ask a different question or provide more context.",
+    "BLOCKED":    "Sorry, I'm not able to assist with that request.",
+    "ERROR":      "Sorry, something went wrong while processing your request. Please try again later.",
+    "GREETING":  "Hello! I'm here to help with NDIS and organisation policy questions. What would you like to know?",
+    "FALLBACK":  "I'm not sure how to help with that. Try rephrasing your question.",
+>>>>>>> 0632581 (changes in policy-proc):scripts/config.py
 }
 
 # ── Memory ──────────────────────────────────────────────────────────────
@@ -54,3 +89,10 @@ MEMORY_ID = os.environ.get("MEMORY_ID", "senaPolicyProceduresMemory-FGIxWL6gih")
 ENV            = os.environ.get("ENV", "dev")
 SESSIONS_TABLE = os.environ.get("SESSIONS_TABLE", f"sena-{ENV}-chat-sessions")
 TURNS_TABLE    = os.environ.get("TURNS_TABLE",    f"sena-{ENV}-chat-turns")
+<<<<<<< HEAD:services/policy_proc/scripts/config.py
+=======
+
+# # ── Auto Update and Auto Deletion ──────────────────────────────────────────────────────────────
+ADMIN_ROLES = os.environ.get("ADMIN_ROLES", "coordinator,superadmin").split(",")
+ORG_ADMIN   = os.environ.get("ORG_ADMIN", "superadmin,admin,coordinator").split(",")
+>>>>>>> 0632581 (changes in policy-proc):scripts/config.py
