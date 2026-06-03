@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import json
 import logging
+import asyncio
 from typing import AsyncGenerator, Optional
 
 from router import process_query
@@ -22,6 +23,11 @@ class QueryRequest(BaseModel):
     is_new_chat: bool = False
 
 logger = logging.getLogger(__name__)
+
+
+async def _error_stream(text: str) -> AsyncGenerator[str, None]:
+    """Simple error event stream."""
+    yield f"data: {json.dumps({'type': 'error', 'text': text})}\n\n"
 
 app = FastAPI(
     title="SENA Staff API",
@@ -54,48 +60,54 @@ async def query_stream(
     question = req.question
     session_id = req.session_id
     token = (authorization or "").replace("Bearer ", "").strip()
-    logger.info(f"Staff API: Query received: '{question}'")
+    print(f"Staff API: Query received: '{question}'", flush=True)
+
+    # Validate inputs BEFORE creating the generator
+    if not question:
+        return StreamingResponse(
+            _error_stream("Question is required"),
+            media_type="text/event-stream"
+        )
+    if not token:
+        return StreamingResponse(
+            _error_stream("Missing Authorization bearer token"),
+            media_type="text/event-stream"
+        )
+    if not authenticate_with_jwt(token):
+        return StreamingResponse(
+            _error_stream("Invalid or expired JWT token"),
+            media_type="text/event-stream"
+        )
 
     async def event_stream() -> AsyncGenerator[str, None]:
-        if not question:
-            yield f"data: {json.dumps({'type': 'error', 'text': 'Question is required'})}\n\n"
-            return
-
-        # Authenticate the incoming JWT so process_query has the user context
-        # (shifts/payroll/etc. are user-scoped and need a valid token).
-        if not token:
-            yield f"data: {json.dumps({'type': 'error', 'text': 'Missing Authorization bearer token'})}\n\n"
-            return
-        if not authenticate_with_jwt(token):
-            yield f"data: {json.dumps({'type': 'error', 'text': 'Invalid or expired JWT token'})}\n\n"
-            return
-
+        # Validations done above before creating this generator.
+        # Call the router's process_query function.
+        print(f"[STREAM] Calling process_query (in thread)...", flush=True)
         try:
-            # Call the router's process_query function
-            logger.info(f"Calling process_query...")
-            result = process_query(question)
-
-            # Yield as SSE events
-            logger.info(f"Got response from process_query")
-
-            # Send metadata
-            yield f"data: {json.dumps({'type': 'meta', 'session_id': session_id or 'staff-session'})}\n\n"
-
-            # Send response. Send it whole — splitting on whitespace would strip
-            # newlines and collapse markdown tables/lists onto one line.
-            if isinstance(result, str):
-                yield f"data: {json.dumps({'type': 'token', 'text': result})}\n\n"
-
-            # Send done
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
-            logger.info(f"Stream complete")
-
+            result = await asyncio.to_thread(process_query, question)
         except Exception as e:
-            logger.error(f"Stream error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+            import traceback
+            print(f"[STREAM ERR] process_query failed: {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc(flush=True)
+            yield f"data: {json.dumps({'type': 'error', 'text': f'Process query error: {str(e)}'})}\n\n"
+            return
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+        print(f"[STREAM] Got response from process_query", flush=True)
+
+        # Send metadata
+        yield f"data: {json.dumps({'type': 'meta', 'session_id': session_id or 'staff-session'})}\n\n"
+
+        # Send response. Send it whole — splitting on whitespace would strip
+        # newlines and collapse markdown tables/lists onto one line.
+        if isinstance(result, str):
+            yield f"data: {json.dumps({'type': 'token', 'text': result})}\n\n"
+
+        # Send done
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        print(f"[STREAM] Complete", flush=True)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", status_code=200)
 
 
 if __name__ == "__main__":
