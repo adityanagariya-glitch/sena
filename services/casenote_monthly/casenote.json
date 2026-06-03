@@ -1,0 +1,250 @@
+[
+  {
+    "method": "GET",
+    "path": "/organization/case-note/get-all",
+    "description": "Get case note register records (paginated)",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": false
+      },
+      {
+        "name": "memberId",
+        "type": "string($uuid)",
+        "required": false
+      },
+      {
+        "name": "shiftName",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "shiftDateFrom",
+        "type": "string($date)",
+        "required": false
+      },
+      {
+        "name": "shiftDateTo",
+        "type": "string($date)",
+        "required": false
+      },
+      {
+        "name": "caseNoteUpdatedFrom",
+        "type": "string($date)",
+        "required": false
+      },
+      {
+        "name": "caseNoteUpdatedTo",
+        "type": "string($date)",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "required": false,
+        "description": "Available values: pending, completed, reviewed"
+      },
+      {
+        "name": "sortByShiftDate",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "sortByShiftName",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "sortByClientName",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "sortByMemberName",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "sortByStatus",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "sortByUpdatedAt",
+        "type": "string",
+        "required": false,
+        "description": "Available values: a, d"
+      },
+      {
+        "name": "kpi",
+        "type": "string",
+        "required": false,
+        "description": "Filter records by KPI category.\n\ntotalCompletedShifts → All completed shift records (no extra filter)\ncaseNotesSubmitted → Records where a case note exists\nactiveShifts → Records for shifts with status scheduled or ongoing\npendingCaseNotes → Records where no case note has been submitted"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Case Note Register successful",
+      "data": [
+        {
+          "clientId": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+          "clientName": "Michael Smith",
+          "memberId": "30d4f882-93d0-4c5d-9af6-22612908817e",
+          "workerName": "Staff 2",
+          "shiftId": "cf083732-ffb7-46f9-bb5e-e491cc2cdaa2",
+          "shiftName": "Shift",
+          "shiftStartDate": "2026-03-18T02:37:00.000Z",
+          "shiftEndDate": "2026-03-18T03:40:00.000Z",
+          "caseNoteId": "5ab1dc03-fd36-4f24-98e6-57b1f34cda54",
+          "status": "completed",
+          "caseNoteUpdatedAt": "2026-03-18T12:53:10.151Z"
+        },
+        {
+          "clientId": "dab57916-9863-4b49-ba39-92441547ba5b",
+          "clientName": "swsw vachhani",
+          "memberId": "7c9e898c-8b53-4f8d-ab6c-46e5d243034c",
+          "workerName": "Ariel Greer",
+          "shiftId": "cf083732-ffb7-46f9-bb5e-e491cc2cdaa2",
+          "shiftName": "Shift",
+          "shiftStartDate": "2026-03-18T02:37:00.000Z",
+          "shiftEndDate": "2026-03-18T03:40:00.000Z",
+          "caseNoteId": null,
+          "status": "pending",
+          "caseNoteUpdatedAt": null
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 2,
+        "totalPages": 1,
+        "hasNext": false,
+        "hasPrev": false
+      },
+      "timestamp": "2026-03-31T00:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/case-note/get-by-shift/{shiftId}",
+    "description": "Get client participants with case note status by shift",
+    "parameters": [
+      {
+        "name": "shiftId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift identifier"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client Participants with CaseNote by Shift successful",
+      "data": [
+        {
+          "clientId": "dab57916-9863-4b49-ba39-92441547ba5b",
+          "clientName": "John Smith",
+          "clientProfilePictureUrl": "https://example-bucket.s3.amazonaws.com/clients/profile/john.jpg",
+          "caseNoteId": "e03fae42-c051-4830-9805-23d75e7950c6"
+        },
+        {
+          "clientId": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+          "clientName": "Jane Doe",
+          "clientProfilePictureUrl": null,
+          "caseNoteId": null
+        }
+      ],
+      "timestamp": "2026-03-24T06:41:46.491Z"
+    }
+  },
+
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/case-note/get-all-data",
+    "description": "Get all case notes for the authenticated member",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "number",
+        "required": false,
+        "description": "Page number"
+      },
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Page size"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift name, client name, shift service type, or shift type"
+      },
+      {
+        "name": "shiftId",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Filter by shift ID"
+      },
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Filter by client ID"
+      },
+      {
+        "name": "shiftType",
+        "type": "string",
+        "required": false,
+        "description": "Filter by shift type"
+      },
+      {
+        "name": "shiftServiceType",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Filter by NDIS support purpose id (UUID)"
+      }
+    ]
+  },
+
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/case-note/get-data/{shiftId}/{clientId}",
+    "description": "Get a case note by shift and client",
+    "parameters": [
+      {
+        "name": "shiftId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift identifier"
+      },
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client identifier"
+      }
+    ]
+  }
+]
