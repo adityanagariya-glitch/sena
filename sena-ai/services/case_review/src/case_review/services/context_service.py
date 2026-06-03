@@ -71,6 +71,7 @@ async def get_context(
         new_notes=new_notes,
         api_key=settings.gemini_api_key,
         model_id=settings.gemini_model_id,
+        tenant_id=str(tenant_id),
     )
 
     # 6. Merge processed IDs (existing + new)

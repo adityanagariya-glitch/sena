@@ -26,7 +26,6 @@ import asyncio
 import contextlib
 import hashlib
 import json
-import re
 import time
 from typing import TYPE_CHECKING
 
@@ -67,6 +66,24 @@ except ImportError:
     def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
         return None
 
+
+def _sum_audio_tokens(details: object) -> int:
+    """Sum AUDIO-modality token_count from a usage_metadata *_tokens_details list.
+
+    Gemini reports per-modality breakdowns as a list of ModalityTokenCount
+    (each with `.modality` + `.token_count`). We pull the AUDIO slice so the
+    cost calculator can price audio at the real rate instead of the 90/10
+    heuristic. Returns 0 for None / text-only responses.
+    """
+    total = 0
+    for item in details or []:  # type: ignore[union-attr]
+        modality = getattr(item, "modality", None)
+        name = getattr(modality, "name", None) or str(modality or "")
+        if "AUDIO" in name.upper():
+            total += int(getattr(item, "token_count", 0) or 0)
+    return total
+
+
 if TYPE_CHECKING:
     from onboarding.models.turn_payload import TurnPayload
     from onboarding.repositories.state_repo import FormStateRepo
@@ -93,60 +110,6 @@ class GeminiLiveSession:
     The WS lock is NOT managed here — ws_routes.py acquires/releases it.
     """
 
-    # Patterns that mean the model parroted Gemini tool-runtime meta-text
-    # back to the participant. Observed in production: agent said
-    #   "(System Error: Please fix the argument type for `value`.)"
-    #   "(Standard error response.) Sorry, I'm having a bit of trouble..."
-    # These are validation errors the model should silently recover from,
-    # NOT speak aloud. We drop them from the transcript that crosses to
-    # mobile and inject a system correction so the model retries with a
-    # valid tool call. Patterns are deliberately tight — phrases the model
-    # would never use in legitimate participant-facing speech.
-    _SYSTEM_LEAK_PATTERNS: tuple[re.Pattern[str], ...] = (
-        re.compile(r"\(System\s+Error[^)]*\)", re.IGNORECASE),
-        re.compile(r"\(Standard\s+error[^)]*\)", re.IGNORECASE),
-        re.compile(r"please\s+fix\s+the\s+argument\s+type[^.]*\.?", re.IGNORECASE),
-        # Orphan tail after the leading `(System Error:` is stripped — e.g.
-        # `... in function call 'update_field') Thanks Aditya, I've...`. Match
-        # from start-of-string OR start-of-sentence through the first `)`.
-        re.compile(
-            r"(?:^|(?<=[\.\!\?\s]))[^()]{0,80}?in\s+function\s+call\s+['\"][^'\"]+['\"]\)\s*",
-            re.IGNORECASE,
-        ),
-        # `(model generated <TYPE>)` leak shape (without the opening
-        # `(System Error:` prefix). Argument-type complaints from Gemini.
-        re.compile(
-            r"\(?model\s+generated\s+[A-Z]+\)?\s*",
-            re.IGNORECASE,
-        ),
-        # `Argument 'value' had unspecified type ...` — full sentence form.
-        re.compile(
-            r"argument\s+['\"]?\w+['\"]?\s+had\s+unspecified\s+type[^.]*\.?",
-            re.IGNORECASE,
-        ),
-    )
-
-    @classmethod
-    def _scrub_system_leaks(cls, text: str) -> tuple[str, bool]:
-        """Strip Gemini tool-runtime meta-text from agent transcript.
-
-        Returns the cleaned text + a flag indicating whether anything was
-        stripped (caller uses the flag to inject a corrective system
-        instruction so the model retries the failed tool call with a
-        valid argument shape instead of speaking the error to the user).
-        """
-        if not text:
-            return text, False
-        leaked = False
-        cleaned = text
-        for pat in cls._SYSTEM_LEAK_PATTERNS:
-            new = pat.sub("", cleaned)
-            if new != cleaned:
-                leaked = True
-                cleaned = new
-        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" .;:,—-")
-        return cleaned, leaked
-
     def __init__(
         self,
         websocket: WebSocket,
@@ -156,6 +119,11 @@ class GeminiLiveSession:
         tool_dispatcher: ToolDispatcher | None = None,
         replay_context: str | None = None,
         mobile_bridge: MobileBridge | None = None,
+        initial_state_text: str | None = None,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        participant_id: str | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -164,20 +132,21 @@ class GeminiLiveSession:
         self._tools = tool_dispatcher
         self._replay_context = replay_context
         self._mobile_bridge = mobile_bridge
-        # Bootstrap state lives in system_instruction (rendered by
-        # prompt_builder._bootstrap_state_json). No realtime text injection at
-        # session-open — that triggered a phantom model turn that conflicted
-        # with the opener and could wedge VAD on barge-in. Mid-session refresh
-        # rides function_response.state per Option D.
+        # Phase 1.5 — auth context for per-turn usage logging. Sourced from
+        # FormState at WS bootstrap (which itself was populated by the route
+        # handler from the auth headers, NOT from request body). Falls back to
+        # "unknown" only when the upstream tenant_id is empty so we never lose
+        # the cost — but logs surface "unknown" as a queryable bucket, making
+        # untenanted sessions easy to grep for and fix.
+        self._tenant_id = tenant_id
+        self._user_id = user_id
+        self._participant_id = participant_id
+        # Hidden text turn injected at session open so the model greets from the
+        # REAL screen state without the participant having to say "these are
+        # already filled" and without waiting for a get_current_state round-trip.
+        self._initial_state_text = initial_state_text
         self._current_turn: TurnPayload | None = None
         self._turn_id = 0
-        # Phantom-failure guard: the model sometimes claims a save FAILED
-        # ("having trouble saving", age-math rejection) without ever emitting
-        # update_field — most often on date_of_birth and interpreter_required.
-        # When a turn's spoken text trips a failure phrase but no tool call
-        # fired, we inject a correction. Capped per field to avoid a loop if the
-        # model keeps refusing.
-        self._phantom_failure_corrections = 0
         self._last_screen_hash: str | None = None
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
@@ -213,11 +182,18 @@ class GeminiLiveSession:
         self._usage_emitted_prompt: int = 0
         self._usage_emitted_response: int = 0
         self._usage_emitted_cached: int = 0
+        self._usage_emitted_prompt_audio: int = 0
+        self._usage_emitted_response_audio: int = 0
         # Latest cumulative read from msg.usage_metadata — updated on EVERY
         # receive event that carries one. Read at turn_complete time.
         self._usage_cum_prompt: int = 0
         self._usage_cum_response: int = 0
         self._usage_cum_cached: int = 0
+        # Audio-modality subset of the cumulative prompt/response tokens, summed
+        # from usage_metadata.*_tokens_details. Lets the cost calculator price
+        # audio at the real rate instead of the 90/10 heuristic (Phase 1.6).
+        self._usage_cum_prompt_audio: int = 0
+        self._usage_cum_response_audio: int = 0
         self._tool_calls_in_turn: int = 0
         # Diagnostic — proves the system_instruction is unique per session.
         # If two consecutive sessions log the same sha8, the prompt builder
@@ -328,9 +304,13 @@ class GeminiLiveSession:
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
                 log.debug("replay_context_injected session=%s", self._session_id)
-            # Initial screen state is embedded in system_instruction (see
-            # prompt_builder._bootstrap_state_json). NO realtime injection here —
-            # avoids the phantom turn-0 that wedged VAD on barge-in.
+            # Seed the live screen state as a hidden context turn so the model's
+            # FIRST greeting already knows which fields are filled — no
+            # get_current_state round-trip, no "these are already filled"
+            # reminder from the participant.
+            if self._initial_state_text:
+                await session.send_realtime_input(text=self._initial_state_text)
+                log.info("initial_state_seeded session=%s", self._session_id)
             self._last_audio_at = time.monotonic()
             # Hard cap on the kickoff shield: if the opener never produces a
             # turn_complete (e.g. silent / model stalls), lift the shield after
@@ -524,16 +504,10 @@ class GeminiLiveSession:
             f"[SCREEN VALIDATION] The screen rejected the value stored for {loc}: "
             f"{reason_human} — re-ask the participant for a corrected value (Rule 7)."
         )
-        # Inject the validation hint as a text turn only. Do NOT send
-        # audio_stream_end here: this session uses automatic VAD, where
-        # audio_stream_end is not honoured and corrupts VAD/turn state.
-        # When validation_failed fires during a multi-field clear (e.g. the
-        # service_address all-or-none rule firing mid clear_field batch) right
-        # after a barge-in interrupted turn, two back-to-back audio_stream_end
-        # injections wedge Gemini so it never starts another turn — session
-        # stays alive, audio keeps streaming up, but no further
-        # turn_start/agent_said. Matches the text-only injection used by
-        # _handle_screen_state and the silence cue.
+        # N-3 race fix: flush any in-flight audio buffer before injecting text
+        # so the [SCREEN VALIDATION] hint cannot be concatenated into the user's
+        # current utterance and misread as their speech by Gemini's VAD.
+        await session.send_realtime_input(audio_stream_end=True)
         await session.send_realtime_input(text=injection)
         log.info(
             "validation_failed_injected session=%s loc=%s code=%s",
@@ -744,6 +718,15 @@ class GeminiLiveSession:
                         self._usage_cum_cached = int(
                             getattr(_um, "cached_content_token_count", 0) or 0
                         )
+                        # Per-modality split (Phase 1.6) — sum the AUDIO slice so
+                        # cost is priced exactly, not via the 90/10 heuristic.
+                        self._usage_cum_prompt_audio = _sum_audio_tokens(
+                            getattr(_um, "prompt_tokens_details", None)
+                        )
+                        self._usage_cum_response_audio = _sum_audio_tokens(
+                            getattr(_um, "candidates_tokens_details", None)
+                            or getattr(_um, "response_tokens_details", None)
+                        )
 
                     # ── Tool calls (Phase C) — handled before server_content ──
                     if self._tools and getattr(msg, "tool_call", None):
@@ -751,9 +734,6 @@ class GeminiLiveSession:
                         # the per-turn usage emit at turn_complete.
                         _calls = getattr(msg.tool_call, "function_calls", None) or []
                         self._tool_calls_in_turn += len(_calls)
-                        # A real tool call resets the phantom-failure budget so
-                        # each new field gets a fresh correction allowance.
-                        self._phantom_failure_corrections = 0
                         await self._handle_tool_call(session, msg.tool_call)
                         if self._tools.step_completed:
                             # Let queued agent audio flush, then end loop
@@ -806,42 +786,29 @@ class GeminiLiveSession:
                             interrupted_intent: str | None = None
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
-                                cleaned_text, leaked = self._scrub_system_leaks(
-                                    full_text,
-                                )
-                                if leaked:
-                                    log.warning(
-                                        "agent_system_leak_scrubbed_on_interrupt "
-                                        "session=%s original=%r cleaned=%r",
-                                        self._session_id,
-                                        full_text,
-                                        cleaned_text,
-                                    )
-                                interrupted_intent = cleaned_text.strip() or None
-                                emit_text = cleaned_text or ""
+                                interrupted_intent = full_text.strip() or None
                                 log.info(
                                     "AGENT_SAID(interrupted) %r session=%s",
-                                    emit_text,
+                                    full_text,
                                     self._session_id,
                                 )
-                                if emit_text:
-                                    await self._ws.send_text(
-                                        json.dumps(
-                                            {
-                                                "type": "agent_said",
-                                                "text": emit_text,
-                                            }
-                                        )
-                                    )
-                                    await self._repo.append_transcript(
-                                        self._session_id,
+                                await self._ws.send_text(
+                                    json.dumps(
                                         {
-                                            "speaker": "agent",
-                                            "text": emit_text,
-                                            "turn_id": self._turn_id,
-                                        },
-                                        ttl_sec=settings.session_max_sec,
+                                            "type": "agent_said",
+                                            "text": full_text,
+                                        }
                                     )
+                                )
+                                await self._repo.append_transcript(
+                                    self._session_id,
+                                    {
+                                        "speaker": "agent",
+                                        "text": full_text,
+                                        "turn_id": self._turn_id,
+                                    },
+                                    ttl_sec=settings.session_max_sec,
+                                )
                                 agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "interrupted"}))
                             turn_started = False
@@ -881,67 +848,31 @@ class GeminiLiveSession:
 
                         # ── Turn complete ──────────────────────────────────────
                         if sc.turn_complete:
-                            turn_text = ""
                             if agent_transcript_buf:
-                                raw_text = "".join(agent_transcript_buf)
-                                cleaned_text, leaked = self._scrub_system_leaks(
-                                    raw_text,
-                                )
-                                if leaked:
-                                    log.warning(
-                                        "agent_system_leak_scrubbed session=%s "
-                                        "original=%r cleaned=%r",
-                                        self._session_id,
-                                        raw_text,
-                                        cleaned_text,
-                                    )
-                                    with contextlib.suppress(Exception):
-                                        await session.send_realtime_input(
-                                            text=(
-                                                "[SYSTEM CORRECTION] Your last "
-                                                "tool call was rejected by the "
-                                                "function-call validator "
-                                                "(usually wrong type for "
-                                                "`value`: must be string for "
-                                                "text/date/enum, array for "
-                                                "multi_enum, boolean for "
-                                                "interpreter_required, integer "
-                                                "for repeatable_index only). "
-                                                "DO NOT speak this error to the "
-                                                "participant. Silently fix the "
-                                                "argument shape and re-emit the "
-                                                "tool call."
-                                            )
-                                        )
-                                turn_text = cleaned_text or ""
+                                full_text = "".join(agent_transcript_buf)
                                 log.info(
                                     "AGENT_SAID %r session=%s",
-                                    turn_text,
+                                    full_text,
                                     self._session_id,
                                 )
-                                if turn_text:
-                                    await self._ws.send_text(
-                                        json.dumps(
-                                            {
-                                                "type": "agent_said",
-                                                "text": turn_text,
-                                            }
-                                        )
-                                    )
-                                    await self._repo.append_transcript(
-                                        self._session_id,
+                                await self._ws.send_text(
+                                    json.dumps(
                                         {
-                                            "speaker": "agent",
-                                            "text": turn_text,
-                                            "turn_id": self._turn_id,
-                                        },
-                                        ttl_sec=settings.session_max_sec,
+                                            "type": "agent_said",
+                                            "text": full_text,
+                                        }
                                     )
+                                )
+                                await self._repo.append_transcript(
+                                    self._session_id,
+                                    {
+                                        "speaker": "agent",
+                                        "text": full_text,
+                                        "turn_id": self._turn_id,
+                                    },
+                                    ttl_sec=settings.session_max_sec,
+                                )
                                 agent_transcript_buf.clear()
-                            # Phantom-failure guard: the model claimed a save
-                            # failed but never called update_field this turn.
-                            # Force it to actually call the tool.
-                            await self._maybe_correct_phantom_failure(session, turn_text)
                             await self._ws.send_text(json.dumps({"type": "turn_complete"}))
                             log.info(
                                 "turn_complete chunks=%d turn=%d session=%s",
@@ -969,24 +900,56 @@ class GeminiLiveSession:
                             d_prompt = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
                             d_response = max(0, self._usage_cum_response - self._usage_emitted_response)
                             d_cached = max(0, self._usage_cum_cached - self._usage_emitted_cached)
+                            d_prompt_audio = max(
+                                0,
+                                self._usage_cum_prompt_audio
+                                - self._usage_emitted_prompt_audio,
+                            )
+                            d_response_audio = max(
+                                0,
+                                self._usage_cum_response_audio
+                                - self._usage_emitted_response_audio,
+                            )
                             if d_prompt or d_response or d_cached or chunk_count or self._tool_calls_in_turn:
                                 emit_usage(
-                                    tenant_id="phase1_tbd",  # TODO Phase 1.5: thread from assert_session_owner
-                                    user_id=None,
+                                    tenant_id=self._tenant_id or "unknown",
+                                    user_id=self._user_id,
                                     feature=UsageFeature.VOICE_ONBOARDING,
                                     model=settings.gemini_live_model_id,
                                     session_id=self._session_id,
                                     prompt_tokens=d_prompt,
                                     response_tokens=d_response,
                                     cached_tokens=d_cached,
+                                    prompt_audio_tokens=d_prompt_audio,
+                                    response_audio_tokens=d_response_audio,
                                     tool_call_count=self._tool_calls_in_turn,
                                     success=True,
                                     turn_id=self._turn_id,
                                     audio_chunks_out=chunk_count,
+                                    participant_id=self._participant_id,
+                                    # Per-screen cost attribution. One WS session
+                                    # = one onboarding step, but the step id only
+                                    # exists once a screen_state_v2/TurnPayload has
+                                    # arrived; None-safe until then (aggregator
+                                    # buckets missing ids under "(no-step)").
+                                    step_id=(
+                                        self._current_turn.step.id
+                                        if self._current_turn
+                                        else None
+                                    ),
+                                    step_number=(
+                                        self._current_turn.step.number
+                                        if self._current_turn
+                                        else None
+                                    ),
                                 )
                                 self._usage_emitted_prompt = self._usage_cum_prompt
                                 self._usage_emitted_response = self._usage_cum_response
                                 self._usage_emitted_cached = self._usage_cum_cached
+                                self._usage_emitted_prompt_audio = self._usage_cum_prompt_audio
+                                self._usage_emitted_response_audio = (
+                                    self._usage_cum_response_audio
+                                )
 
                             self._turn_id += 1
                             chunk_count = 0
@@ -1174,115 +1137,6 @@ class GeminiLiveSession:
             log.exception("collect_pending_labels_failed session=%s", self._session_id)
             return []
 
-    # ── Private: phantom-save guard ──────────────────────────────────────────
-    #
-    # Two failure modes the model hits when it speaks about a save without
-    # actually calling update_field:
-    #
-    #   (a) phantom_failure — "having trouble saving", "made a slip up"
-    #       Model invents a save failure → user retries → loop.
-    #
-    #   (b) phantom_success — "saved that", "got it, updated to X"
-    #       Model claims the save worked but never called the tool, so
-    #       FormState diverges from what the participant believes is saved.
-    #
-    # Both fire only when tool_calls_in_turn == 0. Capped at 2 corrections per
-    # session so a stuck model can't be ping-ponged forever.
-    _SAVE_FAILURE_MARKERS = (
-        "trouble saving",
-        "problem saving",
-        "couldn't save",
-        "could not save",
-        "couldn't get that saved",
-        "having trouble",
-        "had a problem saving",
-        "didn't save",
-        "outside the valid range",
-        "made a slip up",
-        "slip up",
-    )
-
-    # Phrases that imply a save / change just completed. Substring match.
-    # Tight enough to skip generic acknowledgements ("right you are" alone is
-    # too ambiguous — paired with "I've"/"saved" it's a claim of action).
-    _SAVE_SUCCESS_MARKERS = (
-        "i've saved",
-        "i have saved",
-        "i've updated",
-        "i have updated",
-        "i've changed",
-        "i've recorded",
-        "saved that",
-        "saved your",
-        "updated your",
-        "updated to",
-        "changed it to",
-        "got it, i've",
-        "got it. i've",
-        "all updated",
-        "all saved",
-        "that's saved",
-        "that's updated",
-    )
-
-    async def _maybe_correct_phantom_failure(
-        self, session: genai.live.AsyncSession, turn_text: str
-    ) -> None:
-        """If the agent spoke about a save (success or failure) without a tool
-        call this turn, force it to actually call update_field. Phantom-failure
-        is the original symptom; phantom-success was observed in the 2026-05-28
-        logs (model said "saved that" / "updated to X" with zero tool_calls,
-        leaving FormState out of sync with what the participant heard). Capped
-        to avoid a ping-pong if the model keeps refusing."""
-        if self._tool_calls_in_turn > 0:
-            return  # real tool call happened — nothing phantom
-        if not turn_text:
-            return
-        lowered = turn_text.lower()
-        is_failure_claim = any(m in lowered for m in self._SAVE_FAILURE_MARKERS)
-        is_success_claim = any(m in lowered for m in self._SAVE_SUCCESS_MARKERS)
-        if not (is_failure_claim or is_success_claim):
-            return
-        if self._phantom_failure_corrections >= 2:
-            log.warning(
-                "phantom_save_correction_capped session=%s — model kept "
-                "speaking about saves without calling update_field",
-                self._session_id,
-            )
-            return
-        self._phantom_failure_corrections += 1
-        kind = "failure" if is_failure_claim else "success"
-        log.info(
-            "phantom_save_detected session=%s kind=%s correction=%d text=%r",
-            self._session_id,
-            kind,
-            self._phantom_failure_corrections,
-            turn_text,
-        )
-        if is_failure_claim:
-            correction = (
-                "[SYSTEM CORRECTION] You just told the participant a value could "
-                "not be saved, but you did NOT call update_field this turn — so "
-                "nothing was actually attempted. You do not validate values "
-                "yourself; mobile does. Call update_field now with the value "
-                "the participant gave (dates as YYYY-MM-DD, booleans as "
-                "true/false). Only report a failure if the tool itself returns "
-                "ok:false, then speak its reason verbatim."
-            )
-        else:
-            correction = (
-                "[SYSTEM CORRECTION] You just told the participant a value was "
-                "saved/updated, but you did NOT call update_field this turn — "
-                "so nothing was actually saved. The FormState still holds the "
-                "old value. Call update_field NOW with the value the "
-                "participant gave (use the exact path from visible_fields; "
-                "dates as YYYY-MM-DD, booleans as true/false, enums matching "
-                "enum_values verbatim). On the next turn, only confirm AFTER "
-                "the tool returns ok:true."
-            )
-        with contextlib.suppress(Exception):
-            await session.send_realtime_input(text=correction)
-
     # ── Private: tool_call handling (Phase C) ────────────────────────────────
 
     async def _handle_tool_call(
@@ -1304,12 +1158,6 @@ class GeminiLiveSession:
         responses: list[types.FunctionResponse] = []
         for call in function_calls:
             args_dict = dict(call.args) if call.args else {}
-            log.info(
-                "TOOL_CALL tool=%s args=%r session=%s",
-                call.name,
-                args_dict,
-                self._session_id,
-            )
             try:
                 result = await self._tools.dispatch(call.name, args_dict)
             except Exception:
@@ -1323,12 +1171,6 @@ class GeminiLiveSession:
                     "reason": "Internal dispatch error",
                     "code": "dispatch_error",
                 }
-            log.info(
-                "TOOL_RESULT tool=%s ok=%s session=%s",
-                call.name,
-                result.get("ok"),
-                self._session_id,
-            )
             responses.append(
                 types.FunctionResponse(
                     id=call.id,

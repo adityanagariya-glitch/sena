@@ -58,6 +58,9 @@ async def classify_paragraph(
         raw_paragraph=req.raw_paragraph,
         api_key=settings.gemini_api_key,
         model_id=settings.gemini_model_id,
+        tenant_id=str(tenant_id),
+        user_id=str(user_id),
+        session_id=str(session.id),
     )
 
     # ── 3. Persist results ────────────────────────────────────────────────────

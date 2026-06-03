@@ -227,6 +227,57 @@ signs off.
 
 ---
 
+## 6a. Fix 4 — voice `submit_step` must ADVANCE to review, NOT final-submit (REQUIRED — fixes the deadlock)
+
+### Symptom
+On the consent step the voice agent calls `submit_step`, gets a bare `{ok:false}`
+(backend logs `tool_response_rejected code=None reason=None`), and loops forever
+asking the participant to tick a written-consent box that lives on the NEXT page.
+The session dies with no submit. (Real session `b6779444-…`, 2026-06-03.)
+
+### Root cause (Flutter)
+The voice `submit_step` is wired to the FINAL `submitConsent()`
+(`client_consent_controller.dart:410-419`), which hard-returns when
+`hasGivenWrittenConsent == false`:
+
+```dart
+if (!hasGivenWrittenConsent.value) {
+  errorMessage.value = AppStrings.consentValidationWrittenConsent;
+  isSaving.value = false;
+  return;            // ← local early-return; NO structured result to the voice bridge
+}
+```
+
+Two problems:
+1. **Wrong target.** The consent voice page is page 1 ("Consent Sharing" →
+   *Continue*). The written-consent checkbox + *Confirm & Submit* are on page 2
+   ("Review & Confirm"), reached only AFTER page 1 advances. Voice `submit_step`
+   should run **`proceedToReviewAfterRequirements()`**
+   (`client_consent_controller.dart:341`) — validate the 7 voice fields + per-role
+   detail, then navigate to review — NOT `submitConsent()`. Written consent stays
+   a page-2, human-only gate (keep it; see Fix 3).
+2. **Reasonless rejection.** That early `return` sets `errorMessage` locally but
+   replies to the voice bridge with a bare `{ok:false}` (no `code`/`reason`). The
+   agent has nothing to act on, so it invents "tick the box" and loops.
+
+### Fix
+Point the voice `submit_step` / advance handler for the consent step at
+`proceedToReviewAfterRequirements()` and return a **structured** result over the
+bridge:
+- advanced to review → `{ok: true}`
+- validation blocker (e.g. a per-role `access_control` field incomplete) →
+  `{ok: false, code: "<snake_case>", reason: "<human text>", path: "<field path>"}`
+
+NEVER reply with a bare `{ok:false}` / empty reason — the backend relay
+(`mobile_bridge.py`) surfaces exactly what you send, and the agent acts on it.
+
+The SENA_AI prompt (`consent.md`) is already updated to treat consent submit as
+"advance to review" and to STOP looping on an empty rejection, so the deadlock is
+broken on the voice side today; this Flutter change makes the advance actually
+navigate and return a clean result.
+
+---
+
 ## 7. Bonus check — the boolean default-false issue
 
 The four basic consent booleans default to `false`

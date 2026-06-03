@@ -85,7 +85,11 @@ class DictationService:
         }
 
         ai_out, latency_ms = self.bedrock.run_dictation_turn(
-            normalized.text, model_input_snapshot, history
+            normalized.text,
+            model_input_snapshot,
+            history,
+            tenant_id=str(session.tenant_id),
+            session_id=str(session.id),
         )
 
         draft_updates = ai_out.get("draft_updates", {})

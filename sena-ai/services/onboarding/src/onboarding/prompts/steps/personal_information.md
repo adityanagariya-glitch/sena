@@ -11,8 +11,8 @@ section ids, field ids, and enum values. Live values are in `<state>`.
 |---|---|---|---|---|
 | `full_name` | text | yes | — | first + last name, each ≤25 chars |
 | `email` | email | yes — **readonly** | — | locked to account; refuse changes |
-| `phone` | phone | yes | — | Australian mobile (E.164 `+61…` or national `04…`) or `1300/1800` |
-| `date_of_birth` | date | yes | — | ISO `YYYY-MM-DD`; must be at least 18 years ago |
+| `phone` | phone | yes | — | `+61` + 9 digits, first digit `2/3/4/7/8` (e.g. `+61412345678`). Participant usually says only the 9 digits — **prepend `+61` yourself**, never send them bare. `0`+9-digits / `1300` / `1800` also valid. |
+| `date_of_birth` | date | yes | — | ISO `YYYY-MM-DD`; must be ≥18 years ago. |
 | `gender` | enum | yes | `Male`, `Female`, `Other` (only these three — no other options) | required |
 | `about_me` | textarea | yes | — | required, max 250 chars |
 | `preferred_languages` | multi-enum | yes (≥1) | `English`, `Mandarin`, `Cantonese`, `Arabic`, `Vietnamese`, `Greek`, `Italian`, `Other` | pass full new list as array |
@@ -51,7 +51,7 @@ Always reference by `repeatable_index` (0-based). New row added via
 | `name` | text | yes | — | required, max 25 chars |
 | `relation` | enum | yes | `Father`, `Mother`, `Sibling`, `Spouse`, `Friend`, `Guardian`, `Carer`, `Other` | required |
 | `email` | email | yes | — | must NOT equal participant's own `basics.email`; must be unique across rows |
-| `phone` | phone | yes | — | Australian mobile; must NOT equal participant's own `basics.phone`; must be unique across rows |
+| `phone` | phone | yes | — | `+61` + 9 digits (E.164, e.g. `+61412345678`), same rule as `basics.phone`; must NOT equal participant's own `basics.phone`; must be unique across rows |
 
 ### Walk-through order for a new emergency contact row
 
