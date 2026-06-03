@@ -61,6 +61,11 @@ Source rules:
 
 ## Current question
 {question}
+
+## Special instruction
+If the question is a greeting or conversational message (hi, hello, good morning, thanks, etc.)
+with no policy context available — respond warmly in 1 sentence and invite a policy question.
+Do not use the NOT_IN_KB message for greetings.
 """
     # Streaming generation
     try:

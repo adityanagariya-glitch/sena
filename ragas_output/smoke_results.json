@@ -1,0 +1,324 @@
+{
+  "run_at": "2026-06-03T09:20:14.992305+00:00",
+  "api_base": "http://localhost:8000",
+  "suites": {
+    "auth": {
+      "passed": 11,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "Valid login \u2014 Sunrise support worker (200 + token)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Valid login \u2014 Horizons support worker (200 + token)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Valid login \u2014 Prospect support worker (200 + token)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Valid login \u2014 Superadmin (200 + token)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Wrong password returns 401",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Non-existent user returns 401",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Inactive user returns 403",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Inactive user receives no token",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Token claims \u2014 org_id, role, user_id all correct",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "No token on protected endpoint returns 401",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prospect coordinator \u2014 correct org_id in claims",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    },
+    "streaming": {
+      "passed": 10,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "Valid question returns meta event",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Stream contains tokens (1 received)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Stream ends with done event",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Meta event contains session_id and sources",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Off-topic question returns blocked event",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Harmful question returns blocked event",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "PII-containing question returns blocked event",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Empty question returns 400",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prompt injection attempt is blocked or refused",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "System prompt leak attempt is blocked or refused",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    },
+    "memory": {
+      "passed": 6,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "Turn saved to DynamoDB after query (1 turn(s))",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Saved turn contains correct question",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Saved turn contains non-empty answer",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Cross-org user cannot access another user's session (403)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Multi-turn saves correctly (2 turns)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prospect user cannot access Sunrise user's session (403)",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    },
+    "org_isolation": {
+      "passed": 6,
+      "failed": 1,
+      "tests": [
+        {
+          "name": "Sunrise user: no Horizons sources returned",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Horizons user: no Sunrise sources returned",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prospect user: no org sources returned (NDIS only)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Superadmin: receives sources from both orgs",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Sunrise user: org-specific question gets a substantive answer",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Horizons user: org-specific question answered",
+          "status": "FAIL",
+          "detail": "Got refusal or empty: Sorry, I don't have that information in the policy documents. Please ask a different question or provide more context.\n\nThe policies I have cover spec"
+        },
+        {
+          "name": "Prospect user: shift-start question returns no org sources",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    },
+    "sunrise_content": {
+      "passed": 5,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "Sunrise SW Q1: hazard check \u2014 all-clear must still be logged (correct content + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Sunrise SW Q2: near-miss reporting \u2014 must report, 24hr window (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Sunrise SW Q3: conflict of interest \u2014 stop, declare, coordinator (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Sunrise CO Q4: complaint timeframes \u2014 2-day ack + 10-day resolution (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Sunrise CO Q5: provider transfer \u2014 7-day plan from registration (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    },
+    "horizons_content": {
+      "passed": 4,
+      "failed": 1,
+      "tests": [
+        {
+          "name": "Horizons SW Q1: medication refusal \u2014 30min phone call to coordinator (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Horizons SW Q2: aggression return \u2014 written clearance required (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Horizons SW Q3: multi-stop transport \u2014 each leg logged separately (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Horizons SW Q4: first aid allowance \u2014 cert must be in system at shift time (correct + no org leak)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Horizons CO Q5: exit process",
+          "status": "FAIL",
+          "detail": "Key timeframes missing. Answer: once notified by the worker, follow these steps:\n\n1. **provide written confirmation** of the participant's exit decision within 2 business days.\n2. **apply a 4-week support continuation period** unles"
+        }
+      ]
+    },
+    "prospect_content": {
+      "passed": 5,
+      "failed": 0,
+      "tests": [
+        {
+          "name": "Prospect SW Q1: notice period \u2014 NDIS answer returned, no org leakage",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prospect SW Q2: Code of Conduct obligations \u2014 NDIS answer, no org leakage",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prospect SW Q3: shift-start procedure \u2014 no Sunrise/Horizons content returned",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prospect CO Q4: reportable incident categories \u2014 NDIS answer, no org leakage",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Prospect CO Q5: participant right to Commission \u2014 NDIS answer, no org leakage",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    },
+    "admin_content": {
+      "passed": 3,
+      "failed": 1,
+      "tests": [
+        {
+          "name": "Admin A1: induction hours",
+          "status": "FAIL",
+          "detail": "Not both orgs in sources: ['sunrise_POL-NDIS001_ndis_aligned_policy_framework.pdf', 'ndis-practice-standards-and-quality-indicators.pdf', 'sunrise_POL003_workforce_whs_service_delivery.pdf', 'sunrise_POL-NDIS001_ndis_aligned_policy_framework.pdf', 'complainthandlingguidelinesforproviders_0.pdf']"
+        },
+        {
+          "name": "Admin A2: data breach window \u2014 both orgs in sources, timeframe present",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Admin A3: unplanned restraint \u2014 both orgs in sources, critical incident content present",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Admin A4: NDIS-only question answered correctly by admin",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    }
+  },
+  "summary": {
+    "passed": 50,
+    "failed": 3,
+    "total": 53
+  }
+}

@@ -71,14 +71,24 @@ def run_pipeline(
     if is_new_chat:
         create_session(user_id, session_id, question)
 
-    # Step 1: Classify
+    # Step 1: Read memory context (recent turns + AgentCore)
+    try:
+        memory_ctx = get_memory_context(user_id, session_id, question)
+        recent_turns  = memory_ctx["recent_turns"]
+        agentcore_ctx = memory_ctx["agentcore_ctx"]
+    except Exception as e:
+        logger.error(f"Memory read failed: {e}")
+        recent_turns  = ""
+        agentcore_ctx = ""
+
+    # Step 2: Classify
     try:
         classification = classify(question)
     except Exception as e:
         logger.error(f"Classification failed: {e}")
         classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error"}
 
-    # Step 2: Block if needed
+    # Step 3: Block if needed
     blocked, block_message = should_block(classification)
     if blocked:
         logger.info(f"Blocked — {classification['label']}")
@@ -92,15 +102,32 @@ def run_pipeline(
             "session_id":  session_id
         }
 
-    # Step 3: Read memory context
-    try:
-        memory_ctx = get_memory_context(user_id, session_id, question)
-        recent_turns  = memory_ctx["recent_turns"]
-        agentcore_ctx = memory_ctx["agentcore_ctx"]
-    except Exception as e:
-        logger.error(f"Memory read failed: {e}")
-        recent_turns  = ""
-        agentcore_ctx = ""
+    # Step 3a: Handle greetings — skip retrieval, generate warm response directly
+    if classification.get("label") == "GREETING":
+        logger.info("Greeting detected — skipping retrieval, generating direct response")
+        full_answer = []
+        for chunk in generate_stream(
+            question=question,
+            context="",
+            recent_turns=recent_turns,
+            agentcore_ctx=agentcore_ctx
+        ):
+            if chunk.get("type") == "token":
+                full_answer.append(chunk.get("text", ""))
+        answer = "".join(full_answer).strip()
+        try:
+            save_memory(user_id, session_id, question, answer, [])
+        except Exception as e:
+            logger.error(f"Memory save failed for greeting: {e}")
+        return {
+            "question":       question,
+            "answer":         answer,
+            "blocked":        False,
+            "block_reason":   None,
+            "classification": classification,
+            "sources":        [],
+            "session_id":     session_id
+        }
     
     # Step 3.5: Rewrite query for better retrieval
     try:
