@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 # Sentinel marking a producer has finished, used by the stream merger.
 _DONE = object()
 
-
 class ServiceOrchestrator:
     """Manages service adapters, routing, and circuit breaking."""
 
@@ -36,10 +35,13 @@ class ServiceOrchestrator:
     ):
         """Initialize orchestrator with service URLs and a shared pooled client."""
         # Shared keep-alive pool — downstream calls reuse connections.
-        # Timeout: 60s total (staff agent loop can take 10-15s); connect is stricter.
+        # read=90s: policy_proc emits NOTHING until its full pipeline (retrieve →
+        # rerank → generate) finishes — that's time-to-first-byte, ~30-40s. The read
+        # timeout must exceed it or the gateway gives up before policy responds.
         self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0, connect=5.0, read=30.0),
-            limits=httpx.Limits(max_keepalive_connections=64, max_connections=128,
+            timeout=httpx.Timeout(120.0, connect=30.0, read=120.0),
+            limits=httpx.Limits(max_keepalive_connections=64,
+                                max_connections=128,
                                 keepalive_expiry=30.0),
         )
         self.staff_adapter = StaffAdapter("staff", staff_url, jwt_secret, client=self._client)
