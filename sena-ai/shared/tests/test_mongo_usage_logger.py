@@ -61,3 +61,78 @@ def test_log_usage_never_raises_on_failure(monkeypatch) -> None:
 
     monkeypatch.setattr(mod, "_get_collection", lambda: _Boom())
     assert mod.log_usage("s", 1, 1, user="p") is None
+
+
+# ── _get_collection resilience (cold-Atlas regression) ─────────────────────────
+# Observed 2026-06-04: a transient OperationFailure on the first create_index
+# (cold M0 cluster) aborted init AND latched _init_attempted, silencing every
+# later turn for the whole process. Index is best-effort; transient connect
+# failures must not latch.
+
+
+class _FakeColl:
+    def __init__(self, *, index_error: bool = False) -> None:
+        self._index_error = index_error
+        self.created = False
+
+    def create_index(self, *a: object, **k: object) -> None:
+        if self._index_error:
+            raise RuntimeError("OperationFailure: cluster waking up")
+        self.created = True
+
+
+class _FakeDB:
+    def __init__(self, coll: _FakeColl) -> None:
+        self._coll = coll
+
+    def __getitem__(self, _name: str) -> _FakeColl:
+        return self._coll
+
+
+class _FakeClient:
+    def __init__(self, coll: _FakeColl) -> None:
+        self._db = _FakeDB(coll)
+
+    def __getitem__(self, _name: str) -> _FakeDB:
+        return self._db
+
+
+def _reset(monkeypatch) -> None:
+    monkeypatch.setattr(mod, "_collection", None)
+    monkeypatch.setattr(mod, "_init_attempted", False)
+    monkeypatch.setattr(mod, "_PYMONGO_AVAILABLE", True)
+    monkeypatch.setattr(mod, "_load_env_file_fallback", lambda: None)
+
+
+def test_get_collection_survives_index_error(monkeypatch) -> None:
+    _reset(monkeypatch)
+    monkeypatch.setenv("SENA_AI_MONGO_USAGE_URI", "mongodb://fake/")
+    coll = _FakeColl(index_error=True)
+    monkeypatch.setattr(mod, "MongoClient", lambda *a, **k: _FakeClient(coll))
+    # create_index raises → suppressed; collection is still returned + usable.
+    assert mod._get_collection() is coll
+
+
+def test_transient_connect_failure_not_latched_and_self_heals(monkeypatch) -> None:
+    _reset(monkeypatch)
+    monkeypatch.setenv("SENA_AI_MONGO_USAGE_URI", "mongodb://fake/")
+    coll = _FakeColl()
+    state = {"n": 0}
+
+    def flaky(*a: object, **k: object) -> _FakeClient:
+        state["n"] += 1
+        if state["n"] == 1:
+            raise RuntimeError("cold cluster")
+        return _FakeClient(coll)
+
+    monkeypatch.setattr(mod, "MongoClient", flaky)
+    assert mod._get_collection() is None  # transient fail
+    assert mod._init_attempted is False  # NOT latched — must retry
+    assert mod._get_collection() is coll  # next call self-heals
+
+
+def test_uri_unset_is_latched(monkeypatch) -> None:
+    _reset(monkeypatch)
+    monkeypatch.delenv("SENA_AI_MONGO_USAGE_URI", raising=False)
+    assert mod._get_collection() is None
+    assert mod._init_attempted is True  # deterministic disable → stays latched

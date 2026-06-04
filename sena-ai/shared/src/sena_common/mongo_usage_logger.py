@@ -87,8 +87,11 @@ def _load_env_file_fallback() -> None:
 def _get_collection() -> Any:
     """Lazily create the pooled client + collection.
 
-    Returns None if disabled (pymongo missing / URI unset) or if the connection
-    fails. The first failure is remembered so we don't retry on every call.
+    Returns None if disabled (pymongo missing / URI unset) or if the client
+    can't be constructed yet. Only DETERMINISTIC disables (no pymongo, no URI)
+    are latched via `_init_attempted`; a transient connect failure is NOT
+    cached, so the next call retries and self-heals — a cold Atlas cluster on
+    the first turn must not silence logging for the whole process lifetime.
     Never raises.
     """
     global _collection, _init_attempted
@@ -96,14 +99,15 @@ def _get_collection() -> Any:
         return _collection
     if _init_attempted:
         return None
-    _init_attempted = True
 
     if not _PYMONGO_AVAILABLE:
+        _init_attempted = True
         _log.warning("mongo_usage_disabled", reason="pymongo_not_installed")
         return None
     _load_env_file_fallback()
     uri = os.environ.get("SENA_AI_MONGO_USAGE_URI")
     if not uri:
+        _init_attempted = True
         _log.warning("mongo_usage_disabled", reason="SENA_AI_MONGO_USAGE_URI_unset")
         return None
 
@@ -112,11 +116,24 @@ def _get_collection() -> Any:
         coll_name = os.environ.get("SENA_AI_MONGO_USAGE_COLL", "usage_logs")
         client = MongoClient(uri, server_api=ServerApi("1"))
         coll = client[db_name][coll_name]
-        coll.create_index("user")
+        # The "user" index is a query optimisation, NOT a write prerequisite.
+        # MongoClient is lazy, so create_index is the first real server command
+        # and a cold Atlas (M0) cluster can transiently reject it with
+        # OperationFailure. Best-effort it: an index error must never abort init
+        # or block the upserts (the actual goal) — pymongo reconnects per op.
+        with contextlib.suppress(Exception):
+            coll.create_index("user")
         _collection = coll
         return _collection
     except Exception as exc:
-        _log.warning("mongo_usage_connect_failed", error=type(exc).__name__)
+        # Transient (cold cluster, DNS/SRV, network). NOT latched — the next
+        # forward retries. _init_attempted stays False so this self-heals.
+        _log.warning(
+            "mongo_usage_connect_failed",
+            error=type(exc).__name__,
+            code=getattr(exc, "code", None),
+            detail=str(exc)[:300],
+        )
         return None
 
 
@@ -183,7 +200,12 @@ def log_usage(
             )
         return user
     except Exception as exc:
-        _log.warning("mongo_usage_insert_failed", error=type(exc).__name__)
+        _log.warning(
+            "mongo_usage_insert_failed",
+            error=type(exc).__name__,
+            code=getattr(exc, "code", None),
+            detail=str(exc)[:300],
+        )
         return None
 
 
