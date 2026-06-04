@@ -1,21 +1,12 @@
 # pipeline.py
 import logging
 import uuid
-<<<<<<< HEAD:services/policy_proc/scripts/pipeline.py
-from services.policy_proc.scripts.rewriter import rewrite_query
-from services.policy_proc.scripts.config import MESSAGES
-from services.policy_proc.scripts.classifier import classify, should_block
-from services.policy_proc.scripts.retriever import retrieve, is_context_empty
-from services.policy_proc.scripts.generator import generate_stream
-from services.policy_proc.scripts.memory import (
-=======
 from rewriter import rewrite_query
 from config import MESSAGES
 from classifier import classify, should_block
 from retriever import retrieve, is_context_empty
 from generator import generate_stream
 from memory import (
->>>>>>> 0632581 (changes in policy-proc):scripts/pipeline.py
     get_memory_context,
     save_memory,
     create_session,
@@ -80,9 +71,6 @@ def run_pipeline(
     if is_new_chat:
         create_session(user_id, session_id, question)
 
-<<<<<<< HEAD:services/policy_proc/scripts/pipeline.py
-    # Step 1: Classify
-=======
     # Step 1: Read memory context (recent turns + AgentCore)
     try:
         memory_ctx = get_memory_context(user_id, session_id, question)
@@ -94,18 +82,13 @@ def run_pipeline(
         agentcore_ctx = ""
 
     # Step 2: Classify
->>>>>>> 0632581 (changes in policy-proc):scripts/pipeline.py
     try:
         classification = classify(question)
     except Exception as e:
         logger.error(f"Classification failed: {e}")
         classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error"}
 
-<<<<<<< HEAD:services/policy_proc/scripts/pipeline.py
-    # Step 2: Block if needed
-=======
     # Step 3: Block if needed
->>>>>>> 0632581 (changes in policy-proc):scripts/pipeline.py
     blocked, block_message = should_block(classification)
     if blocked:
         logger.info(f"Blocked — {classification['label']}")
@@ -119,17 +102,6 @@ def run_pipeline(
             "session_id":  session_id
         }
 
-<<<<<<< HEAD:services/policy_proc/scripts/pipeline.py
-    # Step 3: Read memory context
-    try:
-        memory_ctx = get_memory_context(user_id, session_id, question)
-        recent_turns  = memory_ctx["recent_turns"]
-        agentcore_ctx = memory_ctx["agentcore_ctx"]
-    except Exception as e:
-        logger.error(f"Memory read failed: {e}")
-        recent_turns  = ""
-        agentcore_ctx = ""
-=======
     # Step 3a: Handle greetings — skip retrieval, generate warm response directly
     if classification.get("label") == "GREETING":
         logger.info("Greeting detected — skipping retrieval, generating direct response")
@@ -156,7 +128,6 @@ def run_pipeline(
             "sources":        [],
             "session_id":     session_id
         }
->>>>>>> 0632581 (changes in policy-proc):scripts/pipeline.py
     
     # Step 3.5: Rewrite query for better retrieval
     try:

@@ -2,10 +2,6 @@
 import boto3
 import json
 import logging
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-
-from services.policy_proc.scripts.config import REGION, KB_ID, NUM_RESULTS, RERANK_TOP, RERANKER_MODEL
-=======
 import os
 import re 
 
@@ -24,18 +20,13 @@ from config import (
 )
 from nova_reranker import rerank_with_nova
 from amazon_reranker import rerank_with_amazon
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
 logger = logging.getLogger(__name__)
 
 bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=REGION)
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-bedrock_runtime       = boto3.client("bedrock-runtime",       region_name=REGION)
-=======
 # Legacy inline Nova reranker used this client. Active reranking now lives in
 # nova_reranker.py and amazon_reranker.py.
 # bedrock_runtime       = boto3.client("bedrock-runtime",       region_name=REGION)
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
 # ── Org doc cache ─────────────────────────────────────────────────────────────
 # Persists for lifetime of FastAPI process.
@@ -43,8 +34,6 @@ bedrock_runtime       = boto3.client("bedrock-runtime",       region_name=REGION
 # Call clear_org_cache() after manual S3 uploads/deletions in production.
 _org_doc_cache: dict[str, bool] = {}
 
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-=======
 def content_score(chunk: dict) -> float:
     """
     Scores a chunk by information density — 0.0 (pure header/footer) to 1.0 (pure content).
@@ -120,7 +109,6 @@ def is_noise_chunk(chunk: dict, threshold: float = 0.25) -> bool:
         logger.info(f"Noise chunk filtered (score={score}) | {src}")
     return score < threshold
 
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
 def clear_org_cache(org_id: str = None):
     """
@@ -221,8 +209,6 @@ def boost_org_chunks(chunks: list, org_id: str) -> list:
     return org_chunks + ndis_chunks
 
 
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-=======
 def chunk_key(chunk: dict) -> str:
     src = chunk.get("location", {}).get("s3Location", {}).get("uri", "")
     text = chunk.get("content", {}).get("text", "")
@@ -294,17 +280,12 @@ def log_rerank_comparison(
         logger.warning(f"Rerank comparison logging failed: {e}")
 
 
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 def rerank(question: str, chunks: list) -> list:
     """
     Uses Nova Micro to rerank chunks by relevance to the question.
     Receives pre-boosted chunks (org chunks already at front).
     Returns reranked list, falls back to original order on error.
     """
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-    if not chunks:
-        return chunks
-=======
     # Legacy compatibility wrapper. The active Nova implementation now lives in
     # nova_reranker.py, so callers should use rerank_with_nova directly.
     return rerank_with_nova(question, chunks)
@@ -315,7 +296,6 @@ def rerank(question: str, chunks: list) -> list:
         return chunks
     
     top_n = min(RERANK_TOP, len(chunks))
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
     chunk_texts = "\n\n".join([
         f"[{i}] {c['content']['text'][:500]}"
@@ -324,11 +304,7 @@ def rerank(question: str, chunks: list) -> list:
 
     prompt = f"""You are a relevance ranker for an NDIS policy assistant.
 
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-Given a question and {len(chunks)} text chunks, return the indices of the {RERANK_TOP} most relevant chunks in order of relevance (most relevant first).
-=======
 Given a question and {len(chunks)} text chunks, return the indices of the {top_n} most relevant chunks in order of relevance (most relevant first).
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
 PRIORITY RULES:
 1. Chunks from organisation-specific policy documents are MORE relevant than general NDIS documents when the question asks about a specific organisation's policy or procedure.
@@ -357,12 +333,8 @@ Chunks:
 
     except Exception as e:
         logger.warning(f"Reranker error: {e} — falling back to original order")
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-        return chunks[:RERANK_TOP]
-=======
         return chunks[:top_n]
     '''
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
 
 def retrieve(question: str, org_id: str = None, role: str = None) -> tuple[list, str, list]:
@@ -407,14 +379,6 @@ def retrieve(question: str, org_id: str = None, role: str = None) -> tuple[list,
 
         all_chunks = response["retrievalResults"]
         logger.info(f"Retrieved {len(all_chunks)} chunks — boosting org chunks...")
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-
-        # Boost org chunks to front before reranking
-        boosted_chunks  = boost_org_chunks(all_chunks, org_id)
-
-        # Rerank boosted list
-        reranked_chunks = rerank(question, boosted_chunks)
-=======
         
         # Filter headers and footers
         content_chunks = [c for c in all_chunks if not is_noise_chunk(c)]
@@ -456,18 +420,11 @@ def retrieve(question: str, org_id: str = None, role: str = None) -> tuple[list,
                 reranked_chunks = rerank_with_nova(question, boosted_chunks)
             else:
                 reranked_chunks = rerank_with_amazon(question, boosted_chunks)
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
         context = "\n\n".join([c["content"]["text"] for c in reranked_chunks])
         sources = [c["location"]["s3Location"]["uri"] for c in reranked_chunks]
 
         # Log reranker position with original Bedrock similarity score
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
-        logger.info(f"Top {len(reranked_chunks)} after reranking:")
-        for i, (src, chunk) in enumerate(zip(sources, reranked_chunks)):
-            orig_score = round(chunk.get("score", 0), 4)
-            logger.info(f"  [{i+1}] OrigScore: {orig_score} | {src.split('/')[-1]}")
-=======
         logger.info(f"Top {len(reranked_chunks)} after reranking with {selected_provider}:")
         for i, (src, chunk) in enumerate(zip(sources, reranked_chunks)):
             orig_score = round(chunk.get("score", 0), 4)
@@ -476,7 +433,6 @@ def retrieve(question: str, org_id: str = None, role: str = None) -> tuple[list,
                 f"  [{i+1}] OrigScore: {orig_score} | "
                 f"AmazonScore: {amazon_score} | {src.split('/')[-1]}"
             )
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
 
         return reranked_chunks, context, sources
 
@@ -498,8 +454,4 @@ if __name__ == "__main__":
         print(f"   Chunks: {len(chunks)}")
         print(f"   Context length: {len(context)} chars")
         print(f"   Sources: {[s.split('/')[-1] for s in sources]}")
-<<<<<<< HEAD:services/policy_proc/scripts/retriever.py
         print(f"   Empty: {is_context_empty(context)}")
-=======
-        print(f"   Empty: {is_context_empty(context)}")
->>>>>>> 0632581 (changes in policy-proc):scripts/retriever.py
