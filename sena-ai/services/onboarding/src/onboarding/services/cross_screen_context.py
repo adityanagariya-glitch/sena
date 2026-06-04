@@ -3,8 +3,10 @@ Cross-screen shared-context — pure module.
 
 A completed step's FormState is distilled into a `StepSummary` that contains
 ONLY a tightly-curated allowlist of high-signal fields (name, DOB, gender,
-goals, hobbies & interests). Everything else — phone, email, addresses,
-plan details, medical history — stays scoped to the step that captured it.
+goals, hobbies & interests, plus the care-critical medical facts primary
+diagnosis, blood type and allergies). Everything else — phone, email,
+addresses, plan details, medications, full medical history — stays scoped to
+the step that captured it.
 
 The previous implementation passed a lossless compressed JSON of every
 non-allowlisted field across steps too. That worked but produced noisy
@@ -37,7 +39,8 @@ from onboarding.models.form_state import FormState
 #:
 #: Adding to this set requires a product decision — every extra field becomes
 #: extra tokens in every subsequent step's system prompt and incrementally
-#: confuses the agent. Five concepts is the deliberate ceiling.
+#: confuses the agent. Kept deliberately small; medical concepts were added
+#: 2026-06-04 by product decision (care-critical recall across screens).
 ALLOWLIST_PATHS: dict[tuple[str, str], str] = {
     ("basics", "full_name"):                "name",
     ("basics", "date_of_birth"):            "dob",
@@ -46,6 +49,14 @@ ALLOWLIST_PATHS: dict[tuple[str, str], str] = {
     ("requirements", "hobbies_interests"):  "hobbies_interests",
     # Repeatable: each ndis_goals row's `goal` is appended to verbatim["goals"].
     ("ndis_goals", "goal"):                 "goals",
+    # Medical concepts (Medical step section `summary` + repeatable `allergies`).
+    # Product decision 2026-06-04: carry the most care-critical facts across
+    # screens so the agent never re-asks them. This intentionally widens the
+    # earlier step-scoped boundary for medical data.
+    ("summary", "primary_diagnosis"):       "diagnosis",
+    ("summary", "blood_type"):              "blood_type",
+    # Repeatable: each allergies row's `title` is appended to verbatim["allergies"].
+    ("allergies", "title"):                 "allergies",
 }
 
 # Cap on how many recent steps render in the prompt block. Keeps the system
@@ -211,4 +222,11 @@ def _format_verbatim(verbatim: dict[str, Any]) -> str:
         value = verbatim["hobbies_interests"]
         rendered = "; ".join(str(v) for v in value) if isinstance(value, list) else str(value)
         parts.append(f"Hobbies & interests: {rendered}")
+    for key, label in (("diagnosis", "Diagnosis"), ("blood_type", "Blood type")):
+        if verbatim.get(key) is not None:
+            parts.append(f"{label}: {verbatim[key]}")
+    if verbatim.get("allergies"):
+        value = verbatim["allergies"]
+        rendered = "; ".join(str(v) for v in value) if isinstance(value, list) else str(value)
+        parts.append(f"Allergies: {rendered}")
     return ".  ".join(parts) + "." if parts else ""
