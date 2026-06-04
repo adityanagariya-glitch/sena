@@ -50,6 +50,12 @@ JWT_SECRET    = os.environ.get("JWT_SECRET", "sena-local-qa-secret-change-in-pro
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL     = 3600  # seconds
 
+# Production ISENA tokens (POST /auth/ai/login) are signed by ISENA with a secret
+# we don't hold. Set ISENA_JWT_SECRET to enable full signature verification once
+# available; otherwise we trust the gateway as the auth boundary and only decode +
+# enforce expiry (same model as the staff service).
+ISENA_JWT_SECRET = os.environ.get("ISENA_JWT_SECRET", "")
+
 USERS_FILE    = os.environ.get("SENA_USERS_FILE",
                     os.path.join(os.path.dirname(__file__), "..", "fake_users.json"))
 
@@ -108,21 +114,69 @@ def _mint_token(user: dict) -> str:
     )
 
 
+def _normalize_isena_claims(claims: dict) -> dict:
+    """Map ISENA's camelCase claims to the shape policy_proc expects.
+
+    ISENA token: {userId, organizationId, role (UUID), email, memberId, roles[...]}
+    policy_proc expects: {user_id, org_id, role}. ISENA `role` is an opaque UUID —
+    admin checks simply won't match it, so an ISENA user defaults to a regular member.
+    """
+    user_id = claims.get("user_id") or claims.get("userId")
+    org_id  = claims.get("org_id")  or claims.get("organizationId")
+    role    = claims.get("role") or claims.get("roleId") or "member"
+    if not user_id or not org_id:
+        raise HTTPException(status_code=401, detail="Token missing user/org identity claims")
+    return {
+        "user_id":   user_id,
+        "org_id":    org_id,
+        "role":      role,
+        "email":     claims.get("email", ""),
+        "full_name": claims.get("full_name") or claims.get("name", ""),
+        "login_id":  claims.get("login_id") or claims.get("email", ""),
+        "member_id": claims.get("memberId"),
+        "_source":   "isena",
+    }
+
+
 def decode_token(authorization: str) -> dict:
+    """Accept BOTH token types:
+
+    1. policy_proc-minted dev/test token — HS256 signed with our JWT_SECRET,
+       already carrying user_id / org_id / role (fully signature-verified).
+    2. production ISENA token (POST /auth/ai/login) — signed by ISENA. Verified
+       with ISENA_JWT_SECRET if configured, else decoded-without-signature (gateway
+       is the trust boundary, like staff) with manual expiry, then claim-normalized.
+    """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
     token = authorization.split(" ", 1)[1]
+
+    # 1. Try as our own minted token (full signature verification).
     try:
         claims = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if claims.get("org_id") and claims.get("user_id") and claims.get("role"):
+            return claims
+        return _normalize_isena_claims(claims)  # verified but not our shape
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        pass  # signature didn't match our secret → likely an ISENA token
+
+    # 2. Treat as a production ISENA token.
+    try:
+        if ISENA_JWT_SECRET:
+            isena = jwt.decode(token, ISENA_JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        else:
+            isena = jwt.decode(token, options={"verify_signature": False})
+            exp = isena.get("exp")
+            if exp and datetime.now(timezone.utc) > datetime.fromtimestamp(exp, tz=timezone.utc):
+                raise HTTPException(status_code=401, detail="Token expired")
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
-    if not claims.get("org_id"):
-        raise HTTPException(status_code=401, detail="Token missing org_id claim")
-    if not claims.get("role"):
-        raise HTTPException(status_code=401, detail="Token missing role claim")
-    return claims
+
+    return _normalize_isena_claims(isena)
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
