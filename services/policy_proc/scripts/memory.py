@@ -4,11 +4,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 
-<<<<<<< HEAD:services/policy_proc/scripts/memory.py
-from services.policy_proc.scripts.config import REGION, MEMORY_ID, SESSIONS_TABLE, TURNS_TABLE
-=======
 from config import REGION, MEMORY_ID, SESSIONS_TABLE, TURNS_TABLE
->>>>>>> 0632581 (changes in policy-proc):scripts/memory.py
 
 logger = logging.getLogger(__name__)
 
