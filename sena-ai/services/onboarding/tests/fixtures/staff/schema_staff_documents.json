@@ -1,0 +1,19 @@
+{
+  "version": "v1",
+  "step_id": "staff_documents",
+  "step_label": "Documents Upload",
+  "progress_percent": 60,
+  "sections": [
+    {
+      "id": "documents",
+      "label": "Required Documents",
+      "fields": [
+        { "id": "{slot_id}.document", "type": "text", "label": "Document", "required": false, "readonly": true },
+        { "id": "{slot_id}.expiry_date", "type": "date", "label": "Expiry Date", "required": false },
+        { "id": "{slot_id}.not_applicable", "type": "boolean", "label": "Not Applicable", "required": false }
+      ]
+    }
+  ],
+  "voice_coverage": [],
+  "voice_repeatable_sections": []
+}

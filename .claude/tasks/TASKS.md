@@ -20,6 +20,19 @@ Session-persistent todos. Survives `/compact` and session resets. Claude reads t
 
 ## Active
 
+### #4 — Staff onboarding voice flow (2026-06-04)
+- **Status:** backend-shipped-pending-flutter (prompt files + reference schemas + handoff + tests done; lint/tests green)
+- **Priority:** P1
+- **What:** Reuse the existing voice engine (tools/bridge/routes/base prompt — all role-agnostic) for staff (support-worker) onboarding. Field source: `staff_onboarding_field_inventory.md` (5 steps). Backend code: ZERO changes — flow is selected purely by `step.id` → `prompts/steps/{step_id}.md`.
+- **step_id contract (Flutter must send these; greenfield — no staff voice schema exists in `lib/core/voice_schemas/` yet):** `staff_personal_information` · `staff_role_information` · `staff_documents` · `staff_banking` · `staff_policies`.
+- **Files added (all additive, zero edits to existing prompts — `git status` on prompts/ = 5 `??` only):**
+  - `prompts/steps/staff_{personal_information,role_information,documents,banking,policies}.md` (CONTEXT OVERRIDE header reframes user as staff, not NDIS participant; base `onboarding_system.md` untouched)
+  - `tests/fixtures/staff/schema_staff_*.json` (5 reference `StepSchema` for Flutter to adapt as inline POST payload)
+  - `STAFF_ONBOARDING_HANDOFF.md` (Flutter contract: step_ids, paths, enums, readonly registry, voice_coverage, policy-ack→`update_field` mapping, silent-fail warning)
+  - `tests/test_staff_prompts.py` (20 tests: files load, no client/NDIS leakage, schemas parse, voice_coverage integrity) — green, ruff clean
+- **Key decisions:** policies acknowledged via existing `update_field(section="policies", field="acknowledged", value=true, repeatable_index=i)` — NO new tool. Tax doc section is dotless `tax_documents` (bridge splits path on first `.`). Flutter remains authoritative validator (Option D).
+- **Next step:** Flutter team implements the 5 staff voice schemas per `STAFF_ONBOARDING_HANDOFF.md`; route backend through `@agent-sena-business-reviewer` + `@agent-sena-security-reviewer` before commit if a review gate is desired.
+
 ### #3 — Centralised AI usage logging for client credit model (2026-05-26)
 - **Status:** plan-drafted-awaiting-task-breaker
 - **Priority:** P1 (client billing dependency; immediate estimates already delivered)

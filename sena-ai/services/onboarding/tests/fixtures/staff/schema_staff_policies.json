@@ -1,0 +1,24 @@
+{
+  "version": "v1",
+  "step_id": "staff_policies",
+  "step_label": "Policies Acknowledgement",
+  "progress_percent": 100,
+  "sections": [
+    {
+      "id": "policies",
+      "label": "Workplace Policies",
+      "item_fields": [
+        { "id": "policy_name", "type": "text", "label": "Policy Name", "required": false, "readonly": true },
+        { "id": "policy_description", "type": "textarea", "label": "Description", "required": false, "readonly": true },
+        { "id": "acknowledged", "type": "boolean", "label": "Acknowledged", "required": true }
+      ],
+      "repeatable": { "min": 0, "max": 100 }
+    }
+  ],
+  "voice_coverage": [
+    "policies.acknowledged"
+  ],
+  "voice_repeatable_sections": [
+    "policies"
+  ]
+}
