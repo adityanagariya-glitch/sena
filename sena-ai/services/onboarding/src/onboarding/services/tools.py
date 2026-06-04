@@ -7,6 +7,7 @@ pure backend side-effect (audit + alert).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -277,6 +278,22 @@ def _preflight_validate(name: str, args: dict[str, Any]) -> str | None:
             args["value"] = (
                 str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)
             )
+        elif isinstance(v, str):
+            # Multi-enum fields: the schema tells the model to send a JSON array
+            # STRING ('["English"]'), but the mobile sink consumes a real List
+            # (`raw is List`) — it does not jsonDecode. Parse the stringified
+            # array into a real list here so the value crosses the bridge in the
+            # shape mobile validates. Scoped to `[...]`-looking strings that
+            # parse to a list; scalars (dates, NDIS numbers, phones, plain enums)
+            # never match and are relayed untouched.
+            stripped = v.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                try:
+                    parsed = json.loads(stripped)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, list):
+                    args["value"] = parsed
     if name == "add_row":
         if not isinstance(args.get("section"), str) or not args.get("section"):
             return "section must be a non-empty string for add_row."

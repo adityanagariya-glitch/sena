@@ -4,7 +4,12 @@ from typing import Any
 
 import pytest
 
-from onboarding.services.tools import _KNOWN_TOOLS, FUNCTION_DECLS, ToolDispatcher
+from onboarding.services.tools import (
+    _KNOWN_TOOLS,
+    FUNCTION_DECLS,
+    ToolDispatcher,
+    _preflight_validate,
+)
 
 
 class _FakeBridge:
@@ -132,3 +137,48 @@ def test_set_turn_id_stores_value() -> None:
     disp = ToolDispatcher(bridge=bridge)
     disp.set_turn_id(42)
     assert disp._turn_id == 42
+
+
+# ── update_field multi-enum value coercion ─────────────────────────────────────
+# The model is told to send multi-enums as a JSON array STRING ('["English"]'),
+# but the mobile sink consumes a real List (`raw is List`). _preflight_validate
+# parses the stringified array into a real list before it crosses the bridge.
+
+
+def test_preflight_parses_stringified_multi_enum_array_to_list() -> None:
+    args = {"section": "basics", "field": "preferred_languages", "value": '["English"]'}
+    assert _preflight_validate("update_field", args) is None
+    assert args["value"] == ["English"]
+
+
+def test_preflight_parses_multi_value_array() -> None:
+    args = {
+        "section": "basics",
+        "field": "preferred_languages",
+        "value": '["English", "Mandarin"]',
+    }
+    assert _preflight_validate("update_field", args) is None
+    assert args["value"] == ["English", "Mandarin"]
+
+
+def test_preflight_passes_real_list_through_untouched() -> None:
+    # If the model ever sends a native array, it must survive unchanged.
+    args = {"section": "basics", "field": "preferred_languages", "value": ["English"]}
+    assert _preflight_validate("update_field", args) is None
+    assert args["value"] == ["English"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "English",  # scalar enum
+        "1995-06-08",  # date
+        "309362545",  # NDIS number as digit-string
+        "+61412345678",  # phone
+        "[unquoted]",  # not valid JSON → left as-is
+    ],
+)
+def test_preflight_leaves_scalar_strings_untouched(value: str) -> None:
+    args = {"section": "basics", "field": "x", "value": value}
+    assert _preflight_validate("update_field", args) is None
+    assert args["value"] == value
