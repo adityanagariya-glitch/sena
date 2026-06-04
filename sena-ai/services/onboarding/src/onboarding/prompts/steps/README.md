@@ -1,12 +1,21 @@
 # Per-step prompt fragments
 
-Each file in this folder is loaded by `prompt_builder.build_system_prompt`
-when `turn.step.id` matches the filename (e.g. `personal_information.md`
-loads when `step.id == "personal_information"`).
+Step files are grouped by flow into subfolders (`client/`, `staff/`, …). Each
+file is loaded by `prompt_builder.build_system_prompt` when `turn.step.id`
+matches the filename — the loader searches **recursively** under this folder, so
+the subfolder is for human organisation only (e.g.
+`client/personal_information.md` loads when `step.id == "personal_information"`;
+`staff/staff_personal_information.md` loads when
+`step.id == "staff_personal_information"`).
 
-Missing file → no step-specific rules. Add a new file to add rules for
-that step. Edit one file to change one step's behaviour — the base
-prompt (`../onboarding_system.md`) stays generic and step-agnostic.
+**The filename must equal the step_id and be globally unique across all
+subfolders** — the loader resolves `{step_id}.md` from anywhere under `steps/`.
+Adding a new onboarding flow = add a `steps/<flow>/` subfolder with its step
+files; the loader needs no change.
+
+Missing file → no step-specific rules. Edit one file to change one step's
+behaviour — the base prompt (`../onboarding_system.md`) stays generic and
+step-agnostic.
 
 Keep each fragment focused on behaviour that is unique to that step:
 - Per-step submission cadence (e.g. "submit_step on 'next' / 'save'")

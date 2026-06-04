@@ -11,7 +11,8 @@ placeholders into a fixed template:
   __TURN_JSON__               — bootstrap state (header-only when tool state
                                  channel enabled; full TurnPayload when flag off)
 
-Per-step rules live in `prompts/steps/{step_id}.md`. Mode rules live in
+Per-step rules live in `prompts/steps/<flow>/{step_id}.md` (grouped by flow —
+e.g. steps/client/, steps/staff/). Mode rules live in
 `prompts/modes/{fresh,update}.md`. Edit one file per step/mode. Missing file =
 empty section. The base template stays free of step- or mode-specific logic.
 """
@@ -71,13 +72,20 @@ def _grounding_section(enabled: bool) -> str:
 
 
 def _step_rules_section(step_id: str) -> str:
-    """Load `prompts/steps/{step_id}.md` if present, else empty."""
+    """Load the `{step_id}.md` step fragment from anywhere under prompts/steps/.
+
+    Step files are grouped into per-flow subfolders (steps/client/, steps/staff/,
+    …). step_id is globally unique (e.g. `personal_information` vs
+    `staff_personal_information`), so a recursive search resolves to exactly one
+    file regardless of which subfolder holds it. New flows add a subfolder; this
+    loader needs no change. Missing file → empty section.
+    """
     if not step_id:
         return ""
-    fragment_path = _STEPS_DIR / f"{step_id}.md"
-    if not fragment_path.is_file():
+    matches = sorted(_STEPS_DIR.rglob(f"{step_id}.md"))
+    if not matches:
         return ""
-    body = fragment_path.read_text(encoding="utf-8").strip()
+    body = matches[0].read_text(encoding="utf-8").strip()
     if not body:
         return ""
     return f"\n{body}\n"
