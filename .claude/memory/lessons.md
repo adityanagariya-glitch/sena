@@ -66,6 +66,27 @@ If a correction is purely technical (a bug fix recipe), it goes to `issues-solve
 - **Scope:** parallel agent spawning where the spawned agents will edit `.py` files.
 - **Occurrences:** 1.
 
+### 2026-06-03 — Edited prompts to fix value-rejections whose real source was the downstream validator
+- **Failure pattern:** AU phone values were being rejected, so I rewrote `personal_information.md` to "send the 9 digits, drop +61" — inferring the format from the user's verbal description + the error text. The Flutter validator (`lib/core/utils/validators/base_validators.dart`, regex `^(?:\+61[2-478]\d{8}|0[2-478]\d{8}|…)$`) actually REQUIRES the `+61` prefix, so every send still failed and I had to revert. Same shape recurred on consent: I edited `consent.md` repeatedly to fix a submit deadlock whose real gate was Flutter's `submitConsent()` (`hasGivenWrittenConsent==true`, on a screen-only next page) — a prompt can't satisfy a client-side gate.
+- **User correction:** *"its still not working"* (after the phone edit) + pasted logs showing the reject loop continuing; and earlier *"the frontend code is the source of truth."*
+- **Rule:** When a tool call or field value is REJECTED, FIRST locate and read the authoritative validator that produced the rejection (Flutter `base_validators.dart`, onboarding `services/validators/field_rules.py`, or the Option-D Flutter controller/sink) and match the prompt to its EXACT contract — never infer the accepted format from the user's words or the error string. If two prompt edits don't change the rejection, STOP editing the prompt: the gate is downstream (mobile owns validation in Option D) and a prompt cannot fix it — surface that and write a Flutter handoff instead.
+- **Scope:** onboarding voice prompts; any "value/submit rejected" symptom in an Option-D (mobile-validates) architecture.
+- **Occurrences:** 1 (this session — ~3 internal instances: phone format, consent namespace, consent submit deadlock).
+
+### 2026-06-03 — Put screen-specific rules in the global system prompt
+- **Failure pattern:** Fixing the phone + date-format issues (both specific to the personal_information step), I added the field-specific format rules into the GLOBAL `onboarding_system.md`. That bloats the always-loaded prompt and leaks one screen's quirks into every step.
+- **User correction:** *"dont conjust the system prompt with this kind of issues … the thing related to specific screen should be exactly in that screen prompt, any general rules should be in global."*
+- **Rule:** Screen/field-specific prompt rules go in that step's file (`prompts/steps/<step>.md`); only cross-screen BEHAVIOUR (convert-don't-reject, source-of-truth, voice etiquette) belongs in `onboarding_system.md`. Before adding to the global prompt, ask "does this apply to every step?" — if no, it goes in the step file.
+- **Scope:** onboarding prompt edits (`prompts/onboarding_system.md` vs `prompts/steps/*.md`).
+- **Occurrences:** 1.
+
+### 2026-06-03 — Prompt let the agent claim an outcome it never verified (false "submitted")
+- **Failure pattern:** My `consent.md` submit rewrite told the agent, on an empty `{ok:false}` rejection, to say *"All set — I've brought up your final review screen."* The submit had actually been REJECTED; the agent asserted a success/navigation that never happened, and the model over-applied that optimistic line even on failure.
+- **User correction:** *"its still not working"* + logs showing the agent repeatedly claiming the review screen was up while submit kept failing.
+- **Rule:** Never write a prompt branch that lets the agent assert an outcome (saved / advanced / submitted / "screen is up") it cannot verify from the tool reply. A `{ok:false}` — especially with an empty reason — means it did NOT happen: the branch must state uncertainty or direct an on-screen action, never claim success. Use an explicit NEGATIVE instruction ("do NOT say it was submitted / that a screen appeared") — models over-apply reassuring phrasing unless forbidden.
+- **Scope:** any prompt branch handling tool-call success/failure; especially submit/advance on Option-D rejections.
+- **Occurrences:** 1.
+
 ---
 
 ## Promotion to CLAUDE.md (user authorised this session)

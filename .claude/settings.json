@@ -118,13 +118,6 @@
                            ]
               },
     "mcpServers":  {
-                       "sigmap":  {
-                                      "command":  "node",
-                                      "args":  [
-                                                   "C:\\Users\\Admin\\AppData\\Roaming\\npm\\node_modules\\sigmap\\gen-context.js",
-                                                   "--mcp"
-                                               ]
-                                  },
                        "code-review-graph":  {
                                                  "command":  "C:\\Users\\Admin\\Downloads\\SENA\\.venv\\Scripts\\code-review-graph.exe",
                                                  "args":  [
