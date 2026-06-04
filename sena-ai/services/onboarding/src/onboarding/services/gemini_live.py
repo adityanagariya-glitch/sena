@@ -96,6 +96,27 @@ log = structlog.get_logger(__name__)
 
 _SILENCE_POLL_SEC = 2.0  # silence monitor check interval
 
+#: Exception class names that mean "the client/WS went away" rather than a
+#: server fault. The Flutter client dropping the WS (mobile network, app
+#: backgrounded) surfaces as one of these across the starlette / uvicorn /
+#: websockets stack. We log them at info, never as a noisy traceback.
+_DISCONNECT_EXC_NAMES = frozenset(
+    {
+        "WebSocketDisconnect",
+        "ClientDisconnected",
+        "ConnectionClosed",
+        "ConnectionClosedOK",
+        "ConnectionClosedError",
+    }
+)
+
+
+def _is_client_disconnect(exc: BaseException) -> bool:
+    """True when `exc` is a normal client/WS teardown, not a server fault."""
+    if type(exc).__name__ in _DISCONNECT_EXC_NAMES:
+        return True
+    return isinstance(exc, RuntimeError) and "close message has been sent" in str(exc)
+
 
 class GeminiLiveSession:
     """
@@ -311,6 +332,17 @@ class GeminiLiveSession:
             if self._initial_state_text:
                 await session.send_realtime_input(text=self._initial_state_text)
                 log.info("initial_state_seeded session=%s", self._session_id)
+            else:
+                # gemini-3.1-flash-live-preview does NOT speak proactively, so
+                # without a kickoff turn the agent stays silent until the
+                # participant speaks first. When there's no bootstrap state to
+                # seed, still inject a minimal opener cue so the agent ALWAYS
+                # greets at screen open.
+                await session.send_realtime_input(
+                    text="[BEGIN] Greet the participant warmly per your system "
+                    "prompt and ask the first required field."
+                )
+                log.info("kickoff_greeting_injected session=%s", self._session_id)
             self._last_audio_at = time.monotonic()
             # Hard cap on the kickoff shield: if the opener never produces a
             # turn_complete (e.g. silent / model stalls), lift the shield after
@@ -652,12 +684,19 @@ class GeminiLiveSession:
         if state_v2.field_errors:
             state_fv = await self._repo.get_state(self._session_id)
             if state_fv is not None:
+                existing_keys = {
+                    (e.get("section_id"), e.get("field_id"), e.get("repeatable_index"))
+                    for e in state_fv.pending_validation_errors
+                }
+                newly_rejected: list[str] = []
                 for dotted_path, reason_human in state_v2.field_errors.items():
                     parts = dotted_path.split(".", 1)
                     if len(parts) != 2:
                         continue
                     sec, fld = parts
                     key = (sec, fld, None)
+                    if key not in existing_keys:
+                        newly_rejected.append(reason_human)
                     state_fv.pending_validation_errors = [
                         e
                         for e in state_fv.pending_validation_errors
@@ -678,6 +717,25 @@ class GeminiLiveSession:
                         }
                     )
                 await self._repo.save_state(state_fv, ttl_sec=settings.session_max_sec)
+                # Parity with _handle_validation_failed: a screen-originated
+                # validation error must be SPOKEN, not just stored — otherwise the
+                # participant sees a rejected field the agent never mentions. Only
+                # cue NEWLY-appearing errors so repeated screen_states don't nag.
+                if newly_rejected:
+                    await session.send_realtime_input(audio_stream_end=True)
+                    await session.send_realtime_input(
+                        text=(
+                            "[SCREEN VALIDATION] The screen rejected: "
+                            + "; ".join(newly_rejected[:3])
+                            + " — tell the participant in plain words and re-ask "
+                            "for a corrected value (Rule 7)."
+                        )
+                    )
+                    log.info(
+                        "screen_state_validation_injected session=%s count=%d",
+                        self._session_id,
+                        len(newly_rejected),
+                    )
 
         if settings.debug:
             await self._ws.send_text(
@@ -1082,8 +1140,11 @@ class GeminiLiveSession:
 
         except (WebSocketDisconnect, asyncio.CancelledError):
             pass
-        except Exception:
-            log.exception("g2b_error session=%s", self._session_id)
+        except Exception as exc:
+            if _is_client_disconnect(exc):
+                log.info("g2b_client_disconnected session=%s", self._session_id)
+            else:
+                log.exception("g2b_error session=%s", self._session_id)
 
     # ── Private: silence monitor ──────────────────────────────────────────────
 
@@ -1225,7 +1286,16 @@ class GeminiLiveSession:
             args_dict = dict(call.args) if call.args else {}
             try:
                 result = await self._tools.dispatch(call.name, args_dict)
-            except Exception:
+            except Exception as exc:
+                if _is_client_disconnect(exc):
+                    # Client WS dropped mid-dispatch — abort the batch quietly;
+                    # the b2g/g2b loops handle teardown. No traceback.
+                    log.info(
+                        "tool_dispatch_client_disconnected tool=%s session=%s",
+                        call.name,
+                        self._session_id,
+                    )
+                    return
                 log.exception(
                     "tool_dispatch_error tool=%s session=%s",
                     call.name,
