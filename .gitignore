@@ -81,3 +81,4 @@ sena-ai/
 .kiro/
 .qoder/
 *.log
+services/policy_proc/logs/
