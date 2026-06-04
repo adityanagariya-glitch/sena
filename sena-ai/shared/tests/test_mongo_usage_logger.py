@@ -136,3 +136,65 @@ def test_uri_unset_is_latched(monkeypatch) -> None:
     monkeypatch.delenv("SENA_AI_MONGO_USAGE_URI", raising=False)
     assert mod._get_collection() is None
     assert mod._init_attempted is True  # deterministic disable → stays latched
+
+
+# ── split_mongo_credentials (email-username / special-char escaping) ───────────
+# pymongo does not escape creds embedded in the URI; an email username's '@' or a
+# reserved char in the password raises InvalidURI. We strip + pass as kwargs.
+
+
+def test_split_credentials_email_username() -> None:
+    uri = "mongodb+srv://user@mail.com:p4ss@cluster0.abc.mongodb.net/?appName=X"
+    stripped, user, pwd = mod.split_mongo_credentials(uri)
+    assert stripped == "mongodb+srv://cluster0.abc.mongodb.net/?appName=X"
+    assert user == "user@mail.com"
+    assert pwd == "p4ss"
+
+
+def test_split_credentials_decodes_existing_encoding() -> None:
+    # Already-escaped URI → decode back to raw so kwargs aren't double-encoded.
+    stripped, user, pwd = mod.split_mongo_credentials(
+        "mongodb+srv://user%40mail.com:p%40ss@host.net/"
+    )
+    assert stripped == "mongodb+srv://host.net/"
+    assert user == "user@mail.com"
+    assert pwd == "p@ss"
+
+
+def test_split_credentials_password_with_at_uses_last_at() -> None:
+    stripped, user, pwd = mod.split_mongo_credentials(
+        "mongodb+srv://user@mail.com:p@ss@host.net/"
+    )
+    assert stripped == "mongodb+srv://host.net/"
+    assert user == "user@mail.com"
+    assert pwd == "p@ss"
+
+
+def test_split_credentials_no_userinfo_unchanged() -> None:
+    uri = "mongodb+srv://cluster0.abc.mongodb.net/?appName=X"
+    assert mod.split_mongo_credentials(uri) == (uri, None, None)
+
+
+def test_split_credentials_non_mongo_unchanged() -> None:
+    assert mod.split_mongo_credentials("postgres://u:p@h/db") == ("postgres://u:p@h/db", None, None)
+
+
+def test_get_collection_passes_email_credentials_as_kwargs(monkeypatch) -> None:
+    _reset(monkeypatch)
+    monkeypatch.setenv(
+        "SENA_AI_MONGO_USAGE_URI",
+        "mongodb+srv://user@mail.com:p4ss@cluster0.abc.mongodb.net/?appName=X",
+    )
+    captured: dict = {}
+    coll = _FakeColl()
+
+    def fake_client(uri: str, **kwargs: object) -> _FakeClient:
+        captured["uri"] = uri
+        captured["kwargs"] = kwargs
+        return _FakeClient(coll)
+
+    monkeypatch.setattr(mod, "MongoClient", fake_client)
+    assert mod._get_collection() is coll
+    assert captured["uri"] == "mongodb+srv://cluster0.abc.mongodb.net/?appName=X"
+    assert captured["kwargs"]["username"] == "user@mail.com"
+    assert captured["kwargs"]["password"] == "p4ss"

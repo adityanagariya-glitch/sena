@@ -44,6 +44,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import structlog
 
@@ -84,6 +85,39 @@ def _load_env_file_fallback() -> None:
                 os.environ[key] = value.strip().strip('"').strip("'")
 
 
+def split_mongo_credentials(uri: str) -> tuple[str, str | None, str | None]:
+    """Strip embedded credentials from a mongodb URI for MongoClient kwargs.
+
+    pymongo does NOT escape credentials embedded in the URI string, so a
+    username containing '@' (an email login) or a password with reserved
+    characters (`@ : / ? # [ ]`) raises InvalidURI / fails auth. Passing the
+    raw values as `MongoClient(username=, password=)` kwargs lets pymongo escape
+    them correctly. Idempotent: existing percent-encoding is decoded via
+    `unquote`, so both raw and already-escaped URIs work.
+
+    Returns (uri_without_credentials, username, password). A URI with no embedded
+    userinfo (or a non-mongodb string) is returned unchanged with (None, None).
+    """
+    scheme = next((s for s in ("mongodb+srv://", "mongodb://") if uri.startswith(s)), None)
+    if scheme is None:
+        return uri, None, None
+    rest = uri[len(scheme) :]
+    # Authority ends at the first '/' or '?'. userinfo is whatever precedes the
+    # LAST '@' inside it — the host has no '@', but an email username does.
+    cands = [i for i in (rest.find("/"), rest.find("?")) if i != -1]
+    cut = min(cands) if cands else len(rest)
+    authority, tail = rest[:cut], rest[cut:]
+    if "@" not in authority:
+        return uri, None, None
+    userinfo, _, hostpart = authority.rpartition("@")
+    if not userinfo:
+        return uri, None, None
+    raw_user, sep, raw_pwd = userinfo.partition(":")
+    username = unquote(raw_user) or None
+    password = unquote(raw_pwd) if sep else None
+    return f"{scheme}{hostpart}{tail}", username, password
+
+
 def _get_collection() -> Any:
     """Lazily create the pooled client + collection.
 
@@ -114,7 +148,13 @@ def _get_collection() -> Any:
     try:
         db_name = os.environ.get("SENA_AI_MONGO_USAGE_DB", "keval_app")
         coll_name = os.environ.get("SENA_AI_MONGO_USAGE_COLL", "usage_logs")
-        client = MongoClient(uri, server_api=ServerApi("1"))
+        stripped_uri, mongo_user, mongo_pwd = split_mongo_credentials(uri)
+        client_kwargs: dict[str, Any] = {"server_api": ServerApi("1")}
+        if mongo_user is not None:
+            client_kwargs["username"] = mongo_user
+        if mongo_pwd is not None:
+            client_kwargs["password"] = mongo_pwd
+        client = MongoClient(stripped_uri, **client_kwargs)
         coll = client[db_name][coll_name]
         # The "user" index is a query optimisation, NOT a write prerequisite.
         # MongoClient is lazy, so create_index is the first real server command

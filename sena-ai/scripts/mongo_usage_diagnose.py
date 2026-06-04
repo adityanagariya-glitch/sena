@@ -14,6 +14,7 @@ import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 _HINTS = {
     "OperationFailure": (
@@ -79,12 +80,21 @@ def main() -> int:
     try:
         from pymongo import MongoClient
         from pymongo.server_api import ServerApi
+
+        from sena_common.mongo_usage_logger import split_mongo_credentials
     except ImportError:
-        print("FAIL: pymongo not installed in this interpreter — pip install pymongo")
+        print("FAIL: pymongo / sena_common not importable here.")
+        print("Fix: pip install pymongo ; pip install -e shared")
         return 3
 
     try:
-        client = MongoClient(uri, server_api=ServerApi("1"), serverSelectionTimeoutMS=12000)
+        stripped_uri, mongo_user, mongo_pwd = split_mongo_credentials(uri)
+        kwargs: dict[str, Any] = {"server_api": ServerApi("1"), "serverSelectionTimeoutMS": 12000}
+        if mongo_user is not None:
+            kwargs["username"] = mongo_user
+        if mongo_pwd is not None:
+            kwargs["password"] = mongo_pwd
+        client = MongoClient(stripped_uri, **kwargs)
         print(f"ping: {client.admin.command('ping')}")
         db = client[os.environ.get("SENA_AI_MONGO_USAGE_DB", "keval_app")]
         coll = db[os.environ.get("SENA_AI_MONGO_USAGE_COLL", "usage_logs")]
