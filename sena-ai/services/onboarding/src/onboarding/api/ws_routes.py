@@ -176,7 +176,9 @@ async def onboarding_ws(
             voice_coverage=(schema.voice_coverage if schema and schema.voice_coverage else None),
         )
 
-        mobile_bridge = MobileBridge(websocket, timeout_sec=5.0)
+        mobile_bridge = MobileBridge(
+            websocket, timeout_sec=settings.onboarding_mobile_bridge_timeout_sec
+        )
 
         def _on_incident(args: dict[str, object]) -> None:
             log.warning("incident_escalated", session_id=session_id, **args)

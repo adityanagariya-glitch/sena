@@ -78,6 +78,12 @@ class OnboardingSettings(BaseSettings):
     # SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC — seconds of user silence before
     # Gemini is prompted to check in ("are you still there?"). 0 = disabled.
     onboarding_silence_timeout_sec: int = 8
+    # SENA_AI_ONBOARDING_MOBILE_BRIDGE_TIMEOUT_SEC — how long the backend waits
+    # for the Flutter client to answer a tool_request (update_field, etc.)
+    # before returning a mobile_timeout rejection. Mobile links are laggy and
+    # the round-trip includes Flutter-side validation; 5s caused false
+    # mobile_bridge_timeout on legitimate update_field calls. 12s default.
+    onboarding_mobile_bridge_timeout_sec: float = 12.0
     # SENA_AI_VOICE_COVERAGE_ENFORCED — reject field_apply for out-of-coverage fields
     voice_coverage_enforced: bool = True
     # SENA_AI_ONBOARDING_VOICE_VALIDATION_ADVISORY — when True the voice path
