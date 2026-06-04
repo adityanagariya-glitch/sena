@@ -138,6 +138,11 @@ def _get_collection() -> Any:
         _init_attempted = True
         _log.warning("mongo_usage_disabled", reason="pymongo_not_installed")
         return None
+    # A stale `export`/`$env:` in the launching shell sets this in the process
+    # env, which WINS over .env — silently shadowing a corrected .env file and
+    # surfacing only as an opaque "bad auth". Track the source so the log below
+    # makes that misconfig self-evident.
+    uri_from_process_env = bool(os.environ.get("SENA_AI_MONGO_USAGE_URI"))
     _load_env_file_fallback()
     uri = os.environ.get("SENA_AI_MONGO_USAGE_URI")
     if not uri:
@@ -149,6 +154,15 @@ def _get_collection() -> Any:
         db_name = os.environ.get("SENA_AI_MONGO_USAGE_DB", "keval_app")
         coll_name = os.environ.get("SENA_AI_MONGO_USAGE_COLL", "usage_logs")
         stripped_uri, mongo_user, mongo_pwd = split_mongo_credentials(uri)
+        # Surface WHERE the URI came from + WHICH username (never the password).
+        # `source=process_env user=<old>` next to a "bad auth" instantly tells the
+        # operator a stale shell env is shadowing .env.
+        _log.info(
+            "mongo_usage_uri_resolved",
+            source="process_env" if uri_from_process_env else "dotenv_fallback",
+            user=mongo_user,
+            db=db_name,
+        )
         client_kwargs: dict[str, Any] = {"server_api": ServerApi("1")}
         if mongo_user is not None:
             client_kwargs["username"] = mongo_user
