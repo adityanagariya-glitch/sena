@@ -1,3 +1,4 @@
+venv/
 .env
 .pytest_cache/
 __pycache__/
@@ -38,8 +39,6 @@ Thumbs.db
 htmlcov/
 .mypy_cache/
 
-sena-ai/
-
 # Alembic
 migrations/versions/*.pyc
 
@@ -70,6 +69,7 @@ graphify-out/
 .remember
 *.md
 *.txt
+sena-ai/
 !requirements.txt
 .claudeignore
 .code-review-graphignore
@@ -78,8 +78,6 @@ graphify-out/
 .windsurfrules
 .opencode.json
 .qoder/mcp.json
-*.log
-
-servicesai_chatbot/templates/shell.html
 .kiro/
 .qoder/
+*.log
