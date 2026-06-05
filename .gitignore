@@ -65,3 +65,6 @@ nul
 AI_logs.txt
 graphify-out/cache/
 CLAUDE.local.md
+.github/context-cold.md
+.github/copilot-instructions.md
+CLAUDE.md
