@@ -1,0 +1,4145 @@
+[
+  {
+    "method": "GET",
+    "path": "/super-admin/get-profile",
+    "description": "Get Super Admin profile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Super Admin profile fetched successfully",
+      "data": {
+        "id": "e3f11332-74dc-4d3c-aa28-c0f7ef3cf221",
+        "name": "Admin User",
+        "email": "admin@example.com",
+        "phone": "+91 9876543210",
+        "profileImage": "https://s3.amazonaws.com/bucket/profile.png",
+        "createdAt": "2025-01-12T10:20:30.000Z",
+        "updatedAt": "2025-11-06T12:28:21.000Z"
+      },
+      "timestamp": "string"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/user-type/{id}",
+    "description": "Get user type by ID",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "ID of the user type"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get user type by ID successful",
+      "data": {
+        "message": "User type retrieved successfully",
+        "data": {
+          "id": "09b5ec0c-76fa-42a0-b5b6-56d9e096bb47",
+          "createdAt": "2025-10-28T11:49:55.948Z",
+          "updatedAt": "2025-10-28T11:49:55.948Z",
+          "deletedAt": null,
+          "type": "superAdmin"
+        }
+      },
+      "timestamp": "2025-10-28T11:53:08.865Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/role/get-organizaiton-roles/{id}",
+    "description": "Get all roles for a specific organization",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "ID of the organization"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get all roles for organization successful",
+      "data": {
+        "roles": [
+          {
+            "id": "44fc3f32-5923-4573-80b4-f2ce9b5f097d",
+            "createdAt": "2025-11-19T08:40:40.675Z",
+            "updatedAt": "2025-11-19T08:56:26.852Z",
+            "deletedAt": null,
+            "name": "Manager1",
+            "isSystemRole": false
+          }
+        ]
+      },
+      "timestamp": "2025-11-20T08:03:19.540Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/role/{id}",
+    "description": "Get role by ID",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "The ID of the role to retrieve"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get role by ID successful",
+      "data": {
+        "role": {
+          "id": "44fc3f32-5923-4573-80b4-f2ce9b5f097d",
+          "createdAt": "2025-11-19T08:40:40.675Z",
+          "updatedAt": "2025-11-19T08:56:26.852Z",
+          "deletedAt": null,
+          "name": "Manager1",
+          "isSystemRole": false
+        }
+      },
+      "timestamp": "2025-11-20T08:06:41.472Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/view-profile",
+    "description": "View logged-in organization member profile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Organization Member By ID successful",
+      "data": {
+        "member": {
+          "id": "23329ad2-bdec-416d-87f8-892fd2b5e9c0",
+          "createdAt": "2025-11-13T08:18:08.286Z",
+          "updatedAt": "2025-11-14T04:51:39.171Z",
+          "deletedAt": null,
+          "organization": {
+            "id": "4075d838-2e2a-4031-bb53-e76b4c4a2a14",
+            "createdAt": "2025-11-13T08:18:08.256Z",
+            "updatedAt": "2025-11-14T07:56:01.478Z",
+            "deletedAt": null,
+            "businessName": "a",
+            "tradingName": "BrightCare",
+            "abnNumber": "98765432109",
+            "ndisRegistrationNumber": "123456789",
+            "businessEmail": "meet.trivedi@techeniac.com",
+            "businessPhone": "+61 400 789 451",
+            "headOfficeAddress": "45 George Street, Parramatta NSW 2150",
+            "operatingStates": [
+              "NSW",
+              "VIC",
+              "QLD"
+            ],
+            "website": "https://www.brightcare.com.au",
+            "coreSupports": [
+              "Assistance with Daily Life",
+              "Household Tasks",
+              "Transport Services"
+            ],
+            "accommodationAndSpecialistSupport": [
+              "Supported Independent Living",
+              "Short Term Accommodation"
+            ],
+            "capacityBuilding": [
+              "Therapeutic Supports",
+              "Community Participation",
+              "Employment Related Assessment"
+            ],
+            "subscription_id": null,
+            "policyType": null,
+            "policyNumber": null,
+            "coverageAmount": null,
+            "expiryDate": null,
+            "certificateOfCurrency": null,
+            "status": "rectification_requested",
+            "remarks": null
+          },
+          "user": {
+            "id": "c601118f-4e1c-40c4-9fae-43ab928fdb6f",
+            "createdAt": "2025-11-13T08:18:08.229Z",
+            "updatedAt": "2025-11-13T08:18:08.229Z",
+            "deletedAt": null,
+            "email": "test4@gmail.com",
+            "status": "pending"
+          },
+          "type": "owner",
+          "fullName": "John Doe",
+          "preferredName": null,
+          "dateOfBirth": "1995-08-21",
+          "gender": null,
+          "phone": "9876543210",
+          "address": "123 Example Street, Mumbai",
+          "department": null,
+          "dateOfJoining": null,
+          "roleId": null,
+          "culturalBackground": null,
+          "languagesSpoken": null,
+          "interpreterRequired": false,
+          "role": "member",
+          "verificationMethod": null,
+          "accessLevel": null,
+          "link": null,
+          "linkExpiry": null,
+          "isSingleUseLink": false,
+          "documents": null,
+          "status": "pending"
+        },
+        "email": "test4@gmail.com"
+      },
+      "timestamp": "2025-11-14T08:01:45.108Z"
+    }
+  },
+  {
+    "path": "/organization/member/members-list",
+    "error": "Not found"
+  },
+  {
+    "method": "GET",
+    "path": "/sena-admin-role/get-all-sena-admin-roles",
+    "description": "Get all Sena Admin Roles",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by role name"
+      },
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page"
+      },
+      {
+        "name": "sortByName",
+        "type": "string",
+        "required": false,
+        "description": "Sort by role name (a = ascending, d = descending)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All Sena Admin Roles successful",
+      "data": {
+        "data": [
+          {
+            "id": "970c6be1-1a3f-4f46-929f-c3845048f48e",
+            "createdAt": "2026-02-19T10:13:41.207Z",
+            "updatedAt": "2026-02-19T10:27:40.030Z",
+            "deletedAt": null,
+            "name": "support_staff",
+            "description": null,
+            "isSystemRole": false,
+            "roleType": "senaAdminRole"
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 1,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2026-02-19T10:36:20.367Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/sena-admin-role/role-permissions/{roleId}",
+    "description": "Get permissions by role ID",
+    "parameters": [
+      {
+        "name": "roleId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Role ID"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Page number"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records per page"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Role Permissions successful",
+      "data": {
+        "data": [
+          {
+            "id": "5e8c1a4b-e5bb-4939-b1f1-4be19bacd2a2",
+            "createdAt": "2026-01-20T10:01:01.145Z",
+            "updatedAt": "2026-01-20T10:01:01.145Z",
+            "deletedAt": null,
+            "resource": "leave",
+            "action": "approve"
+          },
+          {
+            "id": "2602c172-740c-45fd-9235-a0192000903d",
+            "createdAt": "2026-01-20T10:01:01.145Z",
+            "updatedAt": "2026-01-20T10:01:01.145Z",
+            "deletedAt": null,
+            "resource": "leave",
+            "action": "reject"
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 2,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2026-01-20T12:00:26.087Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/staff/get-all-staff-members",
+    "description": "Get all staff members of the organization (no pagination)",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Filter staff by name (case-insensitive)."
+      },
+      {
+        "name": "staffType",
+        "type": "string",
+        "required": false,
+        "description": "Filter by staff type. Omit to return all staff. - in_office \u2014 only in-office staff - support_worker \u2014 only support workers"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All Members successful",
+      "data": [
+        {
+          "id": "2fffcc1b-bf5b-44a3-877d-675f72a9ce7e",
+          "fullName": "Dustin Mckee",
+          "profilePictureUrl": null
+        },
+        {
+          "id": "9d8b85c1-cbc4-42dd-9247-f4b17084b524",
+          "fullName": "Talon Jennings",
+          "profilePictureUrl": null
+        },
+        {
+          "id": "36a36413-1bf5-48ea-9770-2e3aab5b09b5",
+          "fullName": "Martena Oneill",
+          "profilePictureUrl": null
+        },
+        {
+          "id": "61a7a9df-e27a-4d2b-8357-403c2f1497f9",
+          "fullName": "Denton Hays",
+          "profilePictureUrl": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/.../image.jpg"
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/details",
+    "description": "Get staff details for the logged-in user",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Staff Details successful",
+      "data": {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "createdAt": "2026-05-15T04:46:48.398Z",
+        "updatedAt": "2026-05-15T04:46:48.398Z",
+        "deletedAt": "2026-05-15T04:46:48.398Z",
+        "user": {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "createdAt": "2026-05-15T04:46:48.398Z",
+          "updatedAt": "2026-05-15T04:46:48.398Z",
+          "deletedAt": "2026-05-15T04:46:48.398Z",
+          "email": "user@example.com",
+          "status": "pending"
+        },
+        "type": "member",
+        "staffType": "support_worker",
+        "comment": "string",
+        "fullName": "John Kat",
+        "preferredName": "John",
+        "dateOfBirth": "2026-05-15",
+        "gender": "Male",
+        "phone": "+1234567890",
+        "address": "string",
+        "city": "string",
+        "state": "string",
+        "zipCode": 90001,
+        "dateOfJoining": "2026-05-15",
+        "culturalBackground": "string",
+        "languagesSpoken": [
+          "English",
+          "Spanish"
+        ],
+        "interpreterRequired": true,
+        "role": "string",
+        "verificationMethod": "string",
+        "link": "string",
+        "linkExpiry": "2026-05-15T04:46:48.398Z",
+        "experience": "string",
+        "emergencyContactName": "string",
+        "emergencyContact": "string",
+        "bankName": "string",
+        "accountHolderName": "string",
+        "bsb": "string",
+        "accountNumber": "string",
+        "superFundName": "string",
+        "superFundAbn": "string",
+        "memberNumber": "string",
+        "profilePictureUrl": "string",
+        "isSingleUseLink": true,
+        "default": true,
+        "status": "invited",
+        "currentOnboardingStep": 3
+      },
+      "timestamp": "2026-05-15T04:46:48.398Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/list/all-clients",
+    "description": "Get all clients without pagination",
+    "parameters": [
+      {
+        "name": "statusIs",
+        "type": "string",
+        "required": false,
+        "description": "Include only clients with these statuses. Accepts a single value, comma-separated string, or repeated params. e.g. onboarded,pending_verification"
+      },
+      {
+        "name": "statusIsNot",
+        "type": "string",
+        "required": false,
+        "description": "Exclude clients with these statuses. Accepts a single value, comma-separated string, or repeated params. e.g. rejected,invited"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name (first/last/preferred)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All My clients filtered by status unpaginated successful",
+      "data": {
+        "data": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-28T07:11:11.796Z",
+            "comment": [
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:07:40.409Z"
+              }
+            ],
+            "client": {
+              "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+              "firstName": "John",
+              "lastName": "Doe",
+              "city": "Sydney",
+              "state": "NSW",
+              "ndisNumber": "ND12345678",
+              "planStartDate": "2025-01-01",
+              "planEndDate": "2025-12-31"
+            },
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0
+          }
+        ],
+        "total": 1
+      },
+      "timestamp": "2025-11-28T11:35:46.963Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/my-clients",
+    "description": "Get all clients belonging to the authenticated organization",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search clients by name, email, or other attributes"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Page number for pagination"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records per page"
+      },
+      {
+        "name": "sortByName",
+        "type": "array<string>",
+        "required": false,
+        "description": "Sort clients by name (ASC / DESC)"
+      },
+      {
+        "name": "sortByPlanStartDate",
+        "type": "string",
+        "required": false,
+        "description": "Sort clients by plan start date"
+      },
+      {
+        "name": "sortByCity",
+        "type": "string",
+        "required": false,
+        "description": "Sort clients by city"
+      },
+      {
+        "name": "clientStatus",
+        "type": "string",
+        "required": false,
+        "description": "Filter clients by their onboarding status"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All My clients successful",
+      "data": {
+        "data": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-26T14:26:46.156Z",
+            "organization": {
+              "id": "4743c115-cb57-4161-92ee-9f56fac04a4b",
+              "businessName": "BrightCare Support Services Pty Ltd"
+            },
+            "client": {
+              "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+              "firstName": "John",
+              "lastName": "Doe",
+              "city": "Sydney",
+              "state": "NSW",
+              "planStartDate": "2025-01-01",
+              "planEndDate": "2025-12-31",
+              "planStatus": "active"
+            },
+            "clientStatus": "pending_verification",
+            "invitationStatus": "accepted",
+            "documentsAdded": 0,
+            "supportWorkers": [
+              {
+                "memberId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "name": "Jane Smith",
+                "profilePictureUrl": "https://example.com/avatars/jane.jpg"
+              }
+            ]
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 1,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2025-11-28T06:43:57.122Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/details",
+    "description": "Get logged-in client's full profile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client By ID successful",
+      "data": {
+        "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+        "createdAt": "2025-11-26T13:03:08.539Z",
+        "updatedAt": "2025-11-26T14:26:46.142Z",
+        "deletedAt": null,
+        "user": {
+          "id": "c1c440c2-cf97-4f08-adf8-1ba88bc15855",
+          "createdAt": "2025-11-26T13:03:08.516Z",
+          "updatedAt": "2025-11-26T13:03:08.516Z",
+          "deletedAt": null,
+          "email": "heyoge2801@okcdeals.com",
+          "status": "invited"
+        },
+        "firstName": "John",
+        "lastName": "Doe",
+        "preferredName": "Johnny",
+        "dateOfBirth": "1990-05-15",
+        "gender": "Male",
+        "culturalBackground": "Australian",
+        "languagesSpoken": [
+          "English",
+          "French"
+        ],
+        "interpreterRequired": false,
+        "profilePictureUrl": "https://example.com/profile.jpg",
+        "phone": "1234567890",
+        "address": "123 Main Street",
+        "city": "Sydney",
+        "state": "NSW",
+        "zipCode": "2000",
+        "emergencyContact": [
+          {
+            "name": "Jane Doe",
+            "phone": "0987654321"
+          }
+        ],
+        "selfIntro": "Hello, I am John.",
+        "culturalConsiderations": "None",
+        "mostImportantToMe": "Family",
+        "ndisPlanGoals": [
+          "Goal 1",
+          "Goal 2"
+        ],
+        "hobbiesAndInterests": "Reading, Hiking",
+        "modeOfCommunication": [
+          "Email",
+          "Phone"
+        ],
+        "styleOfCommunication": [
+          "Formal"
+        ],
+        "ndisNumber": "ND12345678",
+        "planManagement": "NDIA Managed",
+        "planManagerName": "Plan Manager Name",
+        "planManagerContactEmail": "manager@example.com",
+        "planBillingEmail": "billing@example.com",
+        "primaryDiagnosis": "Condition A",
+        "secondaryDiagnosis": "Condition B",
+        "currentMedication": "Medication X",
+        "allergiesAndSensitivities": [
+          "Peanuts",
+          "Gluten"
+        ],
+        "mobilityStatus": "Independent",
+        "supportRequirements": "Requires minimal assistance",
+        "planStartDate": "2025-01-01",
+        "planEndDate": "2025-12-31",
+        "planStatus": "active",
+        "personalGoals": "Improve daily living skills",
+        "supportCoordinatorName": "Coordinator Name",
+        "supportCoordinatorEmail": "coordinator@example.com",
+        "isDailyLivingSelected": true,
+        "dailyLivingFunding": "1500.50",
+        "isSocialAndCommunitySelected": true,
+        "socialAndCommunityFunding": "800.00",
+        "isSupportCoordinationSelected": false,
+        "supportCoordinationFunding": "0.00",
+        "isImprovedDailyLivingSelected": true,
+        "improvedDailyLivingFunding": "600.00",
+        "infoSharingConsent": {
+          "recipient": "Support Worker",
+          "medicalInformation": true,
+          "recipientSelection": true,
+          "financialInformation": false,
+          "infoConsentIsChecked": true,
+          "consentValidityAndNotes": "Valid for 12 months",
+          "generalPersonalInformation": true
+        },
+        "mediaSharingConsent": {
+          "publicUseOnly": false,
+          "internalUseOnly": true,
+          "personalUseOnly": false,
+          "publicUseReason": "",
+          "mediaConsentIsChecked": true,
+          "publicUseConsentIsChecked": false
+        },
+        "morningRoutine": null,
+        "eveningRoutine": null,
+        "preferredDaysForSupports": [
+          "Monday",
+          "Wednesday",
+          "Friday"
+        ],
+        "generalRisk": null,
+        "criticalRisk": null,
+        "OrganizationClientMapping": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-28T07:11:11.796Z",
+            "deletedAt": null,
+            "comment": [
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:07:40.409Z"
+              },
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:08:17.696Z"
+              }
+            ],
+            "expiresAt": null,
+            "invitationStatus": "accepted",
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0,
+            "documentsAdded": 0
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:04:25.642Z"
+    }
+  },
+  {
+    "path": "/organization/role/my-roles",
+    "error": "Not found"
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/ndis-categories",
+    "description": "Get NDIS categories for a service type",
+    "parameters": [
+      {
+        "name": "serviceType",
+        "type": "string",
+        "required": true,
+        "description": "The NDIS service type to fetch categories for"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get NDIS Categories By Service Type successful",
+      "data": {
+        "ndisCategories": [
+          "daily-personal-activities",
+          "assistance-with-social-economic-community-participation"
+        ]
+      },
+      "timestamp": "2026-05-15T04:46:52.722Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/service-types",
+    "description": "Get available shift service types",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift Service Types successful",
+      "data": {
+        "serviceTypes": [
+          "CORE_SUPPORTS",
+          "ACCOMMODATION_SUPPORT",
+          "CAPACITY_BUILDING"
+        ]
+      },
+      "timestamp": "2026-05-15T04:46:55.033Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/payroll/get-allowances",
+    "description": "List active SCHADS allowances",
+    "parameters": [],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/list-view/type",
+    "description": "Get shift list view filtered by type",
+    "parameters": [
+      {
+        "name": "type",
+        "type": "string",
+        "required": true,
+        "description": "Filter type"
+      },
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of date range as a full UTC ISO datetime (required for scheduled and completed types)."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of date range as a full UTC ISO datetime (required for scheduled and completed types)."
+      },
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 20)"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name (firstName, lastName, preferredName)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift List View successful",
+      "data": {
+        "data": [
+          {
+            "shiftId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "date": "2026-05-15",
+            "startTime": "2026-05-15T04:47:00.175Z",
+            "endTime": "2026-05-15T04:47:00.175Z",
+            "isCancelled": true,
+            "exceptionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "shift": {
+              "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "title": "string",
+              "meetingType": "internal",
+              "isRecurring": true,
+              "status": "scheduled",
+              "notes": "string",
+              "agenda": "string"
+            },
+            "client": [
+              {
+                "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "email": "string",
+                "profilePictureUrl": "string"
+              }
+            ]
+          }
+        ],
+        "pagination": {
+          "page": 0,
+          "limit": 0,
+          "total": 0,
+          "totalPages": 0,
+          "hasNext": true,
+          "hasPrev": true
+        }
+      },
+      "timestamp": "2026-05-15T04:47:00.175Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/list-view/type",
+    "description": "Get shift list view filtered by type",
+    "parameters": [
+      {
+        "name": "type",
+        "type": "string",
+        "required": true,
+        "description": "Filter type"
+      },
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of date range as a full UTC ISO datetime (required for scheduled and completed types)."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of date range as a full UTC ISO datetime (required for scheduled and completed types)."
+      },
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 20)"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name (firstName, lastName, preferredName)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift List View successful",
+      "data": {
+        "data": [
+          {
+            "shiftId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "date": "2026-05-15",
+            "startTime": "2026-05-15T04:47:00.175Z",
+            "endTime": "2026-05-15T04:47:00.175Z",
+            "isCancelled": true,
+            "exceptionId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "shift": {
+              "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "title": "string",
+              "meetingType": "internal",
+              "isRecurring": true,
+              "status": "scheduled",
+              "notes": "string",
+              "agenda": "string"
+            },
+            "client": [
+              {
+                "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "email": "string",
+                "profilePictureUrl": "string"
+              }
+            ]
+          }
+        ],
+        "pagination": {
+          "page": 0,
+          "limit": 0,
+          "total": 0,
+          "totalPages": 0,
+          "hasNext": true,
+          "hasPrev": true
+        }
+      },
+      "timestamp": "2026-05-15T04:47:00.175Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/details/{id}",
+    "description": "Get a shift by ID",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift by ID successful",
+      "data": {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "title": "string",
+        "meetingType": "internal",
+        "startTime": "2026-05-15T04:47:03.133Z",
+        "endTime": "2026-05-15T04:47:03.133Z",
+        "isRecurring": true,
+        "status": "draft",
+        "serviceType": "string",
+        "ndisCategory": "string",
+        "recurrenceRule": {},
+        "organization": {},
+        "createdAt": "2026-05-15T04:47:03.133Z",
+        "updatedAt": "2026-05-15T04:47:03.133Z"
+      },
+      "timestamp": "2026-05-15T04:47:03.133Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/{id}/occurrence",
+    "description": "Get single occurrence detail",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      },
+      {
+        "name": "date",
+        "type": "string($date)",
+        "required": true,
+        "description": "The calendar date of the occurrence (YYYY-MM-DD)"
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/ongoing",
+    "description": "Get currently ongoing shifts",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 10)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Ongoing Shifts successful",
+      "data": {
+        "items": [
+          {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "title": "string",
+            "meetingType": "internal",
+            "startTime": "2026-05-15T04:47:08.513Z",
+            "endTime": "2026-05-15T04:47:08.513Z",
+            "status": "ongoing",
+            "client": {}
+          }
+        ],
+        "total": 0,
+        "page": 0,
+        "limit": 0
+      },
+      "timestamp": "2026-05-15T04:47:08.513Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/clients",
+    "description": "Get clients for shift participant picker",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Items per page (default 20)"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by first name, last name, preferred name, or full name"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift Clients successful",
+      "data": {
+        "data": [
+          {
+            "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "firstName": "string",
+            "lastName": "string",
+            "preferredName": "string"
+          }
+        ],
+        "pagination": {
+          "page": 0,
+          "limit": 0,
+          "total": 0,
+          "totalPages": 0,
+          "hasNext": true,
+          "hasPrev": true
+        }
+      },
+      "timestamp": "2026-05-15T04:47:11.441Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/staff/support-worker",
+    "description": "Get support workers for shift participant picker",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Items per page (default 20)"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by fullName or preferredName"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift Staff successful",
+      "data": {
+        "data": [
+          {
+            "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "fullName": "string",
+            "preferredName": "string",
+            "profilePictureUrl": "string"
+          }
+        ],
+        "pagination": {
+          "page": 0,
+          "limit": 0,
+          "total": 0,
+          "totalPages": 0,
+          "hasNext": true,
+          "hasPrev": true
+        }
+      },
+      "timestamp": "2026-05-15T04:47:14.148Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/shift/staff/in-office",
+    "description": "Get in-office staff for shift participant picker",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/shift/list-view",
+    "description": "Get shifts for the authenticated member (paginated list)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false
+      },
+      {
+        "name": "filter",
+        "type": "string",
+        "required": false,
+        "description": "Optional status filter. ONLY these values are valid: draft, scheduled, ongoing, completed, cancelled. NEVER pass \"thisweek\" \u2014 that is for /organization/shift/list-view/type, not this endpoint. For a date window use from/to instead."
+      },
+      {
+        "name": "page",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "sortByStartTime",
+        "type": "string",
+        "required": false,
+        "description": "Available values : a, d"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/shift/calendar-view",
+    "description": "Get the authenticated member's calendar view",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/shift/ongoing-shifts",
+    "description": "Get the authenticated member's ongoing shifts",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/shift/details/{id}",
+    "description": "Get a shift by ID (organization member view)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization-member/shift/{id}/occurrence",
+    "description": "Get shift occurrence details by shift ID (organization member view)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "string($date)",
+        "required": false
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/staff-shift/view-shift/{id}",
+    "description": "Get full shift details for the logged-in support worker (mobile view)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID (UUID)"
+      },
+      {
+        "name": "date",
+        "type": "string",
+        "required": false,
+        "description": "The occurrence date (YYYY-MM-DD) from the all-shifts list response. For recurring shifts, this resolves the correct date/startTime/endTime for the specific occurrence. Pass the same date value returned by the all-shifts API."
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift View Details successful",
+      "data": {
+        "id": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+        "title": "Morning Support Shift",
+        "meetingType": "client",
+        "status": "ongoing",
+        "date": "2026-03-01",
+        "startTime": "2026-03-21T05:00:00.000Z",
+        "endTime": "2026-03-21T13:00:00.000Z",
+        "duration": 480,
+        "workLogId": "d1e2f3a4-b5c6-7890-abcd-ef1234567890",
+        "workLogStatus": "in_progress",
+        "location": {
+          "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+          "address": "123 Main St, Sydney NSW",
+          "lat": -33.8688,
+          "lng": 151.2093
+        },
+        "distance": 4.2,
+        "serviceType": "CORE_SUPPORTS",
+        "ndisCategory": "Daily Personal Activities",
+        "isRecurring": true,
+        "notes": {
+          "notes": "Client prefers tea over coffee",
+          "agenda": "Morning routine and wellbeing check",
+          "todoList": [
+            {
+              "title": "Assist with breakfast",
+              "isRequired": true
+            },
+            {
+              "title": "Medication reminder",
+              "isRequired": false
+            }
+          ]
+        },
+        "client": [
+          {
+            "participantId": "8a1d2f9b-4e7c-4d8e-9f3b-1c2d3e4f5a6b",
+            "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+            "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+            "email": "client@example.com",
+            "name": "John Doe",
+            "profilePictureUrl": "https://example.com/profile.jpg",
+            "dateOfBirth": "1990-05-14T18:30:00.000Z",
+            "phone": "1234567890",
+            "gender": "Male",
+            "emergencyContacts": null,
+            "aboutMe": "Hello, I am John.",
+            "culturalConsiderations": "Prefers culturally respectful communication.",
+            "mostImportantToMe": "Family and independence.",
+            "myGoals": "Improve daily living skills.",
+            "hobbiesAndInterests": "Reading and hiking.",
+            "modeOfCommunication": [
+              "Email",
+              "Phone"
+            ],
+            "styleOfCommunication": [
+              "Clear",
+              "Formal"
+            ],
+            "ndisGoals": [
+              "Increase independence",
+              "Community participation"
+            ],
+            "primaryDiagnosis": "Autism spectrum disorder",
+            "secondaryDiagnoses": [
+              "Anxiety",
+              "Sleep disorder"
+            ],
+            "currentMedication": [
+              {
+                "medicationName": "Melatonin",
+                "dosage": "2mg",
+                "frequency": "Once daily at bedtime",
+                "purpose": "Sleep support",
+                "notes": "Take 30 min before sleep"
+              }
+            ],
+            "mobilityStatus": "Independent",
+            "supportRequirements": "Requires clear instructions and quiet environment.",
+            "criticalRisk": "Seizure risk \u2014 do not leave unattended near water",
+            "status": "invited",
+            "acknowledgedAt": null
+          }
+        ],
+        "supportWorkers": [
+          {
+            "participantId": "0c4e5d6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+            "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+            "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+            "profilePictureUrl": "https://example.com/profile.jpg",
+            "fullName": "Jane Smith",
+            "department": null,
+            "experience": "1 year",
+            "status": "accepted",
+            "acknowledgedAt": "2026-03-20T08:00:00.000Z"
+          }
+        ],
+        "healthProfessionals": [
+          {
+            "participantId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "id": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+            "email": "doctor@example.com",
+            "name": "Dr. Emily Brown",
+            "status": "invited",
+            "acknowledgedAt": null
+          }
+        ]
+      },
+      "timestamp": "2026-02-24T12:24:55.174Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/staff-shift/this-week-shifts",
+    "description": "Get scheduled shifts for the current week (staff mobile)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of UTC date range. Compute Mon 00:00 in the user's local TZ, then convert to UTC."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of UTC date range. Compute Sun 23:59:59.999 in the user's local TZ, then convert to UTC."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title or client name"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 10"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Staff This Week Shifts successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+          "title": "Morning Support Shift",
+          "date": "2026-02-24",
+          "startTime": "2026-02-24T05:00:00.000Z",
+          "endTime": "2026-02-24T13:00:00.000Z",
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": false,
+          "location": {
+            "address": "123 Main St, Sydney NSW",
+            "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": null,
+          "agenda": null,
+          "distance": 4.2,
+          "workLogId": null,
+          "workLogStatus": null,
+          "client": [
+            {
+              "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+              "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+              "email": "client@example.com",
+              "name": "John Doe",
+              "profilePictureUrl": null
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+              "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": null
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "total": 1,
+        "page": 1,
+        "limit": 10,
+        "totalPages": 1
+      },
+      "timestamp": "2026-02-24T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/staff-shift/all-shifts",
+    "description": "Get all shifts for the logged-in support worker (with recurrence expansion)",
+    "parameters": [
+      {
+        "name": "type",
+        "type": "string",
+        "required": true,
+        "description": "Filter shifts by type"
+      },
+      {
+        "name": "startDate",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of date range as a full UTC ISO datetime. Defaults to 3 months ago."
+      },
+      {
+        "name": "endDate",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of date range as a full UTC ISO datetime. Defaults to 3 months ahead."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title, support-worker full name, or client full name"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 10"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Staff Mobile Shifts List successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "title": "I am fine",
+          "date": "2026-03-01",
+          "startTime": "2026-02-23T05:00:00.000Z",
+          "endTime": "2026-02-24T13:00:00.000Z",
+          "duration": 1920,
+          "status": "completed",
+          "meetingType": "client",
+          "isRecurring": true,
+          "location": {
+            "address": "123 Main St, Sydney NSW",
+            "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": "Client prefers tea over coffee",
+          "agenda": "Morning routine and wellbeing check",
+          "acknowledgedAt": null,
+          "parentShiftId": null,
+          "distance": 4.2,
+          "workLogId": "d1e2f3a4-b5c6-7890-abcd-ef1234567890",
+          "workLogStatus": "completed",
+          "client": [
+            {
+              "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+              "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+              "email": "client@example.com",
+              "name": "John Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+              "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ]
+        },
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+          "title": "Morning Support Shift",
+          "date": "2026-03-10",
+          "startTime": "2026-03-10T05:00:00.000Z",
+          "endTime": "2026-03-10T13:00:00.000Z",
+          "duration": 480,
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": true,
+          "location": {
+            "address": "123 Main St, Sydney NSW",
+            "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": null,
+          "agenda": null,
+          "acknowledgedAt": null,
+          "parentShiftId": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+          "distance": 4.2,
+          "workLogId": null,
+          "workLogStatus": null,
+          "client": [
+            {
+              "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+              "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+              "email": "client@example.com",
+              "name": "John Doe",
+              "profilePictureUrl": null,
+              "status": "invited"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+              "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": null,
+              "status": "invited"
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "total": 12,
+        "page": 1,
+        "limit": 10,
+        "totalPages": 2,
+        "hasNext": true,
+        "hasPrev": false
+      },
+      "timestamp": "2026-03-02T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/my-ongoing-shifts",
+    "description": "Get my ongoing shifts (staff/member view)",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 10)"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get My Ongoing Shifts successful",
+      "data": {
+        "items": [
+          {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "title": "string",
+            "meetingType": "internal",
+            "serviceType": "string",
+            "ndisCategory": "string",
+            "startTime": "2026-05-15T04:47:38.516Z",
+            "endTime": "2026-05-15T04:47:38.516Z",
+            "status": "ongoing",
+            "distance": 4.2,
+            "workLogId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "workLogStatus": "in_progress",
+            "clients": [
+              {}
+            ],
+            "supportWorkers": [
+              {}
+            ],
+            "healthProfessionals": [
+              {}
+            ],
+            "staffMembers": [
+              {}
+            ]
+          }
+        ],
+        "total": 0,
+        "page": 0,
+        "limit": 0
+      },
+      "timestamp": "2026-05-15T04:47:38.516Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/shift/{id}/occurrence",
+    "description": "Get shift occurrence details by shift ID (support worker view)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      },
+      {
+        "name": "date",
+        "type": "string($date)",
+        "required": false,
+        "description": "Occurrence date for recurring shifts (YYYY-MM-DD)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Occurrence Detail successful",
+      "data": {
+        "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+        "date": "2026-03-17",
+        "startTime": "2026-03-17T05:00:00.000Z",
+        "endTime": "2026-03-17T13:00:00.000Z",
+        "isCancelled": false,
+        "exceptionId": null,
+        "hasFullSnapshot": false,
+        "shift": {
+          "title": "Morning Support Shift",
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": true
+        },
+        "workLogId": "d1e2f3a4-b5c6-7890-abcd-ef1234567890",
+        "workLogStatus": "in_progress",
+        "participants": [
+          {
+            "id": "8a1d2f9b-4e7c-4d8e-9f3b-1c2d3e4f5a6b",
+            "type": "support_worker",
+            "status": "accepted",
+            "acknowledgedAt": "2026-03-16T08:00:00.000Z",
+            "clientId": null,
+            "staffId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+            "user": {
+              "id": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+              "email": "worker@example.com",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": null
+            }
+          }
+        ]
+      },
+      "timestamp": "2026-03-17T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/shift/details/{id}",
+    "description": "Get a shift by ID (member view)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift by ID successful",
+      "data": {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "title": "string",
+        "meetingType": "internal",
+        "startTime": "2026-05-15T04:47:44.609Z",
+        "endTime": "2026-05-15T04:47:44.609Z",
+        "isRecurring": true,
+        "status": "draft",
+        "serviceType": "string",
+        "ndisCategory": "string",
+        "recurrenceRule": {},
+        "organization": {},
+        "createdAt": "2026-05-15T04:47:44.609Z",
+        "updatedAt": "2026-05-15T04:47:44.609Z"
+      },
+      "timestamp": "2026-05-15T04:47:44.609Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client-shift/view-shift/{id}",
+    "description": "Get full shift details for the logged-in client (mobile view)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID (UUID)"
+      },
+      {
+        "name": "date",
+        "type": "string",
+        "required": false,
+        "description": "The occurrence date (YYYY-MM-DD) from the all-shifts list response. For recurring shifts, this resolves the correct date/startTime/endTime for the specific occurrence. Pass the same date value returned by the all-shifts API."
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift View Details successful",
+      "data": {
+        "id": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+        "title": "Morning Support Shift",
+        "meetingType": "client",
+        "status": "ongoing",
+        "date": "2026-03-01",
+        "startTime": "2026-03-21T05:00:00.000Z",
+        "endTime": "2026-03-21T13:00:00.000Z",
+        "duration": 480,
+        "location": {
+          "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+          "address": "123 Main St, Sydney NSW",
+          "lat": -33.8688,
+          "lng": 151.2093
+        },
+        "distance": 4.2,
+        "serviceType": "CORE_SUPPORTS",
+        "ndisCategory": "Daily Personal Activities",
+        "isRecurring": true,
+        "notes": {
+          "notes": "Client prefers tea over coffee",
+          "agenda": "Morning routine and wellbeing check",
+          "todoList": [
+            {
+              "title": "Assist with breakfast",
+              "isRequired": true
+            },
+            {
+              "title": "Medication reminder",
+              "isRequired": false
+            }
+          ]
+        },
+        "client": [
+          {
+            "participantId": "8a1d2f9b-4e7c-4d8e-9f3b-1c2d3e4f5a6b",
+            "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+            "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+            "email": "client@example.com",
+            "name": "John Doe",
+            "profilePictureUrl": "https://example.com/profile.jpg",
+            "status": "invited",
+            "acknowledgedAt": null
+          }
+        ],
+        "supportWorkers": [
+          {
+            "participantId": "0c4e5d6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+            "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+            "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+            "profilePictureUrl": null,
+            "fullName": "Jane Smith",
+            "department": null,
+            "experience": null,
+            "status": "accepted",
+            "acknowledgedAt": "2026-03-20T08:00:00.000Z"
+          }
+        ],
+        "healthProfessionals": [
+          {
+            "participantId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "id": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+            "email": "doctor@example.com",
+            "name": "Dr. Emily Brown",
+            "status": "invited",
+            "acknowledgedAt": null
+          }
+        ]
+      },
+      "timestamp": "2026-02-24T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client-shift/this-week-shifts",
+    "description": "Get scheduled shifts for the current week (client mobile)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of UTC date range. Compute Mon 00:00 in the user's local TZ, then convert to UTC."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of UTC date range. Compute Sun 23:59:59.999 in the user's local TZ, then convert to UTC."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 10"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client This Week Shifts successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+          "title": "Morning Support Shift",
+          "date": "2026-02-24",
+          "startTime": "2026-02-24T05:00:00.000Z",
+          "endTime": "2026-02-24T13:00:00.000Z",
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": false,
+          "location": {
+            "address": "123 Main St, Sydney NSW",
+            "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": null,
+          "agenda": null,
+          "distance": 4.2,
+          "client": [
+            {
+              "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+              "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+              "email": "client@example.com",
+              "profilePictureUrl": null
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+              "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": null
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "total": 1,
+        "page": 1,
+        "limit": 10,
+        "totalPages": 1
+      },
+      "timestamp": "2026-02-24T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client-shift/all-shifts",
+    "description": "Get all shifts for the logged-in client (with recurrence expansion)",
+    "parameters": [
+      {
+        "name": "type",
+        "type": "string",
+        "required": true,
+        "description": "Filter shifts by type"
+      },
+      {
+        "name": "startDate",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of date range as a full UTC ISO datetime. Defaults to 3 months ago."
+      },
+      {
+        "name": "endDate",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of date range as a full UTC ISO datetime. Defaults to 3 months ahead."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title or support-worker full name"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 10"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client Mobile Shifts List successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "title": "I am fine",
+          "date": "2026-03-01",
+          "startTime": "2026-02-23T05:00:00.000Z",
+          "endTime": "2026-02-24T13:00:00.000Z",
+          "duration": 1920,
+          "status": "completed",
+          "meetingType": "client",
+          "isRecurring": true,
+          "location": {
+            "address": "123 Main St, Sydney NSW",
+            "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": "Client prefers tea over coffee",
+          "agenda": "Morning routine and wellbeing check",
+          "acknowledgedAt": null,
+          "parentShiftId": null,
+          "distance": 4.2,
+          "client": [
+            {
+              "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+              "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+              "email": "client@example.com",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+              "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ]
+        },
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+          "title": "Morning Support Shift",
+          "date": "2026-03-10",
+          "startTime": "2026-03-10T05:00:00.000Z",
+          "endTime": "2026-03-10T13:00:00.000Z",
+          "duration": 480,
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": true,
+          "location": {
+            "address": "123 Main St, Sydney NSW",
+            "url": "https://maps.google.com/?q=123+Main+St+Sydney",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": null,
+          "agenda": null,
+          "acknowledgedAt": null,
+          "parentShiftId": "b263e91b-c6f5-4635-b0fb-352ea89452b9",
+          "distance": 4.2,
+          "client": [
+            {
+              "clientId": "ac6dd7ab-3ce6-4531-a8a0-52be3281bfb4",
+              "userId": "786be092-78b5-4b4c-af82-b60391bb32f1",
+              "email": "client@example.com",
+              "profilePictureUrl": null,
+              "status": "invited"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "16377567-b1bc-4807-bbc9-8c5ee4a44b5f",
+              "userId": "55c89fd7-eff4-4ce7-afb7-1efe076ea019",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": null,
+              "status": "invited"
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "total": 12,
+        "page": 1,
+        "limit": 10,
+        "totalPages": 2,
+        "hasNext": true,
+        "hasPrev": false
+      },
+      "timestamp": "2026-03-02T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client-shift/calendar-view",
+    "description": "Get the logged-in client's calendar view (no pagination)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Monday."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of the calendar window as a full UTC ISO datetime. Defaults to the current UTC week's Sunday."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title or support-worker full name"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client Mobile Calendar View successful",
+      "data": [
+        {
+          "shiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "title": "Morning Care",
+          "date": "2026-04-17",
+          "startTime": "2026-04-17T01:00:00.000Z",
+          "endTime": "2026-04-17T08:00:00.000Z",
+          "duration": 420,
+          "status": "draft",
+          "meetingType": "client",
+          "isRecurring": true,
+          "isCancelled": false,
+          "location": {
+            "address": "123 Main St",
+            "url": "https://maps.google.com/?cid=...",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": "<p>Notes...</p>",
+          "agenda": "<p>Agenda...</p>",
+          "acknowledgedAt": null,
+          "parentShiftId": "b263e91b-c6f5-4635-b0fb-352ea89452d3",
+          "distance": 4.2,
+          "client": [
+            {
+              "clientId": "c843ac3d-...",
+              "userId": "8720a2b8-...",
+              "email": "client@yopmail.com",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "...",
+              "userId": "...",
+              "fullName": "Jane Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ]
+        }
+      ],
+      "timestamp": "2026-04-16T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/my-ongoing-shifts",
+    "description": "Get my ongoing shifts (client view)",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 10)"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get My Ongoing Shifts successful",
+      "data": {
+        "items": [
+          {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "title": "string",
+            "meetingType": "internal",
+            "serviceType": "string",
+            "ndisCategory": "string",
+            "startTime": "2026-05-15T04:48:01.866Z",
+            "endTime": "2026-05-15T04:48:01.866Z",
+            "status": "ongoing",
+            "distance": 4.2,
+            "clients": [
+              {}
+            ],
+            "supportWorkers": [
+              {}
+            ],
+            "healthProfessionals": [
+              {}
+            ],
+            "staffMembers": [
+              {}
+            ]
+          }
+        ],
+        "total": 0,
+        "page": 0,
+        "limit": 0
+      },
+      "timestamp": "2026-05-15T04:48:01.866Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/shift/{id}/occurrence",
+    "description": "Get single occurrence detail (client participant)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      },
+      {
+        "name": "date",
+        "type": "string($date)",
+        "required": true,
+        "description": "The calendar date of the occurrence (YYYY-MM-DD)"
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/isw/shift/ongoing-shifts",
+    "description": "Get currently ongoing shifts",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "string",
+        "required": false,
+        "description": "Page number (default 1)"
+      },
+      {
+        "name": "limit",
+        "type": "string",
+        "required": false,
+        "description": "Items per page (default 10)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Ongoing Shifts successful",
+      "data": {
+        "items": [
+          {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "title": "string",
+            "meetingType": "internal",
+            "serviceType": "string",
+            "ndisCategory": "string",
+            "startTime": "2026-05-15T04:48:08.578Z",
+            "endTime": "2026-05-15T04:48:08.578Z",
+            "status": "ongoing",
+            "clients": [
+              {}
+            ],
+            "supportWorkers": [
+              {}
+            ],
+            "healthProfessionals": [
+              {}
+            ]
+          }
+        ],
+        "total": 0,
+        "page": 0,
+        "limit": 0
+      },
+      "timestamp": "2026-05-15T04:48:08.578Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/isw/shift/list-view",
+    "description": "Get shift list view",
+    "parameters": [
+      {
+        "name": "type",
+        "type": "string",
+        "required": true,
+        "description": "Filter type"
+      },
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of date range as a full UTC ISO datetime. Not used for thisweek."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of date range as a full UTC ISO datetime. Not used for thisweek."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 10"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift List View successful",
+      "data": {
+        "data": [
+          {
+            "shiftId": "b27ff59c-4342-4aaf-a3d1-9edca7ad091e",
+            "date": "2027-02-01",
+            "startTime": "2027-02-01T09:00:00.000Z",
+            "endTime": "2027-02-01T11:00:00.000Z",
+            "isCancelled": false,
+            "exceptionId": null,
+            "shift": {
+              "id": "b27ff59c-4342-4aaf-a3d1-9edca7ad091e",
+              "title": "Inf Recurring",
+              "meetingType": "client",
+              "isRecurring": true,
+              "status": "scheduled",
+              "notes": null,
+              "agenda": null
+            },
+            "client": [
+              {
+                "id": "c333c11e-c63a-487f-b599-e4f5174677a3",
+                "email": "client@example.com"
+              }
+            ]
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 243,
+          "totalPages": 25,
+          "hasNext": true,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2026-02-23T10:01:54.319Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/isw/shift/core-details/{id}",
+    "description": "Get shift core details (Step 1)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift Core Details successful",
+      "data": {
+        "client": [
+          {
+            "id": "42a154f5-ebbe-4d2a-96de-a36166a7c9a8",
+            "email": "client@example.com",
+            "name": "John Doe"
+          }
+        ],
+        "worker": [
+          {
+            "id": "87f9377a-8b83-4a1f-bee5-cce0790a8ddb",
+            "email": "worker@example.com",
+            "name": "Jane Smith"
+          }
+        ],
+        "date": "2023-01-01",
+        "location": {
+          "address": "45 Rose St, Springfield QLD 4567",
+          "url": "https://maps.google.com/...",
+          "lat": -33.8688,
+          "lng": 151.2093
+        },
+        "time": {
+          "startTime": "2023-01-01T10:00:00.000Z",
+          "endTime": "2023-01-01T12:00:00.000Z"
+        },
+        "dayType": "weekday",
+        "stream": "social_community",
+        "classification": "Level 2 Pay Point 1"
+      },
+      "timestamp": "2026-02-20T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/isw/shift/special-flags/{id}",
+    "description": "Get shift special flags (Step 3)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift Special Flags successful",
+      "data": {
+        "brokenShift": "1_unpaid_break",
+        "sleepover": true,
+        "is24HourCare": true,
+        "oncallblocks": [
+          {
+            "startTime": "22:00",
+            "endTime": "06:00"
+          }
+        ],
+        "remoteworksegments": [
+          {
+            "startTime": "14:00",
+            "endTime": "16:00"
+          }
+        ]
+      },
+      "timestamp": "2026-02-20T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/isw/shift/allowances/{id}",
+    "description": "Get shift allowances and reimbursements (Step 4)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift Allowances successful",
+      "data": {
+        "laundryAllowance": true,
+        "uniformAllowance": true,
+        "mealAllowance": "1_meal",
+        "vehicle": 20,
+        "firstAidAllowance": true
+      },
+      "timestamp": "2026-02-20T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/isw-shift/this-week-shifts",
+    "description": "Get scheduled shifts for the current week (mobile)",
+    "parameters": [
+      {
+        "name": "from",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "Start of UTC date range. Compute Mon 00:00 in the user's local TZ, then convert to UTC."
+      },
+      {
+        "name": "to",
+        "type": "string($date-time)",
+        "required": false,
+        "description": "End of UTC date range. Compute Sun 23:59:59.999 in the user's local TZ, then convert to UTC."
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by shift title or client name"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 10"
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Mobile This Week Shifts successful",
+      "data": [
+        {
+          "shiftId": "b27ff59c-4342-4aaf-a3d1-9edca7ad091e",
+          "title": "Morning Support Session",
+          "date": "2026-02-24",
+          "startTime": "2026-02-24T09:00:00.000Z",
+          "endTime": "2026-02-24T11:00:00.000Z",
+          "status": "scheduled",
+          "meetingType": "client",
+          "isRecurring": false,
+          "location": {
+            "address": "45 Rose St, Springfield QLD 4567",
+            "url": "https://maps.google.com/...",
+            "lat": -33.8688,
+            "lng": 151.2093
+          },
+          "notes": null,
+          "agenda": null,
+          "distance": 4.2,
+          "workLogId": null,
+          "workLogStatus": null,
+          "client": [
+            {
+              "clientId": "a1b2c3d4-0000-0000-0000-111111111111",
+              "userId": "c333c11e-c63a-487f-b599-e4f5174677a3",
+              "email": "client@example.com",
+              "name": "John Doe",
+              "profilePictureUrl": null,
+              "status": "accepted"
+            }
+          ],
+          "supportWorkers": [
+            {
+              "memberId": "e5f6a7b8-0000-0000-0000-222222222222",
+              "userId": "87f9377a-8b83-4a1f-bee5-cce0790a8ddb",
+              "fullName": "Jane Smith",
+              "profilePictureUrl": "https://example.com/worker.jpg",
+              "status": "accepted"
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "total": 1,
+        "page": 1,
+        "limit": 10,
+        "totalPages": 1
+      },
+      "timestamp": "2026-02-24T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/isw-shift/view-shift/{id}",
+    "description": "Get full shift details (mobile view)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift ID (UUID)"
+      },
+      {
+        "name": "date",
+        "type": "string",
+        "required": false,
+        "description": "The occurrence date (YYYY-MM-DD) from the all-shifts list response. For recurring shifts, this resolves the correct date/startTime/endTime for the specific occurrence. Pass the same date value returned by the all-shifts API."
+      },
+      {
+        "name": "userLat",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current latitude. Used to compute distance to shift location."
+      },
+      {
+        "name": "userLng",
+        "type": "number",
+        "required": false,
+        "description": "Logged-in user's current longitude. Used to compute distance to shift location."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Shift View Details successful",
+      "data": {
+        "id": "b27ff59c-4342-4aaf-a3d1-9edca7ad091e",
+        "title": "Morning Support Session",
+        "meetingType": "client",
+        "status": "scheduled",
+        "date": "2027-02-01",
+        "startTime": "2027-02-01T09:00:00.000Z",
+        "endTime": "2027-02-01T11:00:00.000Z",
+        "duration": 120,
+        "workLogId": "d1e2f3a4-b5c6-7890-abcd-ef1234567890",
+        "workLogStatus": "in_progress",
+        "location": {
+          "address": "45 Rose St, Springfield QLD 4567",
+          "url": "https://maps.google.com/...",
+          "lat": -33.8688,
+          "lng": 151.2093
+        },
+        "distance": 4.2,
+        "serviceType": "daily_living",
+        "ndisCategory": "Level 2 Pay Point 1",
+        "isRecurring": true,
+        "notes": {
+          "notes": "Client prefers soft music during sessions",
+          "agenda": "Morning hygiene and breakfast assistance",
+          "todoList": [
+            {
+              "title": "Assist with breakfast",
+              "isRequired": true
+            },
+            {
+              "title": "Medication reminder",
+              "isRequired": false
+            }
+          ]
+        },
+        "clients": [
+          {
+            "participantId": "8a1d2f9b-4e7c-4d8e-9f3b-1c2d3e4f5a6b",
+            "clientId": "a1b2c3d4-0000-0000-0000-111111111111",
+            "userId": "c333c11e-c63a-487f-b599-e4f5174677a3",
+            "email": "client@example.com",
+            "name": "John Doe",
+            "profilePictureUrl": null,
+            "dateOfBirth": "1990-05-15",
+            "phone": "+61412345678",
+            "gender": "male",
+            "emergencyContacts": [
+              {
+                "name": "Jane Doe",
+                "phone": "+61498765432",
+                "relation": "spouse",
+                "email": "jane@example.com"
+              }
+            ],
+            "aboutMe": "I enjoy morning walks and painting",
+            "culturalConsiderations": "Prefers female support workers",
+            "mostImportantToMe": "Independence and dignity",
+            "myGoals": "Improve mobility and social engagement",
+            "hobbiesAndInterests": "Painting, gardening, music",
+            "modeOfCommunication": [
+              "verbal",
+              "written"
+            ],
+            "styleOfCommunication": [
+              "direct",
+              "simple language"
+            ],
+            "ndisGoals": [
+              "Increase independence",
+              "Build community connections"
+            ],
+            "primaryDiagnosis": "Cerebral Palsy",
+            "secondaryDiagnoses": [
+              "Epilepsy"
+            ],
+            "currentMedication": [
+              {
+                "medicationName": "Levetiracetam",
+                "dosage": "500mg",
+                "frequency": "Twice daily",
+                "purpose": "Seizure control",
+                "notes": "Take with food"
+              }
+            ],
+            "mobilityStatus": "Uses wheelchair",
+            "supportRequirements": "Requires physical assistance for transfers",
+            "criticalRisk": "Seizure risk \u2014 do not leave unattended near water",
+            "status": "invited",
+            "acknowledgedAt": null
+          }
+        ],
+        "supportWorkers": [
+          {
+            "participantId": "0c4e5d6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+            "staffId": "e5f6a7b8-0000-0000-0000-222222222222",
+            "userId": "87f9377a-8b83-4a1f-bee5-cce0790a8ddb",
+            "profilePictureUrl": "https://example.com/worker.jpg",
+            "fullName": "Jane Smith",
+            "department": "Community Care",
+            "experience": "5 years in disability support",
+            "status": "accepted",
+            "acknowledgedAt": "2026-03-20T08:00:00.000Z"
+          }
+        ],
+        "healthProfessionals": [
+          {
+            "participantId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "id": "d91a22bc-1f4e-4c9a-bb3c-7e8f2a0d1234",
+            "email": "doctor@example.com",
+            "name": "Dr. Emily Brown",
+            "status": "invited",
+            "acknowledgedAt": null
+          }
+        ]
+      },
+      "timestamp": "2026-02-24T10:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/work-log",
+    "description": "List all org work logs (with filters)",
+    "parameters": [
+      {
+        "name": "memberId",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Optional. Filter by worker member ID."
+      },
+      {
+        "name": "shiftId",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Optional. Filter by shift ID."
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "required": false,
+        "description": "Optional. Filter by status."
+      },
+      {
+        "name": "logType",
+        "type": "string",
+        "required": false,
+        "description": "Optional. Filter by log type."
+      },
+      {
+        "name": "from",
+        "type": "string",
+        "required": false,
+        "description": "Optional. Lower-bound for workDate (YYYY-MM-DD)."
+      },
+      {
+        "name": "to",
+        "type": "string",
+        "required": false,
+        "description": "Optional. Upper-bound for workDate (YYYY-MM-DD)."
+      },
+      {
+        "name": "sortBy",
+        "type": "string",
+        "required": false,
+        "description": "Optional. Column to sort by. Defaults to workDate."
+      },
+      {
+        "name": "sortOrder",
+        "type": "string",
+        "required": false,
+        "description": "Optional. Sort direction. a = ASC, d = DESC. Defaults to d."
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Optional. Page number (1-based). Defaults to 1."
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Optional. Page size (max 100). Defaults to 20."
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/visitor/clients/{clientId}",
+    "description": "Get full details for a specific client",
+    "parameters": [
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": true
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "data": {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "consentRole": "health_professionals",
+        "consentStatus": "invited",
+        "firstName": "string",
+        "lastName": "string",
+        "preferredName": "string",
+        "profilePictureUrl": "string",
+        "email": "string",
+        "phone": "string",
+        "dateOfBirth": "2026-05-15",
+        "gender": "string",
+        "culturalBackground": "string",
+        "languagesSpoken": [
+          "string"
+        ],
+        "interpreterRequired": true,
+        "selfIntro": "string",
+        "culturalConsiderations": "string",
+        "mostImportantToMe": "string",
+        "personalGoals": "string",
+        "hobbiesAndInterests": "string",
+        "modeOfCommunication": [
+          "string"
+        ],
+        "styleOfCommunication": [
+          "string"
+        ],
+        "primaryAddress": {},
+        "informationSharingConsent": {}
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/get/{id}",
+    "description": "Get detailed client profile by ID",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Unique Client ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client By ID successful",
+      "data": {
+        "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+        "createdAt": "2025-11-26T13:03:08.539Z",
+        "updatedAt": "2025-11-26T14:26:46.142Z",
+        "deletedAt": null,
+        "user": {
+          "id": "c1c440c2-cf97-4f08-adf8-1ba88bc15855",
+          "createdAt": "2025-11-26T13:03:08.516Z",
+          "updatedAt": "2025-11-26T13:03:08.516Z",
+          "deletedAt": null,
+          "email": "heyoge2801@okcdeals.com",
+          "status": "invited"
+        },
+        "firstName": "John",
+        "lastName": "Doe",
+        "preferredName": "Johnny",
+        "dateOfBirth": "1990-05-15",
+        "gender": "Male",
+        "culturalBackground": "Australian",
+        "languagesSpoken": [
+          "English",
+          "French"
+        ],
+        "interpreterRequired": false,
+        "profilePictureUrl": "https://example.com/profile.jpg",
+        "phone": "1234567890",
+        "address": "123 Main Street",
+        "city": "Sydney",
+        "state": "NSW",
+        "zipCode": "2000",
+        "emergencyContact": [
+          {
+            "name": "Jane Doe",
+            "phone": "0987654321"
+          }
+        ],
+        "selfIntro": "Hello, I am John.",
+        "culturalConsiderations": "None",
+        "mostImportantToMe": "Family",
+        "ndisPlanGoals": [
+          "Goal 1",
+          "Goal 2"
+        ],
+        "hobbiesAndInterests": "Reading, Hiking",
+        "modeOfCommunication": [
+          "Email",
+          "Phone"
+        ],
+        "styleOfCommunication": [
+          "Formal"
+        ],
+        "ndisNumber": "ND12345678",
+        "planManagement": "NDIA Managed",
+        "planManagerName": "Plan Manager Name",
+        "planManagerContactEmail": "manager@example.com",
+        "planBillingEmail": "billing@example.com",
+        "primaryDiagnosis": "Condition A",
+        "secondaryDiagnosis": "Condition B",
+        "currentMedication": "Medication X",
+        "allergiesAndSensitivities": [
+          "Peanuts",
+          "Gluten"
+        ],
+        "mobilityStatus": "Independent",
+        "supportRequirements": "Requires minimal assistance",
+        "planStartDate": "2025-01-01",
+        "planEndDate": "2025-12-31",
+        "planStatus": "active",
+        "personalGoals": "Improve daily living skills",
+        "supportCoordinatorName": "Coordinator Name",
+        "supportCoordinatorEmail": "coordinator@example.com",
+        "isDailyLivingSelected": true,
+        "dailyLivingFunding": "1500.50",
+        "isSocialAndCommunitySelected": true,
+        "socialAndCommunityFunding": "800.00",
+        "isSupportCoordinationSelected": false,
+        "supportCoordinationFunding": "0.00",
+        "isImprovedDailyLivingSelected": true,
+        "improvedDailyLivingFunding": "600.00",
+        "infoSharingConsent": {
+          "recipient": "Support Worker",
+          "medicalInformation": true,
+          "recipientSelection": true,
+          "financialInformation": false,
+          "infoConsentIsChecked": true,
+          "consentValidityAndNotes": "Valid for 12 months",
+          "generalPersonalInformation": true
+        },
+        "mediaSharingConsent": {
+          "publicUseOnly": false,
+          "internalUseOnly": true,
+          "personalUseOnly": false,
+          "publicUseReason": "",
+          "mediaConsentIsChecked": true,
+          "publicUseConsentIsChecked": false
+        },
+        "morningRoutine": null,
+        "eveningRoutine": null,
+        "preferredDaysForSupports": [
+          "Monday",
+          "Wednesday",
+          "Friday"
+        ],
+        "generalRisk": null,
+        "criticalRisk": null,
+        "OrganizationClientMapping": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-28T07:11:11.796Z",
+            "deletedAt": null,
+            "comment": [
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:07:40.409Z"
+              }
+            ],
+            "expiresAt": null,
+            "invitationStatus": "accepted",
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0,
+            "documentsAdded": 0
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:04:25.642Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/list",
+    "description": "Get all clients linked to the logged-in organization",
+    "parameters": [
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Number of records per page"
+      },
+      {
+        "name": "page",
+        "type": "number",
+        "required": false,
+        "description": "Page number"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name (first/last/preferred)"
+      },
+      {
+        "name": "sortByName",
+        "type": "string",
+        "required": false,
+        "description": "Sort clients by name (a = ascending, d = descending)"
+      },
+      {
+        "name": "sortByPlanStartDate",
+        "type": "string",
+        "required": false,
+        "description": "Sort by plan start date"
+      },
+      {
+        "name": "sortByCity",
+        "type": "string",
+        "required": false,
+        "description": "Sort by client suburb/city"
+      },
+      {
+        "name": "clientStatus",
+        "type": "string",
+        "required": false,
+        "description": "Filter clients by status"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All My clients successful",
+      "data": {
+        "data": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-28T07:11:11.796Z",
+            "comment": [
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:07:40.409Z"
+              }
+            ],
+            "client": {
+              "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+              "firstName": "John",
+              "lastName": "Doe",
+              "city": "Sydney",
+              "state": "NSW",
+              "ndisNumber": "ND12345678",
+              "planStartDate": "2025-01-01",
+              "planEndDate": "2025-12-31"
+            },
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 1,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2025-11-28T11:35:46.963Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/board-view",
+    "description": "Get clients grouped by onboarding status",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search clients by firstName, lastName, or preferredName (case-insensitive)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Clients Grouped By Status successful",
+      "data": {
+        "result": {
+          "invited": [],
+          "inProgress": [],
+          "pendingVerification": [
+            {
+              "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+              "createdAt": "2025-11-26T13:03:08.545Z",
+              "updatedAt": "2025-11-26T14:26:46.156Z",
+              "organization": {
+                "id": "4743c115-cb57-4161-92ee-9f56fac04a4b",
+                "businessName": "BrightCare Support Services Pty Ltd",
+                "tradingName": "BrightCare",
+                "abnNumber": "98765432120",
+                "ndisRegistrationNumber": "4-1A2B3C",
+                "businessEmail": "contact56@brightcare.com.au",
+                "businessPhone": "+61 400 789 456",
+                "website": "https://www.brightcare.com.au",
+                "operatingStates": [
+                  "VIC"
+                ]
+              },
+              "client": {
+                "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+                "firstName": "John",
+                "lastName": "Doe",
+                "preferredName": "Johnny",
+                "gender": "Male",
+                "dateOfBirth": "1990-05-15",
+                "city": "Sydney",
+                "state": "NSW",
+                "planStartDate": "2025-01-01",
+                "planEndDate": "2025-12-31",
+                "planStatus": "active",
+                "ndisNumber": "ND12345678",
+                "phone": "1234567890",
+                "address": "123 Main Street",
+                "languagesSpoken": [
+                  "English",
+                  "French"
+                ],
+                "interpreterRequired": false
+              },
+              "supportWorkers": [
+                {
+                  "memberId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "name": "Jane Smith",
+                  "profilePictureUrl": "https://example.com/avatars/jane.jpg"
+                }
+              ],
+              "invitationStatus": "accepted",
+              "clientStatus": "pending_verification",
+              "stepsCompleted": 0,
+              "documentsAdded": 0
+            }
+          ],
+          "onboarded": []
+        }
+      },
+      "timestamp": "2025-11-28T06:50:38.633Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/get-documents/{id}",
+    "description": "Get all documents uploaded by a client for the current organization",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Unique client ID whose documents should be fetched"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client's Documents By ID successful",
+      "data": {
+        "documents": [
+          {
+            "id": "16b142a3-c18a-4347-b6c4-fea3caea95c1",
+            "createdAt": "2025-11-26T14:26:46.101Z",
+            "updatedAt": "2025-11-26T14:26:46.101Z",
+            "deletedAt": null,
+            "expiresAt": null,
+            "issuedAt": null,
+            "fileName": "Tets",
+            "fileSize": 456454,
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/060da8cf-c071-46cb-a1f8-54aed6d52072/4743c115-cb57-4161-92ee-9f56fac04a4b/6123cdc5-aefc-4576-9f56fac04a4b/9a563e66-b6de-4af3-af78-ff2bcbf89681",
+            "isActive": true,
+            "notApplicable": false,
+            "otherDocumentType": null,
+            "status": "pending"
+          }
+        ],
+        "other": [
+          {
+            "id": "26b142a3-c18a-4347-b6c4-fea3caea95c2",
+            "createdAt": "2025-11-26T14:26:46.101Z",
+            "updatedAt": "2025-11-26T14:26:46.101Z",
+            "deletedAt": null,
+            "expiresAt": null,
+            "issuedAt": null,
+            "fileName": "OtherDoc.pdf",
+            "fileSize": 123456,
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/060da8cf/other/...",
+            "isActive": true,
+            "notApplicable": false,
+            "otherDocumentType": "Birth Certificate",
+            "status": "pending"
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:05:39.626Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/ndis-documents/{id}",
+    "description": "Get current active NDIS plan documents for a client",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client NDIS Documents successful",
+      "data": [
+        {
+          "id": "16b142a3-c18a-4347-b6c4-fea3caea95c1",
+          "documentType": {
+            "documentType": "current_ndis_plan"
+          },
+          "document": "https://example.s3.amazonaws.com/...",
+          "fileName": "ndis-plan.pdf",
+          "isActive": true,
+          "status": "verified",
+          "expiresAt": "2026-01-01",
+          "issuedAt": "2025-01-01",
+          "createdAt": "2025-11-26T14:26:46.101Z",
+          "updatedAt": "2025-11-26T14:26:46.101Z"
+        }
+      ],
+      "timestamp": "2025-11-28T12:00:00.000Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/required-document",
+    "description": "Get grouped list of required & optional client documents",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Required Document list successful",
+      "data": {
+        "current_ndis_plan": [
+          {
+            "id": "6123cdc5-aefc-4576-9f6a-861a11f98f25",
+            "createdAt": "2025-11-26T09:37:31.755Z",
+            "updatedAt": "2025-11-26T09:37:31.755Z",
+            "deletedAt": null,
+            "documentName": "Fassai",
+            "documentDescription": "Government-issued identity verification document",
+            "documentType": "current_ndis_plan",
+            "isRequired": true
+          }
+        ],
+        "guardianship_order": [
+          {
+            "id": "09f4e9a8-cb1f-44ab-b17a-ebefda3877d1",
+            "createdAt": "2025-11-26T09:38:12.779Z",
+            "updatedAt": "2025-11-26T09:38:12.779Z",
+            "deletedAt": null,
+            "documentName": "Guardina optional",
+            "documentDescription": "Government-issued identity verification document",
+            "documentType": "guardianship_order",
+            "isRequired": false
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:39:50.033Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/{clientId}/guardians",
+    "description": "Get all guardians for a client",
+    "parameters": [
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by guardian name"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "data": [
+        {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "type": "string",
+          "name": "string",
+          "status": "string",
+          "relation": "string",
+          "user": {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "email": "string"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/documents",
+    "description": "Get client\u2019s documents for a specific organization",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client's Documents By ID successful",
+      "data": {
+        "documents": [
+          {
+            "id": "16b142a3-c18a-4347-b6c4-fea3caea95c1",
+            "createdAt": "2025-11-26T14:26:46.101Z",
+            "updatedAt": "2025-11-26T14:26:46.101Z",
+            "deletedAt": null,
+            "expiresAt": null,
+            "issuedAt": null,
+            "fileName": "Tets",
+            "fileSize": 456454,
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/060da8cf-c071-46cb-a1f8-54aed6d52072/4743c115-cb57-4161-92ee-9f56fac04a4b/6123cdc5-aefc-4576-9f56fac04a4b/9a563e66-b6de-4af3-af78-ff2bcbf89681",
+            "isActive": true,
+            "notApplicable": false,
+            "otherDocumentType": null,
+            "status": "pending"
+          }
+        ],
+        "other": [
+          {
+            "id": "26b142a3-c18a-4347-b6c4-fea3caea95c2",
+            "createdAt": "2025-11-26T14:26:46.101Z",
+            "updatedAt": "2025-11-26T14:26:46.101Z",
+            "deletedAt": null,
+            "expiresAt": null,
+            "issuedAt": null,
+            "fileName": "OtherDoc.pdf",
+            "fileSize": 123456,
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/060da8cf/other/...",
+            "isActive": true,
+            "notApplicable": false,
+            "otherDocumentType": "Birth Certificate",
+            "status": "pending"
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:05:39.626Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/required-document",
+    "description": "Get grouped list of required & optional client documents",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Required Document list successful",
+      "data": {
+        "current_ndis_plan": [
+          {
+            "id": "6123cdc5-aefc-4576-9f6a-861a11f98f25",
+            "createdAt": "2025-11-26T09:37:31.755Z",
+            "updatedAt": "2025-11-26T09:37:31.755Z",
+            "deletedAt": null,
+            "documentName": "Fassai",
+            "documentDescription": "Government-issued identity verification document",
+            "documentType": "current_ndis_plan",
+            "isRequired": true
+          }
+        ],
+        "guardianship_order": [
+          {
+            "id": "09f4e9a8-cb1f-44ab-b17a-ebefda3877d1",
+            "createdAt": "2025-11-26T09:38:12.779Z",
+            "updatedAt": "2025-11-26T09:38:12.779Z",
+            "deletedAt": null,
+            "documentName": "Guardina optional",
+            "documentDescription": "Government-issued identity verification document",
+            "documentType": "guardianship_order",
+            "isRequired": false
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:39:50.033Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client-agreement/list",
+    "description": "Get paginated list of agreements",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 10"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "filterBySupportCategory",
+        "type": "string",
+        "required": false,
+        "description": "Available values : Community Access, Assistance with Daily Living, Personal Care, Social Support, Allied Health, Transport, Group Activities, Capacity Building"
+      },
+      {
+        "name": "filterByFundingManagement",
+        "type": "string",
+        "required": false,
+        "description": "Available values : Self Managed, Plan Nominee Managed, NDIA Managed, Plan Managed"
+      },
+      {
+        "name": "filterByStatus",
+        "type": "string",
+        "required": false,
+        "description": "Available values : draft, sent, approved, signed, cancelled"
+      },
+      {
+        "name": "filterByIsActive",
+        "type": "boolean",
+        "required": false,
+        "description": "Filter by active agreement state."
+      },
+      {
+        "name": "kpi",
+        "type": "string",
+        "required": false,
+        "description": "Filter agreements by KPI category. Overrides other filters to show a specific KPI subset.\n\ntotalAgreements \u2192 All agreements (no additional filter)\nactive \u2192 Only active agreements (isActive = true)\npending \u2192 Agreements pending review (status = signed)"
+      },
+      {
+        "name": "sortByParticipantName",
+        "type": "string",
+        "required": false,
+        "description": "Available values : a, d"
+      },
+      {
+        "name": "sortByAgreementStartDate",
+        "type": "string",
+        "required": false,
+        "description": "Available values : a, d"
+      },
+      {
+        "name": "sortByAgreementEndDate",
+        "type": "string",
+        "required": false,
+        "description": "Available values : a, d"
+      },
+      {
+        "name": "sortByStatus",
+        "type": "string",
+        "required": false,
+        "description": "Available values : a, d"
+      },
+      {
+        "name": "sortByFundingManagement",
+        "type": "string",
+        "required": false,
+        "description": "Available values : a, d"
+      },
+      {
+        "name": "sortBySupportCategory",
+        "type": "string",
+        "required": false,
+        "description": "Available values : a, d"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get all agreements successful",
+      "data": {
+        "data": [
+          {
+            "agreementId": "d7d812f1-84bf-45cd-8090-16c7a848940e",
+            "clientId": "87de35fb-41d2-4ebf-a512-47a0147c8e27",
+            "participantName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "agreementStartDate": "22 Feb 2026",
+            "agreementEndDate": "31 Dec 2026",
+            "isActive": true,
+            "status": "approved",
+            "fundingManagement": null,
+            "signedDocument": {
+              "id": "e4f2e7f1-6f71-4f9c-8a29-9d0e3d3a7b11",
+              "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/87de35fb-41d2-4ebf-a512-47a0147c8e27/agreement/signed-document/8d238dff-e607-427c-954e-d9791b2884ee",
+              "fileName": "final-agreement.pdf",
+              "fileSize": 245760,
+              "isActive": true,
+              "createdAt": "2026-02-20T07:20:03.633Z",
+              "expiresAt": null
+            },
+            "generatedDocument": null,
+            "supportCategories": [
+              "Community Access"
+            ]
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 4,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2026-02-20T09:27:20.551Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client-agreement/get-data/{agreementId}",
+    "description": "Get agreement frontend data by agreement ID",
+    "parameters": [
+      {
+        "name": "agreementId",
+        "type": "string($uuid)",
+        "required": true
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get agreement frontend data successful",
+      "data": {
+        "id": "f2f9e299-3e7d-4abb-a932-5f061bbaec2a",
+        "createdAt": "2026-02-23T05:07:43.944Z",
+        "updatedAt": "2026-02-23T12:13:33.632Z",
+        "deletedAt": null,
+        "clientId": "87de35fb-41d2-4ebf-a512-47a0147c8e27",
+        "organizationId": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+        "status": "sent",
+        "signedAt": null,
+        "sentForSignAt": "2026-02-23T10:20:54.166Z",
+        "approvedAt": null,
+        "isActive": false,
+        "cancellationPolicyAccepted": true,
+        "supportCoordinatorDetails": {
+          "supportCoordinatorName": null,
+          "supportCoordinatorEmail": null
+        },
+        "representative": {
+          "name": "John Mathew",
+          "email": "johnmathew@family.com",
+          "phone": "+61 423 987 654",
+          "relationship": "Father"
+        },
+        "advocate": {
+          "name": "Advocate Name",
+          "email": "advocate@example.com",
+          "phone": "+61 412 345 678"
+        },
+        "commencement": {
+          "agreementEndDate": "31 Dec 2026",
+          "agreementStartDate": "24 Feb 2026"
+        },
+        "additionalSections": {
+          "personalCare": "Yes",
+          "clientLivesAlone": "Yes",
+          "soleWorkerApplies": "No",
+          "includeSupportEvents": true,
+          "supervisoryFrequency": "Weekly",
+          "riskAssessmentCompleted": "Yes"
+        },
+        "fundingAndPayment": {
+          "paymentMethod": "EFT",
+          "fundingManagement": "NDIA Managed",
+          "planManagementProviderName": "kkkkkk",
+          "planManagerContactEmail": "manager@example.com",
+          "planBillingEmail": "billing@example.com"
+        },
+        "scheduleOfSupports": [
+          {
+            "price": 82,
+            "location": "Community",
+            "frequency": "Fortnightly",
+            "totalCost": 246,
+            "deliveredBy": "Disability Support Worker",
+            "description": "Support for social and recreational community participation.",
+            "fundingType": "plan managed",
+            "supportName": "04_210_0125_6_1 - Community Participation Support",
+            "gstInclusive": true,
+            "durationHours": "3",
+            "preferredSchedule": [
+              {
+                "dayOfWeek": "FR",
+                "timeSlots": [
+                  {
+                    "startTime": "13:00",
+                    "endTime": "16:00"
+                  }
+                ]
+              }
+            ],
+            "supportCategory": "Community Access"
+          }
+        ],
+        "ndisPlanAttached": true,
+        "ndisPlanDocument": [
+          {
+            "id": "doc-1",
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/organization/client/87de35fb-41d2-4ebf-a512-47a0147c8e27/ndis-plan/a8ff293b-4112-415c-9b86-f5f3f6912829",
+            "fileName": "ndis-plan.pdf",
+            "fileSize": 120000,
+            "isActive": true,
+            "createdAt": "2026-02-18T11:44:09.095Z",
+            "expiresAt": null
+          }
+        ],
+        "emergencyPlanAttached": false,
+        "emergencyPlanDocument": [],
+        "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+        "providerSignatureImageUrl": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/organization/agreement/signature/13203b4c-b28f-499a-a90a-599a42219307/96419b79-fe3e-4b2c-b2c5-98c7eceb880c",
+        "signedDocument": [],
+        "generatedDocument": [
+          {
+            "id": "f13dfe58-4f86-43a5-bc7c-33f140a6c22c",
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/organization/13203b4c-b28f-499a-a90a-599a42219307/agreements/87de35fb-41d2-4ebf-a512-47a0147c8e27/f13dfe58-4f86-43a5-bc7c-33f140a6c22c",
+            "fileName": "agreement_598e103c-9461-4f64-adcd-1384e738ce86.pdf",
+            "fileSize": 150307,
+            "isActive": true,
+            "createdAt": "2026-02-23T12:13:33.606Z",
+            "expiresAt": null
+          }
+        ],
+        "lastEditedById": "13203b4c-b28f-499a-a90a-599a42219307"
+      },
+      "timestamp": "2026-02-26T04:56:38.582Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/agreement/records",
+    "description": "Get all client agreement records for mobile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get client agreement records for mobile successful",
+      "data": {
+        "records": [
+          {
+            "agreementId": "f2f9e299-3e7d-4abb-a932-5f061bbaec2a",
+            "createdAt": "2026-02-23T05:07:43.944Z",
+            "updatedAt": "2026-02-23T05:07:43.944Z",
+            "status": "draft",
+            "signedAt": null,
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "d7d812f1-84bf-45cd-8090-16c7a848940e",
+            "createdAt": "2026-02-19T12:10:04.287Z",
+            "updatedAt": "2026-02-23T05:07:43.944Z",
+            "status": "approved",
+            "signedAt": "2026-02-19T13:46:45.866Z",
+            "isActive": true,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "04209f87-54ea-4316-b158-8825ccb98c72",
+            "createdAt": "2026-02-17T06:54:56.220Z",
+            "updatedAt": "2026-02-20T12:47:48.611Z",
+            "status": "approved",
+            "signedAt": "2026-02-17T13:11:31.878Z",
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "327d4f06-806d-4518-83e0-ba020aa547d3",
+            "createdAt": "2026-02-20T07:51:56.855Z",
+            "updatedAt": "2026-02-20T10:50:18.134Z",
+            "status": "sent",
+            "signedAt": null,
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "signedDocument": [
+              {
+                "id": "e4f2e7f8-6e76-4f9c-8a29-9d0e3d3a7b11",
+                "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/87de35fb-41d2-4ebf-a512-47a0147c8e27/agreement/signed-document/cf363316-b5d6-49d0-9149-ba1aab4e83e9",
+                "fileName": "agreement-signed.pdf",
+                "fileSize": 245760,
+                "isActive": true,
+                "expiresAt": null,
+                "createdAt": "2026-02-20T06:33:50.483Z"
+              }
+            ],
+            "generatedDocument": [
+              {
+                "id": "6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+                "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/organization/13203b4c-b28f-499a-a90a-599a42219307/agreements/87de35fb-41d2-4ebf-a512-47a0147c8e27/6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+                "fileName": "agreement_6a1d9f01-a52f-4dd7-a307-d2163f11f001.pdf",
+                "fileSize": 286312,
+                "isActive": true,
+                "expiresAt": null,
+                "createdAt": "2026-02-20T06:35:02.912Z"
+              }
+            ],
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "7d2a7fb8-075f-4a3b-8d17-d81671719448",
+            "createdAt": "2026-02-19T12:14:32.330Z",
+            "updatedAt": "2026-02-20T09:07:11.129Z",
+            "status": "sent",
+            "signedAt": null,
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          }
+        ]
+      },
+      "timestamp": "2026-02-23T05:48:29.921Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/agreement/records/{agreementId}",
+    "description": "Get one client agreement record by agreement ID for mobile",
+    "parameters": [
+      {
+        "name": "agreementId",
+        "type": "string($uuid)",
+        "required": true
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get client agreement record by id for mobile successful",
+      "data": {
+        "agreementId": "d7d812f1-84bf-45cd-8090-16c7a848940e",
+        "createdAt": "2026-02-19T12:10:04.287Z",
+        "updatedAt": "2026-02-23T05:07:43.944Z",
+        "status": "approved",
+        "signedAt": "2026-02-19T13:46:45.866Z",
+        "isActive": true,
+        "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+        "signedDocument": [
+          {
+            "id": "e4f2e7f8-6e76-4f9c-8a29-9d0e3d3a7b11",
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/87de35fb-41d2-4ebf-a512-47a0147c8e27/agreement/signed-document/cf363316-b5d6-49d0-9149-ba1aab4e83e9",
+            "fileName": "agreement-signed.pdf",
+            "fileSize": 245760,
+            "isActive": true,
+            "expiresAt": null,
+            "createdAt": "2026-02-20T06:33:50.483Z"
+          }
+        ],
+        "generatedDocument": [
+          {
+            "id": "6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/organization/13203b4c-b28f-499a-a90a-599a42219307/agreements/87de35fb-41d2-4ebf-a512-47a0147c8e27/6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+            "fileName": "agreement_6a1d9f01-a52f-4dd7-a307-d2163f11f001.pdf",
+            "fileSize": 286312,
+            "isActive": true,
+            "expiresAt": null,
+            "createdAt": "2026-02-20T06:35:02.912Z"
+          }
+        ],
+        "organization": {
+          "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+          "name": "kkkkkk",
+          "email": "swefwef@gmail.com"
+        }
+      },
+      "timestamp": "2026-02-23T05:50:56.497Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/support-coordinator/by-client/{id}",
+    "description": "Get all support coordinator assignments for a client",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization/support-coordinator/client/{id}",
+    "description": "View full details of a client (admin view, no assignment check)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/support-coordinator/clients/{id}",
+    "description": "Get details of an assigned client",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "GET",
+    "path": "/organization/support-worker/by-client/{clientId}",
+    "description": "Get all support worker mappings for a client",
+    "parameters": [
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID whose support worker mappings should be returned."
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "string",
+      "data": [
+        {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "clientId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "clientName": "string",
+          "clientProfilePictureUrl": "string",
+          "assignedByMemberId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "assignedByMemberName": "string"
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/visitor/clients",
+    "description": "Get all clients associated with the authenticated visitor",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name or location (address, city, state, postalCode)"
+      },
+      {
+        "name": "filterByRole",
+        "type": "string",
+        "required": false,
+        "description": "Filter by consent role"
+      },
+      {
+        "name": "filterByStatus",
+        "type": "string",
+        "required": false,
+        "description": "Filter by consent status"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Visitor Clients successful",
+      "data": [
+        {
+          "consentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "role": "health_professionals",
+          "status": "invited",
+          "clientId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "clientFullName": "string",
+          "clientProfilePictureUrl": "string",
+          "clientPrimaryAddress": {
+            "address": "string",
+            "city": "string",
+            "state": "string",
+            "postalCode": "string"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client-access-consent/all-clients",
+    "description": "Get all clients for the authenticated visitor",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Searches across client full name and visitor name on the consent record"
+      },
+      {
+        "name": "filterByRole",
+        "type": "string",
+        "required": false,
+        "description": "Filter consent records by visitor role"
+      },
+      {
+        "name": "filterByStatus",
+        "type": "string",
+        "required": false,
+        "description": "Filter consent records by status"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records per page"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Page number"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All Clients For Visitor successful",
+      "data": [
+        {
+          "consentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "role": "guardian",
+          "status": "accepted",
+          "name": "John Smith",
+          "visitorRelation": "father",
+          "invitedAt": "2025-01-10T08:00:00.000Z",
+          "clientId": "d4e5f6a7-b8c9-0123-def0-123456789abc",
+          "clientFullName": "Jane Doe",
+          "clientPreferredName": "Jane",
+          "clientProfilePictureUrl": "https://example.com/pic.jpg"
+        }
+      ],
+      "total": 1
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/organization-member/case-note/get-by-shift/{shiftId}",
+    "description": "Get client participants with case note status by shift",
+    "parameters": [
+      {
+        "name": "shiftId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Shift identifier"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client Participants with CaseNote by Shift successful",
+      "data": [
+        {
+          "clientId": "dab57916-9863-4b49-ba39-92441547ba5b",
+          "clientName": "John Smith",
+          "clientProfilePictureUrl": "https://example-bucket.s3.amazonaws.com/clients/profile/john.jpg",
+          "caseNoteId": "e03fae42-c051-4830-9805-23d75e7950c6"
+        },
+        {
+          "clientId": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+          "clientName": "Jane Doe",
+          "clientProfilePictureUrl": null,
+          "caseNoteId": null
+        }
+      ],
+      "timestamp": "2026-03-24T06:41:46.491Z"
+    }
+  }
+]

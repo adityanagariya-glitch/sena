@@ -1,0 +1,51 @@
+[
+  {
+    "timestamp": "2026-06-03 17:16",
+    "question": "what is the safeguarding policy?",
+    "rewritten": "NDIS safeguarding policy guidelines",
+    "steps": [
+      {
+        "name": "Classifier",
+        "model": "amazon.nova-micro-v1:0",
+        "input_tokens": 934,
+        "output_tokens": 44,
+        "total_tokens": 978
+      },
+      {
+        "name": "Query Rewriter",
+        "model": "amazon.nova-lite-v1:0",
+        "input_tokens": 281,
+        "output_tokens": 6,
+        "total_tokens": 287
+      },
+      {
+        "name": "KB Retrieval",
+        "model": "amazon.titan-embed-text-v2:0",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "note": "11 raw → 11 after noise filter → 11 boosted | vector search, no LLM tokens"
+      },
+      {
+        "name": "Amazon Reranker",
+        "model": "amazon.rerank-v1:0",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "note": "API does not expose token counts | 11 sources sent | ~86,782 chars | ~21,695 est. tokens"
+      },
+      {
+        "name": "Generator",
+        "model": "au.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "input_tokens": 12977,
+        "output_tokens": 126,
+        "total_tokens": 13103
+      }
+    ],
+    "totals": {
+      "input_tokens": 14192,
+      "output_tokens": 176,
+      "total_tokens": 14368
+    }
+  }
+]

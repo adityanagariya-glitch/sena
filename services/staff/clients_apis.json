@@ -1,0 +1,948 @@
+[
+  {
+    "method": "GET",
+    "path": "/mobile/client/details",
+    "description": "Get logged-in client's full profile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client By ID successful",
+      "data": {
+        "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+        "createdAt": "2025-11-26T13:03:08.539Z",
+        "updatedAt": "2025-11-26T14:26:46.142Z",
+        "deletedAt": null,
+        "user": {
+          "id": "c1c440c2-cf97-4f08-adf8-1ba88bc15855",
+          "createdAt": "2025-11-26T13:03:08.516Z",
+          "updatedAt": "2025-11-26T13:03:08.516Z",
+          "deletedAt": null,
+          "email": "heyoge2801@okcdeals.com",
+          "status": "invited"
+        },
+        "firstName": "John",
+        "lastName": "Doe",
+        "preferredName": "Johnny",
+        "dateOfBirth": "1990-05-15",
+        "gender": "Male",
+        "culturalBackground": "Australian",
+        "languagesSpoken": [
+          "English",
+          "French"
+        ],
+        "interpreterRequired": false,
+        "profilePictureUrl": "https://example.com/profile.jpg",
+        "phone": "1234567890",
+        "address": "123 Main Street",
+        "city": "Sydney",
+        "state": "NSW",
+        "zipCode": "2000",
+        "emergencyContact": [
+          {
+            "name": "Jane Doe",
+            "phone": "0987654321"
+          }
+        ],
+        "selfIntro": "Hello, I am John.",
+        "culturalConsiderations": "None",
+        "mostImportantToMe": "Family",
+        "ndisPlanGoals": [
+          "Goal 1",
+          "Goal 2"
+        ],
+        "hobbiesAndInterests": "Reading, Hiking",
+        "modeOfCommunication": [
+          "Email",
+          "Phone"
+        ],
+        "styleOfCommunication": [
+          "Formal"
+        ],
+        "ndisNumber": "ND12345678",
+        "planManagement": "NDIA Managed",
+        "planManagerName": "Plan Manager Name",
+        "planManagerContactEmail": "manager@example.com",
+        "planBillingEmail": "billing@example.com",
+        "primaryDiagnosis": "Condition A",
+        "secondaryDiagnosis": "Condition B",
+        "currentMedication": "Medication X",
+        "allergiesAndSensitivities": [
+          "Peanuts",
+          "Gluten"
+        ],
+        "mobilityStatus": "Independent",
+        "supportRequirements": "Requires minimal assistance",
+        "planStartDate": "2025-01-01",
+        "planEndDate": "2025-12-31",
+        "planStatus": "active",
+        "personalGoals": "Improve daily living skills",
+        "supportCoordinatorName": "Coordinator Name",
+        "supportCoordinatorEmail": "coordinator@example.com",
+        "isDailyLivingSelected": true,
+        "dailyLivingFunding": "1500.50",
+        "isSocialAndCommunitySelected": true,
+        "socialAndCommunityFunding": "800.00",
+        "isSupportCoordinationSelected": false,
+        "supportCoordinationFunding": "0.00",
+        "isImprovedDailyLivingSelected": true,
+        "improvedDailyLivingFunding": "600.00",
+        "infoSharingConsent": {
+          "recipient": "Support Worker",
+          "medicalInformation": true,
+          "recipientSelection": true,
+          "financialInformation": false,
+          "infoConsentIsChecked": true,
+          "consentValidityAndNotes": "Valid for 12 months",
+          "generalPersonalInformation": true
+        },
+        "mediaSharingConsent": {
+          "publicUseOnly": false,
+          "internalUseOnly": true,
+          "personalUseOnly": false,
+          "publicUseReason": "",
+          "mediaConsentIsChecked": true,
+          "publicUseConsentIsChecked": false
+        },
+        "morningRoutine": null,
+        "eveningRoutine": null,
+        "preferredDaysForSupports": [
+          "Monday",
+          "Wednesday",
+          "Friday"
+        ],
+        "generalRisk": null,
+        "criticalRisk": null,
+        "OrganizationClientMapping": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-28T07:11:11.796Z",
+            "deletedAt": null,
+            "comment": [
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:07:40.409Z"
+              },
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:08:17.696Z"
+              }
+            ],
+            "expiresAt": null,
+            "invitationStatus": "accepted",
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0,
+            "documentsAdded": 0
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:04:25.642Z"
+    },
+    "section": "client",
+    "audience": [
+      "client_mobile"
+    ],
+    "purpose": "Get logged-in client's full profile"
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/visitor/clients/{clientId}",
+    "description": "Get full details for a specific client",
+    "parameters": [
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": true
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "data": {
+        "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "consentRole": "health_professionals",
+        "consentStatus": "invited",
+        "firstName": "string",
+        "lastName": "string",
+        "preferredName": "string",
+        "profilePictureUrl": "string",
+        "email": "string",
+        "phone": "string",
+        "dateOfBirth": "2026-05-15",
+        "gender": "string",
+        "culturalBackground": "string",
+        "languagesSpoken": [
+          "string"
+        ],
+        "interpreterRequired": true,
+        "selfIntro": "string",
+        "culturalConsiderations": "string",
+        "mostImportantToMe": "string",
+        "personalGoals": "string",
+        "hobbiesAndInterests": "string",
+        "modeOfCommunication": [
+          "string"
+        ],
+        "styleOfCommunication": [
+          "string"
+        ],
+        "primaryAddress": {},
+        "informationSharingConsent": {}
+      }
+    },
+    "section": "client",
+    "audience": [
+      "guardian_mobile"
+    ],
+    "purpose": "Get full details for a specific client"
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/get/{id}",
+    "description": "Get detailed client profile by ID",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Unique Client ID"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client By ID successful",
+      "data": {
+        "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+        "createdAt": "2025-11-26T13:03:08.539Z",
+        "updatedAt": "2025-11-26T14:26:46.142Z",
+        "deletedAt": null,
+        "user": {
+          "id": "c1c440c2-cf97-4f08-adf8-1ba88bc15855",
+          "createdAt": "2025-11-26T13:03:08.516Z",
+          "updatedAt": "2025-11-26T13:03:08.516Z",
+          "deletedAt": null,
+          "email": "heyoge2801@okcdeals.com",
+          "status": "invited"
+        },
+        "firstName": "John",
+        "lastName": "Doe",
+        "preferredName": "Johnny",
+        "dateOfBirth": "1990-05-15",
+        "gender": "Male",
+        "culturalBackground": "Australian",
+        "languagesSpoken": [
+          "English",
+          "French"
+        ],
+        "interpreterRequired": false,
+        "profilePictureUrl": "https://example.com/profile.jpg",
+        "phone": "1234567890",
+        "address": "123 Main Street",
+        "city": "Sydney",
+        "state": "NSW",
+        "zipCode": "2000",
+        "emergencyContact": [
+          {
+            "name": "Jane Doe",
+            "phone": "0987654321"
+          }
+        ],
+        "selfIntro": "Hello, I am John.",
+        "culturalConsiderations": "None",
+        "mostImportantToMe": "Family",
+        "ndisPlanGoals": [
+          "Goal 1",
+          "Goal 2"
+        ],
+        "hobbiesAndInterests": "Reading, Hiking",
+        "modeOfCommunication": [
+          "Email",
+          "Phone"
+        ],
+        "styleOfCommunication": [
+          "Formal"
+        ],
+        "ndisNumber": "ND12345678",
+        "planManagement": "NDIA Managed",
+        "planManagerName": "Plan Manager Name",
+        "planManagerContactEmail": "manager@example.com",
+        "planBillingEmail": "billing@example.com",
+        "primaryDiagnosis": "Condition A",
+        "secondaryDiagnosis": "Condition B",
+        "currentMedication": "Medication X",
+        "allergiesAndSensitivities": [
+          "Peanuts",
+          "Gluten"
+        ],
+        "mobilityStatus": "Independent",
+        "supportRequirements": "Requires minimal assistance",
+        "planStartDate": "2025-01-01",
+        "planEndDate": "2025-12-31",
+        "planStatus": "active",
+        "personalGoals": "Improve daily living skills",
+        "supportCoordinatorName": "Coordinator Name",
+        "supportCoordinatorEmail": "coordinator@example.com",
+        "isDailyLivingSelected": true,
+        "dailyLivingFunding": "1500.50",
+        "isSocialAndCommunitySelected": true,
+        "socialAndCommunityFunding": "800.00",
+        "isSupportCoordinationSelected": false,
+        "supportCoordinationFunding": "0.00",
+        "isImprovedDailyLivingSelected": true,
+        "improvedDailyLivingFunding": "600.00",
+        "infoSharingConsent": {
+          "recipient": "Support Worker",
+          "medicalInformation": true,
+          "recipientSelection": true,
+          "financialInformation": false,
+          "infoConsentIsChecked": true,
+          "consentValidityAndNotes": "Valid for 12 months",
+          "generalPersonalInformation": true
+        },
+        "mediaSharingConsent": {
+          "publicUseOnly": false,
+          "internalUseOnly": true,
+          "personalUseOnly": false,
+          "publicUseReason": "",
+          "mediaConsentIsChecked": true,
+          "publicUseConsentIsChecked": false
+        },
+        "morningRoutine": null,
+        "eveningRoutine": null,
+        "preferredDaysForSupports": [
+          "Monday",
+          "Wednesday",
+          "Friday"
+        ],
+        "generalRisk": null,
+        "criticalRisk": null,
+        "OrganizationClientMapping": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-28T07:11:11.796Z",
+            "deletedAt": null,
+            "comment": [
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:07:40.409Z"
+              }
+            ],
+            "expiresAt": null,
+            "invitationStatus": "accepted",
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0,
+            "documentsAdded": 0
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:04:25.642Z"
+    },
+    "section": "client",
+    "audience": [
+      "admin_web"
+    ],
+    "purpose": "Get detailed client profile by ID"
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/list",
+    "description": "Get all clients linked to the logged-in organization",
+    "parameters": [
+      {
+        "name": "limit",
+        "type": "number",
+        "required": false,
+        "description": "Number of records per page"
+      },
+      {
+        "name": "page",
+        "type": "number",
+        "required": false,
+        "description": "Page number"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name (first/last/preferred)"
+      },
+      {
+        "name": "sortByName",
+        "type": "string",
+        "required": false,
+        "description": "Sort clients by name (a = ascending, d = descending)"
+      },
+      {
+        "name": "sortByPlanStartDate",
+        "type": "string",
+        "required": false,
+        "description": "Sort by plan start date"
+      },
+      {
+        "name": "sortByCity",
+        "type": "string",
+        "required": false,
+        "description": "Sort by client suburb/city"
+      },
+      {
+        "name": "clientStatus",
+        "type": "string",
+        "required": false,
+        "description": "Filter clients by status"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All My clients successful",
+      "data": {
+        "data": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "createdAt": "2025-11-26T13:03:08.545Z",
+            "updatedAt": "2025-11-28T07:11:11.796Z",
+            "comment": [
+              {
+                "text": {
+                  "text": "onboarded",
+                  "notes": "best"
+                },
+                "type": "serviceProvider",
+                "createdAt": "2025-11-28T07:07:40.409Z"
+              }
+            ],
+            "client": {
+              "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+              "firstName": "John",
+              "lastName": "Doe",
+              "city": "Sydney",
+              "state": "NSW",
+              "ndisNumber": "ND12345678",
+              "planStartDate": "2025-01-01",
+              "planEndDate": "2025-12-31"
+            },
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "limit": 10,
+          "total": 1,
+          "totalPages": 1,
+          "hasNext": false,
+          "hasPrev": false
+        }
+      },
+      "timestamp": "2025-11-28T11:35:46.963Z"
+    },
+    "section": "client",
+    "audience": [
+      "admin_web"
+    ],
+    "purpose": "Get all clients linked to the logged-in organization"
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/{clientId}/guardians",
+    "description": "Get all guardians for a client",
+    "parameters": [
+      {
+        "name": "clientId",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by guardian name"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "data": [
+        {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "type": "string",
+          "name": "string",
+          "status": "string",
+          "relation": "string",
+          "user": {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "email": "string"
+          }
+        }
+      ]
+    },
+    "section": "client",
+    "audience": [
+      "admin_web"
+    ],
+    "purpose": "Get all guardians for a client"
+  },
+  {
+    "method": "GET",
+    "path": "/organization/support-coordinator/by-client/{id}",
+    "description": "Get all support coordinator assignments for a client",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      }
+    ],
+    "responseExample": null,
+    "section": "client",
+    "audience": [
+      "admin_web"
+    ],
+    "purpose": "Get all support coordinator assignments for a client"
+  },
+  {
+    "method": "GET",
+    "path": "/organization/support-coordinator/client/{id}",
+    "description": "View full details of a client (admin view, no assignment check)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      }
+    ],
+    "responseExample": null,
+    "section": "client",
+    "audience": [
+      "admin_web"
+    ],
+    "purpose": "View full details of a client (admin view, no assignment check)"
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/support-coordinator/clients/{id}",
+    "description": "Get details of an assigned client",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Client ID"
+      }
+    ],
+    "responseExample": null,
+    "section": "client",
+    "audience": [
+      "support_coordinator_mobile"
+    ],
+    "purpose": "Get details of an assigned client"
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/visitor/clients",
+    "description": "Get all clients associated with the authenticated visitor",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search by client name or location (address, city, state, postalCode)"
+      },
+      {
+        "name": "filterByRole",
+        "type": "string",
+        "required": false,
+        "description": "Filter by consent role"
+      },
+      {
+        "name": "filterByStatus",
+        "type": "string",
+        "required": false,
+        "description": "Filter by consent status"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Visitor Clients successful",
+      "data": [
+        {
+          "consentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "role": "health_professionals",
+          "status": "invited",
+          "clientId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "clientFullName": "string",
+          "clientProfilePictureUrl": "string",
+          "clientPrimaryAddress": {
+            "address": "string",
+            "city": "string",
+            "state": "string",
+            "postalCode": "string"
+          }
+        }
+      ]
+    },
+    "section": "client",
+    "audience": [
+      "guardian_mobile"
+    ],
+    "purpose": "Get all clients associated with the authenticated visitor"
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client-access-consent/all-clients",
+    "description": "Get all clients for the authenticated visitor",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Searches across client full name and visitor name on the consent record"
+      },
+      {
+        "name": "filterByRole",
+        "type": "string",
+        "required": false,
+        "description": "Filter consent records by visitor role"
+      },
+      {
+        "name": "filterByStatus",
+        "type": "string",
+        "required": false,
+        "description": "Filter consent records by status"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records per page"
+      },
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Page number"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All Clients For Visitor successful",
+      "data": [
+        {
+          "consentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "role": "guardian",
+          "status": "accepted",
+          "name": "John Smith",
+          "visitorRelation": "father",
+          "invitedAt": "2025-01-10T08:00:00.000Z",
+          "clientId": "d4e5f6a7-b8c9-0123-def0-123456789abc",
+          "clientFullName": "Jane Doe",
+          "clientPreferredName": "Jane",
+          "clientProfilePictureUrl": "https://example.com/pic.jpg"
+        }
+      ],
+      "total": 1
+    },
+    "section": "client",
+    "audience": [
+      "guardian_mobile"
+    ],
+    "purpose": "Get all clients for the authenticated visitor"
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/agreement/records",
+    "description": "Get all client agreement records for mobile",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get client agreement records for mobile successful",
+      "data": {
+        "records": [
+          {
+            "agreementId": "f2f9e299-3e7d-4abb-a932-5f061bbaec2a",
+            "createdAt": "2026-02-23T05:07:43.944Z",
+            "updatedAt": "2026-02-23T05:07:43.944Z",
+            "status": "draft",
+            "signedAt": null,
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "d7d812f1-84bf-45cd-8090-16c7a848940e",
+            "createdAt": "2026-02-19T12:10:04.287Z",
+            "updatedAt": "2026-02-23T05:07:43.944Z",
+            "status": "approved",
+            "signedAt": "2026-02-19T13:46:45.866Z",
+            "isActive": true,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "04209f87-54ea-4316-b158-8825ccb98c72",
+            "createdAt": "2026-02-17T06:54:56.220Z",
+            "updatedAt": "2026-02-20T12:47:48.611Z",
+            "status": "approved",
+            "signedAt": "2026-02-17T13:11:31.878Z",
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "327d4f06-806d-4518-83e0-ba020aa547d3",
+            "createdAt": "2026-02-20T07:51:56.855Z",
+            "updatedAt": "2026-02-20T10:50:18.134Z",
+            "status": "sent",
+            "signedAt": null,
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "signedDocument": [
+              {
+                "id": "e4f2e7f8-6e76-4f9c-8a29-9d0e3d3a7b11",
+                "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/87de35fb-41d2-4ebf-a512-47a0147c8e27/agreement/signed-document/cf363316-b5d6-49d0-9149-ba1aab4e83e9",
+                "fileName": "agreement-signed.pdf",
+                "fileSize": 245760,
+                "isActive": true,
+                "expiresAt": null,
+                "createdAt": "2026-02-20T06:33:50.483Z"
+              }
+            ],
+            "generatedDocument": [
+              {
+                "id": "6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+                "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/organization/13203b4c-b28f-499a-a90a-599a42219307/agreements/87de35fb-41d2-4ebf-a512-47a0147c8e27/6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+                "fileName": "agreement_6a1d9f01-a52f-4dd7-a307-d2163f11f001.pdf",
+                "fileSize": 286312,
+                "isActive": true,
+                "expiresAt": null,
+                "createdAt": "2026-02-20T06:35:02.912Z"
+              }
+            ],
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          },
+          {
+            "agreementId": "7d2a7fb8-075f-4a3b-8d17-d81671719448",
+            "createdAt": "2026-02-19T12:14:32.330Z",
+            "updatedAt": "2026-02-20T09:07:11.129Z",
+            "status": "sent",
+            "signedAt": null,
+            "isActive": false,
+            "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+            "organization": {
+              "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+              "name": "kkkkkk",
+              "email": "swefwef@gmail.com"
+            }
+          }
+        ]
+      },
+      "timestamp": "2026-02-23T05:48:29.921Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/agreement/records/{agreementId}",
+    "description": "Get one client agreement record by agreement ID for mobile",
+    "parameters": [
+      {
+        "name": "agreementId",
+        "type": "string($uuid)",
+        "required": true
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get client agreement record by id for mobile successful",
+      "data": {
+        "agreementId": "d7d812f1-84bf-45cd-8090-16c7a848940e",
+        "createdAt": "2026-02-19T12:10:04.287Z",
+        "updatedAt": "2026-02-23T05:07:43.944Z",
+        "status": "approved",
+        "signedAt": "2026-02-19T13:46:45.866Z",
+        "isActive": true,
+        "clientSignerName": "cgfcysdddddddddddddddddddddddddddddddddd",
+        "signedDocument": [
+          {
+            "id": "e4f2e7f8-6e76-4f9c-8a29-9d0e3d3a7b11",
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/87de35fb-41d2-4ebf-a512-47a0147c8e27/agreement/signed-document/cf363316-b5d6-49d0-9149-ba1aab4e83e9",
+            "fileName": "agreement-signed.pdf",
+            "fileSize": 245760,
+            "isActive": true,
+            "expiresAt": null,
+            "createdAt": "2026-02-20T06:33:50.483Z"
+          }
+        ],
+        "generatedDocument": [
+          {
+            "id": "6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/organization/13203b4c-b28f-499a-a90a-599a42219307/agreements/87de35fb-41d2-4ebf-a512-47a0147c8e27/6a1d9f01-a52f-4dd7-a307-d2163f11f001",
+            "fileName": "agreement_6a1d9f01-a52f-4dd7-a307-d2163f11f001.pdf",
+            "fileSize": 286312,
+            "isActive": true,
+            "expiresAt": null,
+            "createdAt": "2026-02-20T06:35:02.912Z"
+          }
+        ],
+        "organization": {
+          "id": "d4747b48-4458-48a3-88f0-6f93d6963ae5",
+          "name": "kkkkkk",
+          "email": "swefwef@gmail.com"
+        }
+      },
+      "timestamp": "2026-02-23T05:50:56.497Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/mobile/client/documents",
+    "description": "Get client\u2019s documents for a specific organization",
+    "parameters": [],
+    "responseExample": {
+      "success": true,
+      "message": "Get Client's Documents By ID successful",
+      "data": {
+        "documents": [
+          {
+            "id": "16b142a3-c18a-4347-b6c4-fea3caea95c1",
+            "createdAt": "2025-11-26T14:26:46.101Z",
+            "updatedAt": "2025-11-26T14:26:46.101Z",
+            "deletedAt": null,
+            "expiresAt": null,
+            "issuedAt": null,
+            "fileName": "Tets",
+            "fileSize": 456454,
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/060da8cf-c071-46cb-a1f8-54aed6d52072/4743c115-cb57-4161-92ee-9f56fac04a4b/6123cdc5-aefc-4576-9f56fac04a4b/9a563e66-b6de-4af3-af78-ff2bcbf89681",
+            "isActive": true,
+            "notApplicable": false,
+            "otherDocumentType": null,
+            "status": "pending"
+          }
+        ],
+        "other": [
+          {
+            "id": "26b142a3-c18a-4347-b6c4-fea3caea95c2",
+            "createdAt": "2025-11-26T14:26:46.101Z",
+            "updatedAt": "2025-11-26T14:26:46.101Z",
+            "deletedAt": null,
+            "expiresAt": null,
+            "issuedAt": null,
+            "fileName": "OtherDoc.pdf",
+            "fileSize": 123456,
+            "document": "https://test-dev-sena.s3.ap-south-1.amazonaws.com/client/060da8cf/other/...",
+            "isActive": true,
+            "notApplicable": false,
+            "otherDocumentType": "Birth Certificate",
+            "status": "pending"
+          }
+        ]
+      },
+      "timestamp": "2025-11-28T11:05:39.626Z"
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/board-view",
+    "description": "Get clients grouped by onboarding status",
+    "parameters": [
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Search clients by firstName, lastName, or preferredName (case-insensitive)"
+      }
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get Clients Grouped By Status successful",
+      "data": {
+        "result": {
+          "invited": [],
+          "inProgress": [],
+          "pendingVerification": [
+            {
+              "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+              "createdAt": "2025-11-26T13:03:08.545Z",
+              "updatedAt": "2025-11-26T14:26:46.156Z",
+              "organization": {
+                "id": "4743c115-cb57-4161-92ee-9f56fac04a4b",
+                "businessName": "BrightCare Support Services Pty Ltd",
+                "tradingName": "BrightCare",
+                "abnNumber": "98765432120",
+                "ndisRegistrationNumber": "4-1A2B3C",
+                "businessEmail": "contact56@brightcare.com.au",
+                "businessPhone": "+61 400 789 456",
+                "website": "https://www.brightcare.com.au",
+                "operatingStates": [
+                  "VIC"
+                ]
+              },
+              "client": {
+                "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+                "firstName": "John",
+                "lastName": "Doe",
+                "preferredName": "Johnny",
+                "gender": "Male",
+                "dateOfBirth": "1990-05-15",
+                "city": "Sydney",
+                "state": "NSW",
+                "planStartDate": "2025-01-01",
+                "planEndDate": "2025-12-31",
+                "planStatus": "active",
+                "ndisNumber": "ND12345678",
+                "phone": "1234567890",
+                "address": "123 Main Street",
+                "languagesSpoken": [
+                  "English",
+                  "French"
+                ],
+                "interpreterRequired": false
+              },
+              "supportWorkers": [
+                {
+                  "memberId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                  "name": "Jane Smith",
+                  "profilePictureUrl": "https://example.com/avatars/jane.jpg"
+                }
+              ],
+              "invitationStatus": "accepted",
+              "clientStatus": "pending_verification",
+              "stepsCompleted": 0,
+              "documentsAdded": 0
+            }
+          ],
+          "onboarded": []
+        }
+      },
+      "timestamp": "2025-11-28T06:50:38.633Z"
+    }
+  }
+]
