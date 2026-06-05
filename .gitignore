@@ -77,8 +77,10 @@ graphify-out/
 .windsurfrules
 .opencode.json
 .qoder/mcp.json
-sena-ai/
+ai-sena/
 .kiro/
 .qoder/
 *.log
 services/policy_proc/logs/
+services/casenote_monthly/out/_usage.json
+services/casenote_monthly/example.json
