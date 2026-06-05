@@ -1,22 +1,86 @@
 version: "3.9"
 
+# Run from repo root:
+#   docker compose -f services/docker-compose.deploy.yml up --build
+# Build a single service:
+#   docker compose -f services/docker-compose.deploy.yml up --build sena-voice
+
 services:
+  sena-voice:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      target: voice
+    container_name: sena-voice
+    env_file:
+      - .env
+    environment:
+      SENA_AI_REDIS_URL: redis://redis:6379/0
+      SENA_AI_HOST: 0.0.0.0
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      ai-db:
+        condition: service_healthy
+      shared-db:
+        condition: service_healthy
+    restart: unless-stopped
+
   sena-onboarding:
     build:
       context: .
-      dockerfile: services/onboarding/Dockerfile
+      dockerfile: services/Dockerfile
+      target: onboarding
     container_name: sena-onboarding
     env_file:
       - .env
     environment:
       SENA_AI_REDIS_URL: redis://redis:6379/0
       SENA_AI_HOST: 0.0.0.0
-      SENA_AI_ONBOARDING_PORT: "8083"
+      SENA_AI_ONBOARDING_PORT: "8001"
     ports:
-      - "8083:8083"
+      - "8001:8001"
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  sena-case-review:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      target: case-review
+    container_name: sena-case-review
+    env_file:
+      - .env
+    environment:
+      SENA_AI_HOST: 0.0.0.0
+      SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db:5432/sena_ai
+    ports:
+      - "8002:8002"
+    depends_on:
+      ai-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sena-ai-chatbot:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      target: ai-chatbot
+    container_name: sena-ai-chatbot
+    env_file:
+      - .env
+    environment:
+      GATEWAY_HOST: 0.0.0.0
+      GATEWAY_PORT: "8003"
+      CHILD_HOST: 127.0.0.1
+      STAFF_DIR: /app/services/staff
+      POLICY_DIR: /app/services/policy_proc
+    ports:
+      - "8003:8003"
     restart: unless-stopped
 
   redis:
@@ -34,5 +98,43 @@ services:
       retries: 5
     restart: unless-stopped
 
+  ai-db:
+    image: pgvector/pgvector:pg16
+    container_name: sena-ai-db
+    environment:
+      POSTGRES_USER: sena_ai
+      POSTGRES_PASSWORD: sena_ai
+      POSTGRES_DB: sena_ai
+    volumes:
+      - ai-db-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sena_ai -d sena_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  shared-db:
+    image: postgres:16-alpine
+    container_name: sena-shared-db
+    environment:
+      POSTGRES_USER: shared
+      POSTGRES_PASSWORD: shared
+      POSTGRES_DB: platform
+    volumes:
+      - shared-db-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shared -d platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   redis-data:
+  ai-db-data:
+  shared-db-data:
