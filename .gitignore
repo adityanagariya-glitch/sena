@@ -68,3 +68,88 @@ CLAUDE.local.md
 .github/context-cold.md
 .github/copilot-instructions.md
 CLAUDE.md
+venv/
+.env
+.pytest_cache/
+__pycache__/
+*.pyc
+# .gitignore for Sena AI monorepo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files (NEVER commit secrets)
+.env
+.env.local
+.env.production
+
+# Docker
+pgdata/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Alembic
+migrations/versions/*.pyc
+
+ndis_markdown_docs
+Figma
+
+# archive/
+# graphify-out/
+.ruff_cache/
+.claude/
+.gemini/
+
+# Ignore the .claude directory in any subfolder
+**/.claude/
+
+# Ignore CLAUDE.md files in any subfolder
+**/CLAUDE.md
+
+# Added by code-review-graph
+.code-review-graph/
+.agent_memory/
+**/.memory_sessions.json
+.agents/
+.mcp.json
+graphify-out/
+*.html
+*.pdf
+.remember
+*.md
+*.txt
+!requirements.txt
+.claudeignore
+.code-review-graphignore
+.graphifyignore
+.cursorrules
+.windsurfrules
+.opencode.json
+.qoder/mcp.json
+sena-ai/
+.kiro/
+.qoder/
+*.log
+services/policy_proc/logs/
+ai-sena/
