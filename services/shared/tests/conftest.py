@@ -29,8 +29,3 @@
 # Usage:
 # Tests inherit fixtures automatically from conftest.py
 # Example: @pytest.fixture def my_session(test_session_factory) -> ...
-                "b_id": str(TENANT_B_ID),
-                "sys_id": str(SYSTEM_TENANT_ID),
-            },
-        )
-        await session.commit()

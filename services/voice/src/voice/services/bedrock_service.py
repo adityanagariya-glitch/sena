@@ -7,6 +7,7 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException, status
 
+<<<<<<< HEAD
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
 # path, fall back to a no-op stub so the AI critical path never fails.
 # To enable real logging: `pip install -e sena-ai/shared/` from repo root.
@@ -28,6 +29,8 @@ except ImportError:
     def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
         return None
 
+=======
+>>>>>>> ai-chatbot
 from voice.core.settings import settings
 from voice.prompts.dictation_prompt import SYSTEM_PROMPT, build_user_prompt
 from voice.prompts.personal_details_prompt import (
@@ -47,6 +50,7 @@ class BedrockService:
             ),
         )
 
+<<<<<<< HEAD
     def _invoke_once(
         self,
         user_prompt: str,
@@ -57,6 +61,9 @@ class BedrockService:
         raw_payload carries Anthropic's `usage` block (input_tokens,
         output_tokens, cache_*). Callers emit_usage with it.
         """
+=======
+    def _invoke_once(self, user_prompt: str, system_prompt: str = SYSTEM_PROMPT) -> dict:
+>>>>>>> ai-chatbot
         body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": settings.bedrock_max_tokens,
@@ -69,6 +76,7 @@ class BedrockService:
         )
         payload = json.loads(response["body"].read())
         text = payload["content"][0]["text"]
+<<<<<<< HEAD
         return json.loads(text), payload
 
     def run_dictation_turn(
@@ -80,6 +88,12 @@ class BedrockService:
         tenant_id: str = "phase1_tbd",
         user_id: str | None = None,
         session_id: str | None = None,
+=======
+        return json.loads(text)
+
+    def run_dictation_turn(
+        self, transcript: str, session_snapshot: dict, history: list[dict]
+>>>>>>> ai-chatbot
     ) -> tuple[dict, int]:
         prompt = build_user_prompt(
             transcript=transcript, session_snapshot=session_snapshot, history=history
@@ -89,6 +103,7 @@ class BedrockService:
         attempts = settings.provider_max_retries + 1
         for _ in range(attempts):
             try:
+<<<<<<< HEAD
                 data, payload = self._invoke_once(prompt)
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 usage = payload.get("usage", {}) or {}
@@ -121,6 +136,13 @@ class BedrockService:
             success=False,
             failure_reason="bedrock_provider_unavailable",
         )
+=======
+                data = self._invoke_once(prompt)
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                return data, latency_ms
+            except (ValueError, KeyError, BotoCoreError, ClientError) as exc:
+                last_error = exc
+>>>>>>> ai-chatbot
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -137,10 +159,13 @@ class BedrockService:
         current_fields: dict,
         missing_fields: list[str],
         history: list[dict],
+<<<<<<< HEAD
         *,
         tenant_id: str = "phase1_tbd",
         user_id: str | None = None,
         session_id: str | None = None,
+=======
+>>>>>>> ai-chatbot
     ) -> tuple[dict, int]:
         prompt = build_personal_details_user_prompt(
             transcript=transcript,
@@ -153,6 +178,7 @@ class BedrockService:
         attempts = settings.provider_max_retries + 1
         for _ in range(attempts):
             try:
+<<<<<<< HEAD
                 data, payload = self._invoke_once(prompt, system_prompt=PERSONAL_DETAILS_SYSTEM_PROMPT)
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 usage = payload.get("usage", {}) or {}
@@ -189,6 +215,13 @@ class BedrockService:
             success=False,
             failure_reason="bedrock_provider_unavailable",
         )
+=======
+                data = self._invoke_once(prompt, system_prompt=PERSONAL_DETAILS_SYSTEM_PROMPT)
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                return data, latency_ms
+            except (ValueError, KeyError, BotoCoreError, ClientError) as exc:
+                last_error = exc
+>>>>>>> ai-chatbot
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={

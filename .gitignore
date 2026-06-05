@@ -1,3 +1,4 @@
+venv/
 .env
 .pytest_cache/
 __pycache__/
@@ -13,10 +14,6 @@ dist/
 build/
 *.egg
 
-# # Virtual environments
-# .venv/
-# venv/
-# env/
 
 # IDE
 .vscode/
@@ -51,6 +48,7 @@ Figma
 # archive/
 # graphify-out/
 .ruff_cache/
+<<<<<<< HEAD
 # Claude Code — track project-level config (agents, rules, hooks, skills); exclude user-private runtime files
 .claude/settings.local.json
 .claude/hooks-state/
@@ -118,6 +116,8 @@ Figma
 # archive/
 # graphify-out/
 .ruff_cache/
+=======
+>>>>>>> ai-chatbot
 .claude/
 .gemini/
 
@@ -147,12 +147,20 @@ graphify-out/
 .windsurfrules
 .opencode.json
 .qoder/mcp.json
+<<<<<<< HEAD
 sena-ai/
+=======
+ai-sena/
+>>>>>>> ai-chatbot
 .kiro/
 .qoder/
 *.log
 services/policy_proc/logs/
+<<<<<<< HEAD
 ai-sena/
 services/casenote_monthly/out/_usage.json
 .gitignore
+=======
+services/casenote_monthly/out/_usage.json
+>>>>>>> ai-chatbot
 services/casenote_monthly/example.json
