@@ -7,8 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+COPY shared /app/shared
+RUN pip install -U pip && pip install /app/shared
+
 COPY services/onboarding/requirements.txt /app/requirements.txt
-RUN pip install -U pip && pip install -r /app/requirements.txt
+RUN pip install -r /app/requirements.txt
 
 COPY services/onboarding/src /app/src
 ENV PYTHONPATH=/app/src
