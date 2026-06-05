@@ -153,3 +153,6 @@ sena-ai/
 *.log
 services/policy_proc/logs/
 ai-sena/
+services/casenote_monthly/out/_usage.json
+.gitignore
+services/casenote_monthly/example.json
