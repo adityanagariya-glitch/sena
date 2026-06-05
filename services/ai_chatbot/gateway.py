@@ -40,8 +40,43 @@ except ImportError:
 
 
 class RouteRequest(BaseModel):
-    question: str
-    context: dict = Field(default_factory=dict)
+    """A user message plus the UI context that selects how it is routed.
+
+    Routing is chip-driven: `context.category` decides the backend section. There
+    is no free-text classification — a request with no category is out of scope.
+
+    `context.category` values:
+      • "shifts"    → staff service, STAFF section  (shifts, rosters, team)
+      • "client"    → staff service, CLIENT section (participant info)
+      • "policy"    → policy service                (organisational policy)
+      • "procedure" → policy service                (compliance procedures)
+    """
+
+    question: str = Field(
+        ...,
+        description="The user's message. May be empty when a chip is tapped with no "
+                    "text — the section's default question is used.",
+        examples=["What are my shifts this week?"],
+    )
+    context: dict = Field(
+        default_factory=dict,
+        description="UI context. Must include `category` (the tapped chip). May also "
+                    "carry session_id / session_title / is_new_chat.",
+        examples=[{"category": "shifts", "is_new_chat": True}],
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"question": "What are my shifts this week?",
+                 "context": {"category": "shifts", "is_new_chat": True}},
+                {"question": "Who are my clients?",
+                 "context": {"category": "client", "is_new_chat": True}},
+                {"question": "What is the leave policy?",
+                 "context": {"category": "policy", "is_new_chat": True}},
+            ]
+        }
+    }
 
 
 async def _wait_healthy(client: httpx.AsyncClient, url: str, timeout: float) -> bool:
@@ -158,7 +193,28 @@ async def lifespan(app: FastAPI):
         await app.state.client.aclose()
 
 
-app = FastAPI(title="SENA ai_chatbot gateway", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="SENA ai_chatbot gateway",
+    version="2.0.0",
+    lifespan=lifespan,
+    description=(
+        "Single production entry point for the SENA assistant (Flutter mobile / "
+        "React web).\n\n"
+        "**One endpoint, chip-driven routing.** The frontend sends every message to "
+        "`POST /api/route` with the tapped chip in `context.category`; the gateway "
+        "routes it to the right backend section and streams the answer back as "
+        "Server-Sent Events. There is no free-text classification — no chip means "
+        "out of scope.\n\n"
+        "**Sections are independent:** a `shifts` request can never reach client "
+        "data, and vice-versa.\n\n"
+        "**SSE events:** `meta` (routing) → `token` (answer) → `usage` "
+        "(input/output token counts for the question) → `done`; or `error`."
+    ),
+    openapi_tags=[
+        {"name": "Routing", "description": "Chip-driven query routing with SSE streaming."},
+        {"name": "Health", "description": "Gateway + child-service health."},
+    ],
+)
 
 
 # ---- Health ----
@@ -185,14 +241,45 @@ async def healthz():
     return JSONResponse({"gateway": True, "children": results})
 
 
-@app.post("/api/route")
+@app.post(
+    "/api/route",
+    tags=["Routing"],
+    summary="Route a chip-selected message and stream the answer (SSE)",
+    response_description="text/event-stream of meta → token → done (or error).",
+    responses={
+        200: {
+            "description": "SSE stream. Each line is `data: <json>`.",
+            "content": {"text/event-stream": {"example": (
+                'data: {"type": "meta", "routing": {"target_services": ["staff"], '
+                '"routing_reason": "Category \'shifts\' routed to staff."}}\n\n'
+                'data: {"type": "token", "text": "Here are your shifts this week: ..."}\n\n'
+                'data: {"type": "usage", "input_tokens": 2496, "output_tokens": 320}\n\n'
+                'data: {"type": "done"}\n\n'
+            )}},
+        },
+        401: {"description": "Missing or invalid Authorization bearer token."},
+    },
+)
 async def route_query(
     req: RouteRequest,
-    authorization: str = Header(None),
+    authorization: str = Header(None, description="Bearer <JWT> — the ISENA token from POST /auth/ai/login."),
 ):
-    """Route a query through the service orchestrator with streaming response.
+    """Route one chip-selected message to the right backend section and stream the reply.
 
-    Requires JWT token in Authorization header: Bearer <token>
+    **Auth:** `Authorization: Bearer <JWT>` (the ISENA token). The gateway forwards
+    it to the backend, which validates it.
+
+    **Routing:** decided by `context.category` (shifts / client / policy /
+    procedure). No category → out of scope (the stream returns a single guidance
+    message). Sections are independent — a `shifts` message cannot return client data.
+
+    **Example**
+
+    ```
+    POST /api/route
+    Authorization: Bearer <JWT>
+    {"question": "What are my shifts this week?", "context": {"category": "shifts"}}
+    ```
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")

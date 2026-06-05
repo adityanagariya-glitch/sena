@@ -253,6 +253,7 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
     SSE streaming. Events:
         data: {"type": "meta",    "session_id": "...", "label": "...", "sources": [...]}
         data: {"type": "token",   "text": "..."}
+        data: {"type": "usage",   "input_tokens": N, "output_tokens": N}
         data: {"type": "done",    "stop_reason": "end_turn"}
         data: {"type": "blocked", "text": "...", "label": "..."}
         data: {"type": "error",   "text": "..."}
@@ -291,6 +292,7 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
         blocked      = result.get("blocked", False)
         block_reason = result.get("block_reason")
         label        = result.get("classification", {}).get("label")
+        usage        = result.get("usage") or {"input_tokens": 0, "output_tokens": 0}
 
         yield f"data: {json.dumps({'type': 'meta', 'session_id': result.get('session_id', session_id), 'label': label, 'sources': sources, '_identity': {'user_id': user_id, 'org_id': org_id, 'role': role}})}\n\n"
 
@@ -299,6 +301,8 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
             return
 
         yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+        # Token usage for THIS question (input + output), emitted before done.
+        yield f"data: {json.dumps({'type': 'usage', 'input_tokens': usage.get('input_tokens', 0), 'output_tokens': usage.get('output_tokens', 0)})}\n\n"
         yield f"data: {json.dumps({'type': 'done', 'stop_reason': 'end_turn'})}\n\n"
 
     return StreamingResponse(

@@ -33,11 +33,40 @@ def _short_inputs(inputs: dict[str, Any] | None) -> str:
     return s
 
 
-def run_tool(name: str, inputs: dict[str, Any] | None) -> ToolResult:
+def run_tool(
+    name: str,
+    inputs: dict[str, Any] | None,
+    allowed: set[str] | None = None,
+    scope: str | None = None,
+) -> ToolResult:
     """Look up the tool by name and execute it. Never raises — returns
-    ToolResult with `error` set if anything goes wrong."""
-    inputs = inputs or {}
+    ToolResult with `error` set if anything goes wrong.
+
+    Args:
+        name: tool name the model asked for.
+        inputs: validated tool inputs.
+        allowed: if given, the set of tool names permitted in the active section.
+            Any tool outside it is refused — defense-in-depth so the staff and
+            client sections stay independent even if the model is offered, or
+            hallucinates, an out-of-section tool.
+        scope: active section ('staff' | 'client'), used for messaging and to pin
+            cross-channel tools (find_person) to the current section only.
+    """
+    inputs = dict(inputs or {})
     print(f"[TOOL] > {name}({_short_inputs(inputs)})", file=_TERMINAL, flush=True)
+
+    # Scope enforcement — refuse tools outside the active section.
+    if allowed is not None and name not in allowed:
+        print(f"[TOOL] X {name}  blocked (outside '{scope}' section)", file=_TERMINAL, flush=True)
+        return ToolResult(
+            error=f"Tool '{name}' is not available in the {scope or 'current'} section.",
+            next_hint="That tool belongs to a different section — use a tool from this section instead.",
+        )
+
+    # find_person searches BOTH the staff and client directories. Pin it to the
+    # active section so a staff query can't surface clients and vice-versa.
+    if name == "find_person" and scope in ("staff", "client"):
+        inputs["type"] = scope
 
     tool = TOOLS_BY_NAME.get(name)
     if not tool:

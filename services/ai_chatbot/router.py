@@ -97,14 +97,20 @@ def _cache_put(question: str, value: Dict[str, Any]) -> None:
 #   Client's information → staff  (tools/clients: details, medical, meds, search)
 #   Policies             → policy (policy_proc pipeline)
 #   Procedures           → policy (policy_proc pipeline)
+# `agent_scope` selects the staff service's INDEPENDENT section endpoint:
+#   "staff"  → POST /staff/query/stream   (shifts/rosters/team)
+#   "client" → POST /client/query/stream  (participant info)
+# The two are isolated server-side, so a "shifts" chip can never reach client data.
 _CATEGORY_DEFS = {
     "shifts": {
         "service": "staff",
+        "agent_scope": "staff",
         "scope": "staff and shift information (rosters, shift times, team members)",
         "seed": "What are my shifts?",
     },
     "client": {
         "service": "staff",
+        "agent_scope": "client",
         "scope": "client information only — client details, medical info, medications, "
                  "support workers, guardians, and client search/filter",
         "seed": "Who are my clients?",
@@ -282,46 +288,61 @@ async def classify_query(
                 "reason": f"Classifier error: {e}", "priority": "staff"}
 
 
-def _check_scope_enforcement(question: str, chip_category: str) -> Optional[str]:
-    """Check if a typed question is within the scope of the tapped chip.
+# Human-readable label for each chip (what the user taps in the UI).
+_SECTION_LABEL = {
+    "shifts": "Check Shifts",
+    "client": "Client's information",
+    "policy": "Policies",
+    "procedure": "Procedures",
+}
 
-    Returns None if in scope, otherwise returns a rejection reason.
+# Topics that DON'T belong in a section ("blocked"), each mapped to the section it
+# DOES belong in — so we can tell the user exactly which option to switch to.
+# Order matters: longer/more-specific phrases first ("my client" before "client").
+_BLOCKED_BY_SECTION: dict[str, list[tuple[str, str]]] = {
+    "shifts": [
+        ("medication", "client"), ("support worker", "client"), ("guardian", "client"),
+        ("carer", "client"), ("client", "client"),
+    ],
+    "client": [
+        ("roster", "shifts"), ("schedule", "shifts"), ("time off", "shifts"),
+        ("hours", "shifts"), ("shift", "shifts"),
+    ],
+    "policy": [
+        ("my shift", "shifts"), ("my client", "client"), ("shift", "shifts"), ("client", "client"),
+    ],
+    "procedure": [
+        ("my shift", "shifts"), ("my client", "client"), ("shift", "shifts"), ("client", "client"),
+    ],
+}
+
+
+def _check_scope_enforcement(question: str, chip_category: str) -> Optional[str]:
+    """Check whether a typed question fits the tapped chip's section.
+
+    The staff and client sections (and policy/procedure) are independent — there is
+    no cross-section answering. Returns None if the question fits; otherwise a
+    DIRECTIVE message telling the user exactly which section to switch to.
     """
     if not question or not chip_category:
         return None
 
     q_lower = question.lower()
+    blocked = _BLOCKED_BY_SECTION.get(chip_category)
+    if not blocked:
+        return None  # Unknown chip — allow.
 
-    # Define scope rules: chip → (allowed_keywords, blocked_keywords)
-    scope_rules = {
-        "shifts": {
-            "allowed": ["shift", "roster", "schedule", "time off", "hours", "when", "working", "swap", "rota"],
-            "blocked": ["client", "medication", "support worker", "guardian", "carer"],
-        },
-        "client": {
-            "allowed": ["client", "medication", "medical", "support worker", "guardian", "carer", "diagnosis", "care plan"],
-            "blocked": ["shift", "roster", "schedule", "hours", "time off"],
-        },
-        "policy": {
-            "allowed": ["policy", "allowed", "permit", "rule", "procedure", "compliance", "standard"],
-            "blocked": ["shift", "client", "my shift", "my client"],
-        },
-        "procedure": {
-            "allowed": ["procedure", "report", "process", "how", "incident", "safeguard", "training"],
-            "blocked": ["shift", "client", "my shift", "my client"],
-        },
-    }
-
-    rules = scope_rules.get(chip_category)
-    if not rules:
-        return None  # Unknown chip, allow
-
-    # Check for blocked keywords
-    for word in rules.get("blocked", []):
+    current = _SECTION_LABEL.get(chip_category, chip_category)
+    for word, home in blocked:
         if word in q_lower:
-            return f"Out of scope for '{chip_category}' section. Please stay within {chip_category} questions."
+            target = _SECTION_LABEL.get(home, home)
+            return (
+                f"That looks like a “{target}” question, but you're in the "
+                f"“{current}” section. These sections are kept separate — please "
+                f"switch to “{target}” to ask about that."
+            )
 
-    return None  # In scope
+    return None  # In scope.
 
 
 async def route_query(
@@ -373,30 +394,48 @@ async def route_query(
             "classification": classification,
             "routing_reason": f"Category '{category}' routed to {service}.",
             "question": effective_question,
+            # Sub-scope for the staff service's independent endpoints (None for policy).
+            "staff_scope": cat.get("agent_scope"),
         }
 
-    classification = await classify_query(question)
-    service_target = classification["service"]
-    if service_target == "both":
-        targets = ["staff", "policy"]
-    elif service_target == "policy":
-        targets = ["policy"]
-    elif service_target == "staff":
-        targets = ["staff"]
-    else:  # "none" — out of scope
-        targets = []
+    # ── Free-text classification — DISABLED ──────────────────────────────────────
+    # The frontend uses the chip-selector, so every request arrives with a
+    # `category`. Free-text Bedrock classification is intentionally turned off
+    # (no chip → out of scope). To re-enable, restore the block below.
+    #
+    # classification = await classify_query(question)
+    # service_target = classification["service"]
+    # if service_target == "both":
+    #     targets = ["staff", "policy"]
+    # elif service_target == "policy":
+    #     targets = ["policy"]
+    # elif service_target == "staff":
+    #     targets = ["staff"]
+    # else:  # "none" — out of scope
+    #     targets = []
+    # if targets:
+    #     routing_reason = (
+    #         f"Classified as {service_target} "
+    #         f"({classification.get('confidence', 0):.0%} confidence)"
+    #     )
+    # else:
+    #     routing_reason = "Out of scope — not a staff or policy question."
+    # return {
+    #     "target_services": targets,
+    #     "classification": classification,
+    #     "routing_reason": routing_reason,
+    #     "question": question,
+    #     "staff_scope": None,
+    # }
 
-    if targets:
-        routing_reason = (
-            f"Classified as {service_target} "
-            f"({classification.get('confidence', 0):.0%} confidence)"
-        )
-    else:
-        routing_reason = "Out of scope — not a staff or policy question."
-
+    reason = "Please choose a section (Shifts, Client, Policies, or Procedures) to ask your question."
     return {
-        "target_services": targets,
-        "classification": classification,
-        "routing_reason": routing_reason,
+        "target_services": [],
+        "classification": {
+            "service": "none", "confidence": 1.0,
+            "reason": reason, "priority": "staff",
+        },
+        "routing_reason": reason,
         "question": question,
+        "staff_scope": None,
     }

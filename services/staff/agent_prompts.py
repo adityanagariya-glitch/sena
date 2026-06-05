@@ -112,21 +112,43 @@ def _today_context_block():
     )
 
 
-def _core_prompt():
+# Per-section capability line for the always-on core prompt. Each section
+# describes ONLY its own remit and explicitly disclaims the other — so the model
+# never offers to cross over (staff and client are fully independent sections).
+_SCOPE_CAPABILITY = {
+    "staff": (
+        "You are in the STAFF section. You help ONLY with the worker's own work: "
+        "shifts, rosters, shift details, and the staff/team directory. You do NOT "
+        "have access to client/participant information in this section — if asked "
+        "for client details, say that's handled in the Client section and stop."
+    ),
+    "client": (
+        "You are in the CLIENT section. You help ONLY with client/participant "
+        "information: client lists, client details, support workers, guardians, and "
+        "client search/filter. You do NOT have access to shift or roster "
+        "information in this section — if asked about shifts, say that's handled in "
+        "the Shifts section and stop."
+    ),
+}
+
+
+def _core_prompt(scope: str = "staff"):
     """Tier-1 system prompt — small, always included, cacheable.
 
     Holds the universals: identity, voice, today's date, source-privacy as a
-    PRINCIPLE (no enumeration), forbidden phrases, empty-data rules. Anything
-    domain-specific (shifts / clients / clinical / cross-client / staff /
-    timezone) lives in conditional skill blocks loaded by _skills_for_question.
+    PRINCIPLE (no enumeration), forbidden phrases, empty-data rules. The capability
+    line is scoped to the active section (`scope`) so the staff and client sections
+    are independent right down to the always-on prompt. Domain-specific guidance
+    lives in conditional skill blocks loaded by _skills_for_question.
     """
+    capability = _SCOPE_CAPABILITY.get(scope, _SCOPE_CAPABILITY["staff"])
     return f"""{AUS_ENGLISH_BANNER}
 
 {AUSTRALIAN_ENGLISH}
 
 {_today_context_block()}
 
-You are the SENA NDIS assistant — for authenticated Australian NDIS workers (admins, in-office staff, support workers, ISWs, clients, guardians). You help with shifts, clients, staff, payroll, allowances, and NDIS policies.
+You are the SENA NDIS assistant — for authenticated Australian NDIS workers (admins, in-office staff, support workers, ISWs, clients, guardians). {capability}
 
 {INPUT_SECURITY_RULES}
 
@@ -425,30 +447,44 @@ _AUS_LOCATIONS = (
 )
 
 
-def _skills_for_question(user_question: str) -> str:
+# Which conditional skills each section may load — mirrors the tool split in
+# tools/registry.py so the staff and client sections stay independent at the
+# PROMPT layer too (a staff turn never loads client/clinical guidance, etc.).
+# org/timezone/time are general and available in both sections.
+_SKILLS_BY_SCOPE: dict[str, set[str]] = {
+    "staff":  {"shifts", "staff", "org", "tz", "time"},
+    "client": {"clients", "clinical", "cross", "org", "tz", "time"},
+}
+
+
+def _skills_for_question(user_question: str, scope: str = "staff") -> str:
     """Return the conditional skill blocks relevant to this question.
-    Loads only what's needed — keeps the per-turn prompt lean.
+
+    Loads only what's needed (keeps the per-turn prompt lean) AND only what's
+    allowed in the active section (`scope`) — so the staff prompt never carries
+    client guidance, and vice-versa.
     """
     if not user_question:
         return ""
+    allowed = _SKILLS_BY_SCOPE.get(scope, _SKILLS_BY_SCOPE["staff"])
     q = user_question.lower()
     parts = []
 
-    if any(kw in q for kw in _KW_SHIFT):
+    if "shifts" in allowed and any(kw in q for kw in _KW_SHIFT):
         parts.append(_skill_shifts())
-    if any(kw in q for kw in _KW_CLIENT):
+    if "clients" in allowed and any(kw in q for kw in _KW_CLIENT):
         parts.append(_skill_clients())
-    if any(kw in q for kw in _KW_CLINICAL):
+    if "clinical" in allowed and any(kw in q for kw in _KW_CLINICAL):
         parts.append(_skill_clinical())
-    if any(kw in q for kw in _KW_CROSS):
+    if "cross" in allowed and any(kw in q for kw in _KW_CROSS):
         parts.append(_skill_cross_client())
-    if any(kw in q for kw in _KW_STAFF):
+    if "staff" in allowed and any(kw in q for kw in _KW_STAFF):
         parts.append(_skill_staff())
-    if any(kw in q for kw in _KW_ORG):
+    if "org" in allowed and any(kw in q for kw in _KW_ORG):
         parts.append(_skill_organizations())
-    if any(kw in q for kw in _KW_TZ) or any(loc in q for loc in _AUS_LOCATIONS):
+    if "tz" in allowed and (any(kw in q for kw in _KW_TZ) or any(loc in q for loc in _AUS_LOCATIONS)):
         parts.append(_skill_timezone())
-    if any(kw in q for kw in _KW_TIME):
+    if "time" in allowed and any(kw in q for kw in _KW_TIME):
         parts.append(_skill_time())
 
     return "\n\n".join(parts)

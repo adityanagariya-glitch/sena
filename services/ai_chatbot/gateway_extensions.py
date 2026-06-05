@@ -127,14 +127,20 @@ class ServiceOrchestrator:
 
         targets: List[str] = routing["target_services"]
         if not targets:
-            yield {
-                "type": "token",
-                "text": "This question is out of scope — I can only help with staff or policy questions.",
-            }
+            # Surface the routing reason — e.g. the directive scope message that
+            # names which section to switch to (set by _check_scope_enforcement) —
+            # rather than a generic out-of-scope line.
+            text = routing.get("routing_reason") or (
+                "This question is out of scope — please choose a section "
+                "(Shifts, Client, Policies, or Procedures)."
+            )
+            yield {"type": "token", "text": text}
             yield {"type": "done"}
             return
 
-        ctx = {**context, "jwt_token": jwt_token}
+        # staff_scope selects the staff service's independent section endpoint
+        # (/staff/query/stream vs /client/query/stream). None for policy.
+        ctx = {**context, "jwt_token": jwt_token, "staff_scope": routing.get("staff_scope")}
 
         # Filter by circuit breaker; report any open breakers up front.
         callable_targets: List[str] = []

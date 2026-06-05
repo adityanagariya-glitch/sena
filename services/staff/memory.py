@@ -639,11 +639,13 @@ def _assemble_context(user_question):
     return messages
 
 
-def _persist_turn(user_question, assistant_text, mode, api_path=None, api_response=None):
+def _persist_turn(user_question, assistant_text, mode, api_path=None, api_response=None, scope=None):
     """Single write site for all memory backends.
 
     1. Scrubs assistant response via Guardrails (never store unredacted PII).
-    2. Appends to in-memory conversation_history (process lifetime).
+    2. Appends to in-memory conversation_history (process lifetime), tagged with
+       the section `scope` ("staff" | "client" | None) so history recall can stay
+       within one section (see agent._bedrock_messages_from_history).
     3. Writes the turn to AgentCore Memory as conversational events (24h short-term
        + auto-extracted long-term via configured strategies).
     4. Writes raw API JSON to DynamoDB with 30d TTL (audit + spillover) — only
@@ -655,9 +657,10 @@ def _persist_turn(user_question, assistant_text, mode, api_path=None, api_respon
     clean_user = _scrub_for_persistence(user_question) or user_question
     clean_assistant = _scrub_for_persistence(assistant_text) or assistant_text
 
-    # 1) In-memory (fallback + same-process recall)
-    conversation_history.append({"role": "user", "content": [{"text": clean_user}]})
-    conversation_history.append({"role": "assistant", "content": [{"text": clean_assistant}]})
+    # 1) In-memory (fallback + same-process recall). `scope` tags the turn so a
+    # section only ever recalls its own turns — staff and client stay independent.
+    conversation_history.append({"role": "user", "content": [{"text": clean_user}], "scope": scope})
+    conversation_history.append({"role": "assistant", "content": [{"text": clean_assistant}], "scope": scope})
 
     turn_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
