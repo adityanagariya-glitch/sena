@@ -21,7 +21,7 @@ from config import (
 from state import user_context, conversation_history
 from memory import _persist_turn, _format_user_profile
 from agent_prompts import _core_prompt, _skills_for_question
-from tools.registry import bedrock_tool_config
+from tools.registry import bedrock_tool_config, tool_names_for_scope
 from tools.dispatcher import run_tool
 from agents_types import StopReasonResponse
 
@@ -117,13 +117,20 @@ def _coerce_text(value) -> str:
     return str(value)
 
 
-def _bedrock_messages_from_history() -> list[dict]:
-    """Convert the in-memory conversation_history into Bedrock messages format."""
+def _bedrock_messages_from_history(scope: str | None = None) -> list[dict]:
+    """Convert the in-memory conversation_history into Bedrock messages format.
+
+    When `scope` is given, ONLY turns from that same section are included — so a
+    staff turn never sees prior client turns (and vice-versa), keeping the two
+    sections independent at the conversation level too. Untagged/other-scope turns
+    are skipped.
+    """
     messages = []
     # Bedrock requires alternating user/assistant; the conversation_history is
     # already in role/content shape but may have multiple consecutive turns of
     # one role from streaming. Coalesce conservatively.
-    for turn in conversation_history[-10:]:
+    scoped = [t for t in conversation_history if scope is None or t.get("scope") == scope]
+    for turn in scoped[-10:]:
         role = turn.get("role")
         if role not in ("user", "assistant"):
             continue
@@ -162,8 +169,17 @@ def _content_blocks_with_tool_use(message: dict) -> tuple[list[str], list[dict]]
     return text_blocks, tool_use_blocks
 
 
-def process_query_agent(user_question: str) -> str:
-    """Agentic processing of a user query.
+def process_query_agent(user_question: str, scope: str = "staff", usage_sink: dict | None = None) -> str:
+    """Agentic processing of a user query, scoped to ONE section.
+
+    Args:
+        user_question: the user's question.
+        scope: which section is active — "staff" (shifts/rosters) or "client"
+            (participant info). The agent is given ONLY that section's tools, so
+            it cannot answer cross-section questions. Defaults to "staff".
+        usage_sink: optional dict; if provided, it's populated with the total
+            Bedrock token usage for this question — {"input_tokens", "output_tokens"}
+            summed across every agent iteration.
 
     Returns the final string answer (already printed to the user via streaming
     or final reveal).
@@ -173,10 +189,11 @@ def process_query_agent(user_question: str) -> str:
     # Terminal-direct stream — bypasses Streamlit's redirect_stderr AND tees to
     # /tmp/sena_activity.log so the launching shell always sees per-turn activity.
     from activity_log import _TERMINAL
-    print(f"\n[AGENT] ━━━ user: {user_question!r}", file=_TERMINAL, flush=True)
+    print(f"\n[AGENT] ━━━ [{scope}] user: {user_question!r}", file=_TERMINAL, flush=True)
 
-    # Tier 1 — small core prompt, cached (identity, voice, today, principles)
-    system_blocks = [{"text": _core_prompt()}]
+    # Tier 1 — small core prompt, cached (identity, voice, today, principles),
+    # scoped to the active section so it only advertises this section's remit.
+    system_blocks = [{"text": _core_prompt(scope)}]
     system_blocks.append({"cachePoint": {"type": "default"}})
 
     # Tier 2 — per-user profile, cached per user
@@ -188,7 +205,7 @@ def process_query_agent(user_question: str) -> str:
     # Tier 3 — per-question skill blocks, NOT cached (varies per turn).
     # Only the relevant skills load — keeps the prompt lean per turn and
     # avoids feeding the LLM unrelated guidance that could trigger hallucination.
-    skills_text = _skills_for_question(user_question)
+    skills_text = _skills_for_question(user_question, scope)
     if skills_text:
         system_blocks.append({"text": skills_text})
         # Show which skill blocks were loaded for this turn
@@ -197,11 +214,14 @@ def process_query_agent(user_question: str) -> str:
     else:
         print(f"[AGENT] skills loaded: [] (core prompt only)", file=_TERMINAL, flush=True)
 
-    tool_config = bedrock_tool_config()
+    # Section-scoped tools only — the model is never shown the other section's
+    # tools, and `allowed` re-checks at dispatch (defense-in-depth).
+    tool_config = bedrock_tool_config(scope)
+    allowed = tool_names_for_scope(scope)
 
     # Seed messages: prior conversation + this new user turn.
     # Strip trailing/leading whitespace — Bedrock rejects whitespace-only text blocks.
-    messages = _bedrock_messages_from_history()
+    messages = _bedrock_messages_from_history(scope)
     user_text = (user_question or "").strip()
     if not user_text:
         return "Sorry — that came through blank. Could you type your question again?"
@@ -212,6 +232,8 @@ def process_query_agent(user_question: str) -> str:
 
     final_text = ""
     iterations = 0
+    total_in_tokens = 0   # summed Bedrock input tokens across all iterations
+    total_out_tokens = 0  # summed Bedrock output tokens across all iterations
 
     while iterations < _MAX_TOOL_ITERATIONS:
         iterations += 1
@@ -253,6 +275,8 @@ def process_query_agent(user_question: str) -> str:
         out_tok = usage.get("outputTokens", 0)
         cache_read = usage.get("cacheReadInputTokens", 0)
         cache_write = usage.get("cacheWriteInputTokens", 0)
+        total_in_tokens += in_tok
+        total_out_tokens += out_tok
         print(
             f"[AGENT] iter {iterations} done in {elapsed:.2f}s  stop={stop_reason}  "
             f"in={in_tok} (cache_r={cache_read}, cache_w={cache_write})  out={out_tok}",
@@ -304,7 +328,7 @@ def process_query_agent(user_question: str) -> str:
             tool_use_id = tu.get("toolUseId", "")
             tool_input = tu.get("input") or {}
 
-            result = run_tool(tool_name, tool_input)
+            result = run_tool(tool_name, tool_input, allowed=allowed, scope=scope)
 
             tool_result_blocks.append({
                 "toolResult": {
@@ -347,25 +371,36 @@ def process_query_agent(user_question: str) -> str:
     )
 
     print(f"\nSena: {final_text}")
-    _persist_turn(user_question, final_text, mode="AGENT" if not leak_kind else f"OUTPUT_FILTERED_{leak_kind.upper()}")
+    if usage_sink is not None:
+        usage_sink["input_tokens"] = total_in_tokens
+        usage_sink["output_tokens"] = total_out_tokens
+    _persist_turn(
+        user_question, final_text,
+        mode="AGENT" if not leak_kind else f"OUTPUT_FILTERED_{leak_kind.upper()}",
+        scope=scope,
+    )
     return final_text
 
 
 # ---- Async Tool Dispatch (for parallelization) ----
 
-async def _run_tool_async(name: str, inputs: dict) -> tuple[str, dict, object]:
-    """Async variant of run_tool using asyncio.to_thread.
+async def _run_tool_async(
+    name: str, inputs: dict, allowed: set[str] | None = None, scope: str | None = None
+) -> object:
+    """Async variant of run_tool using asyncio.to_thread (scope-aware)."""
+    return await asyncio.to_thread(run_tool, name, inputs, allowed, scope)
 
-    Returns (tool_name, tool_use_id, result) for gathering.
-    """
-    return await asyncio.to_thread(run_tool, name, inputs)
 
-
-async def _dispatch_tools_parallel(tool_use_blocks: list[dict]) -> list[dict]:
+async def _dispatch_tools_parallel(
+    tool_use_blocks: list[dict],
+    allowed: set[str] | None = None,
+    scope: str | None = None,
+) -> list[dict]:
     """Parallelize tool dispatch using asyncio.gather when multiple tools are requested.
 
     When the LLM picks multiple tools (2+), run them concurrently instead of
-    sequentially. Single tools run via to_thread for consistency.
+    sequentially. Single tools run via to_thread for consistency. Scope
+    enforcement (`allowed`/`scope`) is forwarded to every dispatch.
     """
     if not tool_use_blocks:
         return []
@@ -379,7 +414,7 @@ async def _dispatch_tools_parallel(tool_use_blocks: list[dict]) -> list[dict]:
         tool_name = tu.get("name", "")
         tool_use_id = tu.get("toolUseId", "")
         tool_input = tu.get("input") or {}
-        tasks.append(_run_tool_async(tool_name, tool_input))
+        tasks.append(_run_tool_async(tool_name, tool_input, allowed, scope))
         tool_metadata.append((tool_name, tool_use_id))
 
     # Run all tools in parallel

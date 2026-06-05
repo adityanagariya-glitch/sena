@@ -393,11 +393,20 @@ def _bedrock_guardrail_check(user_question):
     return _apply_guardrail(gid, ver, user_question, "INPUT")
 
 
-def process_query(user_question):
+def process_query(user_question, scope: str = "staff", usage: dict | None = None):
     """Run security gates, memory-gate, and routing in parallel, then dispatch.
 
     Double-layer security: LLM content gate + Bedrock guardrail run in parallel.
     Query is BLOCKED if EITHER says no. Both must pass for query to reach the handler.
+
+    Args:
+        user_question: the user's question.
+        scope: active section — "staff" (shifts/rosters) or "client" (participant
+            info). Forwarded to the agent so it only uses that section's tools.
+            Staff and client are independent; there is no cross-section answering.
+        usage: optional dict; if provided, populated with this question's Bedrock
+            token usage — {"input_tokens", "output_tokens"}. Only the agent path
+            reports tokens; blocked/memory short-circuits leave it at zero.
     """
     start_total = time.time()
     if VERBOSE:
@@ -509,9 +518,9 @@ def process_query(user_question):
 
     if _AGENT_MODE == "on":
         if VERBOSE:
-            print("Mode: AGENT (tool-based)", file=sys.stderr)
+            print(f"Mode: AGENT (tool-based) | scope={scope}", file=sys.stderr)
         from agent import process_query_agent
-        result = process_query_agent(user_question)
+        result = process_query_agent(user_question, scope=scope, usage_sink=usage)
         total_time = time.time() - start_total
         if VERBOSE:
             print(f"[timing] total latency: {total_time:.2f}s", file=sys.stderr)

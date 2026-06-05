@@ -46,7 +46,16 @@ class StaffAdapter(ServiceAdapter):
     async def call_streaming(
         self, question: str, ctx: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream query response from Staff /query/stream (shared pooled client)."""
+        """Stream from the staff service's INDEPENDENT section endpoint.
+
+        `staff_scope` ("staff" | "client") picks the isolated endpoint:
+          • "client" → /client/query/stream  (participant info)
+          • else     → /staff/query/stream   (shifts/rosters/team)
+        The two sections share no tools server-side, so there's no cross-section
+        leakage regardless of what's asked.
+        """
+        scope = "client" if ctx.get("staff_scope") == "client" else "staff"
+        path = f"/{scope}/query/stream"
         headers = {
             "Authorization": f"Bearer {ctx.get('jwt_token', '')}",
             "Content-Type": "application/json",
@@ -57,5 +66,5 @@ class StaffAdapter(ServiceAdapter):
             "session_title": ctx.get("session_title"),
             "is_new_chat": ctx.get("is_new_chat", False),
         }
-        async for event in self._stream_sse("/query/stream", payload, headers):
+        async for event in self._stream_sse(path, payload, headers):
             yield event

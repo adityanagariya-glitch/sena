@@ -106,6 +106,7 @@ def run_pipeline(
     if classification.get("label") == "GREETING":
         logger.info("Greeting detected — skipping retrieval, generating direct response")
         full_answer = []
+        greet_usage = {"input_tokens": 0, "output_tokens": 0}
         for chunk in generate_stream(
             question=question,
             context="",
@@ -114,6 +115,11 @@ def run_pipeline(
         ):
             if chunk.get("type") == "token":
                 full_answer.append(chunk.get("text", ""))
+            elif chunk.get("type") == "usage":
+                greet_usage = {
+                    "input_tokens": chunk.get("input_tokens", 0),
+                    "output_tokens": chunk.get("output_tokens", 0),
+                }
         answer = "".join(full_answer).strip()
         try:
             save_memory(user_id, session_id, question, answer, [])
@@ -126,7 +132,8 @@ def run_pipeline(
             "block_reason":   None,
             "classification": classification,
             "sources":        [],
-            "session_id":     session_id
+            "session_id":     session_id,
+            "usage":          greet_usage,
         }
     
     # Step 3.5: Rewrite query for better retrieval
@@ -179,6 +186,7 @@ def run_pipeline(
     full_answer  = []
     blocked      = False
     block_reason = None
+    usage        = {"input_tokens": 0, "output_tokens": 0}
 
     for chunk in generate_stream(
         question=question,
@@ -189,6 +197,11 @@ def run_pipeline(
         ctype = chunk.get("type")
         if ctype == "token":
             full_answer.append(chunk.get("text", ""))
+        elif ctype == "usage":
+            usage = {
+                "input_tokens": chunk.get("input_tokens", 0),
+                "output_tokens": chunk.get("output_tokens", 0),
+            }
         elif ctype == "blocked":
             blocked      = True
             block_reason = "GUARDRAIL_BLOCKED"
@@ -229,7 +242,8 @@ def run_pipeline(
         "block_reason":block_reason,
         "classification": classification,
         "sources":     [s.split("/")[-1] for s in sources],
-        "session_id":  session_id
+        "session_id":  session_id,
+        "usage":       usage,
     }
 
 
