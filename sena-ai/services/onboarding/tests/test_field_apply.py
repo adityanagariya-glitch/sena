@@ -7,18 +7,31 @@ understand the key but still tolerate its presence.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from onboarding.models.schema_spec import StepSchema
 from onboarding.services.field_apply import build_envelope
 
-FIXTURES = Path(__file__).parent.parent / "fixtures"
+# Minimal schema replicating voice_coverage=[] from the real personal_info schema.
+# The empty voice_coverage is what test_envelope_returns_none_when_blocked_by_coverage
+# relies on — enforced=True with no coverage paths → None.
+_MINIMAL_SCHEMA: dict = {
+    "step_id": "personal_information",
+    "step_label": "Personal Information",
+    "progress_percent": 20,
+    "voice_coverage": [],
+    "sections": [
+        {
+            "id": "basics",
+            "label": "About you",
+            "fields": [
+                {"id": "full_name", "type": "text", "label": "Full Name", "required": True},
+            ],
+        },
+    ],
+}
 
 
 def _schema() -> StepSchema:
-    raw = json.loads((FIXTURES / "schema_personal_information.json").read_text())
-    return StepSchema.model_validate(raw)
+    return StepSchema.model_validate(_MINIMAL_SCHEMA)
 
 
 def _envelope_for(value: object, input_method) -> dict | None:

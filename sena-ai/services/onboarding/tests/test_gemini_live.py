@@ -19,7 +19,29 @@ import pytest_asyncio
 
 from onboarding.models.form_state import FormState
 from onboarding.repositories.state_repo import FormStateRepo
-from onboarding.services.gemini_live import GeminiLiveSession
+from onboarding.services.gemini_live import GeminiLiveSession, _is_client_disconnect
+
+# ── _is_client_disconnect (graceful WS teardown vs real fault) ────────────────
+
+
+class TestIsClientDisconnect:
+    def test_named_disconnect_exceptions_detected(self) -> None:
+        # Build classes whose __name__ mirrors the real starlette / uvicorn /
+        # websockets exception names the helper matches on. Those upstream names
+        # intentionally lack an "Error" suffix, so we construct them dynamically
+        # rather than with `class` statements (which would trip ruff N818).
+        for name in ("WebSocketDisconnect", "ClientDisconnected", "ConnectionClosedError"):
+            exc = type(name, (Exception,), {})()
+            assert _is_client_disconnect(exc), name
+
+    def test_runtime_error_close_message_detected(self) -> None:
+        assert _is_client_disconnect(
+            RuntimeError('Cannot call "send" once a close message has been sent.')
+        )
+
+    def test_real_fault_not_treated_as_disconnect(self) -> None:
+        assert not _is_client_disconnect(ValueError("bad value"))
+        assert not _is_client_disconnect(RuntimeError("some other error"))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,8 +111,15 @@ async def test_v2_screen_state_with_field_errors_upserts_pending_validation_erro
     assert err["code"] == "client_validation"
     assert err["repeatable_index"] is None
 
-    # Gemini still received the screen text injection
-    gemini.send_realtime_input.assert_awaited_once()
+    # Gemini received the screen text injection AND a spoken [SCREEN VALIDATION]
+    # cue for the newly-rejected field (so the agent verbalises it, not just stores it).
+    assert gemini.send_realtime_input.await_count >= 2
+    cue_calls = [
+        c
+        for c in gemini.send_realtime_input.await_args_list
+        if str(c.kwargs.get("text", "")).startswith("[SCREEN VALIDATION]")
+    ]
+    assert len(cue_calls) == 1, "expected exactly one screen-validation voice cue"
 
 
 @pytest.mark.asyncio

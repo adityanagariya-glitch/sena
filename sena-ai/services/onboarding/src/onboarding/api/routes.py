@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import structlog
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from onboarding.api.deps import get_repo
@@ -133,15 +133,33 @@ def _build_initial_values(initial_state: dict | None) -> dict:
                     for field_id, fv in row.items()
                 }
                 for row in section_data
+                if isinstance(row, dict)
             ]
         elif isinstance(section_data, dict):
-            result[section_id] = {
-                field_id: (
-                    fv if isinstance(fv, dict) and "value" in fv
-                    else FieldValue(value=fv, source=FieldSource.app).model_dump(mode="json")
-                )
-                for field_id, fv in section_data.items()
-            }
+            # Flutter sends repeatable sections as flat key `section.rows: [...]`.
+            # _normalize_flat_to_nested converts that to {"rows": [...]}.
+            # Unwrap to a list so repeatable sections are stored correctly.
+            rows_val = section_data.get("rows")
+            if set(section_data.keys()) == {"rows"} and isinstance(rows_val, list):
+                result[section_id] = [
+                    {
+                        field_id: (
+                            fv if isinstance(fv, dict) and "value" in fv
+                            else FieldValue(value=fv, source=FieldSource.app).model_dump(mode="json")
+                        )
+                        for field_id, fv in row.items()
+                    }
+                    for row in rows_val
+                    if isinstance(row, dict)
+                ]
+            else:
+                result[section_id] = {
+                    field_id: (
+                        fv if isinstance(fv, dict) and "value" in fv
+                        else FieldValue(value=fv, source=FieldSource.app).model_dump(mode="json")
+                    )
+                    for field_id, fv in section_data.items()
+                }
     return result
 
 
@@ -150,6 +168,7 @@ def _build_initial_values(initial_state: dict | None) -> dict:
 @router.post("/v1/onboarding/session", response_model=CreateSessionResponse, status_code=201)
 async def create_session(
     req: CreateSessionRequest,
+    request: Request,
     repo: FormStateRepo = Depends(get_repo),
 ) -> CreateSessionResponse:
     session_id = str(uuid.uuid4())
@@ -158,6 +177,23 @@ async def create_session(
     # Resolve bootstrap envelope. Explicit takes precedence; legacy initial_state
     # is wrapped into a synthesised bootstrap so older clients keep working.
     bootstrap = req.bootstrap or SessionBootstrap.from_initial_state(req.initial_state)
+
+    # TEMP DEBUG — dump raw client payload to diagnose per-screen state leak.
+    # Remove after Flutter bootstrap shape confirmed correct.
+    log.info(
+        "debug_client_bootstrap_payload",
+        session_id=session_id,
+        participant_id=req.participant_id,
+        has_explicit_bootstrap=req.bootstrap is not None,
+        has_legacy_initial_state=req.initial_state is not None,
+        bootstrap_mode=bootstrap.mode,
+        current_page_values_keys=list(bootstrap.current_page_values.keys()),
+        current_page_values_sample=dict(list(bootstrap.current_page_values.items())[:8]),
+        readonly_paths=list(bootstrap.readonly_paths),
+        prior_pages_keys=list(bootstrap.prior_pages.keys()) if bootstrap.prior_pages else [],
+        participant_display_name=bootstrap.participant_display_name,
+        legacy_initial_state_keys=list(req.initial_state.keys()) if req.initial_state else [],
+    )
 
     # Auto-hydrate `bootstrap.prior_pages` from the cross-screen context bucket
     # when the client did not supply one. Client-supplied prior_pages always
@@ -188,18 +224,56 @@ async def create_session(
                 }
                 for s in bucket.summaries
             }
-            # Auto-hydrate participant_display_name from the earliest
-            # summary that captured a name, but only when the client didn't
-            # already send one. Without this, step 2+ falls back to
-            # "Hi there" even though we know the participant's name.
-            hydrated_name = bootstrap.participant_display_name
+            # Resolve participant_display_name. Priority order (highest → lowest):
+            #   1. `current_page_values["basics.full_name"]` from THIS bootstrap
+            #      — the live screen state mobile is showing right now. Always
+            #      current because Flutter refreshes `ClientHomeController.
+            #      client.value` after every voice session (refreshClientProfile).
+            #   2. The bootstrap-supplied `participant_display_name`.
+            #   3. Most-recent bucket summary that has a `name` (legacy fallback
+            #      for sessions where mobile didn't send a name).
+            #   4. Empty → greeting falls back to "Hi there".
+            #
+            # Regression context (2026-05-28): the bucket retained an old
+            # "Aditya" summary from a session that completed BEFORE the
+            # rename → Ethan got committed via update_field. With the previous
+            # bucket-first ordering the prompt kept greeting "Hi Aditya" even
+            # though mobile, FormState, and the API profile all agreed on
+            # "Ethan Brown". The earlier (2026-05-20) Flutter-cache-stale
+            # regression is now handled by the mobile-side refresh after
+            # every session, so mobile is no longer a stale source.
+            current_full_name: str | None = None
+            cpv = bootstrap.current_page_values or {}
+            raw_name = cpv.get("basics.full_name")
+            current_full_name_full = ""
+            if isinstance(raw_name, str) and raw_name.strip():
+                current_full_name_full = raw_name.strip()
+                current_full_name = current_full_name_full.split()[0]
+            elif bootstrap.participant_display_name:
+                current_full_name_full = bootstrap.participant_display_name.strip()
+                current_full_name = current_full_name_full.split()[0] if current_full_name_full else None
+
+            hydrated_name: str | None = current_full_name
             if not hydrated_name:
-                for s in sorted(bucket.summaries, key=lambda x: x.step_number):
+                for s in sorted(
+                    bucket.summaries, key=lambda x: x.step_number, reverse=True,
+                ):
                     candidate = s.verbatim.get("name")
                     if isinstance(candidate, str) and candidate.strip():
-                        # Use first token as the display/greeting name.
                         hydrated_name = candidate.strip().split()[0]
+                        current_full_name_full = candidate.strip()
                         break
+
+            # Sweep `prior_pages`: overwrite every stale `name` in old summaries
+            # so the prompt's prior_steps block can't recall an outdated value
+            # when the agent answers "what's my name". The bucket is keyed by
+            # (tenant_id, participant_id) so all summaries belong to the same
+            # person — current name is the truthful one for every summary.
+            if current_full_name_full:
+                for step_key, step_payload in hydrated_prior.items():
+                    if isinstance(step_payload, dict) and "name" in step_payload:
+                        step_payload["name"] = current_full_name_full
+
             bootstrap = bootstrap.model_copy(update={
                 "mode": "page_handoff",
                 "prior_pages": hydrated_prior,
@@ -244,7 +318,8 @@ async def create_session(
         ctx_repo = UserContextRepo(repo._r)
         await ctx_repo.add_session_to_index(req.tenant_id, req.participant_id, session_id)
 
-    ws_url = f"ws://localhost:{settings.onboarding_port}/ws/onboarding/{session_id}"
+    _scheme = "wss" if request.url.scheme == "https" else "ws"
+    ws_url = f"{_scheme}://{request.url.netloc}/ws/onboarding/{session_id}"
 
     return CreateSessionResponse(
         session_id=session_id,

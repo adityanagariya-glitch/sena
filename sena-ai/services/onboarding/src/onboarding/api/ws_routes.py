@@ -42,10 +42,12 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
+from onboarding.models.turn_payload import Participant, StepInfo, TurnPayload
 from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.repositories.user_context_repo import UserContextRepo
-from onboarding.services.cross_screen_context import build_summary, render_for_prompt
+from onboarding.services.cross_screen_context import build_summary
 from onboarding.services.gemini_live import GeminiLiveSession
+from onboarding.services.mobile_bridge import MobileBridge
 from onboarding.services.prompt_builder import build_system_prompt
 from onboarding.services.resumption import build_replay_context, issue_handle, redeem_handle
 from onboarding.services.tools import ToolDispatcher
@@ -107,20 +109,25 @@ async def onboarding_ws(
         pass
 
     try:
-        # ── 4. Wait for the "start" handshake ─────────────────────────────────
+        # ── 4. Wait for the v2 hello handshake ────────────────────────────────
         try:
             raw = await websocket.receive_text()
-            start_msg = json.loads(raw)
+            hello = json.loads(raw)
         except WebSocketDisconnect:
             return
         except json.JSONDecodeError:
-            await _close_with_error(websocket, "protocol_error",
-                                    'Expected {"type":"start"} as first message', 4008)
+            await _close_with_error(
+                websocket, "protocol_error",
+                "First frame must be a JSON hello", 4001,
+            )
             return
 
-        if start_msg.get("type") != "start":
-            await _close_with_error(websocket, "protocol_error",
-                                    'Expected {"type":"start"} as first message', 4008)
+        if hello.get("type") != "hello" or hello.get("client_proto") != "v2":
+            await _close_with_error(
+                websocket, "unsupported_proto",
+                "This server requires client_proto: v2. Update the app.",
+                4002,
+            )
             return
 
         # ── 5. Send "ready" with current form state ────────────────────────────
@@ -132,39 +139,102 @@ async def onboarding_ws(
         }))
 
         # ── 6. Build system prompt + tool dispatcher + run Gemini bridge ──────
-        # Render the cross-screen context block when the participant has prior
-        # completed steps. Empty string when bucket is empty so the prompt
-        # template's placeholder collapses cleanly to nothing.
-        cross_screen_text: str | None = None
-        if (
-            settings.onboarding_cross_screen_context_enabled
-            and state.tenant_id
-        ):
-            try:
-                ctx_repo = UserContextRepo(repo._r)
-                bucket = await ctx_repo.get_bucket(state.tenant_id, state.participant_id)
-                if not bucket.is_empty():
-                    cross_screen_text = render_for_prompt(bucket)
-            except Exception:
-                # Never crash a fresh session because the bucket read failed —
-                # the block is non-essential context, not authoritative state.
-                cross_screen_text = None
+        participant_display_name = (
+            bootstrap.participant_display_name
+            if bootstrap and bootstrap.participant_display_name
+            else ""
+        )
+        participant_first_name = (
+            participant_display_name.split(" ", 1)[0] if participant_display_name else ""
+        )
+
+        initial_turn = TurnPayload(
+            participant=Participant(
+                first_name=participant_first_name,
+                display_name=participant_display_name,
+            ),
+            step=StepInfo(
+                id=schema.step_id,
+                label=schema.step_label,
+                number=getattr(schema, "step_number", 0) or 0,
+            ),
+            bootstrap_mode=(
+                bootstrap.mode
+                if bootstrap and bootstrap.mode in {
+                    "new_user", "returning_same_page", "page_handoff"
+                }
+                else "new_user"
+            ),
+            prior_steps=(bootstrap.prior_pages if bootstrap and bootstrap.prior_pages else {}),
+            visible_fields=[],
+            next_target=None,
+        )
 
         system_instruction = build_system_prompt(
-            schema,
-            state,
+            initial_turn,
             grounding_enabled=settings.onboarding_grounding_enabled,
-            bootstrap=bootstrap,
-            cross_screen_text=cross_screen_text,
+            voice_coverage=(schema.voice_coverage if schema and schema.voice_coverage else None),
         )
 
-        tool_dispatcher = ToolDispatcher(
-            websocket=websocket,
-            session_id=session_id,
-            repo=repo,
-            schema=schema,
-            bootstrap=bootstrap,
+        mobile_bridge = MobileBridge(
+            websocket, timeout_sec=settings.onboarding_mobile_bridge_timeout_sec
         )
+
+        def _on_incident(args: dict[str, object]) -> None:
+            log.warning("incident_escalated", session_id=session_id, **args)
+
+        tool_dispatcher = ToolDispatcher(
+            bridge=mobile_bridge,
+            on_incident=_on_incident,
+        )
+
+        # Seed the model with the live screen state so its FIRST greeting knows
+        # which fields are already filled — no get_current_state round-trip, no
+        # "these are already filled" reminder from the participant. Only when
+        # the hello frame carried visible_fields (resume / fresh-empty skip it).
+        # Derive from the FormState loaded above (`state`) + `schema` — works
+        # regardless of what the hello frame carried. Walk every schema field,
+        # read its current value from state.values[section][field].value.
+        initial_state_text: str | None = None
+        _empty = (None, "", [], {})
+        filled_paths: list[str] = []
+        empty_required_paths: list[str] = []
+        state_values = state.values if state else {}
+        for section in schema.sections:
+            section_vals = state_values.get(section.id, {}) if isinstance(state_values, dict) else {}
+            for field in (section.fields or []):
+                fv = section_vals.get(field.id) if isinstance(section_vals, dict) else None
+                value = fv.get("value") if isinstance(fv, dict) else fv
+                path = f"{section.id}.{field.id}"
+                if value not in _empty:
+                    filled_paths.append(path)
+                elif field.required:
+                    empty_required_paths.append(path)
+
+        if filled_paths or empty_required_paths:
+            if not empty_required_paths:
+                _action = (
+                    "Everything required is already filled. Greet briefly and "
+                    "ask if they want to change anything or submit. Do NOT walk "
+                    "through fields one by one."
+                )
+            else:
+                _first = empty_required_paths[0]
+                _action = (
+                    f"START by asking for THIS field only: {_first}. "
+                    "Do NOT start from the top of the form. Do NOT ask about any "
+                    "field listed as already filled. Skip every filled field and "
+                    "ask only the empty required ones, in the order listed."
+                )
+            initial_state_text = (
+                "[SCREEN STATE — read silently, do NOT read aloud] "
+                "This is the live state of the current screen on session open. "
+                "You already know what is filled — never ask the participant "
+                "which fields are done. "
+                f"Already filled (SKIP these, do NOT ask): {filled_paths}. "
+                f"Empty required fields to collect IN THIS ORDER: {empty_required_paths}. "
+                + _action
+            )
 
         live_session = GeminiLiveSession(
             websocket=websocket,
@@ -173,6 +243,15 @@ async def onboarding_ws(
             repo=repo,
             tool_dispatcher=tool_dispatcher,
             replay_context=replay_context or None,
+            mobile_bridge=mobile_bridge,
+            initial_state_text=initial_state_text,
+            # Phase 1.5 — pass auth context for per-turn usage logging. Sourced
+            # from FormState (populated by POST /session from request headers,
+            # NOT request body). When tenant_id is empty the emit defaults to
+            # "unknown" — easy to grep + fix later.
+            tenant_id=(state.tenant_id if state else None),
+            user_id=None,  # Phase 1.6 — thread once route handler exposes user_id
+            participant_id=(state.participant_id if state else None),
         )
         await live_session.run()
 

@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option D — Storyboard Explanation</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f5f5f7; color: #1d1d1f;
+    margin: 0; padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .subtitle { color: #6e6e73; font-size: 17px; margin-bottom: 30px; }
+  h2 { font-size: 22px; margin: 40px 0 16px; }
+  h3 { font-size: 18px; margin: 24px 0 8px; }
+
+  /* The two-column layout */
+  .compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  }
+  .col-broken { border-top: 4px solid #ff3b30; }
+  .col-fixed  { border-top: 4px solid #34c759; }
+  .col { background: white; border-radius: 12px; padding: 16px 18px; }
+  .col h3 { margin-top: 0; }
+  .col-broken h3 { color: #ff3b30; }
+  .col-fixed  h3 { color: #34c759; }
+
+  /* Frame = one step in the storyboard */
+  .frame {
+    background: #fafafa; border: 1px solid #e5e5e7; border-radius: 8px;
+    padding: 14px; margin: 10px 0; position: relative;
+  }
+  .frame-num {
+    position: absolute; top: -10px; left: 14px;
+    background: #007aff; color: white;
+    width: 26px; height: 26px; border-radius: 13px;
+    font-size: 13px; font-weight: 700; text-align: center; line-height: 26px;
+  }
+  .col-broken .frame-num { background: #ff3b30; }
+  .col-fixed  .frame-num { background: #34c759; }
+  .frame-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: #8e8e93; margin-bottom: 6px; padding-left: 32px;
+  }
+
+  /* Speech bubbles */
+  .bubble {
+    border-radius: 18px; padding: 10px 14px; margin: 6px 0;
+    max-width: 85%; display: inline-block;
+  }
+  .bubble-user {
+    background: #007aff; color: white; margin-left: auto; display: block;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble-bot {
+    background: #e9e9eb; color: #1d1d1f;
+    border-bottom-left-radius: 4px;
+  }
+
+  /* Sticky-note: what the model "remembers" right now */
+  .brain {
+    background: #fff8d6; border: 1px dashed #ddb800;
+    border-radius: 6px; padding: 10px 12px; margin: 8px 0;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13px; line-height: 1.5;
+  }
+  .brain-label {
+    display: block; font: 600 11px -apple-system, sans-serif;
+    color: #8a6d00; text-transform: uppercase; letter-spacing: 0.6px;
+    margin-bottom: 4px;
+  }
+  .brain .stale   { background: #ffd6d6; padding: 1px 4px; border-radius: 3px; }
+  .brain .fresh   { background: #d6ffd6; padding: 1px 4px; border-radius: 3px; }
+  .brain .neutral { color: #6e6e73; }
+  .brain .conflict { background: #ffd0a0; padding: 1px 4px; border-radius: 3px; font-weight: 700; }
+
+  /* Tool call/return blocks */
+  .tool {
+    background: #1d1d1f; color: #d4d4d4; border-radius: 6px;
+    padding: 10px 12px; margin: 6px 0;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px;
+    overflow-x: auto;
+  }
+  .tool .key { color: #79c0ff; }
+  .tool .str { color: #a5d6ff; }
+  .tool .ok  { color: #7ee787; }
+  .tool .new { color: #ffa657; font-weight: 700; }
+  .tool-label {
+    font: 600 11px -apple-system, sans-serif;
+    color: #6e6e73; text-transform: uppercase; letter-spacing: 0.6px;
+    margin-top: 8px; margin-bottom: 2px;
+  }
+
+  /* Outcome banner at the end of a column */
+  .outcome {
+    margin-top: 14px; padding: 12px 14px; border-radius: 8px;
+    font-weight: 600; font-size: 15px;
+  }
+  .outcome.bad  { background: #ffe6e6; color: #c41e3a; border-left: 4px solid #ff3b30; }
+  .outcome.good { background: #e6ffe6; color: #006400; border-left: 4px solid #34c759; }
+
+  /* The big metaphor at top */
+  .metaphor {
+    background: linear-gradient(135deg, #ffe4b3 0%, #ffc080 100%);
+    border-radius: 14px; padding: 22px 28px; margin: 20px 0 30px;
+  }
+  .metaphor h2 { margin: 0 0 10px; color: #5a3500; border: none; }
+  .metaphor p { margin: 6px 0; font-size: 16px; color: #3a2200; }
+  .metaphor .big { font-size: 18px; font-weight: 600; }
+
+  /* Small helpers */
+  .arrow { font-size: 22px; color: #8e8e93; text-align: center; margin: 4px 0; }
+  .legend-row {
+    display: flex; gap: 18px; align-items: center; margin: 6px 0;
+    font-size: 13px; color: #6e6e73;
+  }
+  .swatch {
+    width: 16px; height: 16px; border-radius: 3px; display: inline-block;
+  }
+
+  /* Recap card */
+  .recap {
+    background: white; border-radius: 12px; padding: 20px 24px; margin: 24px 0;
+    border-left: 5px solid #34c759;
+  }
+  .recap h2 { margin-top: 0; border: none; color: #34c759; }
+  .recap ol { padding-left: 22px; }
+  .recap ol li { margin: 8px 0; }
+
+  /* Mobile */
+  @media (max-width: 800px) {
+    .compare { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Option D, explained like a story</h1>
+<p class="subtitle">
+  Two conversations side by side. Same user, same words. Left = today (broken). Right = Option D (fixed).
+  Read each row left → right. Watch the yellow sticky note ("what the model remembers") change.
+</p>
+
+<!-- ====== METAPHOR ====== -->
+<div class="metaphor">
+  <h2>📒 The one-line idea</h2>
+  <p class="big">
+    Today, when the AI saves something, the tool replies <em>"ok done"</em>.<br>
+    Option D: the tool replies <em>"ok done, AND here's the new full picture."</em>
+  </p>
+  <p>
+    The "new full picture" is the freshest copy of all the participant's data. The AI
+    now reads from that, not from the (stale) copy it was given at the start.
+  </p>
+</div>
+
+<!-- ====== LEGEND ====== -->
+<div style="background:white; border-radius:10px; padding:14px 18px; margin:20px 0;">
+  <strong>How to read the yellow notes (the AI's memory):</strong>
+  <div class="legend-row"><span class="swatch" style="background:#ffd6d6;"></span> red highlight = stale data</div>
+  <div class="legend-row"><span class="swatch" style="background:#d6ffd6;"></span> green highlight = fresh data</div>
+  <div class="legend-row"><span class="swatch" style="background:#ffd0a0;"></span> orange = two conflicting values for the same thing</div>
+</div>
+
+<!-- ====== THE STORYBOARD ====== -->
+<div class="compare">
+
+  <!-- =========== LEFT: BROKEN =========== -->
+  <div class="col col-broken">
+    <h3>❌ TODAY — what's breaking</h3>
+
+    <!-- Frame 1: setup -->
+    <div class="frame">
+      <span class="frame-num">1</span>
+      <div class="frame-label">Session starts. AI is given the form data ONCE, frozen.</div>
+      <div class="brain">
+        <span class="brain-label">AI's memory (from system prompt)</span>
+        name: <span class="neutral">— empty —</span><br>
+        dob: <span class="neutral">— empty —</span><br>
+        phone: <span class="neutral">— empty —</span>
+      </div>
+    </div>
+
+    <!-- Frame 2: user speaks -->
+    <div class="frame">
+      <span class="frame-num">2</span>
+      <div class="frame-label">User talks</div>
+      <span class="bubble bubble-user">"My name is Jane."</span>
+    </div>
+
+    <!-- Frame 3: tool call -->
+    <div class="frame">
+      <span class="frame-num">3</span>
+      <div class="frame-label">AI calls the save tool</div>
+      <div class="tool">
+        <span class="key">update_field</span>(<br>
+        &nbsp;&nbsp;section=<span class="str">"basics"</span>,<br>
+        &nbsp;&nbsp;field=<span class="str">"name"</span>,<br>
+        &nbsp;&nbsp;value=<span class="str">"Jane"</span><br>
+        )
+      </div>
+      <div class="tool-label">Tool reply:</div>
+      <div class="tool">{ <span class="key">"ok"</span>: <span class="ok">true</span> }</div>
+    </div>
+
+    <!-- Frame 4: brain now has conflict -->
+    <div class="frame">
+      <span class="frame-num">4</span>
+      <div class="frame-label">AI's memory NOW (the problem)</div>
+      <div class="brain">
+        <span class="brain-label">FROZEN at start (never updates)</span>
+        name: <span class="stale">— empty —</span>  ← stale<br>
+        dob: <span class="neutral">— empty —</span><br>
+        phone: <span class="neutral">— empty —</span>
+      </div>
+      <div class="brain">
+        <span class="brain-label">From conversation</span>
+        user said: "<span class="conflict">Jane</span>"<br>
+        tool said: <span class="conflict">just "ok"</span>
+      </div>
+    </div>
+
+    <!-- Frame 5: 5 minutes later, user asks -->
+    <div class="frame">
+      <span class="frame-num">5</span>
+      <div class="frame-label">5 minutes later</div>
+      <span class="bubble bubble-user">"What's my name on file?"</span>
+    </div>
+
+    <!-- Frame 6: AI confused -->
+    <div class="frame">
+      <span class="frame-num">6</span>
+      <div class="frame-label">AI looks at memory… sees two answers</div>
+      <div class="brain">
+        Frozen copy says: <span class="stale">empty</span><br>
+        Conversation says: <span class="conflict">Jane</span><br>
+        <br>
+        Background compression smashes these together →<br>
+        <strong style="color:#c41e3a;">AI guesses "Janet"</strong>
+      </div>
+      <span class="bubble bubble-bot">"Your name on file is Janet."</span>
+    </div>
+
+    <div class="outcome bad">
+      ❌ HALLUCINATION<br>
+      Two memory writers, no rule which wins.
+    </div>
+  </div>
+
+  <!-- =========== RIGHT: FIXED =========== -->
+  <div class="col col-fixed">
+    <h3>✅ OPTION D — what we change</h3>
+
+    <!-- Frame 1: setup (different) -->
+    <div class="frame">
+      <span class="frame-num">1</span>
+      <div class="frame-label">Session starts. AI is told: "call the tool to find out the state."</div>
+      <div class="brain">
+        <span class="brain-label">AI's memory (system prompt)</span>
+        <span class="neutral">— no field data here —</span><br>
+        Just rules + step name.
+      </div>
+    </div>
+
+    <!-- Frame 2: user speaks -->
+    <div class="frame">
+      <span class="frame-num">2</span>
+      <div class="frame-label">User talks</div>
+      <span class="bubble bubble-user">"My name is Jane."</span>
+    </div>
+
+    <!-- Frame 3: tool call returns MORE -->
+    <div class="frame">
+      <span class="frame-num">3</span>
+      <div class="frame-label">AI calls the save tool</div>
+      <div class="tool">
+        <span class="key">update_field</span>(<br>
+        &nbsp;&nbsp;section=<span class="str">"basics"</span>,<br>
+        &nbsp;&nbsp;field=<span class="str">"name"</span>,<br>
+        &nbsp;&nbsp;value=<span class="str">"Jane"</span><br>
+        )
+      </div>
+      <div class="tool-label">Tool reply <span style="color:#34c759;">(NEW SHAPE)</span>:</div>
+      <div class="tool">
+        {<br>
+        &nbsp;&nbsp;<span class="key">"ok"</span>: <span class="ok">true</span>,<br>
+        &nbsp;&nbsp;<span class="new">"state"</span>: {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"name"</span>: <span class="str">"Jane"</span>,<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"dob"</span>: <span class="str">null</span>,<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"phone"</span>: <span class="str">null</span>,<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"next_to_ask"</span>: <span class="str">"dob"</span><br>
+        &nbsp;&nbsp;}<br>
+        }
+      </div>
+    </div>
+
+    <!-- Frame 4: brain has ONE source -->
+    <div class="frame">
+      <span class="frame-num">4</span>
+      <div class="frame-label">AI's memory NOW (the fix)</div>
+      <div class="brain">
+        <span class="brain-label">Latest tool reply (the one true source)</span>
+        name: <span class="fresh">Jane</span><br>
+        dob: <span class="neutral">empty</span><br>
+        phone: <span class="neutral">empty</span><br>
+        next to ask: <span class="fresh">dob</span>
+      </div>
+    </div>
+
+    <!-- Frame 5: 5 minutes later, user asks -->
+    <div class="frame">
+      <span class="frame-num">5</span>
+      <div class="frame-label">5 minutes later</div>
+      <span class="bubble bubble-user">"What's my name on file?"</span>
+    </div>
+
+    <!-- Frame 6: AI confident -->
+    <div class="frame">
+      <span class="frame-num">6</span>
+      <div class="frame-label">AI looks at memory… one answer, fresh</div>
+      <div class="brain">
+        Latest tool reply says: <span class="fresh">Jane</span><br>
+        <br>
+        No conflict. No compression confusion.<br>
+        <strong style="color:#006400;">AI answers "Jane"</strong>
+      </div>
+      <span class="bubble bubble-bot">"Your name on file is Jane."</span>
+    </div>
+
+    <div class="outcome good">
+      ✅ NO HALLUCINATION<br>
+      One memory writer. Always fresh.
+    </div>
+  </div>
+</div>
+
+<!-- ====== TAKEAWAY ====== -->
+<div class="recap">
+  <h2>What actually changes in code</h2>
+  <ol>
+    <li><strong>Tool reply gets richer.</strong>
+      Today it returns <code>{"ok": true}</code>. We make it return
+      <code>{"ok": true, "state": &lt;the full fresh form&gt;}</code>.
+    </li>
+    <li><strong>System prompt loses the frozen JSON.</strong>
+      Right now the prompt has a big <code>__TURN_JSON__</code> block baked in at session start.
+      We delete it (or shrink to just "step name + participant name"). No more stale copy.
+    </li>
+    <li><strong>Prompt §1 gets one new sentence:</strong>
+      <em>"Your source of truth is the <code>state</code> field in the most recent tool reply."</em>
+    </li>
+  </ol>
+  <p style="margin-top:14px;">
+    <strong>That's it.</strong> About one day of work. No reconnect tricks. No new Gemini features.
+    Works on the model SENA already uses (<code>gemini-3.1-flash-live-preview</code>).
+  </p>
+</div>
+
+<!-- ====== WHY OTHER OPTIONS DON'T WIN ====== -->
+<h2>Why not the other options?</h2>
+<div style="background:white; border-radius:10px; padding:16px 22px;">
+  <h3 style="margin-top:8px;">Option A — just delete the frozen JSON</h3>
+  <p>Stops the conflict, but the AI has NO snapshot on first turn. It would have to call a tool just to learn what's already filled. Confusing for the participant on turn 1.</p>
+
+  <h3>Option B — reconnect a new Gemini session per screen (the big PLAN #1)</h3>
+  <p>Works, but takes 15 subtasks. Also doesn't help <em>within</em> a screen if a field changes from the mobile UI. Solves a different problem (prompt size / model adherence).</p>
+
+  <h3>Option F — push fresh JSON every turn via "system role" message</h3>
+  <p>This is the most common community advice online. <strong>It DOES NOT work on Gemini 3.1.</strong> The model returns error 1007 after the first turn. Confirmed by LiveKit's official Gemini plugin docs.</p>
+</div>
+
+<p style="text-align:center; color:#8e8e93; font-size:13px; margin-top:32px;">
+  If this still isn't clear, point at the frame number you're stuck on and we'll zoom in.
+</p>
+
+</body>
+</html>

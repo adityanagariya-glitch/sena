@@ -1,1112 +1,915 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>SENA — Voice Onboarding Test Harness</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SENA Voice Onboarding</title>
 <style>
-  /* ── SENA design tokens ──────────────────────────────────────────────── */
-  :root {
-    --primary:       #1D5FA8;
-    --primary-dark:  #164580;
-    --primary-light: #E6F1FB;
-    --secondary:     #1D9E75;
-    --bg:            #F5F5F5;
-    --surface:       #FFFFFF;
-    --surface-alt:   #F0F4F8;
-    --ink:           #1A1A2E;
-    --ink-sec:       #6B7280;
-    --ink-hint:      #9CA3AF;
-    --border:        #E5E7EB;
-    --success:       #16A34A;
-    --warning:       #D97706;
-    --error:         #DC2626;
-    --info:          #2563EB;
-    --radius-sm:     8px;
-    --radius-md:     12px;
-    --radius-lg:     16px;
-    --radius-full:   100px;
-    --shadow-sm:     0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
-    --shadow-md:     0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
-  }
-  body.dark {
-    --bg: #0f1117; --surface: #1a1d27; --surface-alt: #22263a;
-    --ink: #e8eaf0; --ink-sec: #9ca3af; --ink-hint: #6b7280;
-    --border: #2d3148; --primary-light: #1a2540;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
-    background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5;
-  }
+:root {
+  --c-bg:       #080D1A;
+  --c-surface:  #0F1629;
+  --c-s2:       #172136;
+  --c-s3:       #1E2D47;
+  --c-border:   rgba(255,255,255,0.06);
+  --c-primary:  #1D5FA8;
+  --c-plight:   #2563EB;
+  --c-green:    #22C55E;
+  --c-purple:   #818CF8;
+  --c-amber:    #F59E0B;
+  --c-red:      #EF4444;
+  --c-teal:     #1D9E75;
+  --c-t1:       #F1F5F9;
+  --c-t2:       #94A3B8;
+  --c-t3:       #4B5563;
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; overflow:hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--c-bg);
+  color: var(--c-t1);
+  display: flex;
+  flex-direction: column;
+}
 
-  /* ── Top bar ──────────────────────────────────────────────────────────── */
-  .topbar {
-    background: var(--primary); color: #fff; padding: 0 24px;
-    display: flex; align-items: center; gap: 12px; height: 56px;
-    box-shadow: var(--shadow-md); position: sticky; top: 0; z-index: 10;
-  }
-  .topbar-logo {
-    font-size: 1.2rem; font-weight: 800; letter-spacing: -.5px;
-  }
-  .topbar-logo span { color: #7DC4F8; }
-  .topbar-sub { font-size: .78rem; opacity: .75; margin-left: 8px; }
-  .topbar-spacer { flex: 1; }
-  .topbar-badge {
-    background: rgba(255,255,255,.18); border-radius: var(--radius-full);
-    padding: 3px 12px; font-size: .72rem; font-weight: 600;
-  }
-  .topbar-session {
-    display: flex; align-items: center; gap: 6px; margin-left: 16px;
-  }
-  .topbar-session label {
-    font-size: .72rem; opacity: .8; white-space: nowrap;
-  }
-  .topbar-session input {
-    width: 220px; padding: 4px 8px; border-radius: var(--radius-sm);
-    border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.12);
-    color: #fff; font-size: .75rem; font-family: ui-monospace, Consolas, monospace;
-  }
-  .topbar-session input::placeholder { color: rgba(255,255,255,.45); }
-  .topbar-session input:focus { outline: none; border-color: rgba(255,255,255,.6); }
-  .topbar-session button {
-    padding: 4px 12px; font-size: .75rem; border-radius: var(--radius-sm);
-    background: rgba(255,255,255,.22); color: #fff; border: none;
-    cursor: pointer; font-weight: 600; white-space: nowrap;
-  }
-  .topbar-session button:hover { background: rgba(255,255,255,.32); }
+/* ── HEADER ───────────────────────────────────────────── */
+.hdr {
+  height: 56px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 14px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.logo-mark {
+  width: 34px; height: 34px;
+  background: linear-gradient(135deg, var(--c-primary), var(--c-plight));
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 15px; color: #fff; letter-spacing: -0.5px;
+  box-shadow: 0 2px 12px rgba(37,99,235,0.4);
+  flex-shrink: 0;
+}
+.logo-name { font-weight: 700; font-size: 0.95rem; color: var(--c-t1); }
+.logo-sub  { font-size: 0.7rem;  color: var(--c-t3); }
+.hdr-div   { width: 1px; height: 24px; background: var(--c-border); }
+.step-pill {
+  font-size: 0.7rem; color: var(--c-t2);
+  background: var(--c-s3); padding: 3px 10px; border-radius: 20px;
+  border: 1px solid var(--c-border);
+}
+.hdr-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--c-t3);
+  transition: background .3s, box-shadow .3s;
+}
+.status-dot.live        { background: var(--c-green);  box-shadow: 0 0 8px rgba(34,197,94,.6); }
+.status-dot.speaking    { background: var(--c-purple); box-shadow: 0 0 8px rgba(129,140,248,.6); }
+.status-dot.connecting  { background: var(--c-amber); animation: blink 1s infinite; }
+.status-dot.error       { background: var(--c-red); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.status-label { font-size: 0.72rem; color: var(--c-t2); }
 
-  /* ── Layout ──────────────────────────────────────────────────────────── */
-  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 20px 40px; }
-  .cols { display: grid; grid-template-columns: 340px 1fr 320px; gap: 16px; align-items: start; }
-  @media (max-width: 1024px) { .cols { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 700px)  { .cols { grid-template-columns: 1fr; } }
+/* ── LAYOUT ───────────────────────────────────────────── */
+.body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 268px 1fr 308px;
+  overflow: hidden;
+}
 
-  /* ── Card ────────────────────────────────────────────────────────────── */
-  .card {
-    background: var(--surface); border-radius: var(--radius-md);
-    box-shadow: var(--shadow-sm); padding: 16px; margin-bottom: 14px;
-  }
-  .card-title {
-    font-size: .7rem; font-weight: 700; color: var(--ink-sec);
-    text-transform: uppercase; letter-spacing: .07em; margin-bottom: 12px;
-    display: flex; align-items: center; gap: 8px;
-  }
+/* ── LEFT SIDEBAR ─────────────────────────────────────── */
+.left {
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.s-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--c-border);
+}
+.s-section.grow { flex: 1; overflow-y: auto; }
+.s-section.grow::-webkit-scrollbar { width: 3px; }
+.s-section.grow::-webkit-scrollbar-thumb { background: var(--c-s3); border-radius: 4px; }
+.s-label {
+  font-size: 0.63rem; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--c-t3); font-weight: 700; margin-bottom: 12px;
+}
+.f-group { margin-bottom: 10px; }
+.f-group label { font-size: 0.72rem; color: var(--c-t2); display: block; margin-bottom: 4px; }
+.f-group input, .f-group select {
+  width: 100%; background: var(--c-s2); border: 1px solid var(--c-border);
+  color: var(--c-t1); border-radius: var(--radius-sm); padding: 7px 10px;
+  font-size: 0.78rem; outline: none; transition: border-color .2s;
+  -webkit-appearance: none; appearance: none;
+}
+.f-group input:focus, .f-group select:focus { border-color: var(--c-primary); }
 
-  /* ── Phase chip ──────────────────────────────────────────────────────── */
-  .chip {
-    display: inline-flex; align-items: center; padding: 2px 9px;
-    border-radius: var(--radius-full); font-size: .62rem; font-weight: 700;
-    letter-spacing: .04em;
-  }
-  .chip-done { background: #DCFCE7; color: #166534; }
-  .chip-v2   { background: var(--primary-light); color: var(--primary-dark); }
-  .chip-warn { background: #FEF3C7; color: #92400e; }
+/* custom select arrow */
+.sel-wrap { position: relative; }
+.sel-wrap::after {
+  content: ''; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 5px solid var(--c-t3); pointer-events: none;
+}
+select option { background: #1a2540; }
 
-  /* ── Form controls ───────────────────────────────────────────────────── */
-  label { display: block; font-size: .78rem; color: var(--ink-sec); margin-bottom: 4px; }
-  input[type=text], input[type=number], select, textarea {
-    width: 100%; padding: 9px 11px; border: 1.5px solid var(--border);
-    border-radius: var(--radius-sm); background: var(--surface); color: var(--ink);
-    font-size: .84rem; transition: border-color .15s;
-  }
-  input:focus, select:focus, textarea:focus {
-    outline: none; border-color: var(--primary);
-  }
-  textarea {
-    font-family: ui-monospace, Consolas, monospace;
-    font-size: .72rem; min-height: 90px; resize: vertical;
-  }
-  .field-row { margin-bottom: 10px; }
+.btn {
+  width: 100%; padding: 9px 14px;
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 0.78rem; font-weight: 600;
+  transition: opacity .15s, transform .1s;
+}
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn-primary { background: var(--c-primary); color: #fff; }
+.btn-success { background: var(--c-teal); color: #fff; }
+.btn-ghost   { background: var(--c-s3); color: var(--c-t2); }
+.btn-red     { background: rgba(239,68,68,.15); color: var(--c-red); border: 1px solid rgba(239,68,68,.25); }
 
-  /* ── Buttons ─────────────────────────────────────────────────────────── */
-  button {
-    padding: 8px 16px; border: none; border-radius: var(--radius-sm);
-    font-weight: 600; cursor: pointer; font-size: .82rem; transition: opacity .12s;
-  }
-  button:disabled { opacity: .38; cursor: not-allowed; }
-  button:not(:disabled):hover { opacity: .88; }
-  .btn-primary { background: var(--primary);   color: #fff; }
-  .btn-success { background: var(--secondary); color: #fff; }
-  .btn-danger  { background: var(--error);     color: #fff; }
-  .btn-ghost   { background: var(--surface-alt); color: var(--ink); }
-  .btn-warn    { background: #FEF3C7; color: #92400e; }
-  .btn-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.sid-chip {
+  display: none;
+  margin-top: 10px;
+  background: var(--c-s2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  gap: 8px;
+  align-items: center;
+}
+.sid-chip .lbl { font-size: 0.6rem; color: var(--c-t3); white-space: nowrap; }
+.sid-chip .val { font-family: monospace; font-size: 0.68rem; color: var(--c-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* ── Status pill ─────────────────────────────────────────────────────── */
-  .status {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 13px; border-radius: var(--radius-sm); font-size: .83rem; font-weight: 500;
-    margin: 10px 0;
-  }
-  .status.idle  { background: var(--surface-alt); color: #475569; }
-  .status.live  { background: #DCFCE7; color: #166534; }
-  .status.speak { background: var(--primary-light); color: var(--primary-dark); }
-  .status.error { background: #FEE2E2; color: #991B1B; }
-  .mic-dot {
-    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #9CA3AF;
-  }
-  .mic-dot.live { background: var(--secondary); box-shadow: 0 0 0 3px rgba(29,158,117,.22); }
+/* Field tracker */
+.f-section-hdr {
+  font-size: 0.63rem; color: var(--c-t3); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em;
+  margin: 10px 0 5px;
+}
+.f-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px; border-radius: 7px;
+  transition: background .15s; cursor: default;
+}
+.f-item:hover { background: var(--c-s2); }
+.f-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: var(--c-t3); border: 1.5px solid var(--c-t3);
+  transition: background .3s, border-color .3s, box-shadow .3s;
+}
+.f-dot.done { background: var(--c-green); border-color: var(--c-green); box-shadow: 0 0 6px rgba(34,197,94,.4); }
+.f-dot.req  { background: transparent; border-color: var(--c-s3); }
+.f-name  { font-size: 0.72rem; color: var(--c-t2); flex: 1; min-width: 0; }
+.f-val   { font-size: 0.65rem; color: var(--c-primary); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.f-star  { font-size: 0.6rem; color: var(--c-primary); opacity: .6; }
 
-  /* ── Session info KV ─────────────────────────────────────────────────── */
-  .kv { display: flex; justify-content: space-between; align-items: center; font-size: .78rem; padding: 4px 0; border-bottom: 1px solid var(--border); }
-  .kv:last-child { border-bottom: none; }
-  .kv-key { color: var(--ink-sec); }
-  .kv code {
-    font-family: ui-monospace, monospace; font-size: .72rem;
-    background: var(--surface-alt); padding: 2px 6px;
-    border-radius: 4px; max-width: 180px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;
-  }
+/* ── CENTER ───────────────────────────────────────────── */
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 28px;
+  position: relative;
+  overflow: hidden;
+}
+.center::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 40%, rgba(29,95,168,.1) 0%, transparent 65%);
+  pointer-events: none;
+}
 
-  /* ── Coverage pills ──────────────────────────────────────────────────── */
-  .coverage-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-  .coverage-pill {
-    background: var(--primary-light); color: var(--primary-dark);
-    border-radius: var(--radius-full); padding: 2px 10px;
-    font-size: .69rem; font-weight: 600; font-family: ui-monospace, monospace;
-  }
+/* Orb */
+.orb-area {
+  position: relative;
+  width: 220px; height: 220px;
+  display: flex; align-items: center; justify-content: center;
+}
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid rgba(29,95,168,.18);
+  animation: ring-idle 4s ease-in-out infinite;
+  transition: border-color .5s;
+}
+.ring:nth-child(1) { width: 180px; height: 180px; animation-delay: 0s; }
+.ring:nth-child(2) { width: 210px; height: 210px; animation-delay: .6s; }
+.ring:nth-child(3) { width: 240px; height: 240px; animation-delay: 1.2s; }
+@keyframes ring-idle { 0%,100%{opacity:.6; transform:scale(1)} 50%{opacity:.2; transform:scale(1.015)} }
 
-  /* ── Transcript (chat bubble style) ─────────────────────────────────── */
-  .transcript {
-    max-height: 240px; overflow-y: auto;
-    display: flex; flex-direction: column; gap: 6px;
-    padding: 4px 0;
-  }
-  .bubble {
-    max-width: 82%; padding: 8px 12px; border-radius: var(--radius-md); font-size: .84rem;
-    line-height: 1.45;
-  }
-  .bubble.user {
-    background: var(--primary-light); color: var(--primary-dark);
-    align-self: flex-end; border-bottom-right-radius: 4px;
-  }
-  .bubble.user::before { content: 'You'; display: block; font-size: .65rem; font-weight: 700; margin-bottom: 2px; opacity: .7; }
-  .bubble.agent {
-    background: var(--surface-alt); color: var(--ink);
-    align-self: flex-start; border-bottom-left-radius: 4px;
-  }
-  .bubble.agent::before { content: 'Sena'; display: block; font-size: .65rem; font-weight: 700; margin-bottom: 2px; color: var(--secondary); }
+.orb-area.listening .ring { border-color: rgba(34,197,94,.35); animation: ring-out 1.4s ease-out infinite; }
+@keyframes ring-out { 0%{opacity:.9; transform:scale(1)} 100%{opacity:0; transform:scale(1.5)} }
+.orb-area.listening .ring:nth-child(2) { animation-delay: .35s; }
+.orb-area.listening .ring:nth-child(3) { animation-delay: .7s; }
 
-  /* ── Form state panel ────────────────────────────────────────────────── */
-  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 8px 0; }
-  .progress-fill { height: 100%; background: var(--primary); transition: width .35s ease; }
-  .section-group { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 10px; }
-  .section-group:first-child { border-top: none; padding-top: 0; margin-top: 0; }
-  .section-title { font-size: .78rem; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
-  .frow {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-    padding: 4px 0; border-bottom: 1px solid #f3f4f6; font-size: .78rem;
-  }
-  .frow-label { color: var(--ink-sec); }
-  .frow-label .req { color: var(--error); margin-left: 2px; }
-  .frow-value { font-weight: 600; color: var(--ink); }
-  .frow-value.empty { color: var(--ink-hint); font-weight: 400; font-style: italic; }
-  .frow.updated { background: #FEFCE8; animation: flash 1.4s ease forwards; }
-  @keyframes flash { 0% { background: #FDE047; } 100% { background: transparent; } }
+.orb-area.speaking .ring  { border-color: rgba(129,140,248,.4); animation: ring-out .9s ease-out infinite; }
+.orb-area.speaking .ring:nth-child(2) { animation-delay: .2s; }
+.orb-area.speaking .ring:nth-child(3) { animation-delay: .4s; }
 
-  /* ── Screen state v2 tabs ────────────────────────────────────────────── */
-  .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 12px; }
-  .tab-btn {
-    background: none; border: none; padding: 7px 14px; font-size: .8rem;
-    font-weight: 600; color: var(--ink-sec); cursor: pointer; border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-  }
-  .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
+.orb {
+  position: relative; z-index: 2;
+  width: 144px; height: 144px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #3B82F6, var(--c-primary) 55%, #0D2F6E 100%);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.07),
+    0 4px 20px rgba(29,95,168,.5),
+    0 0 70px rgba(29,95,168,.2),
+    inset 0 1px 1px rgba(255,255,255,.18);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px;
+  cursor: pointer;
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .3s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.orb:hover { transform: scale(1.05); box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 6px 28px rgba(29,95,168,.6), 0 0 90px rgba(29,95,168,.3), inset 0 1px 1px rgba(255,255,255,.18); }
 
-  /* ── Resumption handle box ───────────────────────────────────────────── */
-  .handle-box {
-    background: #FEFCE8; border: 1px solid #FDE047; border-radius: var(--radius-sm);
-    padding: 10px 12px; font-size: .78rem; margin: 8px 0;
-  }
-  .handle-box code {
-    font-family: ui-monospace, monospace; font-size: .7rem;
-    word-break: break-all; display: block; margin: 4px 0; color: #92400e;
-  }
-  .handle-box.empty { background: var(--surface-alt); border-color: var(--border); color: var(--ink-hint); }
+.orb-area.listening .orb {
+  background: radial-gradient(circle at 38% 30%, #4ADE80, #16A34A 55%, #064E3B 100%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 4px 20px rgba(34,197,94,.45), 0 0 70px rgba(34,197,94,.2), inset 0 1px 1px rgba(255,255,255,.18);
+  animation: pulse-listen 2s ease-in-out infinite;
+}
+@keyframes pulse-listen { 0%,100%{transform:scale(1)} 50%{transform:scale(1.025)} }
+.orb-area.speaking .orb {
+  background: radial-gradient(circle at 38% 30%, #C7D2FE, #818CF8 55%, #312E81 100%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.1), 0 4px 20px rgba(129,140,248,.5), 0 0 80px rgba(129,140,248,.25), inset 0 1px 1px rgba(255,255,255,.2);
+  animation: pulse-speak .75s ease-in-out infinite;
+}
+@keyframes pulse-speak { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
 
-  /* ── Event log ────────────────────────────────────────────────────────── */
-  #log {
-    font-family: ui-monospace, Consolas, monospace; font-size: .69rem; color: #475569;
-    max-height: 200px; overflow-y: auto; background: #0F172A;
-    border-radius: var(--radius-sm); padding: 10px; line-height: 1.6;
-  }
-  .log-tool { color: #7DD3FC; }
-  .log-err  { color: #FCA5A5; }
-  .log-ok   { color: #86EFAC; }
-  .log-warn { color: #FCD34D; }
-  .log-v2   { color: #C4B5FD; }
-  .log-time { color: #475569; }
+.orb-icon { width: 34px; height: 34px; }
+.orb-label { font-size: 0.62rem; color: rgba(255,255,255,.65); letter-spacing: .04em; font-weight: 500; }
 
-  /* ── Docs links ──────────────────────────────────────────────────────── */
-  .docs-links { display: flex; gap: 8px; flex-wrap: wrap; }
-  .docs-links a {
-    padding: 6px 12px; border-radius: var(--radius-sm); font-size: .8rem; font-weight: 600;
-    background: var(--primary-light); color: var(--primary-dark); text-decoration: none;
-    border: 1px solid #BFDBFE;
-  }
-  .docs-links a:hover { background: #DBEAFE; }
+/* Waveform */
+#waveform { border-radius: 10px; }
 
-  /* ── Divider ─────────────────────────────────────────────────────────── */
-  .divider { height: 1px; background: var(--border); margin: 10px 0; }
+/* Timer + status */
+.timer { font-size: 1.2rem; font-weight: 300; color: var(--c-t2); font-variant-numeric: tabular-nums; letter-spacing: .06em; }
+.vstatus { font-size: 0.78rem; color: var(--c-t3); text-align: center; min-height: 20px; }
 
-  /* ── Toggle row ──────────────────────────────────────────────────────── */
-  .toggle-row { display: flex; align-items: center; gap: 10px; font-size: .8rem; padding: 6px 0; }
-  .badge { display: inline-block; padding: 2px 9px; border-radius: var(--radius-full); font-size: .68rem; font-weight: 700; }
-  .badge.on  { background: #DCFCE7; color: #166534; }
-  .badge.off { background: #FEE2E2; color: #991B1B; }
+.cta-row { display: flex; gap: 10px; }
+.cta-row .btn { width: auto; padding: 8px 20px; font-size: 0.75rem; }
 
-  /* ── field_apply flash row ───────────────────────────────────────────── */
-  .fa-event {
-    display: flex; align-items: flex-start; gap: 8px;
-    padding: 7px 10px; border-radius: var(--radius-sm);
-    background: #F5F3FF; border-left: 3px solid #8B5CF6;
-    font-size: .78rem; margin-bottom: 5px; animation: faFlash .9s ease;
-  }
-  @keyframes faFlash { from { background: #EDE9FE; } to { background: #F5F3FF; } }
-  .fa-event .fa-field { font-weight: 700; color: #7C3AED; font-family: ui-monospace, monospace; }
-  .fa-event .fa-val { color: var(--ink); }
-  .fa-event .fa-conf { color: var(--ink-hint); font-size: .7rem; }
-  #fieldApplyLog { max-height: 150px; overflow-y: auto; }
+/* ── RIGHT: TRANSCRIPT ────────────────────────────────── */
+.right {
+  background: var(--c-surface);
+  border-left: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.r-hdr {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--c-border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.r-hdr-label { font-size: 0.63rem; text-transform: uppercase; letter-spacing: .09em; color: var(--c-t3); font-weight: 700; }
+.r-hdr-clear { background: none; border: none; color: var(--c-t3); cursor: pointer; font-size: 0.7rem; padding: 3px 8px; border-radius: 5px; }
+.r-hdr-clear:hover { background: var(--c-s2); color: var(--c-t2); }
+
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-s3) transparent;
+}
+.transcript::-webkit-scrollbar { width: 4px; }
+.transcript::-webkit-scrollbar-thumb { background: var(--c-s3); border-radius: 4px; }
+
+.msg      { display: flex; flex-direction: column; max-width: 87%; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.msg.agent{ align-self: flex-start; align-items: flex-start; }
+.msg-who  { font-size: 0.62rem; color: var(--c-t3); margin-bottom: 3px; padding: 0 5px; }
+.msg-bub  {
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 0.78rem; line-height: 1.55;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.msg.user  .msg-bub { background: var(--c-primary); color: #fff; border-bottom-right-radius: 5px; }
+.msg.agent .msg-bub { background: var(--c-s3); color: var(--c-t1); border-bottom-left-radius: 5px; border: 1px solid var(--c-border); }
+
+.pill {
+  align-self: center;
+  font-size: 0.62rem; color: var(--c-t3);
+  background: var(--c-s2); border: 1px solid var(--c-border);
+  padding: 2px 10px; border-radius: 20px;
+  display: flex; align-items: center; gap: 5px;
+}
+.pill.ok    { color: var(--c-teal);   border-color: rgba(29,158,117,.3); background: rgba(29,158,117,.08); }
+.pill.bad   { color: var(--c-red);    border-color: rgba(239,68,68,.3);  background: rgba(239,68,68,.08); }
+.pill.warn  { color: var(--c-amber);  border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.08); }
+.pill::before { content: '·'; font-size: .9rem; line-height: 1; }
+.pill.ok::before  { color: var(--c-green); }
+.pill.bad::before { color: var(--c-red);   }
+
+.txt-row {
+  padding: 11px 12px;
+  border-top: 1px solid var(--c-border);
+  display: flex; gap: 8px;
+}
+.txt-row input {
+  flex: 1;
+  background: var(--c-s2); border: 1px solid var(--c-border);
+  color: var(--c-t1); border-radius: 10px;
+  padding: 9px 13px; font-size: 0.78rem; outline: none;
+}
+.txt-row input:focus { border-color: var(--c-primary); }
+.txt-row input::placeholder { color: var(--c-t3); }
+.txt-row input:disabled { opacity: .4; }
+.send-btn {
+  background: var(--c-primary); border: none;
+  border-radius: 10px; padding: 9px 16px;
+  cursor: pointer; color: #fff; font-size: 0.78rem; font-weight: 600;
+  transition: opacity .15s;
+}
+.send-btn:disabled { opacity: .35; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
-<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
-<div class="topbar">
-  <div class="topbar-logo">SENA<span>.</span></div>
-  <div class="topbar-sub">Voice Onboarding API — Test Harness</div>
-  <div class="topbar-spacer"></div>
-  <button id="darkModeBtn" onclick="toggleDark()" style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:20px;padding:4px 14px;font-size:.78rem;font-weight:600;cursor:pointer;">🌙 Dark</button>
-  <div class="topbar-session">
-    <label>Session ID:</label>
-    <input type="text" id="topbarSessionInput" placeholder="paste or auto-filled on create…" />
-    <button id="topbarResumeBtn">Resume →</button>
+<!-- HEADER -->
+<header class="hdr">
+  <div class="logo-mark">S</div>
+  <div>
+    <div class="logo-name">SENA</div>
+    <div class="logo-sub">Voice Onboarding Harness</div>
   </div>
-  <div class="topbar-badge">v2 · Phases A–F</div>
-</div>
-
-<div class="wrap">
-<div class="cols">
-
-<!-- ════════════════════════════════════════════════════════════ LEFT COL -->
-<div>
-
-  <!-- Phase A — Session -->
-  <div class="card">
-    <div class="card-title">Session <span class="chip chip-done">Phase A</span></div>
-    <div class="field-row">
-      <label>Step schema</label>
-      <select id="schemaSelect">
-        <option value="personal_information">Personal Information</option>
-        <option value="participant_requirements">Participant Requirements</option>
-        <option value="ndis_plan_details">NDIS Plan Details</option>
-        <option value="documents">Documents</option>
-        <option value="medical_information">Medical Information</option>
-      </select>
-    </div>
-    <div class="field-row">
-      <label>Participant ID</label>
-      <input type="text" id="participantId" value="p-harness-001" />
-    </div>
-    <div class="field-row">
-      <label>Tenant ID <span style="color:#888;font-weight:normal;">(required for cross-screen context)</span></label>
-      <input type="text" id="tenantId" value="t-harness-001" />
-    </div>
-    <div class="field-row" style="font-size:12px;color:#666;margin-top:-4px;margin-bottom:8px;">
-      Same IDs across steps = assistant inherits prior context. New IDs = fresh start.
-    </div>
-    <div class="btn-row">
-      <button id="createBtn" class="btn-primary">Create Session</button>
-      <button id="freshTestBtn" type="button" title="Randomize IDs so the next session starts with an empty bucket">🆕 Fresh Test (new IDs)</button>
-      <button id="getStateBtn" class="btn-ghost" disabled>Refresh State</button>
-      <button id="completeBtn" class="btn-warn" disabled>Fire Webhook</button>
-      <button id="nextStepBtn" class="btn-success" disabled>Next Step →</button>
-    </div>
-    <div class="divider"></div>
-    <div class="card-title" style="margin-top:4px;margin-bottom:8px;">── or resume existing ──</div>
-    <div class="field-row">
-      <label>Session ID</label>
-      <input type="text" id="resumeSessionInput" placeholder="Paste session_id…" />
-    </div>
-    <div class="btn-row">
-      <button id="resumeSessionBtn" class="btn-primary">Resume Session</button>
-    </div>
-    <div class="status idle" id="sessionStatus">No session.</div>
-    <div class="kv"><span class="kv-key">session_id</span><code id="sidDisplay">—</code></div>
-    <div class="kv"><span class="kv-key">ws_url</span><code id="wsUrlDisplay">—</code></div>
-    <div id="coverageSection" style="display:none; margin-top:8px;">
-      <div style="font-size:.72rem; color:var(--ink-sec); font-weight:600; margin-bottom:4px;">VOICE COVERAGE (v2)</div>
-      <div class="coverage-list" id="coveragePills"></div>
-    </div>
+  <div class="hdr-div"></div>
+  <div class="step-pill" id="step-pill">Select step</div>
+  <div class="hdr-right">
+    <div class="status-dot" id="hdot"></div>
+    <span class="status-label" id="hlabel">Disconnected</span>
   </div>
+</header>
 
-  <!-- Phase E — Resumption -->
-  <div class="card">
-    <div class="card-title">Resumption + Grounding <span class="chip chip-done">Phase E</span></div>
-    <label style="margin-bottom:6px;">Resumption handle</label>
-    <div class="handle-box empty" id="handleBox">
-      <span id="handleLabel">No handle — close an in-progress session to receive one.</span>
-      <code id="handleDisplay" style="display:none;"></code>
-      <span id="handleTtl" style="font-size:.7rem; color:var(--ink-sec);"></span>
-    </div>
-    <div class="btn-row">
-      <button id="reconnectBtn" class="btn-warn" disabled>Reconnect with Handle</button>
-      <button id="clearHandleBtn" class="btn-ghost" disabled>Clear</button>
-    </div>
-    <div class="divider"></div>
-    <div class="toggle-row">
-      <span>Google Search:</span>
-      <span class="badge off" id="groundingBadge">OFF</span>
-      <span style="color:var(--ink-hint); font-size:.72rem;">env: SENA_AI_ONBOARDING_GROUNDING_ENABLED</span>
-    </div>
-  </div>
+<div class="body">
 
-  <!-- Docs -->
-  <div class="card">
-    <div class="card-title">Docs <span class="chip chip-done">Phase F</span></div>
-    <div class="docs-links">
-      <a href="/docs" target="_blank">OpenAPI</a>
-      <a href="/redoc" target="_blank">ReDoc</a>
-      <a href="/static/WS_PROTOCOL.md" target="_blank">WS Protocol</a>
-      <a href="/static/postman_collection.json" download>Postman</a>
+  <!-- LEFT -->
+  <aside class="left">
+    <div class="s-section">
+      <div class="s-label">Session</div>
+      <div class="f-group">
+        <label>API Base URL</label>
+        <input id="base-url" value="http://127.0.0.1:8089" />
+      </div>
+      <div class="f-group">
+        <label>Participant ID</label>
+        <input id="participant-id" value="test-participant-001" />
+      </div>
+      <div class="f-group">
+        <label>Step</label>
+        <div class="sel-wrap">
+          <select id="step-id" onchange="onStepChange()">
+            <option value="personal_information">Personal Information</option>
+            <option value="participant_requirements">Participant Requirements</option>
+            <option value="ndis_plan_details">NDIS Plan Details</option>
+            <option value="medical_information">Medical Information</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btn-create" onclick="createSession()">Create Session</button>
+      <div class="sid-chip" id="sid-chip">
+        <span class="lbl">SID</span>
+        <span class="val" id="sid-val"></span>
+      </div>
     </div>
-  </div>
-
-</div>
-
-<!-- ════════════════════════════════════════════════════════ CENTRE COL -->
-<div>
-
-  <!-- Phase B — Voice -->
-  <div class="card">
-    <div class="card-title">Voice Session <span class="chip chip-done">Phase B</span></div>
-    <div class="btn-row">
-      <button id="startBtn" class="btn-success" disabled>▶ Start Voice</button>
-      <button id="stopBtn"  class="btn-danger"  disabled>■ Stop</button>
-      <button id="beepBtn"  class="btn-ghost"   disabled>Test Speaker</button>
+    <div class="s-section grow">
+      <div class="s-label">Fields</div>
+      <div id="field-list"></div>
     </div>
-    <div class="status idle" id="wsStatus">
-      <div class="mic-dot" id="micDot"></div>
-      <span id="wsStatusText">Voice idle.</span>
+  </aside>
+
+  <!-- CENTER -->
+  <section class="center">
+    <div class="orb-area" id="orb-area">
+      <div class="ring"></div>
+      <div class="ring"></div>
+      <div class="ring"></div>
+      <div class="orb" id="orb" onclick="toggleSession()">
+        <!-- mic icon -->
+        <svg class="orb-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="13" y="4" width="10" height="16" rx="5" fill="white" fill-opacity=".9"/>
+          <path d="M7 18c0 6.075 4.925 11 11 11s11-4.925 11-11" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none" fill-opacity=".9"/>
+          <line x1="18" y1="29" x2="18" y2="33" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+          <line x1="13" y1="33" x2="23" y2="33" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+        <span class="orb-label" id="orb-label">Tap to start</span>
+      </div>
     </div>
-    <div style="font-size:.75rem; color:var(--ink-sec); margin-bottom:8px;">Conversation</div>
+
+    <canvas id="waveform" width="340" height="56"></canvas>
+
+    <div class="timer" id="timer">00:00</div>
+    <div class="vstatus" id="vstatus">Create a session to begin</div>
+
+    <div class="cta-row">
+      <button class="btn btn-ghost" id="btn-stop" disabled onclick="stopSession()">Stop</button>
+      <button class="btn btn-ghost" onclick="clearTranscript()">Clear log</button>
+    </div>
+  </section>
+
+  <!-- RIGHT -->
+  <aside class="right">
+    <div class="r-hdr">
+      <span class="r-hdr-label">Transcript</span>
+      <button class="r-hdr-clear" onclick="clearTranscript()">Clear</button>
+    </div>
     <div class="transcript" id="transcript"></div>
-  </div>
-
-  <!-- Phase D — Screen state v2 -->
-  <div class="card">
-    <div class="card-title">Screen State Injection <span class="chip chip-done">Phase D</span> <span class="chip chip-v2">v2</span></div>
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('v2')">screen_state_v2</button>
-      <button class="tab-btn" onclick="switchTab('v1')">v1 legacy</button>
+    <div class="txt-row">
+      <input id="txt-in" placeholder="Type a message — Enter to send" disabled />
+      <button class="send-btn" id="btn-send" disabled onclick="sendText()">Send</button>
     </div>
-
-    <div id="tab-v2" class="tab-panel active">
-      <textarea id="screenStateV2Json">{
-  "step_id": "personal_information",
-  "focused_section": "basics",
-  "focused_field": "phone",
-  "field_status": {
-    "basics.full_name": "filled",
-    "basics.date_of_birth": "filled",
-    "basics.phone": "empty",
-    "basics.email": "empty",
-    "basics.about_me": "empty"
-  },
-  "repeatable_rows": {},
-  "ui_flags": {}
-}</textarea>
-      <div class="btn-row">
-        <button id="sendScreenStateV2Btn" class="btn-primary" disabled>Send screen_state_v2</button>
-        <button onclick="$('screenStateV2Json').value='{}';" class="btn-ghost">Clear</button>
-      </div>
-    </div>
-
-    <div id="tab-v1" class="tab-panel">
-      <textarea id="screenStateJson">{
-  "current_screen": "personal_information",
-  "visible_fields": ["full_name", "date_of_birth", "phone"],
-  "prefilled": { "full_name": "John Smith" },
-  "app_context": "user is on step 1 of 5"
-}</textarea>
-      <div class="btn-row">
-        <button id="sendScreenStateBtn" class="btn-ghost" disabled>Send screen_state (v1)</button>
-        <button onclick="$('screenStateJson').value='{}';" class="btn-ghost">Clear</button>
-      </div>
-    </div>
-    <div id="screenStateStatus" style="font-size:.74rem; color:var(--ink-hint); margin-top:8px;">
-      WS must be active. Identical consecutive payloads dropped server-side.
-    </div>
-  </div>
-
-  <!-- field_apply events (v2) -->
-  <div class="card">
-    <div class="card-title">field_apply Events <span class="chip chip-v2">v2</span></div>
-    <div style="font-size:.75rem; color:var(--ink-sec); margin-bottom:8px;">
-      These drive Flutter GetX controller updates directly. Each event = one field fill.
-    </div>
-    <div id="fieldApplyLog"></div>
-    <div id="fieldApplyEmpty" style="font-size:.78rem; color:var(--ink-hint);">
-      No field_apply events yet — start a voice session and speak a field value.
-    </div>
-  </div>
-
-  <!-- Event log -->
-  <div class="card">
-    <div class="card-title">Event Log</div>
-    <div id="log"></div>
-  </div>
+  </aside>
 
 </div>
-
-<!-- ════════════════════════════════════════════════════════ RIGHT COL -->
-<div>
-
-  <!-- Phase C — Form state -->
-  <div class="card">
-    <div class="card-title">Form State <span class="chip chip-done">Phase C</span></div>
-    <div id="completionSummary" style="font-size:.78rem; color:var(--ink-sec);">Create a session to render the form.</div>
-    <div class="progress-bar"><div class="progress-fill" id="completionFill" style="width:0%"></div></div>
-    <div id="formRender" style="margin-top:10px;"></div>
-  </div>
-
-  <!-- add_repeatable_row test (v2) -->
-  <div class="card">
-    <div class="card-title">Repeatable Rows <span class="chip chip-v2">v2 tool</span></div>
-    <div style="font-size:.75rem; color:var(--ink-sec); margin-bottom:8px;">
-      Simulate Gemini calling <code style="background:var(--surface-alt);padding:1px 5px;border-radius:4px;">add_repeatable_row</code> via the voice agent.
-    </div>
-    <div class="field-row">
-      <label>section_id (must be in voice_repeatable_sections)</label>
-      <input type="text" id="repeatableSectionInput" placeholder="e.g. ndis_goals" value="ndis_goals" />
-    </div>
-    <div id="rowAddedLog" style="font-size:.75rem; color:var(--ink-sec); margin-top:6px;"></div>
-  </div>
-
-</div>
-</div><!-- /cols -->
-</div><!-- /wrap -->
 
 <script>
-/* ═══════════════════════════════════════════════════════════════════════════
-   State
-   ═══════════════════════════════════════════════════════════════════════════ */
-let sessionId = null, schema = null, formState = null, ws = null;
-let playCtx = null, micCtx = null;
-let mediaStream = null, micSource = null, processor = null, silentGain = null;
-let playHead = 0, streaming = false, pendingResume = null, audioBytesThisTurn = 0;
-let resumeHandle = null, resumeTtlSec = null;
-// True while Gemini is speaking — mic chunks are suppressed so the agent's
-// playback audio doesn't loop back through the speaker as user input.
+'use strict';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let sessionId = null, wsUrl = null, ws = null;
+let captureCtx = null, mediaStream = null, scriptNode = null, sourceNode = null;
+let playbackCtx = null, pbAt = 0;
 let agentSpeaking = false;
-// All currently-scheduled AudioBufferSourceNodes for agent playback.
-// On `interrupted`, every entry is .stop()'d to cut stale audio immediately.
-let pendingAudioSources = [];
+let micRms = 0;
+let sessionStart = null;
+let timerIv = null;
+const PB_SR = 24000;
 
-function $(id) { return document.getElementById(id); }
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Logging
-   ═══════════════════════════════════════════════════════════════════════════ */
-function log(msg, cls) {
-  const el = $('log');
-  const line = document.createElement('div');
-  const ts = document.createElement('span');
-  ts.className = 'log-time';
-  ts.textContent = new Date().toLocaleTimeString('en-AU') + '  ';
-  line.appendChild(ts);
-  const body = document.createElement('span');
-  if (cls) body.className = cls;
-  body.textContent = msg;
-  line.appendChild(body);
-  el.appendChild(line);
-  el.scrollTop = el.scrollHeight;
-}
-
-function setSessionStatus(text, cls) {
-  const el = $('sessionStatus'); el.textContent = text; el.className = 'status ' + cls;
-}
-function setWsStatus(text, cls, micLive) {
-  $('wsStatus').className = 'status ' + cls;
-  $('micDot').className = 'mic-dot' + (micLive ? ' live' : '');
-  $('wsStatusText').textContent = text;
-}
-
-/* ── Tab switcher ────────────────────────────────────────────────────────── */
-function switchTab(which) {
-  ['v2', 'v1'].forEach(t => {
-    $('tab-' + t).classList.toggle('active', t === which);
-    document.querySelectorAll('.tab-btn').forEach((b, i) =>
-      b.classList.toggle('active', (i === 0 && which === 'v2') || (i === 1 && which === 'v1'))
-    );
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Phase A — Session lifecycle
-   ═══════════════════════════════════════════════════════════════════════════ */
-async function doResumeById(id) {
-  if (!id) { setSessionStatus('Paste a session_id first.', 'error'); return; }
-  setSessionStatus('Loading…', 'idle');
-  try {
-    const res = await fetch('/v1/onboarding/session/' + id + '/state');
-    if (!res.ok) throw new Error('GET /state → ' + res.status);
-    formState = await res.json();
-    sessionId = id;
-    $('sidDisplay').textContent = sessionId;
-    $('wsUrlDisplay').textContent = 'ws://' + location.host + '/ws/onboarding/' + sessionId;
-    $('topbarSessionInput').value = sessionId;
-    $('resumeSessionInput').value = sessionId;
-    $('startBtn').disabled = false; $('beepBtn').disabled = false;
-    $('getStateBtn').disabled = false; $('completeBtn').disabled = false; $('nextStepBtn').disabled = false;
-    setSessionStatus('Resumed. Click ▶ Start Voice to reconnect.', 'live');
-    log('Session resumed: ' + sessionId, 'log-ok');
-    renderForm();
-  } catch (e) {
-    setSessionStatus('Resume failed: ' + e.message, 'error');
-    log('Resume failed: ' + e.message, 'log-err');
-  }
-}
-
-$('topbarResumeBtn').addEventListener('click', () => doResumeById($('topbarSessionInput').value.trim()));
-$('topbarSessionInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doResumeById($('topbarSessionInput').value.trim()); });
-
-$('resumeSessionBtn').addEventListener('click', () => doResumeById($('resumeSessionInput').value.trim()));
-
-$('createBtn').addEventListener('click', async () => {
-  const stepId = $('schemaSelect').value;
-  const participantId = $('participantId').value.trim() || 'p-harness-001';
-  const tenantId = $('tenantId').value.trim() || 't-harness-001';
-  setSessionStatus('Loading fixture…', 'idle');
-  try {
-    const fres = await fetch('/harness/fixtures/' + stepId);
-    if (!fres.ok) throw new Error('Fixture load failed: ' + fres.status);
-    schema = await fres.json();
-  } catch (e) { setSessionStatus('Fixture error: ' + e.message, 'error'); return; }
-
-  setSessionStatus('Creating session…', 'idle');
-  try {
-    const res = await fetch('/v1/onboarding/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ participant_id: participantId, tenant_id: tenantId, step: stepId, schema, locale: 'en-AU' }),
-    });
-    if (!res.ok) throw new Error('POST /session → ' + res.status);
-    const data = await res.json();
-    sessionId = data.session_id;
-    $('sidDisplay').textContent = sessionId;
-    $('wsUrlDisplay').textContent = data.ws_url;
-    $('topbarSessionInput').value = sessionId;
-    $('resumeSessionInput').value = sessionId;
-    setSessionStatus('Session created. Ready to start voice.', 'live');
-    log('Session created: ' + sessionId, 'log-ok');
-    $('startBtn').disabled = false; $('beepBtn').disabled = false;
-    $('getStateBtn').disabled = false; $('completeBtn').disabled = false; $('nextStepBtn').disabled = false;
-    await refreshState(); renderForm();
-    renderCoverage(schema.voice_coverage || []);
-  } catch (e) {
-    setSessionStatus('Create failed: ' + e.message, 'error');
-    log('Create failed: ' + e.message, 'log-err');
-  }
-});
-
-function renderCoverage(paths) {
-  const sec = $('coverageSection');
-  const pills = $('coveragePills');
-  pills.textContent = '';
-  if (!paths || !paths.length) { sec.style.display = 'none'; return; }
-  sec.style.display = 'block';
-  paths.forEach(p => {
-    const el = document.createElement('div');
-    el.className = 'coverage-pill'; el.textContent = p; pills.appendChild(el);
-  });
-}
-
-$('getStateBtn').addEventListener('click', refreshState);
-async function refreshState() {
-  if (!sessionId) return;
-  try {
-    const res = await fetch('/v1/onboarding/session/' + sessionId + '/state');
-    if (!res.ok) throw new Error('GET /state → ' + res.status);
-    formState = await res.json(); renderForm();
-  } catch (e) { log('GET /state failed: ' + e.message, 'log-err'); }
-}
-
-const STEPS = ['personal_information', 'participant_requirements', 'ndis_plan_details', 'documents', 'medical_information'];
-
-// Randomize IDs so the next session lands in an empty bucket — useful when
-// you want to test "first step" behaviour without redis-cli'ing the bucket
-// away. Keeps the same numeric prefix so it's obvious in the logs.
-$('freshTestBtn').addEventListener('click', () => {
-  const suffix = Math.random().toString(36).slice(2, 8);
-  $('participantId').value = 'p-harness-' + suffix;
-  $('tenantId').value = 't-harness-' + suffix;
-  log('Fresh IDs generated — participant=' + $('participantId').value +
-      ' tenant=' + $('tenantId').value +
-      ' (next Create Session will start with an empty bucket)', 'log-ok');
-});
-
-// Auto-randomize the default IDs the moment this script runs. The HTML
-// defaults `t-harness-001` / `p-harness-001` are stable across page loads,
-// which means every test that didn't click 🆕 Fresh Test would inherit the
-// bucket left over from yesterday's session. Randomizing on load makes the
-// safe behaviour the default; users who want continuation testing can type
-// a stable ID manually (we only overwrite when both fields still hold the
-// untouched defaults).
-(function autoRandomizeIdsOnLoad() {
-  const p = $('participantId');
-  const t = $('tenantId');
-  if (!p || !t) return;
-  if (p.value === 'p-harness-001' && t.value === 't-harness-001') {
-    const suffix = Math.random().toString(36).slice(2, 8);
-    p.value = 'p-harness-' + suffix;
-    t.value = 't-harness-' + suffix;
-    log(
-      'Auto-randomized default IDs on page load to prevent bucket inheritance — ' +
-      'participant=' + p.value + ' tenant=' + t.value +
-      ' (type stable IDs above if you want continuation testing)',
-      'log-ok',
-    );
-  }
-})();
-
-$('nextStepBtn').addEventListener('click', async () => {
-  const sel = $('schemaSelect');
-  const idx = STEPS.indexOf(sel.value);
-  if (idx < 0 || idx >= STEPS.length - 1) {
-    log('Already on last step (' + (sel.value || '?') + ').', 'log-warn'); return;
-  }
-  // Close any active WS so the new session isn't shadowed by the old one
-  // (mic chunks would otherwise keep flowing to the closed-step session_id).
-  if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) {
-    log('Closing WS for previous step before next-step create…', 'log-warn');
-    try { ws.close(); } catch (_) {}
-    await new Promise(r => setTimeout(r, 250));  // let close handler settle
-  }
-  // Reset local UI state so the new step's empty form renders cleanly.
-  formState = null;
-  const fr = $('formRender'); if (fr) fr.textContent = '';
-  const cp = $('coveragePills'); if (cp) cp.textContent = '';
-
-  sel.value = STEPS[idx + 1];
-  log('Advancing to step: ' + sel.value +
-      ' (same participant_id=' + $('participantId').value +
-      ', tenant_id=' + $('tenantId').value + ')', 'log-ok');
-  $('createBtn').click();
-});
-
-$('completeBtn').addEventListener('click', async () => {
-  if (!sessionId) return;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    log('Close WS before POST /complete.', 'log-err'); return;
-  }
-  try {
-    const res = await fetch('/v1/onboarding/session/' + sessionId + '/complete', { method: 'POST' });
-    const data = await res.json();
-    log('POST /complete → webhook_delivered=' + data.webhook_delivered,
-        data.webhook_delivered ? 'log-ok' : 'log-err');
-  } catch (e) { log('POST /complete failed: ' + e.message, 'log-err'); }
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Phase C — Form rendering
-   ═══════════════════════════════════════════════════════════════════════════ */
-function renderForm(highlight) {
-  if (!schema) return;
-  const container = $('formRender'); container.textContent = '';
-  for (const section of schema.sections) {
-    const secDiv = document.createElement('div');
-    secDiv.className = 'section-group';
-    const h = document.createElement('div');
-    h.className = 'section-title'; h.textContent = section.label || section.id;
-    secDiv.appendChild(h);
-    const fields = section.fields || section.item_fields || [];
-    const sectionValues = (formState && formState.values && formState.values[section.id]) || null;
-    if (section.repeatable && Array.isArray(sectionValues)) {
-      sectionValues.forEach((row, idx) => {
-        for (const f of fields) secDiv.appendChild(renderField(section.id, f, row[f.id], highlight, idx));
-      });
-    } else {
-      for (const f of fields) {
-        const val = sectionValues ? sectionValues[f.id] : null;
-        secDiv.appendChild(renderField(section.id, f, val, highlight, null));
+// ─── Schemas ─────────────────────────────────────────────────────────────────
+const SCHEMAS = {
+  personal_information: {
+    version:'v1', step_id:'personal_information',
+    step_label:'Personal Information', progress_percent:20,
+    sections:[
+      { id:'basics', label:'About you', fields:[
+        {id:'full_name',           type:'text',    label:'Full Name',           required:true},
+        {id:'email',               type:'email',   label:'Email Address',       required:true},
+        {id:'phone',               type:'phone',   label:'Phone Number',        required:true},
+        {id:'date_of_birth',       type:'date',    label:'Date of Birth',       required:true},
+        {id:'gender',              type:'enum',    label:'Gender',              required:true,
+          options:['Male','Female','Non-binary','Prefer not to say','Other']},
+        {id:'preferred_language',  type:'text',    label:'Preferred Language',  required:true},
+        {id:'interpreter_required',type:'boolean', label:'Interpreter Required',required:true}
+      ]},
+      { id:'home_address', label:'Home Address', fields:[
+        {id:'address', type:'text', label:'Street Address', required:true},
+        {id:'state',   type:'enum', label:'State',          required:true,
+          options:['NSW','VIC','QLD','WA','SA','TAS','ACT','NT']},
+        {id:'city',    type:'text', label:'City / Suburb',  required:true},
+        {id:'zip_code',type:'text', label:'Postcode',       required:true}
+      ]},
+      { id:'emergency_contacts', label:'Emergency Contacts',
+        item_fields:[
+          {id:'name',        type:'text',  label:'Name',        required:true},
+          {id:'relationship',type:'text',  label:'Relationship',required:true},
+          {id:'phone',       type:'phone', label:'Phone',       required:true}
+        ], repeatable:{min:1,max:5}
       }
-    }
-    container.appendChild(secDiv);
+    ]
+  },
+  participant_requirements: {
+    version:'v1', step_id:'participant_requirements',
+    step_label:'Participant Requirements', progress_percent:40,
+    sections:[{ id:'requirements', label:'Requirements', fields:[
+      {id:'cultural_background',       type:'text',       label:'Cultural Background',       required:false},
+      {id:'communication_preferences', type:'multi_enum', label:'Communication Preferences', required:true,
+        options:['Verbal','Written','Sign language','Phone','Video call','Email']},
+      {id:'support_goals',             type:'textarea',   label:'Support Goals',             required:true}
+    ]}]
+  },
+  ndis_plan_details: {
+    version:'v1', step_id:'ndis_plan_details',
+    step_label:'NDIS Plan Details', progress_percent:60,
+    sections:[{ id:'plan_info', label:'Plan Info', fields:[
+      {id:'ndis_number',    type:'text', label:'NDIS Number',     required:true},
+      {id:'plan_start_date',type:'date', label:'Plan Start Date', required:true},
+      {id:'plan_end_date',  type:'date', label:'Plan End Date',   required:true},
+      {id:'plan_management',type:'enum', label:'Plan Management', required:true,
+        options:['Self managed','Plan managed','Agency managed','Combination']}
+    ]}]
+  },
+  medical_information: {
+    version:'v1', step_id:'medical_information',
+    step_label:'Medical Information', progress_percent:80,
+    sections:[{ id:'medical', label:'Medical', fields:[
+      {id:'primary_diagnosis',type:'text',     label:'Primary Diagnosis',required:true},
+      {id:'allergies',        type:'textarea', label:'Allergies',        required:false}
+    ]}]
   }
-  if (formState && formState.completion) {
-    const c = formState.completion;
-    const pct = c.required_total > 0 ? Math.round(c.required_filled / c.required_total * 100) : 0;
-    $('completionSummary').textContent =
-      'Required: ' + c.required_filled + '/' + c.required_total +
-      '  ·  Optional: ' + c.optional_filled + '/' + c.optional_total +
-      '  ·  ' + pct + '%' + (c.complete ? ' ✓' : '');
-    $('completionFill').style.width = pct + '%';
-  }
-}
+};
 
-function renderField(sectionId, fieldSpec, fieldVal, highlight, idx) {
-  const row = document.createElement('div');
-  row.className = 'frow';
-  const key = sectionId + '.' + fieldSpec.id + (idx !== null ? '[' + idx + ']' : '');
-  if (highlight === key) row.classList.add('updated');
-  const label = document.createElement('div');
-  label.className = 'frow-label'; label.textContent = fieldSpec.label || fieldSpec.id;
-  if (fieldSpec.required) {
-    const r = document.createElement('span'); r.className = 'req'; r.textContent = '*'; label.appendChild(r);
-  }
-  const valDiv = document.createElement('div');
-  valDiv.className = 'frow-value';
-  let display = null;
-  if (fieldVal && typeof fieldVal === 'object' && 'value' in fieldVal) display = fieldVal.value;
-  if (display === null || display === undefined || display === '') {
-    valDiv.classList.add('empty'); valDiv.textContent = '—';
-  } else {
-    valDiv.textContent = String(display);
-    if (fieldVal && fieldVal.source) {
-      const tag = document.createElement('span');
-      tag.style.cssText = 'font-size:.65rem;color:var(--ink-hint);margin-left:5px;font-weight:400';
-      tag.textContent = '(' + fieldVal.source +
-        (fieldVal.confidence ? ' ' + fieldVal.confidence.toFixed(2) : '') + ')';
-      valDiv.appendChild(tag);
-    }
-  }
-  row.appendChild(label); row.appendChild(valDiv); return row;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Phase D — screen state (v1 + v2)
-   ═══════════════════════════════════════════════════════════════════════════ */
-$('sendScreenStateV2Btn').addEventListener('click', () => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    $('screenStateStatus').textContent = 'WS not open — start a voice session first.'; return;
-  }
-  let data;
-  try { data = JSON.parse($('screenStateV2Json').value); } catch (e) {
-    $('screenStateStatus').textContent = 'Invalid JSON: ' + e.message; return;
-  }
-  ws.send(JSON.stringify({ type: 'screen_state_v2', data }));
-  $('screenStateStatus').textContent = 'v2 sent at ' + new Date().toLocaleTimeString('en-AU');
-  log('screen_state_v2 sent → step=' + (data.step_id || '?') + ' focus=' + (data.focused_field || '?'), 'log-v2');
+// ─── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  onStepChange();
+  document.getElementById('txt-in').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+  });
+  startWaveLoop();
 });
 
-$('sendScreenStateBtn').addEventListener('click', () => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    $('screenStateStatus').textContent = 'WS not open.'; return;
-  }
-  let data;
-  try { data = JSON.parse($('screenStateJson').value); } catch (e) {
-    $('screenStateStatus').textContent = 'Invalid JSON: ' + e.message; return;
-  }
-  ws.send(JSON.stringify({ type: 'screen_state', data }));
-  $('screenStateStatus').textContent = 'v1 sent at ' + new Date().toLocaleTimeString('en-AU');
-  log('screen_state (v1) sent → ' + (data.current_screen || '?'), 'log-tool');
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Phase E — resumption handle
-   ═══════════════════════════════════════════════════════════════════════════ */
-function setResumeHandle(handle, ttlSec) {
-  resumeHandle = handle; resumeTtlSec = ttlSec;
-  const box = $('handleBox');
-  if (handle) {
-    box.className = 'handle-box';
-    $('handleLabel').textContent = 'Resumption handle (single-use, TTL ' + ttlSec + 's):';
-    const disp = $('handleDisplay'); disp.style.display = 'block'; disp.textContent = handle;
-    $('handleTtl').textContent = 'Expires in ' + ttlSec + 's';
-    $('reconnectBtn').disabled = !sessionId; $('clearHandleBtn').disabled = false;
-  } else {
-    box.className = 'handle-box empty';
-    $('handleLabel').textContent = 'No handle — close an in-progress session to receive one.';
-    $('handleDisplay').style.display = 'none'; $('handleDisplay').textContent = '';
-    $('handleTtl').textContent = ''; $('reconnectBtn').disabled = true; $('clearHandleBtn').disabled = true;
-  }
-}
-$('clearHandleBtn').addEventListener('click', () => setResumeHandle(null, null));
-$('reconnectBtn').addEventListener('click', async () => {
-  if (!sessionId || !resumeHandle) return;
-  const handle = resumeHandle;
-  log('Reconnecting with handle ' + handle.slice(0, 8) + '…', 'log-warn');
-  setResumeHandle(null, null);
-  await connectWs(handle);
-});
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Phase B — Audio + WS
-   ═══════════════════════════════════════════════════════════════════════════ */
-function floatTo16BitPCM(f32) {
-  const buf = new ArrayBuffer(f32.length * 2); const view = new DataView(buf);
-  for (let i = 0; i < f32.length; i++) {
-    const s = Math.max(-1, Math.min(1, f32[i]));
-    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  return buf;
-}
-function downsampleTo16k(f32, fromRate) {
-  if (fromRate === 16000) return f32;
-  const ratio = fromRate / 16000;
-  const out = new Float32Array(Math.floor(f32.length / ratio));
-  for (let i = 0; i < out.length; i++) out[i] = f32[Math.floor(i * ratio)];
-  return out;
-}
-function upsampleTo(ctxRate, f32src) {
-  if (ctxRate === 24000) return f32src;
-  const ratio = 24000 / ctxRate;
-  const outLen = Math.floor(f32src.length / ratio);
-  const out = new Float32Array(outLen);
-  for (let i = 0; i < outLen; i++) {
-    const srcIdx = i * ratio; const i0 = Math.floor(srcIdx);
-    const i1 = Math.min(i0 + 1, f32src.length - 1); const frac = srcIdx - i0;
-    out[i] = f32src[i0] * (1 - frac) + f32src[i1] * frac;
-  }
-  return out;
-}
-function ensurePlayCtxRunning() {
-  if (!playCtx) return Promise.resolve();
-  if (playCtx.state === 'running') return Promise.resolve();
-  if (!pendingResume) pendingResume = playCtx.resume().finally(() => { pendingResume = null; });
-  return pendingResume;
-}
-async function playPCM16(arrayBuffer) {
-  if (!playCtx) return;
-  await ensurePlayCtxRunning();
-  const int16 = new Int16Array(arrayBuffer);
-  const f32 = new Float32Array(int16.length);
-  for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768.0;
-  const rate = playCtx.sampleRate;
-  const upsampled = upsampleTo(rate, f32);
-  const buf = playCtx.createBuffer(1, upsampled.length, rate);
-  buf.getChannelData(0).set(upsampled);
-  const src = playCtx.createBufferSource();
-  src.buffer = buf; src.connect(playCtx.destination);
-  const LOOKAHEAD = 0.08;
-  const startAt = Math.max(playCtx.currentTime + LOOKAHEAD, playHead);
-  src.start(startAt); playHead = startAt + buf.duration;
-  audioBytesThisTurn += arrayBuffer.byteLength;
-  // Track this source so we can cancel it on `interrupted`. Web Audio API
-  // schedules each chunk at a future time; once .start() is called, the
-  // chunk WILL play unless we explicitly .stop() it.
-  pendingAudioSources.push(src);
-  src.onended = () => {
-    const i = pendingAudioSources.indexOf(src);
-    if (i >= 0) pendingAudioSources.splice(i, 1);
-  };
+function onStepChange() {
+  const id = document.getElementById('step-id').value;
+  const s = SCHEMAS[id];
+  document.getElementById('step-pill').textContent = s.step_label;
+  buildFieldList(s);
 }
 
-// Cancel every scheduled agent-audio source and reset playHead. Called when
-// Gemini sends `interrupted` (user spoke over the agent) — without this,
-// up to several seconds of stale audio queued in Web Audio API's scheduler
-// would continue to play after Gemini already cancelled generation.
-function stopAllAgentPlayback(reason) {
-  let cancelled = 0;
-  for (const src of pendingAudioSources) {
-    try { src.stop(); cancelled++; } catch {}
-    try { src.disconnect(); } catch {}
-  }
-  pendingAudioSources = [];
-  if (playCtx) playHead = playCtx.currentTime;
-  if (cancelled > 0) log('🛑 cancelled ' + cancelled + ' pending audio chunks (' + reason + ')', 'log-warn');
-}
-$('beepBtn').addEventListener('click', () => {
-  if (!playCtx) { playCtx = new AudioContext(); playHead = playCtx.currentTime; }
-  const osc = playCtx.createOscillator(), gain = playCtx.createGain();
-  osc.frequency.value = 880; gain.gain.value = 0.12;
-  osc.connect(gain); gain.connect(playCtx.destination);
-  osc.start(); osc.stop(playCtx.currentTime + 0.25);
-  log('Test beep — if silent, check speaker/permissions.');
-});
-function startMicStreaming() {
-  micCtx = playCtx; const rate = micCtx.sampleRate;
-  micSource = micCtx.createMediaStreamSource(mediaStream);
-  processor = micCtx.createScriptProcessor(2048, 1, 1);
-  streaming = true;
-  processor.onaudioprocess = (ev) => {
-    if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
-    // Drop mic frames while the agent is speaking — prevents speaker echo
-    // (the agent's own playback audio) from being re-sent as user input.
-    if (agentSpeaking) return;
-    ws.send(floatTo16BitPCM(downsampleTo16k(ev.inputBuffer.getChannelData(0), rate)));
-  };
-  silentGain = micCtx.createGain(); silentGain.gain.value = 0;
-  micSource.connect(processor); processor.connect(silentGain); silentGain.connect(micCtx.destination);
-  log('Mic streaming ' + rate + ' Hz → 16 kHz PCM');
-}
-function cleanupMic() {
-  streaming = false;
-  try { processor && processor.disconnect(); } catch {}
-  try { micSource && micSource.disconnect(); } catch {}
-  try { silentGain && silentGain.disconnect(); } catch {}
-  try { mediaStream && mediaStream.getTracks().forEach(t => t.stop()); } catch {}
-  processor = micSource = silentGain = micCtx = mediaStream = null;
-}
-$('startBtn').addEventListener('click', async () => { if (sessionId) await connectWs(null); });
-async function connectWs(resumeHandleParam) {
-  $('startBtn').disabled = true; setWsStatus('Connecting…', 'idle', false);
-  if (!playCtx) { playCtx = new AudioContext(); playHead = playCtx.currentTime; }
-  try { await playCtx.resume(); } catch {}
-  try {
-    const o = playCtx.createOscillator(), g = playCtx.createGain();
-    o.frequency.value = 440; g.gain.value = 0.07;
-    o.connect(g); g.connect(playCtx.destination);
-    o.start(); o.stop(playCtx.currentTime + 0.1);
-  } catch {}
-  try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+// ─── Field list ───────────────────────────────────────────────────────────────
+function buildFieldList(schema) {
+  const root = document.getElementById('field-list');
+  while (root.firstChild) root.removeChild(root.firstChild);
+
+  schema.sections.forEach(sec => {
+    const fields = sec.fields || sec.item_fields || [];
+    if (!fields.length) return;
+
+    const hdr = document.createElement('div');
+    hdr.className = 'f-section-hdr';
+    hdr.textContent = sec.label;
+    root.appendChild(hdr);
+
+    fields.forEach(f => {
+      const key = sec.id + '.' + f.id;
+      const row = document.createElement('div');
+      row.className = 'f-item';
+      row.id = 'frow-' + key.replace(/\./g,'-');
+
+      const dot = document.createElement('div');
+      dot.id = 'fdot-' + key.replace(/\./g,'-');
+      dot.className = 'f-dot ' + (f.required ? 'req' : '');
+
+      const nm = document.createElement('div');
+      nm.className = 'f-name';
+      nm.textContent = f.label;
+
+      row.appendChild(dot);
+      row.appendChild(nm);
+
+      if (f.required) {
+        const star = document.createElement('span');
+        star.className = 'f-star';
+        star.textContent = '★';
+        row.appendChild(star);
+      }
+
+      const vd = document.createElement('div');
+      vd.className = 'f-val';
+      vd.id = 'fval-' + key.replace(/\./g,'-');
+      row.appendChild(vd);
+      root.appendChild(row);
     });
-  } catch (e) {
-    setWsStatus('Mic denied: ' + e.message, 'error', false);
-    $('startBtn').disabled = false; return;
+  });
+}
+
+function markField(section, field, value) {
+  const k = (section + '.' + field).replace(/\./g,'-');
+  const dot = document.getElementById('fdot-' + k);
+  const val = document.getElementById('fval-' + k);
+  if (dot) { dot.className = 'f-dot done'; }
+  if (val) { val.textContent = String(Array.isArray(value) ? value.join(', ') : value).slice(0,16); }
+}
+
+// ─── Header status ────────────────────────────────────────────────────────────
+function setHdr(text, state) {
+  document.getElementById('hdot').className   = 'status-dot ' + (state||'');
+  document.getElementById('hlabel').textContent = text;
+}
+
+// ─── Orb state ────────────────────────────────────────────────────────────────
+function setOrb(state, label) {
+  document.getElementById('orb-area').className = 'orb-area ' + (state||'');
+  if (label !== undefined) document.getElementById('orb-label').textContent = label;
+}
+
+function setVStatus(text) { document.getElementById('vstatus').textContent = text; }
+
+// ─── Timer ────────────────────────────────────────────────────────────────────
+function startTimer() {
+  sessionStart = Date.now();
+  timerIv = setInterval(() => {
+    const s = Math.floor((Date.now()-sessionStart)/1000);
+    document.getElementById('timer').textContent =
+      String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+  }, 500);
+}
+function stopTimer() {
+  clearInterval(timerIv); timerIv = null;
+  document.getElementById('timer').textContent = '00:00';
+}
+
+// ─── Transcript ───────────────────────────────────────────────────────────────
+function addMsg(text, who) {
+  const t = document.getElementById('transcript');
+  const w = document.createElement('div'); w.className = 'msg ' + who;
+  const lbl = document.createElement('div'); lbl.className = 'msg-who';
+  lbl.textContent = who === 'user' ? 'You' : 'Sena';
+  const b = document.createElement('div'); b.className = 'msg-bub';
+  b.textContent = text;
+  w.appendChild(lbl); w.appendChild(b);
+  t.appendChild(w); t.scrollTop = t.scrollHeight;
+}
+
+function addPill(text, cls) {
+  const t = document.getElementById('transcript');
+  const p = document.createElement('div'); p.className = 'pill ' + (cls||'');
+  p.textContent = text;
+  t.appendChild(p); t.scrollTop = t.scrollHeight;
+}
+
+function clearTranscript() {
+  const t = document.getElementById('transcript');
+  while (t.firstChild) t.removeChild(t.firstChild);
+}
+
+// ─── Create session ───────────────────────────────────────────────────────────
+async function createSession() {
+  const base = document.getElementById('base-url').value.replace(/\/$/,'');
+  const pid  = document.getElementById('participant-id').value.trim();
+  const step = document.getElementById('step-id').value;
+
+  addPill('Creating session…');
+  document.getElementById('btn-create').disabled = true;
+  try {
+    const r = await fetch(base + '/v1/onboarding/session', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({participant_id:pid, step, schema:SCHEMAS[step]})
+    });
+    if (!r.ok) throw new Error(r.status + ' ' + await r.text());
+    const d = await r.json();
+    sessionId = d.session_id;
+    wsUrl = d.ws_url;
+    const chip = document.getElementById('sid-chip');
+    chip.style.display = 'flex';
+    document.getElementById('sid-val').textContent = sessionId;
+    document.getElementById('btn-create').textContent = 'New Session';
+    document.getElementById('btn-create').disabled = false;
+    addPill('Session ready', 'ok');
+    setVStatus('Tap the orb to connect');
+    setOrb('', 'Tap to start');
+  } catch(e) {
+    addPill('Error: ' + e.message, 'bad');
+    document.getElementById('btn-create').disabled = false;
   }
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  let wsUrl = scheme + '://' + location.host + '/ws/onboarding/' + sessionId;
-  if (resumeHandleParam) wsUrl += '?resume=' + encodeURIComponent(resumeHandleParam);
+}
+
+// ─── Toggle / connect ─────────────────────────────────────────────────────────
+function toggleSession() {
+  if (!sessionId) { addPill('Create a session first', 'bad'); return; }
+  if (ws && ws.readyState === WebSocket.OPEN) { stopSession(); return; }
+  connectWs();
+}
+
+async function connectWs() {
+  if (!wsUrl) return;
+  setHdr('Connecting…', 'connecting');
+  setOrb('', 'Connecting…');
+  setVStatus('Opening WebSocket…');
+
   ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
-  $('sendScreenStateBtn').disabled = false;
-  $('sendScreenStateV2Btn').disabled = false;
-  ws.onopen = () => {
-    log('WS open' + (resumeHandleParam ? ' (resuming)' : '') + ' — handshaking', 'log-ok');
-    ws.send(JSON.stringify({ type: 'start' }));
-  };
-  ws.onmessage = async (ev) => {
-    if (ev.data instanceof ArrayBuffer) { await playPCM16(ev.data); return; }
-    let msg; try { msg = JSON.parse(ev.data); } catch { log('non-json received'); return; }
-    handleServerMessage(msg);
-  };
-  ws.onerror = () => log('WS error', 'log-err');
-  ws.onclose = (ev) => {
-    const label = ev.code === 4010 ? ' (resume_invalid)' : ev.code === 4011 ? ' (policy_block)' : '';
-    setWsStatus('Disconnected (code=' + ev.code + label + ')', 'idle', false);
-    log('WS closed code=' + ev.code + label, ev.code >= 4000 ? 'log-err' : '');
-    cleanupMic();
-    $('startBtn').disabled = !sessionId; $('stopBtn').disabled = true;
-    $('sendScreenStateBtn').disabled = true; $('sendScreenStateV2Btn').disabled = true;
-    if (ev.code === 4010) { setResumeHandle(null, null); log('Handle expired — start fresh.', 'log-err'); }
-    if (ev.code === 4011) { log('Policy block — re-enable grounding and reconnect.', 'log-warn'); }
-  };
-}
-$('stopBtn').addEventListener('click', () => {
-  try { if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ type: 'stop' })); ws.close(); } } catch {}
-});
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   Server message handler
-   ═══════════════════════════════════════════════════════════════════════════ */
-function handleServerMessage(msg) {
-  switch (msg.type) {
+  ws.addEventListener('open', async () => {
+    ws.send(JSON.stringify({type:'start'}));
+    await startMic();
+    setHdr('Live', 'live');
+    setOrb('listening', 'Listening');
+    setVStatus('Speak to Sena…');
+    document.getElementById('btn-stop').disabled = false;
+    document.getElementById('txt-in').disabled = false;
+    document.getElementById('btn-send').disabled = false;
+    addPill('Connected — say hello!', 'ok');
+    startTimer();
+  });
+
+  ws.addEventListener('message', ev => {
+    if (ev.data instanceof ArrayBuffer) enqueueAudio(ev.data);
+    else handleEvent(ev.data);
+  });
+
+  ws.addEventListener('error', () => {
+    setHdr('Error', 'error'); setOrb('', 'Error');
+    setVStatus('Connection failed');
+    addPill('WebSocket error', 'bad');
+  });
+
+  ws.addEventListener('close', ev => {
+    setHdr('Disconnected', ''); setOrb('', 'Tap to start');
+    setVStatus('Session ended');
+    stopMic(); stopTimer();
+    document.getElementById('btn-stop').disabled = true;
+    document.getElementById('txt-in').disabled = true;
+    document.getElementById('btn-send').disabled = true;
+    if (ev.code >= 4000) addPill('Closed ' + ev.code + ' ' + (ev.reason||''), 'bad');
+    else addPill('Session closed');
+  });
+}
+
+// ─── Event handler ────────────────────────────────────────────────────────────
+function handleEvent(raw) {
+  let ev;
+  try { ev = JSON.parse(raw); } catch(_) { return; }
+
+  switch(ev.type) {
     case 'ready':
-      formState = msg.state;
-      setWsStatus('Voice live — speak your first message.', 'live', true);
-      $('stopBtn').disabled = false;
-      log('ready — prompt_version=' + (msg.prompt_version || '?') +
-          '  coverage=' + (msg.coverage ? msg.coverage.length : 0) + ' fields', 'log-ok');
-      if (msg.coverage && msg.coverage.length) renderCoverage(msg.coverage);
-      startMicStreaming(); renderForm();
+      addPill('Session live', 'ok');
       break;
-    case 'user_said':  appendTurn('user', msg.text); break;
-    case 'agent_said': appendTurn('agent', msg.text); break;
     case 'turn_start':
-      audioBytesThisTurn = 0;
       agentSpeaking = true;
-      if (playCtx && playHead < playCtx.currentTime) playHead = playCtx.currentTime;
-      setWsStatus('Sena is speaking…', 'speak', false);
-      log('▶ agent turn start (ctx=' + (playCtx && playCtx.state) + ') — mic muted');
+      setOrb('speaking', 'Speaking');
+      setHdr('Sena speaking', 'speaking');
+      setVStatus('Sena is speaking…');
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({type:'audio_end'}));
       break;
     case 'turn_complete':
       agentSpeaking = false;
-      setWsStatus('Voice live — listening.', 'live', true);
-      log('✓ agent turn done (' + audioBytesThisTurn + ' bytes) — mic live');
+      setOrb('listening', 'Listening');
+      setHdr('Live', 'live');
+      setVStatus('Speak to Sena…');
       break;
     case 'interrupted':
-      agentSpeaking = false;
-      stopAllAgentPlayback('interrupted by user');
-      setWsStatus('Voice live — listening.', 'live', true);
-      log('interrupted — mic live, playback cancelled', 'log-warn');
+      agentSpeaking = false; pbAt = 0;
+      setOrb('listening', 'Listening');
+      setHdr('Live', 'live');
+      setVStatus('Speak to Sena…');
       break;
-    case 'field_updated': {
-      const key = msg.section + '.' + msg.field +
-        (msg.repeatable_index !== null && msg.repeatable_index !== undefined ? '[' + msg.repeatable_index + ']' : '');
-      log('field_updated: ' + key + ' = ' + JSON.stringify(msg.value) +
-          ' conf=' + (msg.confidence || '—'), 'log-tool');
-      renderForm(key); break;
-    }
-    case 'field_apply': {
-      const path = msg.section_id + '.' + msg.field_id +
-        (msg.row_index !== null && msg.row_index !== undefined ? '[' + msg.row_index + ']' : '');
-      log('field_apply: ' + path + ' = ' + JSON.stringify(msg.value) +
-          ' conf=' + (msg.confidence || '—'), 'log-v2');
-      renderFieldApply(msg); break;
-    }
+    case 'user_said':
+      addMsg(ev.text, 'user');
+      break;
+    case 'agent_said':
+      addMsg(ev.text, 'agent');
+      break;
+    case 'field_updated':
+      markField(ev.section, ev.field, ev.value);
+      addPill(ev.section + '.' + ev.field + ' saved', 'ok');
+      break;
     case 'row_added':
-      log('row_added: ' + msg.section_id + '[' + msg.new_index + ']', 'log-v2');
-      $('rowAddedLog').textContent = '✓ Row ' + msg.new_index + ' added to ' + msg.section_id +
-        ' at ' + new Date().toLocaleTimeString('en-AU');
+      addPill('New row: ' + ev.section_id + ' #' + (ev.new_index+1), 'ok');
       break;
-    case 'state': formState = msg.state; renderForm(); break;
     case 'step_completed':
-      formState = msg.state; renderForm();
-      setWsStatus('Step complete — webhook fired.', 'live', false);
-      log('step_completed ✓', 'log-ok');
-      $('nextStepBtn').disabled = false; break;
-    case 'escalated':
-      log('ESCALATED: ' + msg.reason + ' — ' + (msg.transcript_excerpt || ''), 'log-err'); break;
-    case 'screen_state_ack':
-      log('screen_state_ack v=' + (msg.version || 1) + ' accepted=' + msg.accepted, 'log-v2');
-      $('screenStateStatus').textContent = 'Acknowledged (v' + (msg.version || 1) + ') at ' +
-        new Date().toLocaleTimeString('en-AU'); break;
-    case 'resumable':
-      setResumeHandle(msg.handle, msg.ttl_sec);
-      log('resumable handle issued TTL=' + msg.ttl_sec + 's', 'log-warn'); break;
+      addPill('Step complete ✓', 'ok');
+      setVStatus('Step complete!');
+      break;
+    case 'validation_rejection':
+      addPill(ev.section_id + '.' + (ev.field_id||'?') + ': ' + ev.reason_human, 'bad');
+      break;
     case 'error':
-      log('error ' + msg.code + ': ' + msg.message, 'log-err');
-      setWsStatus('Error: ' + msg.code, 'error', false); break;
-    default: log('unknown: ' + msg.type);
+      addPill('[' + ev.code + '] ' + ev.message, 'bad');
+      break;
+    case 'go_away':
+      addPill('Session expires in ' + Math.round(ev.time_left_ms/1000) + 's — reconnect soon', 'bad');
+      break;
+    case 'resumable':
+      addPill('Resume handle issued (ttl ' + ev.ttl_sec + 's)');
+      break;
+    default:
+      addPill(ev.type);
   }
 }
 
-function appendTurn(who, text) {
-  const t = $('transcript');
-  const div = document.createElement('div');
-  div.className = 'bubble ' + who;
-  const span = document.createElement('span');
-  span.textContent = text;
-  div.appendChild(span);
-  t.appendChild(div); t.scrollTop = t.scrollHeight;
+// ─── Mic capture → PCM16 16kHz ────────────────────────────────────────────────
+async function startMic() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio:{sampleRate:16000, channelCount:1, echoCancellation:true, noiseSuppression:true}
+    });
+  } catch(e) { addPill('Mic error: ' + e.message, 'bad'); return; }
+
+  captureCtx = new AudioContext({sampleRate:16000});
+  sourceNode = captureCtx.createMediaStreamSource(mediaStream);
+  scriptNode = captureCtx.createScriptProcessor(512, 1, 1);
+  scriptNode.onaudioprocess = function(ev) {
+    const s = ev.inputBuffer.getChannelData(0);
+    let sum = 0;
+    for (let i=0;i<s.length;i++) sum += s[i]*s[i];
+    micRms = Math.sqrt(sum/s.length);
+    if (agentSpeaking || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(toPcm16(s));
+  };
+  sourceNode.connect(scriptNode);
+  scriptNode.connect(captureCtx.destination);
 }
 
-function renderFieldApply(msg) {
-  const log = $('fieldApplyLog');
-  const empty = $('fieldApplyEmpty');
-  if (empty) empty.style.display = 'none';
-  const row = document.createElement('div');
-  row.className = 'fa-event';
-  const field = document.createElement('span');
-  field.className = 'fa-field';
-  field.textContent = msg.section_id + '.' + msg.field_id +
-    (msg.row_index !== null && msg.row_index !== undefined ? '[' + msg.row_index + ']' : '');
-  const val = document.createElement('span');
-  val.className = 'fa-val';
-  val.textContent = ' → ' + JSON.stringify(msg.value);
-  const conf = document.createElement('span');
-  conf.className = 'fa-conf';
-  conf.textContent = '  conf=' + (msg.confidence !== undefined ? msg.confidence.toFixed(2) : '—');
-  row.appendChild(field); row.appendChild(val); row.appendChild(conf);
-  log.insertBefore(row, log.firstChild);
+function stopMic() {
+  if (scriptNode)  { try{scriptNode.disconnect();}catch(_){}  scriptNode=null; }
+  if (sourceNode)  { try{sourceNode.disconnect();}catch(_){}  sourceNode=null; }
+  if (mediaStream) { mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; }
+  if (captureCtx)  { captureCtx.close(); captureCtx=null; }
+  micRms=0; agentSpeaking=false;
 }
 
-log('Harness ready — Phases A–F + v2. Create a session, then Start Voice.', 'log-ok');
-
-function toggleDark() {
-  const dark = document.body.classList.toggle('dark');
-  $('darkModeBtn').textContent = dark ? '☀️ Light' : '🌙 Dark';
-  localStorage.setItem('sena_dark', dark ? '1' : '');
+function toPcm16(f32) {
+  const b = new ArrayBuffer(f32.length*2);
+  const v = new DataView(b);
+  for (let i=0;i<f32.length;i++) {
+    const c = Math.max(-1, Math.min(1, f32[i]));
+    v.setInt16(i*2, c<0 ? c*0x8000 : c*0x7FFF, true);
+  }
+  return b;
 }
-if (localStorage.getItem('sena_dark')) toggleDark();
+
+// ─── Playback PCM16 24kHz ─────────────────────────────────────────────────────
+function enqueueAudio(buf) {
+  if (!playbackCtx) playbackCtx = new AudioContext({sampleRate:PB_SR});
+  const n = buf.byteLength/2;
+  const f32 = new Float32Array(n);
+  const v = new DataView(buf);
+  for (let i=0;i<n;i++) f32[i] = v.getInt16(i*2,true)/32768;
+  const ab = playbackCtx.createBuffer(1,n,PB_SR);
+  ab.copyToChannel(f32,0);
+  const src = playbackCtx.createBufferSource();
+  src.buffer = ab; src.connect(playbackCtx.destination);
+  const now = playbackCtx.currentTime;
+  const at = Math.max(now, pbAt);
+  src.start(at); pbAt = at + ab.duration;
+}
+
+// ─── Waveform ─────────────────────────────────────────────────────────────────
+const HIST = 68;
+const hist = new Float32Array(HIST);
+let hPtr = 0;
+
+function startWaveLoop() {
+  const canvas = document.getElementById('waveform');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const barW = 3, gap = 2, stride = barW+gap;
+  const bars = Math.floor(W/stride);
+  const cy = H/2;
+
+  (function draw() {
+    requestAnimationFrame(draw);
+    hist[hPtr % HIST] = micRms;
+    hPtr++;
+    ctx.clearRect(0,0,W,H);
+    const active = ws && ws.readyState === WebSocket.OPEN;
+    const r = agentSpeaking ? [129,140,248] : (active ? [34,197,94] : [29,95,168]);
+
+    for (let i=0;i<bars;i++) {
+      const idx = (hPtr - bars + i + HIST*10) % HIST;
+      const rms = hist[idx];
+      const wave = Math.sin(i * 0.38 + hPtr * 0.11) * (active ? rms*25+1 : 1.5);
+      const h = active ? Math.max(2, rms*160 + Math.abs(wave) + 2) : 2.5;
+      const x = i*stride;
+      const alpha = active ? (0.25 + (i/bars)*0.75) : (0.1 + (i/bars)*0.2);
+      ctx.fillStyle = 'rgba('+r[0]+','+r[1]+','+r[2]+','+alpha.toFixed(2)+')';
+      const y = cy - h/2;
+      // manual rounded rect (compat)
+      const radius = Math.min(1.5, h/2);
+      ctx.beginPath();
+      ctx.moveTo(x+radius, y);
+      ctx.lineTo(x+barW-radius, y);
+      ctx.arcTo(x+barW, y, x+barW, y+radius, radius);
+      ctx.lineTo(x+barW, y+h-radius);
+      ctx.arcTo(x+barW, y+h, x+barW-radius, y+h, radius);
+      ctx.lineTo(x+radius, y+h);
+      ctx.arcTo(x, y+h, x, y+h-radius, radius);
+      ctx.lineTo(x, y+radius);
+      ctx.arcTo(x, y, x+radius, y, radius);
+      ctx.closePath();
+      ctx.fill();
+    }
+  })();
+}
+
+// ─── Send text ────────────────────────────────────────────────────────────────
+function sendText() {
+  const inp = document.getElementById('txt-in');
+  const text = inp.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({type:'user_text', text}));
+  addMsg(text, 'user');
+  inp.value = '';
+}
+
+// ─── Stop ─────────────────────────────────────────────────────────────────────
+function stopSession() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({type:'stop'}));
+    ws.close(1000,'User stopped');
+  }
+  stopMic();
+  if (playbackCtx) { playbackCtx.close(); playbackCtx=null; }
+  pbAt=0;
+}
 </script>
-
 </body>
 </html>

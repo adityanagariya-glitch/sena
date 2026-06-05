@@ -8,7 +8,7 @@ emergency_contacts[].name vs basics.full_name).
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from onboarding.models.cross_screen_summary import CrossScreenContext, StepSummary
 from onboarding.models.form_state import FieldSource, FieldValue, FormState
@@ -17,7 +17,6 @@ from onboarding.services.cross_screen_context import (
     build_summary,
     render_for_prompt,
 )
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -49,6 +48,9 @@ class TestAllowlistContract:
             ("requirements", "goals"):              "goals",
             ("requirements", "hobbies_interests"):  "hobbies_interests",
             ("ndis_goals", "goal"):                 "goals",
+            ("summary", "primary_diagnosis"):       "diagnosis",
+            ("summary", "blood_type"):              "blood_type",
+            ("allergies", "title"):                 "allergies",
         }
 
 
@@ -163,7 +165,7 @@ class TestEmpty:
 
 class TestRenderSnapshot:
     def _frozen_now(self) -> datetime:
-        return datetime(2026, 5, 6, 12, 30, 0, tzinfo=timezone.utc)
+        return datetime(2026, 5, 6, 12, 30, 0, tzinfo=UTC)
 
     def test_render_includes_concept_keys_only(self):
         now = self._frozen_now()
@@ -205,7 +207,7 @@ class TestTokenBudgetSmoke:
         """Six fully-populated steps must render well under ~1500 tokens.
         Approximate via 4 chars/token; threshold 1500 tokens → 6000 chars.
         """
-        now = datetime(2026, 5, 6, 12, 30, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 5, 6, 12, 30, 0, tzinfo=UTC)
         summaries = [
             StepSummary(
                 step_number=i,
@@ -234,7 +236,7 @@ class TestTokenBudgetSmoke:
 
 class TestRenderCap:
     def test_only_last_five_steps_rendered(self):
-        now = datetime(2026, 5, 6, 12, 30, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 5, 6, 12, 30, 0, tzinfo=UTC)
         # 7 steps; only steps 3..7 should render (last 5).
         summaries = [
             StepSummary(
@@ -253,3 +255,52 @@ class TestRenderCap:
         assert "Step 2 —" not in text
         assert "Step 3 —" in text
         assert "Step 7 —" in text
+
+
+# ── 8. Medical concepts cross-screen (product decision 2026-06-04) ────────────
+
+
+class TestMedicalConceptsCrossScreen:
+    def test_medical_summary_fields_extracted(self):
+        state = _make_state({
+            "summary": {
+                "primary_diagnosis":  _wrap("Autism Spectrum Disorder"),
+                "blood_type":         _wrap("O+"),
+                "primary_doctor":     _wrap("Dr Smith"),        # dropped
+                "doctor_phone":       _wrap("+61400000000"),    # dropped
+            },
+            "allergies": [
+                {"title": _wrap("Penicillin"), "description": _wrap("rash")},
+                {"title": _wrap("Peanuts"),    "description": _wrap("anaphylaxis")},
+            ],
+        }, step_id="medical")
+        summary = build_summary(state, step_number=5, step_label="Medical")
+        assert summary.verbatim["diagnosis"] == "Autism Spectrum Disorder"
+        assert summary.verbatim["blood_type"] == "O+"
+        assert summary.verbatim["allergies"] == ["Penicillin", "Peanuts"]
+        # Non-allowlisted medical fields stay scoped to the step.
+        assert "Dr Smith" not in str(summary.verbatim)
+        # Allergy descriptions are NOT carried (only the concise title).
+        assert "anaphylaxis" not in str(summary.verbatim)
+
+    def test_medical_concepts_render(self):
+        now = datetime(2026, 5, 6, 12, 30, 0, tzinfo=UTC)
+        summaries = [
+            StepSummary(
+                step_number=5,
+                step_label="Medical",
+                completed_at=now - timedelta(minutes=3),
+                session_id="sess-005",
+                verbatim={
+                    "diagnosis":  "Autism Spectrum Disorder",
+                    "blood_type": "O+",
+                    "allergies":  ["Penicillin", "Peanuts"],
+                },
+                compressed="",
+                completion_pct=1.0,
+            ),
+        ]
+        text = render_for_prompt(summaries, now=now)
+        assert "Diagnosis: Autism Spectrum Disorder" in text
+        assert "Blood type: O+" in text
+        assert "Allergies: Penicillin; Peanuts" in text

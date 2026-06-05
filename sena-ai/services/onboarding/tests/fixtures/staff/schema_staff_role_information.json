@@ -1,0 +1,21 @@
+{
+  "version": "v1",
+  "step_id": "staff_role_information",
+  "step_label": "Role Information",
+  "progress_percent": 40,
+  "sections": [
+    {
+      "id": "role_info",
+      "label": "Role Information",
+      "fields": [
+        { "id": "role", "type": "text", "label": "Role", "required": false, "readonly": true },
+        { "id": "department", "type": "text", "label": "Department", "required": false, "readonly": true },
+        { "id": "experience", "type": "textarea", "label": "Relevant Experience", "required": true }
+      ]
+    }
+  ],
+  "voice_coverage": [
+    "role_info.experience"
+  ],
+  "voice_repeatable_sections": []
+}

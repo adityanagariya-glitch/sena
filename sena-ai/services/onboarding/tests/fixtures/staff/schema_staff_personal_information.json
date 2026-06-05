@@ -1,0 +1,47 @@
+{
+  "version": "v1",
+  "step_id": "staff_personal_information",
+  "step_label": "Personal Information",
+  "progress_percent": 20,
+  "sections": [
+    {
+      "id": "basics",
+      "label": "Basics",
+      "fields": [
+        { "id": "full_name", "type": "text", "label": "Full Name", "required": true },
+        { "id": "email", "type": "email", "label": "Email Address", "required": true, "readonly": true },
+        { "id": "phone", "type": "phone", "label": "Phone Number", "required": true },
+        { "id": "date_of_birth", "type": "date", "label": "Date of Birth", "required": true },
+        { "id": "gender", "type": "enum", "label": "Gender", "required": true, "options": ["Male", "Female", "Other"] },
+        { "id": "cultural_background", "type": "enum", "label": "Cultural Background", "required": true, "options": ["Australian", "Indian", "Asian"] },
+        { "id": "languages_spoken", "type": "multi_enum", "label": "Languages Spoken", "required": true, "options": ["English", "Mandarin", "Arabic", "Vietnamese", "Cantonese", "Punjabi", "Greek", "Italian", "Hindi", "Spanish"] },
+        { "id": "requires_interpreter", "type": "boolean", "label": "Requires Interpreter", "required": false, "default": false },
+        { "id": "profile_picture", "type": "text", "label": "Profile Photo", "required": true, "readonly": true }
+      ]
+    },
+    {
+      "id": "address",
+      "label": "Address",
+      "fields": [
+        { "id": "address", "type": "text", "label": "Address", "required": true },
+        { "id": "state", "type": "text", "label": "State", "required": true },
+        { "id": "city", "type": "text", "label": "City", "required": true },
+        { "id": "zip_code", "type": "text", "label": "Zip Code", "required": true, "pattern": "^\\d{1,4}$" }
+      ]
+    }
+  ],
+  "voice_coverage": [
+    "basics.full_name",
+    "basics.phone",
+    "basics.date_of_birth",
+    "basics.gender",
+    "basics.cultural_background",
+    "basics.languages_spoken",
+    "basics.requires_interpreter",
+    "address.address",
+    "address.state",
+    "address.city",
+    "address.zip_code"
+  ],
+  "voice_repeatable_sections": []
+}

@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: "Review a pending diff or a GitHub PR for a SHIP / FIX / BLOCK verdict. Routes SENA-touching diffs through the SENA-specific reviewers (sena-business-reviewer, sena-security-reviewer); routes non-SENA diffs through the generic code-reviewer. Use when the user says 'review the PR' or 'what would a reviewer say'."
+description: "Review a pending diff or a GitHub PR for a SHIP / FIX / BLOCK verdict. Routes SENA-touching diffs through the SENA-specific reviewers (sena-business-reviewer, sena-security-reviewer); routes non-SENA diffs through sena-code-reviewer. Use when the user says 'review the PR' or 'what would a reviewer say'."
 argument-hint: "[pr-number | 'staged']"
 allowed-tools: Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr diff:*), Read, Grep, Glob
 ---
@@ -36,8 +36,8 @@ Multiple rows can apply to one diff. Run all applicable reviewers in parallel.
 | Anything that adds a new Redis key | `@agent-sena-security-reviewer` | tenant_id in key, TTL explicit, key-construction test exists |
 | Anything that adds a new WebSocket emit type | `@agent-sena-business-reviewer` (Flutter contract) | FLUTTER_DEV_HANDOFF.md Issue # added, payload shape documented |
 | Files with measurable hot-path implications (Redis loops, audio bridge, large JSON serialisation) | `@agent-sena-optimization-reviewer` (in addition to others) | Async correctness, Redis pipelining, memory bounds |
-| Any other file in the SENA monorepo not matched above | `@agent-code-reviewer` | Generic SHIP/FIX/BLOCK |
-| External / non-SENA code (e.g. reviewing an open-source PR pasted in) | `@agent-code-reviewer` only | SENA reviewers would over-flag |
+| Any other file in the SENA monorepo not matched above | `@agent-sena-code-reviewer` | Generic SHIP/FIX/BLOCK |
+| External / non-SENA code (e.g. reviewing an open-source PR pasted in) | `@agent-sena-code-reviewer` only | SENA reviewers would over-flag |
 
 If the diff touches any `services/onboarding/src/onboarding/prompts/onboarding_system.md` Rule number that is cross-referenced elsewhere (`FLUTTER_DEV_HANDOFF.md`, `CLAUDE.md`, other prompts) — block the review and flag the renumbering as a contract-break.
 

@@ -1,17 +1,27 @@
 """Integration tests for REST routes."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
-FIXTURES = Path(__file__).parent.parent / "fixtures"
+_MINIMAL_SCHEMA: dict = {
+    "step_id": "personal_information",
+    "step_label": "Personal Information",
+    "progress_percent": 20,
+    "sections": [
+        {
+            "id": "basics",
+            "label": "About you",
+            "fields": [
+                {"id": "full_name", "type": "text", "label": "Full Name", "required": True},
+                {"id": "email", "type": "email", "label": "Email Address", "required": True},
+            ],
+        },
+    ],
+}
 
 
 def personal_schema_payload() -> dict:
-    return json.loads((FIXTURES / "schema_personal_information.json").read_text())
+    return _MINIMAL_SCHEMA
 
 
 class TestCreateSession:

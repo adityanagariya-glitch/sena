@@ -68,13 +68,29 @@ class OnboardingSettings(BaseSettings):
     # the agent has no memory of prior screens — symptom: re-asks for the
     # participant's name on every step. Single-flag rollback path.
     onboarding_cross_screen_context_enabled: bool = True
+    # SENA_AI_ONBOARDING_TOOL_STATE_CHANNEL — Option D state-channel flag.
+    # When True (default), prompt_builder shrinks bootstrap to header-only;
+    # Flutter must include fresh TurnPayload `state` in every tool_response.
+    # See .claude/plans/per-screen-session-model/ISSUE_AND_SOLUTION.md.
+    onboarding_tool_state_channel: bool = True
     # SENA_AI_ONBOARDING_FRAME_FPS_LIMIT
     onboarding_frame_fps_limit: int = 2
     # SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC — seconds of user silence before
     # Gemini is prompted to check in ("are you still there?"). 0 = disabled.
     onboarding_silence_timeout_sec: int = 8
+    # SENA_AI_ONBOARDING_MOBILE_BRIDGE_TIMEOUT_SEC — how long the backend waits
+    # for the Flutter client to answer a tool_request (update_field, etc.)
+    # before returning a mobile_timeout rejection. Mobile links are laggy and
+    # the round-trip includes Flutter-side validation; 5s caused false
+    # mobile_bridge_timeout on legitimate update_field calls. 12s default.
+    onboarding_mobile_bridge_timeout_sec: float = 12.0
     # SENA_AI_VOICE_COVERAGE_ENFORCED — reject field_apply for out-of-coverage fields
     voice_coverage_enforced: bool = True
+    # SENA_AI_ONBOARDING_VOICE_VALIDATION_ADVISORY — when True the voice path
+    # emits advisory warnings instead of blocking on field validation failures.
+    # Strict rejection still fires for None/empty/un-parseable values.
+    # Operator rollback: set SENA_AI_ONBOARDING_VOICE_VALIDATION_ADVISORY=false.
+    onboarding_voice_validation_advisory: bool = True
     # SENA_AI_FIELD_APPLY_LOG_LEVEL
     field_apply_log_level: str = "DEBUG"
 

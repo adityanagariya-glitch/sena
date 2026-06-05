@@ -1,29 +1,12 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
 import pytest_asyncio
 from fakeredis.aioredis import FakeRedis
-from fastapi.testclient import TestClient
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from onboarding.api.deps import get_repo
 from onboarding.main import create_app
 from onboarding.repositories.state_repo import FormStateRepo
-
-FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
-
-
-@pytest.fixture
-def personal_info_schema() -> dict:
-    return json.loads((FIXTURES_DIR / "schema_personal_information.json").read_text())
-
-
-@pytest.fixture
-def medical_schema() -> dict:
-    return json.loads((FIXTURES_DIR / "schema_medical_information.json").read_text())
 
 
 @pytest_asyncio.fixture

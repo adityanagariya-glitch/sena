@@ -9,11 +9,11 @@
 
 ## Agent Routing Table
 
-Built from `.claude/agents/*.md` on 2026-05-08. One row per Claude Code subagent.
+Built from `.claude/agents/*.md` — last audited 2026-05-15. One row per Claude Code subagent (14 total, all `sena-*` prefixed).
 
 | Task type | Agent |
 |-----------|-------|
-| Non-trivial multi-file engineering work; multi-subsystem investigations; long-running debugging sessions; tasks requiring institutional-memory updates; contract-first audits at system boundaries | `@agent-disciplined-engineering-collaborator` |
+| Non-trivial multi-file engineering work; multi-subsystem investigations; long-running debugging sessions; tasks requiring institutional-memory updates; contract-first audits at system boundaries | `@agent-sena-engineering-collaborator` |
 | Architectural plan + subtask DAG for any non-trivial feature/refactor (NDIS compliance + tenant boundary analysis included) | `@agent-sena-planner` |
 | Convert a plan into atomic JSON coding tasks for executors | `@agent-sena-task-breaker` |
 | Greenfield Python coding (new feature, new file, full implementation from spec) | `@agent-sena-implementer` |
@@ -23,6 +23,10 @@ Built from `.claude/agents/*.md` on 2026-05-08. One row per Claude Code subagent
 | Async / Redis / memory optimisation refactor — FIXES inline | `@agent-sena-optimization-reviewer` |
 | Final lint + artifact gate before commit (ruff/mypy, dead code, debug prints) — FIXES inline | `@agent-sena-cleaner` |
 | Generate Conventional Commit + git add command (NEVER push) | `@agent-sena-git-committer` |
+| Crash log / stack trace / pytest failure dump — isolate root frame before bug-fixer | `@agent-sena-log-analyzer` |
+| Current third-party library/API/framework documentation research (when Context7 misses) | `@agent-sena-researcher` |
+| Writing or updating CLAUDE.md / TASKS.md / SESSION_START.md / FLUTTER docs / README / handoff docs | `@agent-sena-doc-writer` |
+| Ad-hoc external diff or non-SENA-path PR review (SHIP/FIX/BLOCK) | `@agent-sena-code-reviewer` |
 
 ### Pipeline order (review → fix → re-review)
 
@@ -60,5 +64,25 @@ A task is only complete when:
 
 ## Notes
 
-- The retry-cap rule above ("max 2 loops") is the simple default. A more granular tiered retry policy is described in `.agents/WORKFLOW_PLAN.md` §8 (Tier-A unlimited cheap loops, Tier-B ≤2, Tier-C zero — straight to human). Adopt the tiered policy when the orchestrator is wired; for in-session subagent work, the simple "max 2" default applies.
+- The retry-cap rule above ("max 2 loops") is the simple default. If an external multi-model orchestrator is wired in the future, a tiered policy applies: Tier-A unlimited cheap loops, Tier-B ≤2 loops, Tier-C zero (straight to human). For in-session subagent work the simple "max 2" default applies.
 - Hook gates (`pre-tool-use.sh`, Rule 3 — Gemini Live Config Gate) are enforced by the runtime regardless of these rules. Agents must respect those gates.
+- The `.agents/` folder no longer exists (deleted 2026-05-11). All agent definitions live in `.claude/agents/`. Historical references in `memory/` describe past state and are intentionally left untouched.
+
+## Current Inventory (as of 2026-05-25)
+
+| Area | Count | Path |
+|------|-------|------|
+| Agents | **20** (all `sena-*` prefixed) — 14 pipeline agents + 6 reality-check agents (`sena-brainstorm`, `sena-tradeoffs`, `sena-debug`, `sena-postmortem`, `sena-approve`, `sena-explain` — promoted from slash commands to agents 2026-05-26 for context isolation) | `.claude/agents/` |
+| Skills (project-local) | 1 — `sena-harness-upgrade` | `.claude/skills/sena-harness-upgrade/` |
+| Slash commands (project-local) | 27 — 6 workflow (`sena-harness-upgrade`, `sena-plan`, `sena-feature-ship`, `sena-audit`, `sena-status`, `sena-learn`) + 6 reality-check shims (`sena-brainstorm`, `sena-tradeoffs`, `sena-debug`, `sena-postmortem`, `sena-approve`, `sena-explain` — thin Agent-tool routers to the matching agents) + 14 direct-agent shortcuts + 1 generic (`solve`) | `.claude/commands/` |
+| Rules — path-scoped autoload | 9 — `api.md` (FastAPI routes), `database.md` (Postgres/Redis), `service-onboarding.md`, `service-voice.md`, `service-case-review.md`, `gemini.md` (hook-gated), `build-and-run.md`, `deployment.md`, `demo-stack.md` | `.claude/rules/` |
+| Rules — trigger-phrase autoload | 2 — `add-component.md` ("I am adding X"), `external-tools.md` (gstack / browser / specify / hivemind) | `.claude/rules/` |
+| Rules — canonical always-referenced | 4 — `principal-engineer.md` (5 non-negotiables + 10 orchestration sections + asymmetric trust pointer), `sena-rules.md` (this file), `asymmetric-privileged-trust.md` (SDAR-inspired gating), `sena-lints.md` (severity-labeled checklist consumed by `/sena-approve`, reviewers, harness Phase 4) | `.claude/rules/` |
+| Output styles | 2 — `terse.md` (code-only shorthand) + `reality-check.md` (Reality-Check Senior — three-block verdict/findings/follow-ups, terse staff-engineer voice). Toggle via `/output-style <name>`. | `.claude/output-styles/` |
+| Memory — append-only logs | 3 — `sena-memory.md` (activity), `decisions.md` (rationale), `lessons.md` (user-correction patterns) | `.claude/memory/` |
+| Tasks files | 3 — `TASKS.md` (active queue), `ARCHIVE.md` (closed features), `followups.md` (out-of-scope observations) | `.claude/tasks/` |
+| Plans | empty by design between features — see `.claude/plans/README.md` | `.claude/plans/` |
+
+**Hook state flags** live in `.claude/hooks-state/` (`ctx7-session.flag`, `ctx7-gemini.flag`, `skills-gemini.flag`). Cleared on every session start; re-earn by invoking the relevant Skill or Context7 MCP. (Stray root-level `.flag` files exist from earlier broken `settings.json` matcher wiring — vestigial, can be removed safely.) The `.claude/state/` directory was removed 2026-05-25 (duplicate path, never used by live hooks).
+
+**The `audits/`, `client_onboarding_validations.md`, and `gsd-instructions.md` files were removed 2026-05-15.** If you see references in code/docs, they're stale — sweep them.

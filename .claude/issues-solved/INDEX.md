@@ -1,16 +1,12 @@
 ---
 title: Issues-Solved Index
-updated: 2026-05-12
+updated: 2026-05-15
 purpose: Grep-first symptom lookup. Read this BEFORE debugging.
 ---
 
 # Issues-Solved Index
 
 **How to use:** `grep` this file for symptom keywords. If no hit, problem is new — solve it, then append a row. If hit, read linked file, apply fix.
-
-| # | Symptoms | File |
-|---|----------|------|
-| 0006 | Voice writes bypass frontend validators; validation_rejection events silently dropped; no input_method tracking | [0006-voice-typed-validation-parity.md](0006-voice-typed-validation-parity.md) |
 
 > **Numbering note:** 0004 was reserved historically for a google-genai SDK version-mismatch
 > issue but the detail file was never written (the work shipped without a post-mortem entry).
@@ -21,10 +17,10 @@ purpose: Grep-first symptom lookup. Read this BEFORE debugging.
 
 ---
 
-## Table
-
 | ID | Tags | Symptom | One-line fix | File |
 |----|------|---------|--------------|------|
+| 0008 | usage-logging, mongodb, sena-common, editable-install, stub | Token usage not reaching MongoDB — only manual test docs appear, real voice-session usage never logged | `sena-common` was never `pip install -e`'d, so `import sena_common.usage_logger` raises `ModuleNotFoundError` and `gemini_live.py` falls into its `ImportError` fallback making `emit_usage` a no-op stub. Fix: `pip install -e sena-ai/shared`; verify `emit_usage` resolves to `usage_logger.py` not the stub. | [0008-usage-logging-stub-shared-not-installed.md](0008-usage-logging-stub-shared-not-installed.md) |
+| 0007 | gemini-live, websocket, 1008, session-resumption | WS closes with 1008 "Operation is not implemented" immediately on Gemini Live connect | Remove `session_resumption=types.SessionResumptionConfig(handle=None)` — `handle=None` serializes as JSON null which 3.1 rejects; app-level resumption via `resumption.py` is sufficient | [0007-gemini-live-1008-session-resumption-null-handle.md](0007-gemini-live-1008-session-resumption-null-handle.md) |
 | 0006 | onboarding, voice, validation, flutter, contract | Voice writes bypass frontend validators; `validation_rejection` WS events silently dropped; no `input_method` tracking; cross-field invariants only enforced at advance gate | 6-agent orchestration produced `SENA_AI/flutterhandoffdev.md` as the canonical Flutter contract; backend added POST `/v1/onboarding/session/{sid}/errors`, `FieldValue.input_method`, per-write cross-field hook, and reconciled `reason_human` strings to match Flutter `AppStrings`. | [0006-voice-typed-validation-parity.md](0006-voice-typed-validation-parity.md) |
 | 0005 | python, pytest, editable-install | Pytest sees stale code — `AttributeError` on a model field that exists in source; live edits not reflected | A second clone of the repo was registered via `pip install -e`; `python -c "import X; print(X.__file__)"` reveals it. Either re-install from current clone or run pytest with `PYTHONPATH=src` to override. | [0005-editable-install-wrong-clone.md](0005-editable-install-wrong-clone.md) |
 | 0003 | onboarding, python, setup | `ModuleNotFoundError: No module named 'onboarding'` when running uvicorn | Run `pip install -e .` from `sena-ai/services/onboarding/` — src-layout needs editable install | [0003-onboarding-src-layout-import.md](0003-onboarding-src-layout-import.md) |
