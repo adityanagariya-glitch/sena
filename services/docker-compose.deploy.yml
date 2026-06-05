@@ -1,9 +1,24 @@
 version: "3.9"
 
+# Unified internal-testing stack for all SENA AI services.
+#
+# Runs ALONGSIDE the existing client-facing stack on the same host.
+# Everything here is namespaced (project name + "-internal" container names
+# + 9000-range host ports + dedicated volumes) so NOTHING collides with the
+# already-running services:
+#   old host ports in use : 8082 (voice) 8083 (onboarding) 8084 (restrictive) 5433 5434
+#   old container names    : sena-voice sena-onboarding sena-redis sena-ai-db sena-shared-db
+#
+# This stack: own isolated Redis + Postgres (separate volumes) — zero risk to client data.
+#
 # Run from repo root:
-#   docker compose -f services/docker-compose.deploy.yml up --build
+#   docker compose -f services/docker-compose.deploy.yml up --build -d
 # Build a single service:
 #   docker compose -f services/docker-compose.deploy.yml up --build sena-voice
+# Tear down (keeps volumes):
+#   docker compose -f services/docker-compose.deploy.yml down
+
+name: sena-ai-internal
 
 services:
   sena-voice:
@@ -11,14 +26,14 @@ services:
       context: .
       dockerfile: services/Dockerfile
       target: voice
-    container_name: sena-voice
+    container_name: sena-voice-internal
     env_file:
       - .env
     environment:
       SENA_AI_REDIS_URL: redis://redis:6379/0
       SENA_AI_HOST: 0.0.0.0
     ports:
-      - "8000:8000"
+      - "9000:8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -33,7 +48,7 @@ services:
       context: .
       dockerfile: services/Dockerfile
       target: onboarding
-    container_name: sena-onboarding
+    container_name: sena-onboarding-internal
     env_file:
       - .env
     environment:
@@ -41,7 +56,7 @@ services:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_ONBOARDING_PORT: "8001"
     ports:
-      - "8001:8001"
+      - "9001:8001"
     depends_on:
       redis:
         condition: service_healthy
@@ -52,14 +67,14 @@ services:
       context: .
       dockerfile: services/Dockerfile
       target: case-review
-    container_name: sena-case-review
+    container_name: sena-case-review-internal
     env_file:
       - .env
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db:5432/sena_ai
     ports:
-      - "8002:8002"
+      - "9002:8002"
     depends_on:
       ai-db:
         condition: service_healthy
@@ -70,7 +85,7 @@ services:
       context: .
       dockerfile: services/Dockerfile
       target: ai-chatbot
-    container_name: sena-ai-chatbot
+    container_name: sena-ai-chatbot-internal
     env_file:
       - .env
     environment:
@@ -80,12 +95,12 @@ services:
       STAFF_DIR: /app/services/staff
       POLICY_DIR: /app/services/policy_proc
     ports:
-      - "8003:8003"
+      - "9003:8003"
     restart: unless-stopped
 
   redis:
     image: redis:7.4-alpine
-    container_name: sena-redis
+    container_name: sena-redis-internal
     expose:
       - "6379"
     command: ["redis-server", "--appendonly", "yes"]
@@ -100,7 +115,7 @@ services:
 
   ai-db:
     image: pgvector/pgvector:pg16
-    container_name: sena-ai-db
+    container_name: sena-ai-db-internal
     environment:
       POSTGRES_USER: sena_ai
       POSTGRES_PASSWORD: sena_ai
@@ -118,7 +133,7 @@ services:
 
   shared-db:
     image: postgres:16-alpine
-    container_name: sena-shared-db
+    container_name: sena-shared-db-internal
     environment:
       POSTGRES_USER: shared
       POSTGRES_PASSWORD: shared
