@@ -16,8 +16,11 @@ sena-ai\services\case_review\src\case_review\core\logging.py ← __future__, str
 sena-ai\services\case_review\src\case_review\core\settings.py ← __future__, pydantic_settings
 sena-ai\services\case_review\src\case_review\main.py ← __future__, fastapi, case_review
 sena-ai\services\case_review\src\case_review\models\case_note_field_schema.py ← __future__
+sena-ai\services\case_review\src\case_review\models\db.py ← __future__, sqlalchemy
 sena-ai\services\case_review\src\case_review\models\schemas.py ← __future__, pydantic
 sena-ai\services\case_review\src\case_review\repositories\review_repo.py ← __future__, sqlalchemy, case_review
+sena-ai\services\case_review\src\case_review\services\classify_service.py ← __future__, case_review, structlog
+sena-ai\services\case_review\src\case_review\services\context_service.py ← __future__, case_review, structlog
 sena-ai\services\case_review\src\case_review\services\llm\classifier.py ← __future__, google, pydantic, case_review, structlog
 sena-ai\services\case_review\src\case_review\services\llm\summarizer.py ← __future__, google, pydantic, case_review, structlog
 sena-ai\services\case_review\tests\conftest.py ← __future__, unittest, fastapi, sqlalchemy, case_review
@@ -72,6 +75,7 @@ sena-ai\services\voice\src\voice\repositories\voice_repo.py ← __future__, sqla
 sena-ai\services\voice\src\voice\services\approval_service.py ← __future__, fastapi, sqlalchemy, voice
 sena-ai\services\voice\src\voice\services\auth_service.py ← __future__, fastapi, voice, jwt
 sena-ai\services\voice\src\voice\services\bedrock_service.py ← __future__, botocore, fastapi, voice, boto3
+sena-ai\services\voice\src\voice\services\dictation_service.py ← __future__, fastapi, sqlalchemy, voice
 sena-ai\services\voice\src\voice\services\event_service.py ← __future__, voice, boto3
 sena-ai\services\voice\src\voice\services\gemini_live_service.py ← __future__, types, google, voice
 sena-ai\services\voice\src\voice\services\gemini_service.py ← __future__, fastapi, google, voice
@@ -81,6 +85,8 @@ sena-ai\services\voice\src\voice\services\redis_service.py ← __future__, redis
 sena-ai\services\voice\src\voice\services\transcribe_service.py ← __future__
 sena-ai\services\voice\src\voice\utils\idempotency.py ← __future__
 sena-ai\services\voice\tests\conftest.py ← fastapi, voice, pytest
+sena-ai\shared\src\sena_common\usage_logger.py ← __future__, structlog
+sena-ai\shared\tests\test_usage_logger.py ← __future__, sena_common
 ```
 
 ## sena-ai
@@ -323,6 +329,15 @@ class FieldDef(TypedDict)
 def schema_as_text() → str  # Render field schema as a structured text block for prompt in
 ```
 
+### sena-ai\services\case_review\src\case_review\models\db.py
+```
+class Base(DeclarativeBase)
+class RollingSummary(Base)
+class ReviewSession(Base)
+class IncidentDraft(Base)
+class ReviewAuditLog(Base)
+```
+
 ### sena-ai\services\case_review\src\case_review\models\schemas.py
 ```
 class AuthContext(BaseModel) {tenant_id*, user_id*, roles?}
@@ -368,6 +383,16 @@ class ReviewRepo
   async def get_incident_draft(draft_id: uuid.UUID) → IncidentDraft | None
   async def confirm_incident_draft(draft_id: uuid.UUID) → IncidentDraft | None
   async def list_audit(review_session_id: uuid.UUID) → list[ReviewAuditLog]
+```
+
+### sena-ai\services\case_review\src\case_review\services\classify_service.py
+```
+async def classify_paragraph(*, repo: ReviewRepo, tenant_id: uuid.UUID, user_id: uuid.UUID, req: ClassifyRequest) → ClassifyResponse
+```
+
+### sena-ai\services\case_review\src\case_review\services\context_service.py
+```
+async def get_context(*, repo: ReviewRepo, client: CaseNoteClient, tenant_id: uuid.UUID, staff_id: uuid.UUID, client_id: uuid.UUID, limit: int) → ContextResponse  # Fetch + summarise case notes for a staff-client pair
 ```
 
 ### sena-ai\services\case_review\src\case_review\services\llm\classifier.py
@@ -519,6 +544,32 @@ h2 8. Server contract summary (one-line)
 code-fence plain
 code-fence jsonc
 code-fence dart
+```
+
+### sena-ai\services\onboarding\FLUTTER_HANDOFF_CONSENT_FIX.md
+```
+h1 Flutter Handoff — Consent Screen Voice Sync Fix (Step 6)
+h2 1. The symptom (what the participant experiences)
+h2 2. Root cause — a read/write namespace mismatch
+h3 The data flow
+h3 Why it's a "mismatch"
+h2 3. A prompt-only workaround was attempted and REVERTED — here's why it can't work
+h2 4. Fix 1 — make the resolver accept the `consent.` namespace (REQUIRED, ~7 lines)
+h2 5. Fix 2 — per-role access detail (`access_control.<ROLE>.*`)
+h3 Current state: SCREEN-ONLY (and the prompt now treats it that way)
+h3 Optional: make per-role voice-fillable
+h2 6. Fix 3 — written-consent checkbox (`has_given_written_consent`)
+h3 Current state: SCREEN-ONLY (correct)
+h2 6a. Fix 4 — voice `submit_step` must ADVANCE to review, NOT final-submit (REQUIRED — fixes the deadlock)
+h3 Symptom
+h3 Root cause (Flutter)
+h3 Fix
+h2 7. Bonus check — the boolean default-false issue
+h2 8. Acceptance criteria
+h2 9. How the server workaround and Fix 1 interact (no conflict)
+h2 10. File reference summary
+code-fence dart
+code-fence plain
 ```
 
 ### sena-ai\services\onboarding\FLUTTER_HANDOFF_OPTION_D.md
@@ -692,6 +743,26 @@ h3 Rule 4 — Exhaustive Entity Extraction (Multi-Value Capture)
 h3 Rule 5 — Proactive Optional Prompting
 h3 Rule 6 — Dynamic UI Updates
 h3 Rule 7 — Advisory Validation Feedback
+```
+
+### sena-ai\services\onboarding\src\onboarding\prompts\onboarding_system.md
+```
+h1 Sena — Onboarding Voice Agent
+h2 1. Source of truth — the latest tool reply
+h2 1a. Forbidden phrases without a matching tool reply
+h2 1b. Staleness self-check
+h2 2. CAPTURING A VALUE — CALL THE TOOL FIRST, ALWAYS
+h3 Use ONLY the field names from `visible_fields[].path`
+h3 Required sequence
+h3 Forbidden phrases without a preceding tool call
+h3 Value formats — YOU convert, the screen validates
+h3 Worked example — date of birth change
+h3 Worked example — new emergency contact name
+h2 4. Repeatable rows
+h2 5. Submitting & going back
+h2 6. Seven tools
+h2 7. Voice rules
+h2 8. Bootstrap state — first turn only (DO NOT READ ALOUD)
 ```
 
 ### sena-ai\services\onboarding\src\onboarding\repositories\state_repo.py
@@ -1151,6 +1222,11 @@ class BedrockService
   def __init__()
 ```
 
+### sena-ai\services\voice\src\voice\services\dictation_service.py
+```
+class DictationService
+```
+
 ### sena-ai\services\voice\src\voice\services\event_service.py
 ```
 class EventService
@@ -1274,6 +1350,23 @@ key description
 key requires-python
 key dependencies
 key build-backend
+```
+
+### sena-ai\shared\src\sena_common\usage_logger.py
+```
+class UsageFeature(str, enum.Enum)
+  VOICE_ONBOARDING="voice_onboarding"
+  CASE_NOTE_DRAFTING="case_note_drafting"
+  CASE_NOTE_SUMMARY="case_note_summary"
+def emit_usage(*, tenant_id: str, user_id: str | None, feature: UsageFeature, model: str, session_id: str | None, prompt_tokens: int, response_tokens: int, cached_tokens: int, prompt_audio_tokens: int, response_audio_tokens: int, audio_seconds_in: float, audio_seconds_out: float, tool_call_count: int, latency_ms: int | None, success: bool, failure_reason: str | None, **extras: Any) → None
+```
+
+### sena-ai\shared\tests\test_usage_logger.py
+```
+def test_mapping_prefers_participant_and_step() → None
+def test_mapping_falls_back_to_user_id_then_feature() → None
+def test_emit_usage_forwards_full_record(monkeypatch: pytest.MonkeyPatch) → None
+def test_kill_switch_prevents_pool_creation(monkeypatch: pytest.MonkeyPatch) → None
 ```
 
 ### sena-ai\VOICE_BRIDGE_EXTRACTION_PLAN.md
