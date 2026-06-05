@@ -5,7 +5,7 @@
   "autoMaxTokens": false,
   "maxTokens": 48000,
   "coverageTarget": 0.90,
-  "outputs": ["copilot", "claude"],
+  "outputs": [],
   "secretScan": true,
   "enrichTodos": true,
   "enrichChanges": true,
