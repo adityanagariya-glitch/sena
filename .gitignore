@@ -147,20 +147,12 @@ graphify-out/
 .windsurfrules
 .opencode.json
 .qoder/mcp.json
-<<<<<<< HEAD
 sena-ai/
-=======
 ai-sena/
->>>>>>> ai-chatbot
 .kiro/
 .qoder/
 *.log
 services/policy_proc/logs/
-<<<<<<< HEAD
 ai-sena/
 services/casenote_monthly/out/_usage.json
-.gitignore
-=======
-services/casenote_monthly/out/_usage.json
->>>>>>> ai-chatbot
-services/casenote_monthly/example.json
+CLAUDE.md
