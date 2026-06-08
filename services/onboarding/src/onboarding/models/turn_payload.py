@@ -67,7 +67,13 @@ class NextTarget(BaseModel):
     model_config = ConfigDict(extra="ignore")
     path: str
     label: str
-    reason: NextTargetReason
+    # `reason` is an informational hint for the agent (WHY this is next) — the
+    # server never branches on the exact value. Kept as a plain `str` rather
+    # than the NextTargetReason Literal so Flutter can ship any UI-driven marker
+    # ("pending_uploads", "pending_expiry_after_upload", future additions)
+    # without tripping a literal_error that invalidates the whole TurnPayload
+    # and kills the session. NextTargetReason documents the canonical set.
+    reason: str
 
 
 class LastRejection(BaseModel):
