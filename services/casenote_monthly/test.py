@@ -25,7 +25,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 # ── Load example.json ─────────────────────────────────────────────────────────
-raw = json.loads((HERE / "example.json").read_text(encoding="utf-8"))
+raw = json.loads((HERE / "example.json").read_bytes().lstrip(b"\xe2\x80\x8b").decode("utf-8"))
 EXAMPLE_DATA = raw.get("data", raw)
 CLIENT_ID    = EXAMPLE_DATA.get("client", {}).get("id", "test-client-id")
 DATE_FROM    = EXAMPLE_DATA.get("dateFrom", "2026-05-01")

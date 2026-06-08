@@ -137,3 +137,22 @@ WORKDIR /app/services/ai_chatbot
 EXPOSE 8003
 
 CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8003"]
+
+
+# ── AI Communication Log — classifier via Bedrock (port 8005) ─────────────
+FROM base AS ai-communication-log
+
+COPY ai-communication-log/requirements.txt /tmp/req-comm-log.txt
+RUN pip install -r /tmp/req-comm-log.txt
+
+# Code lives in ai-classifier/ — copy its contents to /app so `app.main:app` resolves
+COPY ai-communication-log/ai-classifier /app
+
+WORKDIR /app
+
+EXPOSE 8005
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8005/health').status==200 else 1)"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]

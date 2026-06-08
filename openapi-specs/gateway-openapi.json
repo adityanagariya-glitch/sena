@@ -1,0 +1,222 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "SENA ai_chatbot gateway",
+        "description": "Single production entry point for the SENA assistant (Flutter mobile / React web).\n\n**One endpoint, chip-driven routing.** The frontend sends every message to `POST /api/route` with the tapped chip in `context.category`; the gateway routes it to the right backend section and streams the answer back as Server-Sent Events. There is no free-text classification \u2014 no chip means out of scope.\n\n**Sections are independent:** a `shifts` request can never reach client data, and vice-versa.\n\n**SSE events:** `meta` (routing) \u2192 `token` (answer) \u2192 `usage` (input/output token counts for the question) \u2192 `done`; or `error`.",
+        "version": "2.0.0"
+    },
+    "paths": {
+        "/": {
+            "get": {
+                "summary": "Root",
+                "description": "The gateway is a JSON routing API now \u2014 no UI. Point clients at /api/route.",
+                "operationId": "root__get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "summary": "Healthz",
+                "operationId": "healthz_healthz_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/route": {
+            "post": {
+                "tags": [
+                    "Routing"
+                ],
+                "summary": "Route a chip-selected message and stream the answer (SSE)",
+                "description": "Route one chip-selected message to the right backend section and stream the reply.\n\n**Auth:** `Authorization: Bearer <JWT>` (the ISENA token). The gateway forwards\nit to the backend, which validates it.\n\n**Routing:** decided by `context.category` (shifts / client / policy /\nprocedure). No category \u2192 out of scope (the stream returns a single guidance\nmessage). Sections are independent \u2014 a `shifts` message cannot return client data.\n\n**Example**\n\n```\nPOST /api/route\nAuthorization: Bearer <JWT>\n{\"question\": \"What are my shifts this week?\", \"context\": {\"category\": \"shifts\"}}\n```",
+                "operationId": "route_query_api_route_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "Bearer <JWT> \u2014 the ISENA token from POST /auth/ai/login.",
+                            "title": "Authorization"
+                        },
+                        "description": "Bearer <JWT> \u2014 the ISENA token from POST /auth/ai/login."
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RouteRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "SSE stream. Each line is `data: <json>`.",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            },
+                            "text/event-stream": {
+                                "example": "data: {\"type\": \"meta\", \"routing\": {\"target_services\": [\"staff\"], \"routing_reason\": \"Category 'shifts' routed to staff.\"}}\n\ndata: {\"type\": \"token\", \"text\": \"Here are your shifts this week: ...\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 2496, \"output_tokens\": 320}\n\ndata: {\"type\": \"done\"}\n\n"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid Authorization bearer token."
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "RouteRequest": {
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "title": "Question",
+                        "description": "The user's message. May be empty when a chip is tapped with no text \u2014 the section's default question is used.",
+                        "examples": [
+                            "What are my shifts this week?"
+                        ]
+                    },
+                    "context": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Context",
+                        "description": "UI context. Must include `category` (the tapped chip). May also carry session_id / session_title / is_new_chat.",
+                        "examples": [
+                            {
+                                "category": "shifts",
+                                "is_new_chat": true
+                            }
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "question"
+                ],
+                "title": "RouteRequest",
+                "description": "A user message plus the UI context that selects how it is routed.\n\nRouting is chip-driven: `context.category` decides the backend section. There\nis no free-text classification \u2014 a request with no category is out of scope.\n\n`context.category` values:\n  \u2022 \"shifts\"    \u2192 staff service, STAFF section  (shifts, rosters, team)\n  \u2022 \"client\"    \u2192 staff service, CLIENT section (participant info)\n  \u2022 \"policy\"    \u2192 policy service                (organisational policy)\n  \u2022 \"procedure\" \u2192 policy service                (compliance procedures)",
+                "examples": [
+                    {
+                        "context": {
+                            "category": "shifts",
+                            "is_new_chat": true
+                        },
+                        "question": "What are my shifts this week?"
+                    },
+                    {
+                        "context": {
+                            "category": "client",
+                            "is_new_chat": true
+                        },
+                        "question": "Who are my clients?"
+                    },
+                    {
+                        "context": {
+                            "category": "policy",
+                            "is_new_chat": true
+                        },
+                        "question": "What is the leave policy?"
+                    }
+                ]
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Routing",
+            "description": "Chip-driven query routing with SSE streaming."
+        },
+        {
+            "name": "Health",
+            "description": "Gateway + child-service health."
+        }
+    ]
+}

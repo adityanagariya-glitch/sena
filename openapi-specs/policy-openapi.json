@@ -1,0 +1,593 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "SENA RAG API",
+        "version": "2.0.0"
+    },
+    "paths": {
+        "/auth/login": {
+            "post": {
+                "summary": "Login",
+                "description": "Validates login_id + password against fake_users.json.\nReturns a signed JWT on success.",
+                "operationId": "login_auth_login_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LoginRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "summary": "Health",
+                "operationId": "health_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/query/stream": {
+            "post": {
+                "summary": "Query Stream",
+                "description": "SSE streaming. Events:\n    data: {\"type\": \"meta\",    \"session_id\": \"...\", \"label\": \"...\", \"sources\": [...]}\n    data: {\"type\": \"token\",   \"text\": \"...\"}\n    data: {\"type\": \"usage\",   \"input_tokens\": N, \"output_tokens\": N}\n    data: {\"type\": \"done\",    \"stop_reason\": \"end_turn\"}\n    data: {\"type\": \"blocked\", \"text\": \"...\", \"label\": \"...\"}\n    data: {\"type\": \"error\",   \"text\": \"...\"}",
+                "operationId": "query_stream_query_stream_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/QueryRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/new_session": {
+            "post": {
+                "summary": "New Session",
+                "operationId": "new_session_new_session_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/list_sessions": {
+            "post": {
+                "summary": "List Sessions",
+                "operationId": "list_sessions_list_sessions_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/get_turns": {
+            "post": {
+                "summary": "Get Turns Endpoint",
+                "operationId": "get_turns_endpoint_get_turns_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TurnsRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rename_session": {
+            "post": {
+                "summary": "Rename",
+                "operationId": "rename_rename_session_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RenameRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/trigger_ingestion": {
+            "post": {
+                "summary": "Trigger Ingestion",
+                "description": "Triggers ingestion for a document already uploaded to S3.\n\nFlow:\n    1. Validate role \u2014 coordinator or superadmin only\n    2. Validate S3 key format and extract org_id\n    3. Verify file exists in S3\n    4. Create .metadata.json sidecar\n    5. Create registry entry (status: INGESTING)\n    6. Start ingestion job \u2014 wait for completion\n    7. Update registry (status: COMPLETE or FAILED)\n\nCall after manually uploading a file to S3.\nSynchronous \u2014 waits for ingestion to complete (2-3 mins).",
+                "operationId": "trigger_ingestion_admin_trigger_ingestion_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TriggerIngestionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/trigger_cleanup": {
+            "post": {
+                "summary": "Trigger Cleanup",
+                "description": "Triggers vector cleanup after a document has been deleted from S3.\n\nFlow:\n    1. Validate role \u2014 coordinator or superadmin only\n    2. Validate S3 key format and extract org_id\n    3. Confirm file is gone from S3 (cleanup only makes sense after deletion)\n    4. Delete .metadata.json sidecar if it exists\n    5. Update registry (status: DELETING)\n    6. Start cleanup job with DELETE_NOT_FOUND \u2014 wait for completion\n    7. Update registry (status: DELETED)\n\nCall after manually deleting a file from S3.\nSynchronous \u2014 waits for cleanup to complete (2-3 mins).",
+                "operationId": "trigger_cleanup_admin_trigger_cleanup_post",
+                "parameters": [
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TriggerCleanupRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/list_docs": {
+            "get": {
+                "summary": "List Docs",
+                "description": "Lists all documents in the registry for a given org.\nCoordinators can only list their own org. Superadmin can list any.",
+                "operationId": "list_docs_admin_list_docs_get",
+                "parameters": [
+                    {
+                        "name": "org_id",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Org Id"
+                        }
+                    },
+                    {
+                        "name": "authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "title": "Authorization"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "LoginRequest": {
+                "properties": {
+                    "login_id": {
+                        "type": "string",
+                        "title": "Login Id"
+                    },
+                    "password": {
+                        "type": "string",
+                        "title": "Password"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "login_id",
+                    "password"
+                ],
+                "title": "LoginRequest"
+            },
+            "QueryRequest": {
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "title": "Question"
+                    },
+                    "session_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Session Id"
+                    },
+                    "session_title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Session Title"
+                    },
+                    "is_new_chat": {
+                        "type": "boolean",
+                        "title": "Is New Chat",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "question"
+                ],
+                "title": "QueryRequest"
+            },
+            "RenameRequest": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id",
+                    "title"
+                ],
+                "title": "RenameRequest"
+            },
+            "TriggerCleanupRequest": {
+                "properties": {
+                    "s3_key": {
+                        "type": "string",
+                        "title": "S3 Key"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "s3_key"
+                ],
+                "title": "TriggerCleanupRequest"
+            },
+            "TriggerIngestionRequest": {
+                "properties": {
+                    "s3_key": {
+                        "type": "string",
+                        "title": "S3 Key"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "s3_key"
+                ],
+                "title": "TriggerIngestionRequest"
+            },
+            "TurnsRequest": {
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "title": "Session Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "session_id"
+                ],
+                "title": "TurnsRequest"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    }
+}
