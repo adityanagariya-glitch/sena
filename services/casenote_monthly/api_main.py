@@ -199,26 +199,20 @@ def _call_bedrock(section: dict, subs: dict) -> tuple[str, dict]:
     return clean(text.strip()), resp.get("usage") or {}
 
 
-async def _run_one(i: int, sec: dict, subs: dict, client_id: str) -> tuple[int, str, dict]:
+async def _run_one(i: int, sec: dict, subs: dict, client_id: str) -> tuple[int, str]:
     logger.info("[%s] section %d → Bedrock", client_id, i)
     text, usage = await asyncio.to_thread(_call_bedrock, sec, subs)
     logger.info("[%s] section %d done  in=%d out=%d", client_id, i,
                 usage.get("inputTokens", 0), usage.get("outputTokens", 0))
-    return i, text, usage
+    return i, text
 
 
-def _sum_usage(usages: list[dict]) -> dict:
-    return {
-        "inputTokens":  sum(u.get("inputTokens", 0)  for u in usages),
-        "outputTokens": sum(u.get("outputTokens", 0) for u in usages),
-        "totalTokens":  sum(u.get("totalTokens",  0) for u in usages),
-    }
-
-
-async def _generate_report(data: dict, client_id: str, current_period: str) -> tuple[str, dict]:
+async def _generate_report(data: dict, client_id: str, current_period: str) -> str:
     """Run sections 1-6 in parallel, then section 7 (needs 3/4/5 context).
 
-    Returns (html, usage_totals) where usage_totals has inputTokens, outputTokens, totalTokens.
+    Section 5 automatically receives the previous month's trend as extra context
+    so the model can produce cross-month ↑ ↓ → arrows.
+    Section 5 output is auto-saved to the trend store after completion.
     """
     sections: list[tuple[int, dict]] = []
     for i in range(1, 50):
@@ -232,6 +226,7 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
     wave1 = [(i, sec) for i, sec in sections if i != 7]
     wave2 = [(i, sec) for i, sec in sections if i == 7]
 
+    # Fetch previous month trend before wave 1 (used in section 5 context)
     prev = await asyncio.to_thread(get_previous_trend, client_id, current_period)
     prev_trend_text = prev["trend_text"] if prev else ""
     if prev_trend_text:
@@ -241,6 +236,7 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
 
     base_subs = _build_subs(data, {})
 
+    # Section 5 gets an augmented prompt that prepends the previous month's trend
     def _subs_for(i: int) -> dict:
         if i == 5 and prev_trend_text:
             s5 = dict(base_subs)
@@ -253,13 +249,12 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
         return base_subs
 
     logger.info("[%s] wave 1: %d sections in parallel", client_id, len(wave1))
-    wave1_results = await asyncio.gather(
+    results = await asyncio.gather(
         *[_run_one(i, sec, _subs_for(i), client_id) for i, sec in wave1]
     )
+    section_outputs: dict[int, str] = dict(results)
 
-    section_outputs: dict[int, str] = {i: text for i, text, _ in wave1_results}
-    all_usages: list[dict] = [usage for _, _, usage in wave1_results]
-
+    # Auto-save section 5 trend after wave 1
     if 5 in section_outputs:
         saved_at = datetime.now(timezone.utc).isoformat()
         await asyncio.to_thread(save_trend, client_id, current_period, section_outputs[5], saved_at)
@@ -267,17 +262,14 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
 
     for i, sec in wave2:
         logger.info("[%s] wave 2: section %d (uses 3/4/5 context)", client_id, i)
-        _, text, usage = await _run_one(i, sec, _build_subs(data, section_outputs), client_id)
+        _, text = await _run_one(i, sec, _build_subs(data, section_outputs), client_id)
         section_outputs[i] = text
-        all_usages.append(usage)
 
     parts = [section_outputs[i] for i, _ in sections if i in section_outputs]
     merged_md = "\n\n---\n\n".join(parts)
     (REPORTS_DIR / f"{client_id}_report.md").write_text(merged_md + "\n", encoding="utf-8")
-
-    totals = _sum_usage(all_usages)
-    logger.info("[%s] report saved  total_tokens=%d", client_id, totals["totalTokens"])
-    return md_lib.markdown(merged_md, extensions=["tables", "fenced_code"]), totals
+    logger.info("[%s] report saved", client_id)
+    return md_lib.markdown(merged_md, extensions=["tables", "fenced_code"])
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -314,11 +306,7 @@ async def health() -> HealthResponse:
                 "4. Risk Factors, Vulnerabilities & Barriers\n"
                 "5. Trend Analysis Over Time\n"
                 "6. Support Worker Approaches\n"
-                "7. Recommendations & Intervention Strategies\n\n"
-                "**Response headers (token usage across all 7 sections):**\n"
-                "- `X-Input-Tokens` — total Bedrock input tokens consumed\n"
-                "- `X-Output-Tokens` — total Bedrock output tokens generated\n"
-                "- `X-Total-Tokens` — combined total"
+                "7. Recommendations & Intervention Strategies"
             ),
             "content": {
                 "text/html": {
@@ -367,16 +355,8 @@ async def monthly_report(
         return HTMLResponse(f"<p>502 Backend error: {exc}</p>", status_code=502)
 
     current_period = req.date_from[:7]   # "2026-05-01" → "2026-05"
-    html, tokens = await _generate_report(data, req.client_id, current_period)
-    return HTMLResponse(
-        content=html,
-        status_code=200,
-        headers={
-            "X-Input-Tokens":  str(tokens["inputTokens"]),
-            "X-Output-Tokens": str(tokens["outputTokens"]),
-            "X-Total-Tokens":  str(tokens["totalTokens"]),
-        },
-    )
+    html = await _generate_report(data, req.client_id, current_period)
+    return HTMLResponse(content=html, status_code=200)
 
 
 # ── Trend endpoints ───────────────────────────────────────────────────────────
