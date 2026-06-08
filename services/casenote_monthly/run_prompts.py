@@ -11,6 +11,7 @@ Run:
 import json
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from config import bedrock_runtime, MODEL_ID
@@ -90,38 +91,72 @@ def main() -> None:
         if "user" in section:
             sections.append((i, section))
 
-    print(f"Running {len(sections)} section(s) via {MODEL_ID}\n")
+    wave1 = [(i, sec) for i, sec in sections if i != 7]
+    wave2 = [(i, sec) for i, sec in sections if i == 7]
+
+    print(f"Wave 1: {len(wave1)} section(s) in parallel | Wave 2: {len(wave2)} section(s) sequential\n")
 
     usage_log = {"model": MODEL_ID, "sections": {}, "totals": {}}
     tot_in = tot_out = tot_total = 0
-    report_parts = []
-    section_outputs = {}
+    section_outputs: dict[int, dict] = {}
 
-    for i, section in sections:
-        sys.stdout.write(f"[section {i}] calling Bedrock… ")
-        sys.stdout.flush()
-        section_subs = {
+    def _run(i: int, section: dict, section_subs: dict) -> tuple[int, dict]:
+        return i, run_section(f"section_{i}", section, section_subs)
+
+    base_subs = {**subs, "{{SECTION_3}}": "", "{{SECTION_4}}": "", "{{SECTION_5}}": ""}
+
+    # Wave 1: sections 1-6 in parallel
+    with ThreadPoolExecutor(max_workers=len(wave1)) as pool:
+        futures = {pool.submit(_run, i, sec, base_subs): i for i, sec in wave1}
+        for future in as_completed(futures):
+            i = futures[future]
+            try:
+                _, result = future.result()
+            except Exception as e:
+                print(f"[section {i}] FAILED: {type(e).__name__}: {e}")
+                usage_log["sections"][f"section_{i}"] = {"error": str(e)}
+                continue
+            section_outputs[i] = result
+            u = result["usage"]
+            in_t, out_t = u.get("inputTokens", 0), u.get("outputTokens", 0)
+            print(f"[section {i}] OK  in={in_t} out={out_t}  {result['elapsed']:.1f}s"
+                  f"  ({'truncated!' if result['stopReason'] == 'max_tokens' else result['stopReason']})")
+
+    # Wave 2: section 7 with context from 3, 4, 5
+    for i, section in wave2:
+        ctx_subs = {
             **subs,
-            "{{SECTION_3}}": section_outputs.get(3, ""),
-            "{{SECTION_4}}": section_outputs.get(4, ""),
-            "{{SECTION_5}}": section_outputs.get(5, ""),
+            "{{SECTION_3}}": section_outputs.get(3, {}).get("text", ""),
+            "{{SECTION_4}}": section_outputs.get(4, {}).get("text", ""),
+            "{{SECTION_5}}": section_outputs.get(5, {}).get("text", ""),
         }
+        sys.stdout.write(f"[section {i}] calling Bedrock (uses 3/4/5)… ")
+        sys.stdout.flush()
         try:
-            result = run_section(f"section_{i}", section, section_subs)
+            result = run_section(f"section_{i}", section, ctx_subs)
         except Exception as e:
             print(f"FAILED: {type(e).__name__}: {e}")
             usage_log["sections"][f"section_{i}"] = {"error": str(e)}
             continue
+        section_outputs[i] = result
+        u = result["usage"]
+        in_t, out_t = u.get("inputTokens", 0), u.get("outputTokens", 0)
+        print(f"OK  in={in_t} out={out_t}  {result['elapsed']:.1f}s")
 
+    # Write outputs in section order
+    report_parts = []
+    for i, _ in sections:
+        if i not in section_outputs:
+            continue
+        result = section_outputs[i]
         out_file = OUT / f"section_{i}.md"
         out_file.write_text(result["text"] + "\n")
-
+        report_parts.append(result["text"])
         u = result["usage"]
         in_t = u.get("inputTokens", 0)
         out_t = u.get("outputTokens", 0)
         total_t = u.get("totalTokens", in_t + out_t)
         tot_in += in_t; tot_out += out_t; tot_total += total_t
-
         usage_log["sections"][f"section_{i}"] = {
             "inputTokens": in_t, "outputTokens": out_t, "totalTokens": total_t,
             "cacheReadInputTokens": u.get("cacheReadInputTokens", 0),
@@ -131,11 +166,6 @@ def main() -> None:
             "chars": len(result["text"]),
             "file": str(out_file.relative_to(HERE)),
         }
-        report_parts.append(result["text"])
-        section_outputs[i] = result["text"]
-        print(f"OK  in={in_t} out={out_t} total={total_t}  {result['elapsed']:.1f}s "
-              f"({'truncated!' if result['stopReason']=='max_tokens' else result['stopReason']}) "
-              f"→ {out_file.name}")
 
     usage_log["totals"] = {"inputTokens": tot_in, "outputTokens": tot_out, "totalTokens": tot_total}
     (OUT / "_usage.json").write_text(json.dumps(usage_log, indent=2))
