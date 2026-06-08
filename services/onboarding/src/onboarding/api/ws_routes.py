@@ -9,18 +9,15 @@ Protocol summary:
     {"type":"start"}    — first text frame; opens the Gemini connection
     {"type":"user_text","text":"..."} — typed input alternative
     {"type":"audio_end"}              — signal end-of-utterance (flush)
-
     {"type":"validation_failed","section_id":"...","field_id":"...","reason_human":"...","code":"...","repeatable_index":N?}
                                       — frontend validator rejected a value; upserted into
                                         pending_validation_errors + injected into Gemini stream
     {"type":"validation_cleared","section_id":"...","field_id":"...","repeatable_index":N?}
                                       — previously-failed field now passes; cleared from state
-=======
-
     {"type":"stop"}                   — client-initiated graceful close
 
   Server → Client:
-    {"type":"ready","state":{...},"prompt_version":"v1"}  — session live
+    {"type":"ready","state":{...},"prompt_version":"v2"}  — session live
     Binary frames       — raw PCM16 24 kHz mono audio from Gemini
     {"type":"turn_start"}             — Gemini began speaking
     {"type":"turn_complete"}          — Gemini finished turn
@@ -40,32 +37,23 @@ from __future__ import annotations
 
 import json
 
-
 import structlog
-import logging
-
-
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
-
 from onboarding.models.turn_payload import Participant, StepInfo, TurnPayload
 from onboarding.repositories.state_repo import FormStateRepo
 from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
 from onboarding.services.gemini_live import GeminiLiveSession
 from onboarding.services.mobile_bridge import MobileBridge
-from onboarding.repositories.state_repo import FormStateRepo
-from onboarding.services.gemini_live import GeminiLiveSession
-
 from onboarding.services.prompt_builder import build_system_prompt
 from onboarding.services.resumption import build_replay_context, issue_handle, redeem_handle
 from onboarding.services.tools import ToolDispatcher
 
 
 log = structlog.get_logger(__name__)
-log = logging.getLogger(__name__)
 
 
 ws_router = APIRouter()
@@ -124,41 +112,22 @@ async def onboarding_ws(
 
     try:
 
-        # ── 4. Wait for the v2 hello handshake ────────────────────────────────
+        # ── 4. Wait for the opening handshake ─────────────────────────────────
+        # Accept either the v2 mobile client ({"type":"hello","client_proto":"v2"})
+        # or the legacy / test-harness frame ({"type":"start"}). The frame is only
+        # used as a go-ahead signal; nothing downstream reads it.
+        _expected = 'Expected {"type":"hello","client_proto":"v2"} or {"type":"start"} as first message'
         try:
             raw = await websocket.receive_text()
             hello = json.loads(raw)
         except WebSocketDisconnect:
             return
         except json.JSONDecodeError:
-            await _close_with_error(
-                websocket, "protocol_error",
-                "First frame must be a JSON hello", 4001,
-            )
+            await _close_with_error(websocket, "protocol_error", _expected, 4008)
             return
 
-        if hello.get("type") != "hello" or hello.get("client_proto") != "v2":
-            await _close_with_error(
-                websocket, "unsupported_proto",
-                "This server requires client_proto: v2. Update the app.",
-                4002,
-            )
-=======
-        # ── 4. Wait for the "start" handshake ─────────────────────────────────
-        try:
-            raw = await websocket.receive_text()
-            start_msg = json.loads(raw)
-        except WebSocketDisconnect:
-            return
-        except json.JSONDecodeError:
-            await _close_with_error(websocket, "protocol_error",
-                                    'Expected {"type":"start"} as first message', 4008)
-            return
-
-        if start_msg.get("type") != "start":
-            await _close_with_error(websocket, "protocol_error",
-                                    'Expected {"type":"start"} as first message', 4008)
-
+        if hello.get("type") not in ("hello", "start"):
+            await _close_with_error(websocket, "protocol_error", _expected, 4008)
             return
 
         # ── 5. Send "ready" with current form state ────────────────────────────
@@ -268,23 +237,6 @@ async def onboarding_ws(
                 + _action
             )
 
-=======
-        system_instruction = build_system_prompt(
-            schema,
-            state,
-            grounding_enabled=settings.onboarding_grounding_enabled,
-            bootstrap=bootstrap,
-        )
-
-        tool_dispatcher = ToolDispatcher(
-            websocket=websocket,
-            session_id=session_id,
-            repo=repo,
-            schema=schema,
-            bootstrap=bootstrap,
-        )
-
-
         live_session = GeminiLiveSession(
             websocket=websocket,
             session_id=session_id,
@@ -292,7 +244,6 @@ async def onboarding_ws(
             repo=repo,
             tool_dispatcher=tool_dispatcher,
             replay_context=replay_context or None,
-
             mobile_bridge=mobile_bridge,
             initial_state_text=initial_state_text,
             # Phase 1.5 — pass auth context for per-turn usage logging. Sourced
@@ -302,8 +253,6 @@ async def onboarding_ws(
             tenant_id=(state.tenant_id if state else None),
             user_id=None,  # Phase 1.6 — thread once route handler exposes user_id
             participant_id=(state.participant_id if state else None),
-=======
-
         )
         await live_session.run()
 
@@ -321,10 +270,7 @@ async def onboarding_ws(
             pass
     finally:
         # ── Issue resumable handle on non-terminal close (Phase E) ────────────
-
         state_after = None
-=======
-
         try:
             state_after = await repo.get_state(session_id)
             if state_after and not state_after.completed:
@@ -337,7 +283,6 @@ async def onboarding_ws(
                 log.debug("resumable_envelope_sent session=%s handle=%.8s…", session_id, handle)
         except Exception:
             pass  # best-effort — WS may already be closed
-
 
         # ── Best-effort summary flush on clean WS close ───────────────────────
         # Idempotent on (participant_id, step_number): if POST /complete already
@@ -387,8 +332,6 @@ async def onboarding_ws(
                 )
         except Exception:
             log.exception("ws_close_flush_failed session=%s", session_id)
-
-=======
 
         await repo.release_ws_lock(session_id)
         log.info("ws_lock_released session=%s", session_id)
