@@ -21,6 +21,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN pip install -U pip
 
+# Create virtual environment for shared dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install shared dependencies from services/requirements.txt
+COPY services/requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
+
 # shared/ lives inside services/ — same level as this Dockerfile
 COPY shared /app/shared
 RUN pip install /app/shared
