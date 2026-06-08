@@ -11,7 +11,7 @@ from fastapi import HTTPException, status
 # path, fall back to a no-op stub so the AI critical path never fails.
 # To enable real logging: `pip install -e sena-ai/shared/` from repo root.
 try:
-    from sena_common.usage_logger import UsageFeature, emit_usage
+    from services.shared import UsageFeature, emit_usage
 except ImportError:
     import enum
 
