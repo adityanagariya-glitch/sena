@@ -133,3 +133,6 @@ ai-sena/
 # ==========================================
 !requirements.txt
 !README.md
+!services/onboarding/**/*.md
+!services/voice/**/*.md
+!services/case_review/**/*.md

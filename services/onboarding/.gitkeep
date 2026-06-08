@@ -1,0 +1,36 @@
+# Documentation files in /services/onboarding
+## Root level
+- DEV_SETUP.md
+- FLUTTER_HANDOFF_OPTION_D.md
+
+## /docs
+- FLUTTER_DEV_DELETE_REPEATABLE_ROW.md
+- FLUTTER_HANDOFF_CONSENT_FIX.md
+- FLUTTER_HANDOFF_MASTER.md
+- STAFF_ONBOARDING_HANDOFF.md
+- VOICE_FRONTEND_FIXES.md
+- WEBHOOK_INTEGRATION.md
+- WS_PROTOCOL.md
+
+## /src/onboarding/prompts
+- onboarding_system copy.md
+- README.md
+
+### /modes
+- fresh.md
+- update.md
+
+### /steps/client
+- consent.md
+- documents.md
+- lifestyle_requirements.md
+- medical_information.md
+- ndis_plan_details.md
+- personal_information.md
+
+### /steps/staff
+- staff_banking.md
+- staff_documents.md
+- staff_personal_information.md
+- staff_policies.md
+- staff_role_information.md
