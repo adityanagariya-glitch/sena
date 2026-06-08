@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 # Phase 1 telemetry — opt-in by install. Stub if sena_common not on path.
 try:
-    from sena_common.usage_logger import UsageFeature, emit_usage
+    from services.shared import UsageFeature, emit_usage
 except ImportError:
     import enum
 
