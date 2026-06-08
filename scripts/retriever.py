@@ -157,7 +157,7 @@ def org_has_docs(org_id: str) -> bool:
         return False
 
 
-def build_filter(org_id: str) -> dict | None:
+def build_filter(org_id: str, doc_type: str = None) -> dict | None:
     """
     Determines the correct metadata filter based on org_id and doc availability.
 
@@ -171,15 +171,23 @@ def build_filter(org_id: str) -> dict | None:
         logger.info("Filter: none (superadmin — all docs)")
         return None
 
-    if org_has_docs(org_id):
-        # Org has its own docs — restrict to org only
-        logger.info(f"Filter: org-only ({org_id})")
-        return {"equals": {"key": "org_id", "value": org_id}}
+    org_filter = (
+        {"equals": {"key": "org_id", "value": org_id}}
+        if org_has_docs(org_id)
+        else {"equals": {"key": "org_id", "value": "ndis"}}
+    )
 
-    else:
-        # Org has no docs — fall back to NDIS only
-        logger.info(f"Filter: ndis-only (org {org_id} has no docs)")
-        return {"equals": {"key": "org_id", "value": "ndis"}}
+    logger.info(f"Filter: org={'own' if org_has_docs(org_id) else 'ndis'} | doc_type={doc_type or 'all'}")
+
+    if not doc_type:
+        return org_filter
+
+    return {
+        "andAll": [
+            org_filter,
+            {"equals": {"key": "doc_type", "value": doc_type}}
+        ]
+    }
 
 
 def boost_org_chunks(chunks: list, org_id: str) -> list:
@@ -337,7 +345,7 @@ Chunks:
     '''
 
 
-def retrieve(question: str, org_id: str = None, role: str = None) -> tuple[list, str, list]:
+def retrieve(question: str, org_id: str = None, role: str = None, doc_type: str = None) -> tuple[list, str, list]:
     """
     Retrieves relevant chunks from Bedrock KB then reranks using Nova Micro.
     org_id comes from JWT login session — not from question text.
@@ -366,7 +374,7 @@ def retrieve(question: str, org_id: str = None, role: str = None) -> tuple[list,
     }
 
     # Determine and apply filter
-    doc_filter = build_filter(org_id)
+    doc_filter = build_filter(org_id, doc_type)
     if doc_filter:
         retrieval_config["vectorSearchConfiguration"]["filter"] = doc_filter
 

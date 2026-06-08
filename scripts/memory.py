@@ -1,7 +1,7 @@
 # memory.py
 import boto3
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from config import REGION, MEMORY_ID, SESSIONS_TABLE, TURNS_TABLE
@@ -28,7 +28,7 @@ MAX_TURN_ANSWER_LENGTH = 300  # characters per turn to keep in memory
 def create_session(actor_id: str, session_id: str, first_question: str) -> dict:
     """Creates a new chat session in DynamoDB."""
     import time
-    now    = datetime.utcnow().isoformat()
+    now    = datetime.now(timezone.utc).isoformat()
     ttl    = int(time.time()) + (TTL_DAYS * 86400)
     title  = first_question[:60] + "..." if len(first_question) > 60 else first_question
 
@@ -72,7 +72,7 @@ def rename_session(actor_id: str, session_id: str, new_title: str) -> bool:
             UpdateExpression="SET title = :t, last_updated = :u",
             ExpressionAttributeValues={
                 ":t": new_title,
-                ":u": datetime.utcnow().isoformat()
+                ":u": datetime.now(timezone.utc).isoformat()
             }
         )
         logger.info(f"Session renamed: {session_id} → {new_title}")
@@ -88,7 +88,7 @@ def update_session_timestamp(actor_id: str, session_id: str):
         sessions_table.update_item(
             Key={"user_id": actor_id, "session_id": session_id},
             UpdateExpression="SET last_updated = :u",
-            ExpressionAttributeValues={":u": datetime.utcnow().isoformat()}
+            ExpressionAttributeValues={":u": datetime.now(timezone.utc).isoformat()}
         )
     except Exception as e:
         logger.error(f"Failed to update session timestamp: {e}")
@@ -99,7 +99,7 @@ def update_session_timestamp(actor_id: str, session_id: str):
 def save_turn(session_id: str, question: str, answer: str, sources: list) -> bool:
     """Saves a conversation turn to DynamoDB."""
     import time
-    now    = datetime.utcnow().isoformat()
+    now    = datetime.now(timezone.utc).isoformat()
     ttl    = int(time.time()) + (TTL_DAYS * 86400)
     turn_id = now  # ISO timestamp as sort key keeps chronological order
 
@@ -168,7 +168,7 @@ def write_to_agentcore(actor_id: str, session_id: str, question: str, answer: st
             memoryId=MEMORY_ID,
             actorId=actor_id,
             sessionId=session_id,
-            eventTimestamp=datetime.utcnow(),
+            eventTimestamp=datetime.now(timezone.utc),
             payload=[
                 {
                     "conversational": {

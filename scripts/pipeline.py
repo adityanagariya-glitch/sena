@@ -10,8 +10,7 @@ from memory import (
     get_memory_context,
     save_memory,
     create_session,
-    get_sessions,
-    get_turns
+    get_turns,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,8 @@ def run_pipeline(
     user_id:    str  = None,
     org_id:     str  = None,
     role:       str  = None,
-    is_new_chat: bool = False
+    is_new_chat: bool = False,
+    doc_type: str = None
 ) -> dict:
     """
     Full RAG pipeline with memory:
@@ -138,7 +138,7 @@ def run_pipeline(
 
     # Step 4: Retrieve from KB
     try:
-        chunks, context, sources = retrieve(rewritten_query, org_id=org_id, role=role)
+        _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
     except Exception as e:
         logger.error(f"Retrieval failed: {e}")
         return {
@@ -150,17 +150,6 @@ def run_pipeline(
             "sources":     [],
             "session_id":  session_id
         }
-
-    # DEBUG - remove before production
-    print(f"\n=== RETRIEVED CHUNKS ===")
-    for i, chunk in enumerate(chunks):
-        src   = chunk.get("location", {}).get("s3Location", {}).get("uri", "").split("/")[-1]
-        score = round(chunk.get("score", 0), 4)
-        text  = chunk["content"]["text"][:300].replace("\n", " ")
-        print(f"[{i+1}] Score: {score} | Source: {src}")
-        print(f"      Text: {text}")
-        print()
-    print(f"=== END CHUNKS ===\n")
 
     # Step 5: Check empty context
     if is_context_empty(context):

@@ -78,3 +78,7 @@ TURNS_TABLE    = os.environ.get("TURNS_TABLE",    f"sena-{ENV}-chat-turns")
 # # ── Auto Update and Auto Deletion ──────────────────────────────────────────────────────────────
 ADMIN_ROLES = os.environ.get("ADMIN_ROLES", "coordinator,superadmin").split(",")
 ORG_ADMIN   = os.environ.get("ORG_ADMIN", "superadmin,admin,coordinator").split(",")
+
+
+BACKEND_API_BASE = os.environ.get("BACKEND_API_BASE", "")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
