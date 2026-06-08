@@ -1,158 +1,135 @@
-venv/
-.env
-.pytest_cache/
-__pycache__/
-*.pyc
-# .gitignore for Sena AI monorepo
 
+# ==========================================
 # Python
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-dist/
-build/
 *.egg
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
+# Virtual Environments
+venv/
+.venv/
+env/
 
-# IDE
+# ==========================================
+# Environment & Secrets
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# IDEs & Editors
+# ==========================================
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Environment files (NEVER commit secrets)
-.env
-.env.local
-.env.production
-
-# Docker
-pgdata/
-
-# OS
+# ==========================================
+# Operating System
+# ==========================================
 .DS_Store
 Thumbs.db
+nul
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
+# ==========================================
+# Docker
+# ==========================================
+pgdata/
 
+# ==========================================
+# Logs
+# ==========================================
+*.log
+AI_logs.txt
+services/policy_proc/logs/
+
+# ==========================================
 # Alembic
+# ==========================================
 migrations/versions/*.pyc
 
-ndis_markdown_docs
-Figma
-
-# archive/
-# graphify-out/
-.ruff_cache/
-<<<<<<< HEAD
-# Claude Code — track project-level config (agents, rules, hooks, skills); exclude user-private runtime files
+# ==========================================
+# AI / Agent Frameworks
+# ==========================================
 .claude/settings.local.json
 .claude/hooks-state/
 .claude/*.flag
 .claude/gsd-instructions.md
-# .gemini/
+
+# Ignore local Claude directories anywhere
+**/.claude/
+
+# Ignore CLAUDE.md files anywhere
+**/CLAUDE.md
+CLAUDE.local.md
+
+.gemini/
+.kiro/
+.qoder/
+.agents/
+.agent_memory/
+.remember
+.mcp.json
+.qoder/mcp.json
+
+# ==========================================
+# Code Review / Graph Tools
+# ==========================================
+.code-review-graph/
+.code-review-graphignore
+.graphifyignore
+graphify-out/
+graphify-out/cache/
+
+# ==========================================
+# Generated Documentation
+# ==========================================
+ndis_markdown_docs/
+Figma/
+
+# Generated PDFs and HTML reports
+*.pdf
+*.html
+*.md
+*.txt
+# ==========================================
+# AI Project Outputs
+# ==========================================
+services/casenote_monthly/out/_usage.json
+
+# ==========================================
+# GitHub / Keys
+# ==========================================
 github
 github.pub
 
-# Windows reserved device name (not a real file)
-nul
-AI_logs.txt
-graphify-out/cache/
-CLAUDE.local.md
-.github/context-cold.md
-.github/copilot-instructions.md
-CLAUDE.md
-venv/
-.env
-.pytest_cache/
-__pycache__/
-*.pyc
-# .gitignore for Sena AI monorepo
+# ==========================================
+# Local Project Copies
+# ==========================================
+sena-ai/
+ai-sena/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-dist/
-build/
-*.egg
-
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Environment files (NEVER commit secrets)
-.env
-.env.local
-.env.production
-
-# Docker
-pgdata/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-
-# Alembic
-migrations/versions/*.pyc
-
-ndis_markdown_docs
-Figma
-
-# archive/
-# graphify-out/
-.ruff_cache/
-=======
->>>>>>> ai-chatbot
-.claude/
-.gemini/
-
-# Ignore the .claude directory in any subfolder
-**/.claude/
-
-# Ignore CLAUDE.md files in any subfolder
-**/CLAUDE.md
-
-# Added by code-review-graph
-.code-review-graph/
-.agent_memory/
-**/.memory_sessions.json
-.agents/
-.mcp.json
-graphify-out/
-*.html
-*.pdf
-.remember
-*.md
-*.txt
-!requirements.txt
+# ==========================================
+# Tool Configs
+# ==========================================
 .claudeignore
-.code-review-graphignore
-.graphifyignore
 .cursorrules
 .windsurfrules
 .opencode.json
-.qoder/mcp.json
-sena-ai/
-ai-sena/
-.kiro/
-.qoder/
-*.log
-services/policy_proc/logs/
-ai-sena/
-services/casenote_monthly/out/_usage.json
-CLAUDE.md
+
+# ==========================================
+# Keep Important Files
+# ==========================================
+!requirements.txt
+!README.md
