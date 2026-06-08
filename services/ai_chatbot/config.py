@@ -21,7 +21,7 @@ LOGS_DIR = Path(os.getenv("LOGS_DIR", _THIS_DIR / "logs"))
 
 # ---- Ports / bind ----
 HOST = os.getenv("GATEWAY_HOST", "0.0.0.0")          # gateway public bind
-GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", "9000"))
+GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", "8003"))
 
 # Children bind to loopback only — they're reachable solely via the gateway proxy.
 CHILD_HOST = os.getenv("CHILD_HOST", "127.0.0.1")

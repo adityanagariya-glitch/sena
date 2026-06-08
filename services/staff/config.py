@@ -3,14 +3,9 @@ import os
 import boto3
 from pathlib import Path
 
-# Auto-load .env from common locations so users don't have to `export` manually.
 try:
     from dotenv import load_dotenv
-    _here = Path(__file__).resolve()
-    for candidate in (Path.cwd() / ".env", _here.parent / ".env", _here.parents[2] / ".env"):
-        if candidate.is_file():
-            load_dotenv(candidate, override=False)
-            break
+    load_dotenv(Path("/home/main/SENA/.env"), override=False)
 except ImportError:
     pass
 

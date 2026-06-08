@@ -1,13 +1,13 @@
 # Unified multi-stage Dockerfile for all SENA AI services.
 #
-# Build context must be the repo root (parent of services/):
+# Build context = services/ directory (where this file lives).
+# All COPY paths are relative to services/.
+#
+# Build via compose (from repo root):
 #   docker compose -f services/docker-compose.deploy.yml up --build
 #
-# Build a single stage manually:
+# Build a single stage manually (from services/):
 #   docker build --target voice -t sena-voice .
-#   docker build --target onboarding -t sena-onboarding .
-#   docker build --target case-review -t sena-case-review .
-#   docker build --target ai-chatbot -t sena-ai-chatbot .
 
 # ── Base: shared Python env + sena-common ─────────────────────────────────
 FROM python:3.12-slim AS base
@@ -21,6 +21,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN pip install -U pip
 
+# shared/ lives inside services/ — same level as this Dockerfile
 COPY shared /app/shared
 RUN pip install /app/shared
 
@@ -28,13 +29,16 @@ RUN pip install /app/shared
 # ── Voice — case note dictation via Bedrock (port 8000) ───────────────────
 FROM base AS voice
 
-COPY services/voice/pyproject.toml /app/pyproject.toml
+COPY voice/pyproject.toml /app/pyproject.toml
 RUN pip install .
 
-COPY services/voice/src /app/src
+COPY voice/src /app/src
 ENV PYTHONPATH=/app/src
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
 
 CMD ["uvicorn", "voice.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
 
@@ -42,10 +46,11 @@ CMD ["uvicorn", "voice.main:create_app", "--factory", "--host", "0.0.0.0", "--po
 # ── Onboarding — Gemini Live voice onboarding (port 8001) ─────────────────
 FROM base AS onboarding
 
-COPY services/onboarding/requirements.txt /app/requirements.txt
-RUN pip install -r /app/requirements.txt
+# Copy both together so setuptools can find packages under src/
+COPY onboarding/pyproject.toml /app/pyproject.toml
+COPY onboarding/src /app/src
+RUN pip install .
 
-COPY services/onboarding/src /app/src
 ENV PYTHONPATH=/app/src
 
 EXPOSE 8001
@@ -59,8 +64,8 @@ CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", 
 # ── Case Review — pgvector intelligence layer (port 8002) ─────────────────
 FROM base AS case-review
 
-COPY services/case_review/pyproject.toml /app/pyproject.toml
-COPY services/case_review/src /app/src
+COPY case_review/pyproject.toml /app/pyproject.toml
+COPY case_review/src /app/src
 RUN pip install .
 
 ENV PYTHONPATH=/app/src
@@ -73,6 +78,34 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 CMD ["uvicorn", "case_review.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8002"]
 
 
+# ── Casenote Monthly — NDIS report generator via Bedrock (port 8004) ──────
+FROM base AS casenote-monthly
+
+COPY casenote_monthly/requirements.txt /tmp/req-casenote.txt
+RUN pip install -r /tmp/req-casenote.txt
+
+# Copy only the Python source files — exclude .env, __pycache__, out/, reports/
+COPY casenote_monthly/api_main.py \
+     casenote_monthly/auth.py \
+     casenote_monthly/config.py \
+     casenote_monthly/cleaner.py \
+     casenote_monthly/prompt.py \
+     casenote_monthly/dates.py \
+     casenote_monthly/guardrails.py \
+     casenote_monthly/agents_types.py \
+     casenote_monthly/bedrock_client.py \
+     /app/
+
+WORKDIR /app
+
+EXPOSE 8004
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8004/health').status==200 else 1)"
+
+CMD ["uvicorn", "api_main:app", "--host", "0.0.0.0", "--port", "8004"]
+
+
 # ── AI Chatbot — gateway + staff API + policy API (port 8003) ─────────────
 #
 # The gateway spawns staff_api and policy_api as child processes bound to
@@ -80,22 +113,20 @@ CMD ["uvicorn", "case_review.main:create_app", "--factory", "--host", "0.0.0.0",
 FROM base AS ai-chatbot
 
 # Gateway deps (fastapi, uvicorn, httpx, websockets, jinja2)
-COPY services/ai_chatbot/requirements.txt /tmp/req-gateway.txt
+COPY ai_chatbot/requirements.txt /tmp/req-gateway.txt
 RUN pip install -r /tmp/req-gateway.txt
 
 # Staff + policy child deps (boto3 for Bedrock, PyJWT for auth)
 RUN pip install boto3 PyJWT
 
 # Copy all code the gateway manages
-COPY services/ai_chatbot  /app/services/ai_chatbot
-COPY services/staff       /app/services/staff
-COPY services/policy_proc /app/services/policy_proc
+COPY ai_chatbot  /app/services/ai_chatbot
+COPY staff       /app/services/staff
+COPY policy_proc /app/services/policy_proc
 
 # Repo root on PYTHONPATH so `services.policy_proc.scripts.*` imports resolve
 ENV PYTHONPATH=/app
 
-# Gateway resolves STAFF_DIR and POLICY_DIR via __file__ automatically,
-# but explicit env vars let the compose file override them if needed.
 ENV STAFF_DIR=/app/services/staff \
     POLICY_DIR=/app/services/policy_proc \
     GATEWAY_HOST=0.0.0.0 \

@@ -7,7 +7,7 @@ health-checks the children itself (MANAGE_CHILDREN).
 
 Run:
     cd services/ai_chatbot && ./run.sh
-    # or: uvicorn gateway:app --host 0.0.0.0 --port 9000
+    # or: uvicorn gateway:app --host 0.0.0.0 --port 8003
 """
 import asyncio
 import contextlib
