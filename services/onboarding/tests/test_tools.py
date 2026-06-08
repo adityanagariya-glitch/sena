@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 from __future__ import annotations
 
 from typing import Any
@@ -488,4 +488,4 @@ async def test_dispatch_unknown_tool(dispatcher) -> None:
     result = await dispatcher.dispatch("frobnicate", {})
     assert result["ok"] is False
     assert "unknown tool" in result["error"]
->>>>>>> ai-chatbot
+

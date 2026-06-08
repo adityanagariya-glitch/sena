@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """Renders the v2 onboarding system prompt.
 
 Mobile owns schema + validation + state. The builder substitutes 6 simple
@@ -140,7 +139,6 @@ def build_system_prompt(
         .replace("__STEP_RULES__", _step_rules_section(turn.step.id))
         .replace("__TURN_JSON__", _bootstrap_state_json(turn))
     )
-=======
 """
 Builds the Gemini system instruction for an onboarding session.
 
@@ -274,4 +272,3 @@ def build_system_prompt(
         result += f"\n\nSCREEN CONTEXT\n{screen_context_text}"
 
     return result
->>>>>>> ai-chatbot

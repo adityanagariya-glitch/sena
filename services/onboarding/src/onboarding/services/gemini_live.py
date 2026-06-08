@@ -19,7 +19,6 @@ Key implementation notes:
   - No proactive audio on gemini-3.1-flash-live-preview; greeting fires on
     the user's first utterance (system prompt handles the wording)
 """
-<<<<<<< HEAD
 
 from __future__ import annotations
 
@@ -27,13 +26,6 @@ import asyncio
 import contextlib
 import hashlib
 import json
-=======
-from __future__ import annotations
-
-import asyncio
-import json
-import logging
->>>>>>> ai-chatbot
 import time
 from typing import TYPE_CHECKING
 
@@ -50,7 +42,6 @@ from onboarding.services.screen_context import (
     payload_hash,
     render_injection_text,
 )
-<<<<<<< HEAD
 from onboarding.services.tools import FUNCTION_DECLS
 
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
@@ -126,18 +117,6 @@ def _is_client_disconnect(exc: BaseException) -> bool:
         return True
     return isinstance(exc, RuntimeError) and "close message has been sent" in str(exc)
 
-=======
-from onboarding.services.tools import FUNCTION_DECLS, POLICY_BLOCK_DECL, PolicyBlockSignal
-
-if TYPE_CHECKING:
-    from onboarding.repositories.state_repo import FormStateRepo
-    from onboarding.services.tools import ToolDispatcher
-
-log = logging.getLogger(__name__)
-
-_SILENCE_POLL_SEC = 2.0  # silence monitor check interval
-
->>>>>>> ai-chatbot
 
 class GeminiLiveSession:
     """
@@ -157,7 +136,6 @@ class GeminiLiveSession:
         websocket: WebSocket,
         session_id: str,
         system_instruction: str,
-<<<<<<< HEAD
         repo: FormStateRepo,
         tool_dispatcher: ToolDispatcher | None = None,
         replay_context: str | None = None,
@@ -167,11 +145,6 @@ class GeminiLiveSession:
         tenant_id: str | None = None,
         user_id: str | None = None,
         participant_id: str | None = None,
-=======
-        repo: "FormStateRepo",
-        tool_dispatcher: "ToolDispatcher | None" = None,
-        replay_context: str | None = None,
->>>>>>> ai-chatbot
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -179,7 +152,6 @@ class GeminiLiveSession:
         self._repo = repo
         self._tools = tool_dispatcher
         self._replay_context = replay_context
-<<<<<<< HEAD
         self._mobile_bridge = mobile_bridge
         # Phase 1.5 — auth context for per-turn usage logging. Sourced from
         # FormState at WS bootstrap (which itself was populated by the route
@@ -195,13 +167,10 @@ class GeminiLiveSession:
         # already filled" and without waiting for a get_current_state round-trip.
         self._initial_state_text = initial_state_text
         self._current_turn: TurnPayload | None = None
-=======
->>>>>>> ai-chatbot
         self._turn_id = 0
         self._last_screen_hash: str | None = None
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
-<<<<<<< HEAD
         # Kickoff audio-suppression shield. gemini-3.1-flash-live-preview has a
         # known VAD bug: if the participant talks over the model's OPENING
         # greeting, the interrupt cancels turn 0 with zero output chunks and the
@@ -216,8 +185,6 @@ class GeminiLiveSession:
         # in case the opener produces no audio at all.
         self._kickoff_shield_active: bool = True
         self._kickoff_grace_until: float = 0.0
-=======
->>>>>>> ai-chatbot
         # Voice protocol — preserve the words Gemini was saying when interrupted
         # so the next turn can address the interruption AND the unfinished thought.
         # Injected as a hidden [INTERRUPTED] text turn right after the cut-off.
@@ -226,7 +193,6 @@ class GeminiLiveSession:
         # the first "still there?" check-in; the second timeout then summarises
         # pending fields. Reset to False on any new user audio.
         self._silence_warned: bool = False
-<<<<<<< HEAD
         # Set True after the summary step fires; no further watchdog cues until
         # a real user utterance arrives. Prevents the "keeps speaking" loop.
         self._silence_exhausted: bool = False
@@ -264,8 +230,6 @@ class GeminiLiveSession:
             (len(FUNCTION_DECLS) if tool_dispatcher else 0),
             ("yes" if replay_context else "no"),
         )
-=======
->>>>>>> ai-chatbot
 
     # ── Public ────────────────────────────────────────────────────────────────
 
@@ -281,7 +245,6 @@ class GeminiLiveSession:
         # LiveConnectConfig property.
         compression_cfg = None
         try:
-<<<<<<< HEAD
             # Option D Layer 3 — aggressive sliding-window compression so
             # stale conversational drift gets summarised away faster, leaving
             # recent function_response.state payloads to dominate the model's
@@ -290,10 +253,6 @@ class GeminiLiveSession:
             # See .claude/plans/per-screen-session-model/ISSUE_AND_SOLUTION.md §7.12.
             compression_cfg = types.ContextWindowCompressionConfig(
                 sliding_window=types.SlidingWindow(target_tokens=4000)
-=======
-            compression_cfg = types.ContextWindowCompressionConfig(
-                sliding_window=types.SlidingWindow()
->>>>>>> ai-chatbot
             )
         except (AttributeError, TypeError):
             # SDK older than the compression types — keep going without it.
@@ -322,18 +281,11 @@ class GeminiLiveSession:
             # Phase C/E — tool list built by grounding module; includes Google Search
             # when SENA_AI_ONBOARDING_GROUNDING_ENABLED=true (default off).
             tools=build_live_tools(
-<<<<<<< HEAD
                 FUNCTION_DECLS,
                 grounding_enabled=settings.onboarding_grounding_enabled,
             )
             if self._tools
             else None,
-=======
-                FUNCTION_DECLS if settings.onboarding_grounding_enabled
-                else [*FUNCTION_DECLS, POLICY_BLOCK_DECL],
-                grounding_enabled=settings.onboarding_grounding_enabled,
-            ) if self._tools else None,
->>>>>>> ai-chatbot
             # Multi-turn REQUIRES explicit realtime_input_config with VAD.
             # Without it the receive() iterator exits after the first turn and
             # the session silently stops processing audio.
@@ -347,24 +299,16 @@ class GeminiLiveSession:
                     start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
                     end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
                     prefix_padding_ms=200,
-<<<<<<< HEAD
                     # 3 s — NDIS participants with cognitive/communication
                     # support needs often pause 2-3 s mid-answer; 1 s cut them
                     # off prematurely (user-reported: "had to ask AI to take
                     # its time"). 3 s matches the upper end of natural
                     # conversational pause without making the session feel stuck.
                     silence_duration_ms=3000,
-=======
-                    silence_duration_ms=1000,
->>>>>>> ai-chatbot
                 ),
                 activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
                 turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
             ),
-<<<<<<< HEAD
-=======
-            session_resumption=types.SessionResumptionConfig(handle=None),
->>>>>>> ai-chatbot
             output_audio_transcription=types.AudioTranscriptionConfig(),
             input_audio_transcription=types.AudioTranscriptionConfig(),
         )
@@ -372,20 +316,15 @@ class GeminiLiveSession:
         async with client.aio.live.connect(
             model=settings.gemini_live_model_id, config=config
         ) as session:
-<<<<<<< HEAD
             log.info(
                 "gemini_connected session=%s model=%s",
                 self._session_id,
                 settings.gemini_live_model_id,
             )
-=======
-            log.info("gemini_connected session=%s model=%s", self._session_id, settings.gemini_live_model_id)
->>>>>>> ai-chatbot
             # Phase E — inject replay context so model continues without reintroducing
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
                 log.debug("replay_context_injected session=%s", self._session_id)
-<<<<<<< HEAD
             # Seed the live screen state as a hidden context turn so the model's
             # FIRST greeting already knows which fields are filled — no
             # get_current_state round-trip, no "these are already filled"
@@ -409,9 +348,6 @@ class GeminiLiveSession:
             # turn_complete (e.g. silent / model stalls), lift the shield after
             # 8 s so the participant is never permanently muted.
             self._kickoff_grace_until = time.monotonic() + 8.0
-=======
-            self._last_audio_at = time.monotonic()
->>>>>>> ai-chatbot
             b2g = asyncio.create_task(self._browser_to_gemini(session))
             g2b = asyncio.create_task(self._gemini_to_browser(session))
             silence = asyncio.create_task(self._silence_monitor(session))
@@ -425,7 +361,6 @@ class GeminiLiveSession:
                 g2b.cancel()
                 silence.cancel()
                 await asyncio.gather(g2b, silence, return_exceptions=True)
-<<<<<<< HEAD
                 # client_stop cancels g2b before its final turn_complete emits,
                 # so flush the last turn's usage here. Telemetry never breaks
                 # teardown — swallow any error.
@@ -433,8 +368,6 @@ class GeminiLiveSession:
                     self._flush_pending_usage(reason="session_end")
                 except Exception:
                     log.exception("usage_flush_failed session=%s", self._session_id)
-=======
->>>>>>> ai-chatbot
         log.info("gemini_disconnected session=%s", self._session_id)
 
     # ── Private: client → Gemini ──────────────────────────────────────────────
@@ -453,7 +386,6 @@ class GeminiLiveSession:
 
                 if raw_bytes:
                     self._last_audio_at = time.monotonic()
-<<<<<<< HEAD
                     # User is talking — clear silence watchdog state so the next
                     # silence period restarts the full warn → summary cycle.
                     self._silence_warned = False
@@ -475,12 +407,6 @@ class GeminiLiveSession:
                             )
                         else:
                             continue
-=======
-                    # User is talking — clear the silence watchdog state so a
-                    # later silence triggers the FIRST-step warn again, not the
-                    # SECOND-step summary.
-                    self._silence_warned = False
->>>>>>> ai-chatbot
                     # Send all audio unconditionally — Gemini's VAD + START_OF_ACTIVITY_INTERRUPTS
                     # handles barge-in natively. The old _agent_speaking echo gate blocked user
                     # audio after turn N+1 model audio arrived, causing VAD to stop firing.
@@ -489,15 +415,11 @@ class GeminiLiveSession:
                     )
                     total_chunks += 1
                     if total_chunks % 50 == 0:
-<<<<<<< HEAD
                         log.info(
                             "audio_streaming chunks=%d session=%s",
                             total_chunks,
                             self._session_id,
                         )
-=======
-                        log.info("audio_streaming chunks=%d session=%s", total_chunks, self._session_id)
->>>>>>> ai-chatbot
 
                 elif raw_text:
                     stop_requested = await self._handle_control(session, raw_text)
@@ -531,7 +453,6 @@ class GeminiLiveSession:
             # Signal end-of-utterance so Gemini flushes its audio buffer
             await session.send_realtime_input(audio_stream_end=True)
 
-<<<<<<< HEAD
         elif msg_type == "tool_response":
             request_id = data.get("request_id")
             result = data.get("result", {})
@@ -565,13 +486,6 @@ class GeminiLiveSession:
 
         elif msg_type == "validation_cleared":
             await self._handle_validation_cleared(data)
-=======
-        elif msg_type == "screen_state":
-            await self._handle_screen_state(session, data, version=1)
-
-        elif msg_type == "screen_state_v2":
-            await self._handle_screen_state(session, data, version=2)
->>>>>>> ai-chatbot
 
         elif msg_type == "stop":
             log.info("client_stop session=%s", self._session_id)
@@ -580,7 +494,6 @@ class GeminiLiveSession:
         # "start" arrives before run() — safe to ignore here if it slips through
         return False
 
-<<<<<<< HEAD
     async def _handle_validation_failed(self, session: genai.live.AsyncSession, data: dict) -> None:
         """Flutter reports a client-side validation rejection — upsert into
         pending_validation_errors and inject a re-ask prompt into Gemini."""
@@ -711,10 +624,6 @@ class GeminiLiveSession:
 
     async def _handle_screen_state(
         self, session: genai.live.AsyncSession, data: dict, *, version: int = 1
-=======
-    async def _handle_screen_state(
-        self, session: "genai.live.AsyncSession", data: dict, *, version: int = 1
->>>>>>> ai-chatbot
     ) -> None:
         """
         Validate, deduplicate, and inject a screen_state (v1 or v2) message as a
@@ -726,15 +635,11 @@ class GeminiLiveSession:
         raw_data = data.get("data", {})
         h = payload_hash(raw_data)
         if h == self._last_screen_hash:
-<<<<<<< HEAD
             log.debug(
                 "screen_state_duplicate_dropped session=%s version=%d",
                 self._session_id,
                 version,
             )
-=======
-            log.debug("screen_state_duplicate_dropped session=%s version=%d", self._session_id, version)
->>>>>>> ai-chatbot
             return
 
         try:
@@ -745,7 +650,6 @@ class GeminiLiveSession:
                 v1_msg = ScreenStateMessage(type="screen_state", data=raw_data)
                 state_v2 = from_v1(v1_msg, session_step_id=None)
         except ValidationError as exc:
-<<<<<<< HEAD
             log.warning(
                 "screen_state_invalid session=%s version=%d error=%s",
                 self._session_id,
@@ -760,19 +664,11 @@ class GeminiLiveSession:
                         "message": str(exc),
                     }
                 )
-=======
-            log.warning("screen_state_invalid session=%s version=%d error=%s",
-                        self._session_id, version, exc)
-            await self._ws.send_text(
-                json.dumps({"type": "error", "code": "screen_state_invalid",
-                            "message": str(exc)})
->>>>>>> ai-chatbot
             )
             return
 
         self._last_screen_hash = h
         injection = render_injection_text(state_v2)
-<<<<<<< HEAD
         log.debug(
             "screen_state_inject session=%s version=%d",
             self._session_id,
@@ -909,13 +805,6 @@ class GeminiLiveSession:
             self._turn_id,
             self._session_id,
         )
-=======
-        log.debug("screen_state_inject session=%s version=%d", self._session_id, version)
-        await session.send_realtime_input(text=injection)
-
-        if settings.debug:
-            await self._ws.send_text(json.dumps({"type": "screen_state_ack", "accepted": True, "version": version}))
->>>>>>> ai-chatbot
 
     # ── Private: Gemini → client ──────────────────────────────────────────────
 
@@ -936,7 +825,6 @@ class GeminiLiveSession:
             while True:
                 loop_iter += 1
                 async for msg in session.receive():
-<<<<<<< HEAD
                     # ── Usage telemetry (Phase 1) — cumulative per session ──
                     # `msg.usage_metadata` may arrive on any event; we keep the
                     # latest cumulative read and emit the delta at turn_complete.
@@ -969,10 +857,6 @@ class GeminiLiveSession:
                         # the per-turn usage emit at turn_complete.
                         _calls = getattr(msg.tool_call, "function_calls", None) or []
                         self._tool_calls_in_turn += len(_calls)
-=======
-                    # ── Tool calls (Phase C) — handled before server_content ──
-                    if self._tools and getattr(msg, "tool_call", None):
->>>>>>> ai-chatbot
                         await self._handle_tool_call(session, msg.tool_call)
                         if self._tools.step_completed:
                             # Let queued agent audio flush, then end loop
@@ -1006,43 +890,26 @@ class GeminiLiveSession:
                                         await self._ws.send_text(json.dumps({"type": "turn_start"}))
                                         turn_started = True
                                         self._gemini_is_speaking = True
-<<<<<<< HEAD
                                         # Do NOT send audio_stream_end here in
                                         # auto-VAD mode — it is only honoured
                                         # in manual-VAD mode and otherwise
                                         # corrupts VAD state. Echo is fully
                                         # handled by Flutter mic mute.
-=======
-                                        # NOTE: Do NOT send audio_stream_end=True here.
-                                        # Per Gemini Live API: audio_stream_end means
-                                        # "microphone turned off / stream closed" — it
-                                        # signals session-level end-of-input, not a
-                                        # mid-conversation flush. Sending it on every
-                                        # turn corrupts VAD state and causes Gemini to
-                                        # mis-handle subsequent user audio. Echo must
-                                        # be solved on the client (Flutter mic mute).
->>>>>>> ai-chatbot
                                     await self._ws.send_bytes(part.inline_data.data)
                                     chunk_count += 1
 
                         # ── Interruption (user spoke over the agent) ───────────
                         if sc.interrupted:
-<<<<<<< HEAD
                             log.info(
                                 "interrupted turn=%d chunks_before=%d session=%s",
                                 self._turn_id,
                                 chunk_count,
                                 self._session_id,
                             )
-=======
-                            log.info("interrupted turn=%d chunks_before=%d session=%s",
-                                     self._turn_id, chunk_count, self._session_id)
->>>>>>> ai-chatbot
                             interrupted_intent: str | None = None
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
                                 interrupted_intent = full_text.strip() or None
-<<<<<<< HEAD
                                 log.info(
                                     "AGENT_SAID(interrupted) %r session=%s",
                                     full_text,
@@ -1063,13 +930,6 @@ class GeminiLiveSession:
                                         "text": full_text,
                                         "turn_id": self._turn_id,
                                     },
-=======
-                                log.info("AGENT_SAID(interrupted) %r session=%s", full_text, self._session_id)
-                                await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
-                                await self._repo.append_transcript(
-                                    self._session_id,
-                                    {"speaker": "agent", "text": full_text, "turn_id": self._turn_id},
->>>>>>> ai-chatbot
                                     ttl_sec=settings.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
@@ -1077,11 +937,8 @@ class GeminiLiveSession:
                             turn_started = False
                             chunk_count = 0
                             self._gemini_is_speaking = False
-<<<<<<< HEAD
                             # Reset silence timer — user gets a fresh window after each agent turn
                             self._last_audio_at = time.monotonic()
-=======
->>>>>>> ai-chatbot
 
                             # Voice protocol — preserve the interrupted thought
                             # so the next agent turn can address the user's
@@ -1095,11 +952,7 @@ class GeminiLiveSession:
                                     await session.send_realtime_input(
                                         text=(
                                             "[INTERRUPTED] You were saying: "
-<<<<<<< HEAD
                                             f'"{interrupted_intent}". '
-=======
-                                            f"\"{interrupted_intent}\". "
->>>>>>> ai-chatbot
                                             "Address what the user just said first, "
                                             "then return to that thought only if it "
                                             "is still relevant."
@@ -1120,7 +973,6 @@ class GeminiLiveSession:
                         if sc.turn_complete:
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
-<<<<<<< HEAD
                                 log.info(
                                     "AGENT_SAID %r session=%s",
                                     full_text,
@@ -1141,18 +993,10 @@ class GeminiLiveSession:
                                         "text": full_text,
                                         "turn_id": self._turn_id,
                                     },
-=======
-                                log.info("AGENT_SAID %r session=%s", full_text, self._session_id)
-                                await self._ws.send_text(json.dumps({"type": "agent_said", "text": full_text}))
-                                await self._repo.append_transcript(
-                                    self._session_id,
-                                    {"speaker": "agent", "text": full_text, "turn_id": self._turn_id},
->>>>>>> ai-chatbot
                                     ttl_sec=settings.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "turn_complete"}))
-<<<<<<< HEAD
                             log.info(
                                 "turn_complete chunks=%d turn=%d session=%s",
                                 chunk_count,
@@ -1230,20 +1074,13 @@ class GeminiLiveSession:
                                     self._usage_cum_response_audio
                                 )
 
-=======
-                            log.info("turn_complete chunks=%d turn=%d session=%s",
-                                     chunk_count, self._turn_id, self._session_id)
->>>>>>> ai-chatbot
                             self._turn_id += 1
                             chunk_count = 0
                             turn_started = False
                             self._gemini_is_speaking = False
-<<<<<<< HEAD
                             self._tool_calls_in_turn = 0
                             # Reset silence timer — user gets a fresh window after each agent turn
                             self._last_audio_at = time.monotonic()
-=======
->>>>>>> ai-chatbot
                             if self._tools:
                                 self._tools.set_turn_id(self._turn_id)
                             # Phase C — advance_step closed the step; end loop
@@ -1262,12 +1099,8 @@ class GeminiLiveSession:
                         if gemini_handle:
                             log.debug(
                                 "gemini_session_handle_updated session=%s handle=%.12s…",
-<<<<<<< HEAD
                                 self._session_id,
                                 gemini_handle,
-=======
-                                self._session_id, gemini_handle,
->>>>>>> ai-chatbot
                             )
 
                     # ── GoAway — Gemini about to close the connection ──────────
@@ -1277,7 +1110,6 @@ class GeminiLiveSession:
                     # gap with no indication a reconnect is needed.
                     if msg.go_away:
                         time_left = msg.go_away.time_left
-<<<<<<< HEAD
                         log.warning(
                             "go_away time_left=%s session=%s",
                             time_left,
@@ -1303,41 +1135,16 @@ class GeminiLiveSession:
                     loop_iter,
                     self._session_id,
                 )
-=======
-                        log.warning("go_away time_left=%s session=%s",
-                                    time_left, self._session_id)
-                        try:
-                            ms: int = 0
-                            if time_left is not None:
-                                try:
-                                    ms = int(time_left.total_seconds() * 1000)
-                                except Exception:
-                                    pass
-                            await self._ws.send_text(json.dumps({
-                                "type": "go_away",
-                                "time_left_ms": ms,
-                            }))
-                        except Exception:
-                            pass
-
-                # receive() iterator exhausted — re-enter for next turn
-                log.debug("g2b_recv_iter_end loop=%d session=%s", loop_iter, self._session_id)
->>>>>>> ai-chatbot
                 await asyncio.sleep(0.01)
                 continue
 
         except (WebSocketDisconnect, asyncio.CancelledError):
             pass
-<<<<<<< HEAD
         except Exception as exc:
             if _is_client_disconnect(exc):
                 log.info("g2b_client_disconnected session=%s", self._session_id)
             else:
                 log.exception("g2b_error session=%s", self._session_id)
-=======
-        except Exception:
-            log.exception("g2b_error session=%s", self._session_id)
->>>>>>> ai-chatbot
 
     # ── Private: silence monitor ──────────────────────────────────────────────
 
@@ -1366,27 +1173,19 @@ class GeminiLiveSession:
             while True:
                 await asyncio.sleep(_SILENCE_POLL_SEC)
                 elapsed = time.monotonic() - self._last_audio_at
-<<<<<<< HEAD
                 if (
                     elapsed < settings.onboarding_silence_timeout_sec
                     or self._gemini_is_speaking
                     or self._silence_exhausted
                 ):
-=======
-                if elapsed < settings.onboarding_silence_timeout_sec or self._gemini_is_speaking:
->>>>>>> ai-chatbot
                     continue
 
                 if not self._silence_warned:
                     # First fire — gentle "are you still there?" cue.
                     log.info(
                         "silence_watchdog fired threshold=%.0fs step=warn session=%s",
-<<<<<<< HEAD
                         elapsed,
                         self._session_id,
-=======
-                        elapsed, self._session_id,
->>>>>>> ai-chatbot
                     )
                     cue = (
                         "[SILENCE TIMEOUT] The participant has been silent. "
@@ -1402,13 +1201,9 @@ class GeminiLiveSession:
                     log.info(
                         "silence_watchdog fired threshold=%.0fs step=summary "
                         "pending=%d session=%s",
-<<<<<<< HEAD
                         elapsed,
                         len(pending_labels),
                         self._session_id,
-=======
-                        elapsed, len(pending_labels), self._session_id,
->>>>>>> ai-chatbot
                     )
                     if pending_labels:
                         joined = ", ".join(pending_labels[:6])
@@ -1425,16 +1220,9 @@ class GeminiLiveSession:
                             "silent. Reassure them you're here whenever they're "
                             "ready, in Australian English."
                         )
-<<<<<<< HEAD
                     self._silence_exhausted = True
                 with contextlib.suppress(Exception):
                     await session.send_realtime_input(text=cue)
-=======
-                try:
-                    await session.send_realtime_input(text=cue)
-                except Exception:
-                    pass
->>>>>>> ai-chatbot
                 # Reset the audio-at timestamp so the watchdog doesn't fire
                 # again immediately. _silence_warned stays True until a real
                 # user utterance arrives in _browser_to_gemini.
@@ -1454,12 +1242,8 @@ class GeminiLiveSession:
                 return []
             pending: list[str] = []
             for section in schema.sections:
-<<<<<<< HEAD
                 default_val = {} if not section.is_repeatable else []
                 section_values = state.values.get(section.id) or default_val
-=======
-                section_values = state.values.get(section.id) or ({} if not section.is_repeatable else [])
->>>>>>> ai-chatbot
                 for f in section.all_fields():
                     if not f.required or f.visible_if is not None:
                         continue
@@ -1484,11 +1268,7 @@ class GeminiLiveSession:
     async def _handle_tool_call(
         self,
         session: genai.live.AsyncSession,
-<<<<<<< HEAD
         tool_call: types.LiveServerToolCall,
-=======
-        tool_call: "types.LiveServerToolCall",
->>>>>>> ai-chatbot
     ) -> None:
         """
         Dispatch every function call in a tool_call batch and send the
@@ -1506,7 +1286,6 @@ class GeminiLiveSession:
             args_dict = dict(call.args) if call.args else {}
             try:
                 result = await self._tools.dispatch(call.name, args_dict)
-<<<<<<< HEAD
             except Exception as exc:
                 if _is_client_disconnect(exc):
                     # Client WS dropped mid-dispatch — abort the batch quietly;
@@ -1527,20 +1306,6 @@ class GeminiLiveSession:
                     "reason": "Internal dispatch error",
                     "code": "dispatch_error",
                 }
-=======
-            except PolicyBlockSignal as exc:
-                log.info("policy_block_signal question=%r session=%s", exc.question, self._session_id)
-                await self._ws.send_text(json.dumps({
-                    "type": "error",
-                    "code": "policy_block",
-                    "message": (
-                        "This question requires current NDIS policy data. "
-                        "Please re-ask with Google Search grounding enabled."
-                    ),
-                }))
-                await self._ws.close(4011)
-                return
->>>>>>> ai-chatbot
             responses.append(
                 types.FunctionResponse(
                     id=call.id,

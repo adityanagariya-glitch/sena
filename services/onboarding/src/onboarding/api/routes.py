@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import uuid
-<<<<<<< HEAD
+
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-=======
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
->>>>>>> ai-chatbot
+
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
@@ -21,16 +20,15 @@ from onboarding.models.form_state import FieldSource, FieldValue, FormState
 from onboarding.models.schema_spec import StepSchema
 from onboarding.models.session_bootstrap import SessionBootstrap
 from onboarding.repositories.state_repo import FormStateRepo
-<<<<<<< HEAD
+
 from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
 from onboarding.services.webhook import fire_webhook
 
 log = structlog.get_logger(__name__)
-=======
 from onboarding.services.webhook import fire_webhook
 
->>>>>>> ai-chatbot
+
 router = APIRouter()
 
 
@@ -61,7 +59,7 @@ class UpdateStateRequest(BaseModel):
     values: dict
 
 
-<<<<<<< HEAD
+
 class ClientValidationErrorRequest(BaseModel):
     """Mobile-client-reported validation error (typed or voice input).
 
@@ -128,19 +126,19 @@ def _normalize_flat_to_nested(flat: dict) -> dict:
 =======
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
->>>>>>> ai-chatbot
+
 def _build_initial_values(initial_state: dict | None) -> dict:
     """Wrap raw values dict from app into FieldValue format if not already wrapped."""
     if not initial_state:
         return {}
-<<<<<<< HEAD
+
 
     # Flutter sends flat dot-notation {"section.field": value}; normalise first.
     if any("." in k for k in initial_state):
         initial_state = _normalize_flat_to_nested(initial_state)
 
 =======
->>>>>>> ai-chatbot
+
     result = {}
     for section_id, section_data in initial_state.items():
         if isinstance(section_data, list):
@@ -153,7 +151,7 @@ def _build_initial_values(initial_state: dict | None) -> dict:
                     for field_id, fv in row.items()
                 }
                 for row in section_data
-<<<<<<< HEAD
+
                 if isinstance(row, dict)
             ]
         elif isinstance(section_data, dict):
@@ -191,7 +189,7 @@ def _build_initial_values(initial_state: dict | None) -> dict:
                 )
                 for field_id, fv in section_data.items()
             }
->>>>>>> ai-chatbot
+
     return result
 
 
@@ -200,7 +198,7 @@ def _build_initial_values(initial_state: dict | None) -> dict:
 @router.post("/v1/onboarding/session", response_model=CreateSessionResponse, status_code=201)
 async def create_session(
     req: CreateSessionRequest,
-<<<<<<< HEAD
+
     request: Request,
     repo: FormStateRepo = Depends(get_repo),
 ) -> CreateSessionResponse:
@@ -211,13 +209,13 @@ async def create_session(
 ) -> CreateSessionResponse:
     session_id = str(uuid.uuid4())
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.onboarding_session_max_min)
->>>>>>> ai-chatbot
+
 
     # Resolve bootstrap envelope. Explicit takes precedence; legacy initial_state
     # is wrapped into a synthesised bootstrap so older clients keep working.
     bootstrap = req.bootstrap or SessionBootstrap.from_initial_state(req.initial_state)
 
-<<<<<<< HEAD
+
     # TEMP DEBUG — dump raw client payload to diagnose per-screen state leak.
     # Remove after Flutter bootstrap shape confirmed correct.
     log.info(
@@ -334,7 +332,7 @@ async def create_session(
     )
 
 =======
->>>>>>> ai-chatbot
+
     # Seed FormState.values from whichever side provided pre-fill data. Explicit
     # initial_state still wins (it is shape-stable {section: {field: v}});
     # otherwise current_page_values from bootstrap is used.
@@ -354,7 +352,7 @@ async def create_session(
         state, req.schema, ttl_sec=settings.session_max_sec, bootstrap=bootstrap,
     )
 
-<<<<<<< HEAD
+
     # Track this session in the per-participant index so on-call tooling can
     # enumerate sessions for "the assistant forgot me" debug requests.
     if settings.onboarding_cross_screen_context_enabled and req.tenant_id:
@@ -365,7 +363,7 @@ async def create_session(
     ws_url = f"{_scheme}://{request.url.netloc}/ws/onboarding/{session_id}"
 =======
     ws_url = f"ws://localhost:{settings.onboarding_port}/ws/onboarding/{session_id}"
->>>>>>> ai-chatbot
+
 
     return CreateSessionResponse(
         session_id=session_id,
@@ -379,23 +377,23 @@ async def create_session(
 async def get_state(
     session_id: str,
     repo: FormStateRepo = Depends(get_repo),
-<<<<<<< HEAD
+
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
 =======
->>>>>>> ai-chatbot
+
 ) -> FormState:
     state = await repo.get_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
-<<<<<<< HEAD
+
     # Cross-tenant isolation guard. Only enforced when caller supplied
     # identity headers — older mobile clients without the headers fall back to
     # today's lookup-by-session-id behaviour. New clients SHOULD send both.
     if x_participant_id is not None:
         await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
 =======
->>>>>>> ai-chatbot
+
     return state
 
 
@@ -404,7 +402,7 @@ async def update_state(
     session_id: str,
     req: UpdateStateRequest,
     repo: FormStateRepo = Depends(get_repo),
-<<<<<<< HEAD
+
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
 ) -> FormState:
@@ -423,7 +421,7 @@ async def update_state(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Session has an active voice connection. Close the WebSocket before updating state.",
->>>>>>> ai-chatbot
+
         )
     state = await repo.get_state(session_id)
     if state is None:
@@ -466,7 +464,7 @@ async def complete_session(
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
     transcript = await repo.get_transcript(session_id)
-<<<<<<< HEAD
+
     schema = await repo.get_schema(session_id)
 
     state.completed = True
@@ -519,7 +517,7 @@ async def complete_session(
     state.completed_at = _dt.now(_tz.utc)
     await repo.save_state(state, ttl_sec=settings.session_max_sec)
 
->>>>>>> ai-chatbot
+
     payload = {
         "event": "onboarding.session.completed",
         "session_id": session_id,
@@ -547,7 +545,7 @@ async def complete_session(
     }
 
 
-<<<<<<< HEAD
+
 # ── Client validation error reporting (telemetry) ─────────────────────────────
 
 
@@ -624,7 +622,7 @@ async def diag_bucket(
 
 
 =======
->>>>>>> ai-chatbot
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @router.get("/health/live")
