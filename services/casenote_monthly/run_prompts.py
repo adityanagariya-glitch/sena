@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from config import bedrock_runtime, MODEL_ID
+from cleaner import clean
 
 import prompt as P
 
@@ -71,7 +72,7 @@ def run_section(name: str, section: dict, subs: dict) -> dict:
             text += block["text"]
 
     usage = resp.get("usage") or {}
-    return {"text": text.strip(), "usage": usage, "elapsed": elapsed,
+    return {"text": clean(text.strip()), "usage": usage, "elapsed": elapsed,
             "stopReason": resp.get("stopReason")}
 
 
