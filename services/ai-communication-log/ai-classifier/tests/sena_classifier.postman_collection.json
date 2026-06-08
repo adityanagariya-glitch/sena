@@ -1,0 +1,344 @@
+{
+  "info": {
+    "name": "Sena — Communication Log Classifier",
+    "description": "Test collection for POST /api/v1/classify. Hits localhost:8000. Ensure FastAPI is running and AWS credentials are configured.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Normal — Professional message",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_normal_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"Good morning! I'm here for your shift. How are you feeling today?\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [\n    {\n      \"role\": \"client\",\n      \"text\": \"I'm doing okay, thank you for coming.\",\n      \"timestamp\": \"2025-06-01T10:03:00Z\"\n    }\n  ],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "const labels = body.classifications.map(c => c.label);",
+              "pm.test('Contains normal label', () => pm.expect(labels).to.include('normal'));",
+              "pm.test('Has confidence score', () => body.classifications.forEach(c => pm.expect(c.confidence).to.be.within(0, 1)));",
+              "pm.test('Has reason', () => body.classifications.forEach(c => pm.expect(c.reason).to.be.a('string')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Normal — No history (first message)",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_normal_002\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"Hi, I'm your support worker today. Ready to help whenever you need.\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('messages_analysed is 1', () => pm.expect(body.messages_analysed).to.eql(1));",
+              "const labels = body.classifications.map(c => c.label);",
+              "pm.test('Contains normal label', () => pm.expect(labels).to.include('normal'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Emergency — Client self harm",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_emergency_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"client\",\n    \"text\": \"I don't want to live anymore. I've been thinking about hurting myself.\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const labels = pm.response.json().classifications.map(c => c.label);",
+              "pm.test('Contains emergency label', () => pm.expect(labels).to.include('emergency'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Emergency — Medical emergency",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_emergency_002\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"client\",\n    \"text\": \"I can't breathe properly and I have chest pain. I think something is wrong.\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [\n    {\n      \"role\": \"support_worker\",\n      \"text\": \"How are you feeling this morning?\",\n      \"timestamp\": \"2025-06-01T10:03:00Z\"\n    }\n  ],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const labels = pm.response.json().classifications.map(c => c.label);",
+              "pm.test('Contains emergency label', () => pm.expect(labels).to.include('emergency'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Emergency — Worker reports danger",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_emergency_003\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"The client is becoming very aggressive and threatening me physically. I don't feel safe.\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const labels = pm.response.json().classifications.map(c => c.label);",
+              "pm.test('Contains emergency label', () => pm.expect(labels).to.include('emergency'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Inappropriate — Verbal abuse by worker",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_inappropriate_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"I don't want to deal with you anymore. Just do what I say and stop complaining.\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [\n    {\n      \"role\": \"client\",\n      \"text\": \"I need help getting to the bathroom.\",\n      \"timestamp\": \"2025-06-01T10:03:00Z\"\n    },\n    {\n      \"role\": \"support_worker\",\n      \"text\": \"Wait, I'm busy.\",\n      \"timestamp\": \"2025-06-01T10:04:00Z\"\n    }\n  ],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const labels = pm.response.json().classifications.map(c => c.label);",
+              "pm.test('Contains inappropriate label', () => pm.expect(labels).to.include('inappropriate'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Inappropriate — Discriminatory language",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_inappropriate_002\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"People like you are such a burden. You should just be grateful someone helps you.\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const labels = pm.response.json().classifications.map(c => c.label);",
+              "pm.test('Contains inappropriate label', () => pm.expect(labels).to.include('inappropriate'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Multi-label — Emergency + Inappropriate",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_multi_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"I don't care if you're in pain, figure it out yourself. I'm leaving.\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  },\n  \"history\": [\n    {\n      \"role\": \"client\",\n      \"text\": \"Please don't leave, I fell and I think I broke something. I need help.\",\n      \"timestamp\": \"2025-06-01T10:03:00Z\"\n    }\n  ],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const labels = pm.response.json().classifications.map(c => c.label);",
+              "pm.test('Contains emergency', () => pm.expect(labels).to.include('emergency'));",
+              "pm.test('Contains inappropriate', () => pm.expect(labels).to.include('inappropriate'));",
+              "pm.test('Does not contain normal', () => pm.expect(labels).to.not.include('normal'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. History trimming — Send 10 messages",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_trim_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"Everything is going fine today.\",\n    \"timestamp\": \"2025-06-01T10:15:00Z\"\n  },\n  \"history\": [\n    { \"role\": \"client\", \"text\": \"Message 1\", \"timestamp\": \"2025-06-01T10:01:00Z\" },\n    { \"role\": \"support_worker\", \"text\": \"Message 2\", \"timestamp\": \"2025-06-01T10:02:00Z\" },\n    { \"role\": \"client\", \"text\": \"Message 3\", \"timestamp\": \"2025-06-01T10:03:00Z\" },\n    { \"role\": \"support_worker\", \"text\": \"Message 4\", \"timestamp\": \"2025-06-01T10:04:00Z\" },\n    { \"role\": \"client\", \"text\": \"Message 5\", \"timestamp\": \"2025-06-01T10:05:00Z\" },\n    { \"role\": \"support_worker\", \"text\": \"Message 6\", \"timestamp\": \"2025-06-01T10:06:00Z\" },\n    { \"role\": \"client\", \"text\": \"Message 7\", \"timestamp\": \"2025-06-01T10:07:00Z\" },\n    { \"role\": \"support_worker\", \"text\": \"Message 8\", \"timestamp\": \"2025-06-01T10:08:00Z\" },\n    { \"role\": \"client\", \"text\": \"Message 9\", \"timestamp\": \"2025-06-01T10:09:00Z\" },\n    { \"role\": \"support_worker\", \"text\": \"Message 10\", \"timestamp\": \"2025-06-01T10:10:00Z\" }\n  ],\n  \"metadata\": {\n    \"shift_id\": \"shift_789\",\n    \"client_id\": \"client_456\",\n    \"worker_id\": \"worker_321\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('messages_analysed is 6 (5 history + 1 current)', () => pm.expect(pm.response.json().messages_analysed).to.eql(6));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Validation — Missing conversation_id",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"hello\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Validation — Invalid role",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"manager\",\n    \"text\": \"hello\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Validation — Invalid timestamp format",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"hello\",\n    \"timestamp\": \"01-06-2025\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Validation — Empty text",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/v1/classify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"conversation_id\": \"conv_001\",\n  \"provider_id\": \"org_abc_123\",\n  \"current_message\": {\n    \"role\": \"support_worker\",\n    \"text\": \"\",\n    \"timestamp\": \"2025-06-01T10:05:00Z\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

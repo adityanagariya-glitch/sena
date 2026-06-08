@@ -1,0 +1,10 @@
+{
+  "conversation_id": "test_001",
+  "provider_id": "org_001",
+  "current_message": {
+    "role": "client",
+    "text": "I dont want to live anymore.",
+    "timestamp": "2025-06-01T10:00:00Z"
+  },
+  "history": []
+}
