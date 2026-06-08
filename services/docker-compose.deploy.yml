@@ -42,7 +42,7 @@ services:
       target: voice
     container_name: sena-voice
     env_file:
-      - .env
+      - ../.env
     environment:
       SENA_AI_REDIS_URL: redis://redis:6379/0
       SENA_AI_HOST: 0.0.0.0
@@ -66,7 +66,7 @@ services:
       target: onboarding
     container_name: sena-onboarding
     env_file:
-      - .env
+      - ../.env
     environment:
       SENA_AI_REDIS_URL: redis://redis:6379/0
       SENA_AI_HOST: 0.0.0.0
@@ -87,7 +87,7 @@ services:
       target: case-review
     container_name: sena-case-review
     env_file:
-      - .env
+      - ../.env
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db:5432/sena_ai
@@ -107,7 +107,7 @@ services:
       target: casenote-monthly
     container_name: sena-casenote-monthly
     env_file:
-      - .env
+      - ../.env
     expose:
       - "8004"
     volumes:
@@ -123,7 +123,7 @@ services:
       target: ai-chatbot
     container_name: sena-ai-chatbot
     env_file:
-      - .env
+      - ../.env
     environment:
       GATEWAY_HOST: 0.0.0.0
       GATEWAY_PORT: "8003"
@@ -143,7 +143,7 @@ services:
       target: ai-communication-log
     container_name: sena-ai-communication-log
     env_file:
-      - .env
+      - ../.env
     expose:
       - "8005"
     networks:
