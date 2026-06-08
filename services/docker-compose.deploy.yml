@@ -29,6 +29,7 @@ services:
       - sena-case-review
       - sena-casenote-monthly
       - sena-ai-chatbot
+      - sena-ai-communication-log
     networks:
       - sena-network
     restart: unless-stopped
@@ -131,6 +132,20 @@ services:
       POLICY_DIR: /app/services/policy_proc
     expose:
       - "8003"
+    networks:
+      - sena-network
+    restart: unless-stopped
+
+  sena-ai-communication-log:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ai-communication-log
+    container_name: sena-ai-communication-log
+    env_file:
+      - .env
+    expose:
+      - "8005"
     networks:
       - sena-network
     restart: unless-stopped
