@@ -14,16 +14,19 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger(__name__)
 
-# Redis key templates
-_KEY_STATE = "sena:onboarding:session:{sid}"
-_KEY_SCHEMA = "sena:onboarding:session:{sid}:schema"
-_KEY_BOOTSTRAP = "sena:onboarding:session:{sid}:bootstrap"
-_KEY_TRANSCRIPT = "sena:onboarding:session:{sid}:transcript"
-_KEY_WS_LOCK = "sena:onboarding:ws_lock:{sid}"
-_KEY_RESUMPTION = "sena:onboarding:resumption:{handle}"
-_KEY_FRAME_CAMERA = "sena:onboarding:session:{sid}:last_frame:camera"
-_KEY_FRAME_SCREEN = "sena:onboarding:session:{sid}:last_frame:screen"
-_KEY_CLIENT_ERRORS = "sena:onboarding:errors:{sid}"
+# Redis key templates — ``{scope}`` is the per-instance namespace (prefix +
+# optional tenant_id), injected by ``_key()``. The default scope
+# ``sena:onboarding`` reproduces the original flat keys byte-for-byte;
+# case_review passes its own prefix + tenant_id for NDIS-scoped isolation.
+_KEY_STATE = "{scope}:session:{sid}"
+_KEY_SCHEMA = "{scope}:session:{sid}:schema"
+_KEY_BOOTSTRAP = "{scope}:session:{sid}:bootstrap"
+_KEY_TRANSCRIPT = "{scope}:session:{sid}:transcript"
+_KEY_WS_LOCK = "{scope}:ws_lock:{sid}"
+_KEY_RESUMPTION = "{scope}:resumption:{handle}"
+_KEY_FRAME_CAMERA = "{scope}:session:{sid}:last_frame:camera"
+_KEY_FRAME_SCREEN = "{scope}:session:{sid}:last_frame:screen"
+_KEY_CLIENT_ERRORS = "{scope}:errors:{sid}"
 
 # 7-day TTL for client-reported validation errors (telemetry only — not used
 # in the live decision path so the longer retention is safe).
@@ -31,8 +34,21 @@ _CLIENT_ERRORS_TTL_SEC = 60 * 60 * 24 * 7
 
 
 class FormStateRepo:
-    def __init__(self, redis: "Redis") -> None:
+    def __init__(
+        self,
+        redis: "Redis",
+        *,
+        key_prefix: str = "sena:onboarding",
+        tenant_id: str | None = None,
+    ) -> None:
         self._r = redis
+        # Per-instance Redis namespace. With tenant_id set, keys are scoped
+        # ``{prefix}:{tenant_id}:...`` (NDIS defense-in-depth — case_review);
+        # without it, ``{prefix}:...`` (preserves onboarding's existing keys).
+        self._scope = f"{key_prefix}:{tenant_id}" if tenant_id else key_prefix
+
+    def _key(self, template: str, **kw: str) -> str:
+        return template.format(scope=self._scope, **kw)
 
     # ── Session creation ──────────────────────────────────────────────────────
 
@@ -45,11 +61,11 @@ class FormStateRepo:
     ) -> None:
         sid = state.session_id
         async with self._r.pipeline() as pipe:
-            pipe.set(_KEY_STATE.format(sid=sid), state.model_dump_json(), ex=ttl_sec)
-            pipe.set(_KEY_SCHEMA.format(sid=sid), schema.model_dump_json(), ex=ttl_sec)
+            pipe.set(self._key(_KEY_STATE, sid=sid), state.model_dump_json(), ex=ttl_sec)
+            pipe.set(self._key(_KEY_SCHEMA, sid=sid), schema.model_dump_json(), ex=ttl_sec)
             if bootstrap is not None:
                 pipe.set(
-                    _KEY_BOOTSTRAP.format(sid=sid),
+                    self._key(_KEY_BOOTSTRAP, sid=sid),
                     bootstrap.model_dump_json(),
                     ex=ttl_sec,
                 )
@@ -64,7 +80,7 @@ class FormStateRepo:
     # ── Bootstrap envelope (Rule 1 / Rule 2 hygiene contract) ─────────────────
 
     async def get_bootstrap(self, session_id: str) -> SessionBootstrap | None:
-        raw = await self._r.get(_KEY_BOOTSTRAP.format(sid=session_id))
+        raw = await self._r.get(self._key(_KEY_BOOTSTRAP, sid=session_id))
         if raw is None:
             return None
         return SessionBootstrap.model_validate_json(raw)
@@ -76,7 +92,7 @@ class FormStateRepo:
         ttl_sec: int,
     ) -> None:
         await self._r.set(
-            _KEY_BOOTSTRAP.format(sid=session_id),
+            self._key(_KEY_BOOTSTRAP, sid=session_id),
             bootstrap.model_dump_json(),
             ex=ttl_sec,
         )
@@ -122,14 +138,14 @@ class FormStateRepo:
     # ── State ─────────────────────────────────────────────────────────────────
 
     async def get_state(self, session_id: str) -> FormState | None:
-        raw = await self._r.get(_KEY_STATE.format(sid=session_id))
+        raw = await self._r.get(self._key(_KEY_STATE, sid=session_id))
         if raw is None:
             return None
         return FormState.model_validate_json(raw)
 
     async def save_state(self, state: FormState, ttl_sec: int) -> None:
         await self._r.set(
-            _KEY_STATE.format(sid=state.session_id),
+            self._key(_KEY_STATE, sid=state.session_id),
             state.model_dump_json(),
             ex=ttl_sec,
         )
@@ -137,7 +153,7 @@ class FormStateRepo:
     # ── Schema ────────────────────────────────────────────────────────────────
 
     async def get_schema(self, session_id: str) -> StepSchema | None:
-        raw = await self._r.get(_KEY_SCHEMA.format(sid=session_id))
+        raw = await self._r.get(self._key(_KEY_SCHEMA, sid=session_id))
         if raw is None:
             return None
         return StepSchema.model_validate_json(raw)
@@ -150,12 +166,12 @@ class FormStateRepo:
         entry: dict,
         ttl_sec: int,
     ) -> None:
-        key = _KEY_TRANSCRIPT.format(sid=session_id)
+        key = self._key(_KEY_TRANSCRIPT, sid=session_id)
         await self._r.rpush(key, json.dumps(entry))
         await self._r.expire(key, ttl_sec)
 
     async def get_transcript(self, session_id: str) -> list[dict]:
-        raw_list = await self._r.lrange(_KEY_TRANSCRIPT.format(sid=session_id), 0, -1)
+        raw_list = await self._r.lrange(self._key(_KEY_TRANSCRIPT, sid=session_id), 0, -1)
         return [json.loads(r) for r in raw_list]
 
     # ── WS lock (single writer per session) ──────────────────────────────────
@@ -163,7 +179,7 @@ class FormStateRepo:
     async def acquire_ws_lock(self, session_id: str, ttl_sec: int) -> bool:
         """Returns True if lock acquired (NX — only sets if not exists)."""
         result = await self._r.set(
-            _KEY_WS_LOCK.format(sid=session_id),
+            self._key(_KEY_WS_LOCK, sid=session_id),
             "1",
             nx=True,
             ex=ttl_sec,
@@ -171,10 +187,10 @@ class FormStateRepo:
         return result is not None
 
     async def release_ws_lock(self, session_id: str) -> None:
-        await self._r.delete(_KEY_WS_LOCK.format(sid=session_id))
+        await self._r.delete(self._key(_KEY_WS_LOCK, sid=session_id))
 
     async def is_ws_locked(self, session_id: str) -> bool:
-        return bool(await self._r.exists(_KEY_WS_LOCK.format(sid=session_id)))
+        return bool(await self._r.exists(self._key(_KEY_WS_LOCK, sid=session_id)))
 
     # ── Session resumption ────────────────────────────────────────────────────
 
@@ -185,27 +201,27 @@ class FormStateRepo:
         ttl_sec: int,
     ) -> None:
         await self._r.set(
-            _KEY_RESUMPTION.format(handle=handle),
+            self._key(_KEY_RESUMPTION, handle=handle),
             session_id,
             ex=ttl_sec,
         )
 
     async def get_session_by_handle(self, handle: str) -> str | None:
-        return await self._r.get(_KEY_RESUMPTION.format(handle=handle))
+        return await self._r.get(self._key(_KEY_RESUMPTION, handle=handle))
 
     async def delete_resumption_handle(self, handle: str) -> None:
-        await self._r.delete(_KEY_RESUMPTION.format(handle=handle))
+        await self._r.delete(self._key(_KEY_RESUMPTION, handle=handle))
 
     async def redeem_resumption_handle(self, handle: str) -> str | None:
         """Atomically get and delete the resumption handle (GETDEL — single-use)."""
-        return await self._r.getdel(_KEY_RESUMPTION.format(handle=handle))
+        return await self._r.getdel(self._key(_KEY_RESUMPTION, handle=handle))
 
     # ── Camera / screen frames (latest only, for debug / Phase D) ─────────────
 
     async def save_frame(self, session_id: str, frame_type: str, data: bytes) -> None:
         key_map = {
-            "camera": _KEY_FRAME_CAMERA.format(sid=session_id),
-            "screen": _KEY_FRAME_SCREEN.format(sid=session_id),
+            "camera": self._key(_KEY_FRAME_CAMERA, sid=session_id),
+            "screen": self._key(_KEY_FRAME_SCREEN, sid=session_id),
         }
         key = key_map.get(frame_type)
         if key:
@@ -226,7 +242,7 @@ class FormStateRepo:
         these. The companion ``read_client_validation_errors`` returns the
         list for debugging or a future internal endpoint.
         """
-        key = _KEY_CLIENT_ERRORS.format(sid=session_id)
+        key = self._key(_KEY_CLIENT_ERRORS, sid=session_id)
         payload = json.dumps(error, default=str, separators=(",", ":"))
         async with self._r.pipeline(transaction=False) as p:
             p.rpush(key, payload)
@@ -243,7 +259,7 @@ class FormStateRepo:
         internal telemetry endpoint. Order matches insertion order.
         """
         raw_list = await self._r.lrange(
-            _KEY_CLIENT_ERRORS.format(sid=session_id), 0, -1,
+            self._key(_KEY_CLIENT_ERRORS, sid=session_id), 0, -1,
         )
         return [json.loads(r) for r in raw_list]
 
@@ -251,14 +267,14 @@ class FormStateRepo:
 
     async def delete_session(self, session_id: str) -> None:
         keys = [
-            _KEY_STATE.format(sid=session_id),
-            _KEY_SCHEMA.format(sid=session_id),
-            _KEY_BOOTSTRAP.format(sid=session_id),
-            _KEY_TRANSCRIPT.format(sid=session_id),
-            _KEY_WS_LOCK.format(sid=session_id),
-            _KEY_FRAME_CAMERA.format(sid=session_id),
-            _KEY_FRAME_SCREEN.format(sid=session_id),
-            _KEY_CLIENT_ERRORS.format(sid=session_id),
+            self._key(_KEY_STATE, sid=session_id),
+            self._key(_KEY_SCHEMA, sid=session_id),
+            self._key(_KEY_BOOTSTRAP, sid=session_id),
+            self._key(_KEY_TRANSCRIPT, sid=session_id),
+            self._key(_KEY_WS_LOCK, sid=session_id),
+            self._key(_KEY_FRAME_CAMERA, sid=session_id),
+            self._key(_KEY_FRAME_SCREEN, sid=session_id),
+            self._key(_KEY_CLIENT_ERRORS, sid=session_id),
         ]
         await self._r.delete(*keys)
         log.info("session_deleted", session_id=session_id)
