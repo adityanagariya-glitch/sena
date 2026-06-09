@@ -47,9 +47,6 @@ class VoiceSettings(BaseSettings):
 
     rate_limit_start_per_minute: int = Field(default=30, alias="RATE_LIMIT_START_PER_MINUTE")
     rate_limit_turn_per_minute: int = Field(default=120, alias="RATE_LIMIT_TURN_PER_MINUTE")
-    max_concurrent_sessions_per_user: int = Field(
-        default=5, alias="MAX_CONCURRENT_SESSIONS_PER_USER"
-    )
 
     provider_timeout_seconds: float = Field(default=1.2, alias="PROVIDER_TIMEOUT_SECONDS")
     provider_max_retries: int = Field(default=2, alias="PROVIDER_MAX_RETRIES")
