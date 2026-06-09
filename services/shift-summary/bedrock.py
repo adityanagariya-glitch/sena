@@ -41,10 +41,10 @@ def _build_request_body(summaries: list[str]) -> dict:
     }
 
 
-async def consolidate_summaries(summaries: list[str]) -> str:
+async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
     """
     Call AWS Bedrock with Claude to consolidate the provided summaries.
-    Returns the consolidated summary text.
+    Returns (consolidated_summary, token_usage) where token_usage is {"input_tokens", "output_tokens"}.
     Raises HTTPException on Bedrock or parsing errors.
     """
     settings = get_settings()
@@ -83,6 +83,11 @@ async def consolidate_summaries(summaries: list[str]) -> str:
     try:
         response_body = json.loads(response["body"].read())
         consolidated = response_body["content"][0]["text"].strip()
+        usage = response_body.get("usage", {})
+        token_usage = {
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        }
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         logger.error("Failed to parse Bedrock response: %s", str(exc))
         raise HTTPException(
@@ -90,5 +95,10 @@ async def consolidate_summaries(summaries: list[str]) -> str:
             detail=f"Unexpected Bedrock response format: {str(exc)}",
         ) from exc
 
-    logger.info("Successfully consolidated %d summaries.", len(summaries))
-    return consolidated
+    logger.info(
+        "Successfully consolidated %d summaries. Input tokens: %d, Output tokens: %d",
+        len(summaries),
+        token_usage["input_tokens"],
+        token_usage["output_tokens"],
+    )
+    return consolidated, token_usage

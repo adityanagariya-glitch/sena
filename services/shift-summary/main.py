@@ -61,5 +61,9 @@ async def health_check():
 )
 async def summarize(payload: SummarizeRequest) -> SummarizeResponse:
     logger.info("Received /summarize request with %d summaries.", len(payload.summaries))
-    consolidated = await consolidate_summaries(payload.summaries)
-    return SummarizeResponse(consolidated_summary=consolidated)
+    consolidated, token_usage = await consolidate_summaries(payload.summaries)
+    return SummarizeResponse(
+        consolidated_summary=consolidated,
+        input_tokens=token_usage["input_tokens"],
+        output_tokens=token_usage["output_tokens"],
+    )

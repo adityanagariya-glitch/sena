@@ -28,6 +28,7 @@ services:
       - sena-casenote-monthly
       - sena-ai-chatbot
       - sena-ai-communication-log
+      - sena-shift-summary
     networks:
       - sena-network
     restart: unless-stopped
@@ -42,16 +43,18 @@ services:
     env_file:
       - ../.env
     environment:
-      SENA_AI_REDIS_URL: redis://redis:6379/0
-      SENA_AI_HOST: 0.0.0.0
+      # Voice uses Field(alias=...) which bypasses env_prefix — no SENA_AI_ here
+      REDIS_URL: redis://redis-internal:6379/0
+      AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
+      SHARED_DB_URL: postgresql+asyncpg://shared:shared@shared-db-internal:5432/platform
     expose:
       - "8000"
     depends_on:
-      redis:
+      redis-internal:
         condition: service_healthy
-      ai-db:
+      ai-db-internal:
         condition: service_healthy
-      shared-db:
+      shared-db-internal:
         condition: service_healthy
     networks:
       - sena-network
@@ -66,13 +69,13 @@ services:
     env_file:
       - ../.env
     environment:
-      SENA_AI_REDIS_URL: redis://redis:6379/0
+      SENA_AI_REDIS_URL: redis://redis-internal:6379/0
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_ONBOARDING_PORT: "8001"
     expose:
       - "8001"
     depends_on:
-      redis:
+      redis-internal:
         condition: service_healthy
     networks:
       - sena-network
@@ -88,11 +91,11 @@ services:
       - ../.env
     environment:
       SENA_AI_HOST: 0.0.0.0
-      SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db:5432/sena_ai
+      SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
     expose:
       - "8002"
     depends_on:
-      ai-db:
+      ai-db-internal:
         condition: service_healthy
     networks:
       - sena-network
@@ -148,10 +151,24 @@ services:
       - sena-network
     restart: unless-stopped
 
+  sena-shift-summary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: shift-summary
+    container_name: sena-shift-summary
+    env_file:
+      - ../.env
+    expose:
+      - "8006"
+    networks:
+      - sena-network
+    restart: unless-stopped
+
   # ── Infrastructure ─────────────────────────────────────────────────────────
-  redis:
+  redis-internal:
     image: redis:7.4-alpine
-    container_name: sena-redis
+    container_name: sena-redis-internal
     expose:
       - "6379"
     command: ["redis-server", "--appendonly", "yes"]
@@ -166,9 +183,9 @@ services:
       - sena-network
     restart: unless-stopped
 
-  ai-db:
+  ai-db-internal:
     image: pgvector/pgvector:pg16
-    container_name: sena-ai-db
+    container_name: sena-ai-db-internal
     environment:
       POSTGRES_USER: sena_ai
       POSTGRES_PASSWORD: sena_ai
@@ -186,9 +203,9 @@ services:
       - sena-network
     restart: unless-stopped
 
-  shared-db:
+  shared-db-internal:
     image: postgres:16-alpine
-    container_name: sena-shared-db
+    container_name: sena-shared-db-internal
     environment:
       POSTGRES_USER: shared
       POSTGRES_PASSWORD: shared
