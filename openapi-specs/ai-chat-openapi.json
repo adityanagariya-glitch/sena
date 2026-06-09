@@ -1,0 +1,157 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "SENA AI Chatbot",
+        "description": "**Production entry point for all SENA AI conversations.** Frontend hits this endpoint only — the ai-chatbot service routes to staff or policy backends and streams the answer.\n\n**Key Features:**\n- Single `/api/route` endpoint for all questions\n- Chip-driven routing (no free-text classification)\n- Staff and Client sections are completely independent\n- Real-time SSE streaming with token usage tracking\n- JWT authentication (ISENA tokens from login endpoint)\n\n**Sections:**\n- `shifts` → Check Shifts (staff service)\n- `client` → Client's Information (staff service)\n- `policy` → Policy Questions (policy service)\n- `procedure` → Compliance Procedures (policy service)",
+        "version": "2.0.0"
+    },
+    "servers": [
+        {
+            "url": "https://dev-api.isena.org/chatbot",
+            "description": "Production ai-chatbot service (behind nginx)"
+        }
+    ],
+    "paths": {
+        "/api/route": {
+            "post": {
+                "tags": ["Routing"],
+                "summary": "Ask a question in a chip-selected section",
+                "description": "The **only endpoint you need.** Send a message with a category (chip), and ai-chatbot routes it to the right service and streams the answer.\n\nNo free-text classification — the frontend picks the chip (shifts/client/policy/procedure), and that decides the routing. If no category is provided, the request is out of scope.\n\n**Authentication:** Include the JWT token from `/auth/ai/login` in the Authorization header.\n\n**Response:** Server-Sent Events stream with events: `meta` → `token` → `usage` → `done`",
+                "operationId": "route_query_api_route_post",
+                "parameters": [
+                    {
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+                        },
+                        "description": "Bearer token from POST /auth/ai/login"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RouteRequest"
+                            },
+                            "examples": {
+                                "shifts": {
+                                    "value": {
+                                        "question": "What are my shifts this week?",
+                                        "context": {"category": "shifts", "is_new_chat": true}
+                                    },
+                                    "description": "Ask about shifts/rosters"
+                                },
+                                "client": {
+                                    "value": {
+                                        "question": "Who are my clients?",
+                                        "context": {"category": "client"}
+                                    },
+                                    "description": "Ask about participants"
+                                },
+                                "policy": {
+                                    "value": {
+                                        "question": "What is the leave policy?",
+                                        "context": {"category": "policy"}
+                                    },
+                                    "description": "Ask about organizational policy"
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "SSE stream. Headers: Content-Type: text/event-stream. Each event is `data: <json>`. Stream ends with `data: {\"type\": \"done\"}`",
+                        "content": {
+                            "text/event-stream": {
+                                "example": "data: {\"type\": \"meta\", \"routing\": {\"target_services\": [\"staff\"], \"routing_reason\": \"Category 'shifts' routed to staff.\"}}\n\ndata: {\"type\": \"token\", \"text\": \"You have 2 shifts this week:\\n\\n1. **Monday 10:00–2:00 PM** — Client A\\n2. **Thursday 6:00–10:00 PM** — Client B\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 2496, \"output_tokens\": 320}\n\ndata: {\"type\": \"done\"}\n"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid Authorization header"
+                    },
+                    "400": {
+                        "description": "Bad request — missing or invalid category"
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "tags": ["Health"],
+                "summary": "Health check",
+                "description": "Returns 200 when ai-chatbot and child services (staff + policy) are healthy.",
+                "operationId": "healthz_healthz_get",
+                "responses": {
+                    "200": {
+                        "description": "All services healthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {"type": "object"},
+                                "example": {"status": "ok"}
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "One or more services unhealthy"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "RouteRequest": {
+                "type": "object",
+                "required": ["question", "context"],
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The user's message. Can be empty when a chip is tapped without typing.",
+                        "example": "What are my shifts this week?"
+                    },
+                    "context": {
+                        "type": "object",
+                        "required": ["category"],
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "enum": ["shifts", "client", "policy", "procedure"],
+                                "description": "The tapped chip. Decides the backend service and scope.",
+                                "example": "shifts"
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Conversation ID to continue a thread. Omit to start fresh.",
+                                "example": "sess-abc123"
+                            },
+                            "is_new_chat": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "True to clear prior conversation and start fresh."
+                            }
+                        },
+                        "description": "UI context. Must include `category` (the tapped chip)."
+                    }
+                },
+                "description": "A user message plus the chip that decides how it's routed."
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Routing",
+            "description": "Chip-driven message routing with SSE streaming (ai-chatbot)"
+        },
+        {
+            "name": "Health",
+            "description": "Service health checks"
+        }
+    ]
+}

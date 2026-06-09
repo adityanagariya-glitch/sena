@@ -2,82 +2,59 @@
     "openapi": "3.1.0",
     "info": {
         "title": "SENA Staff API",
-        "description": "FastAPI wrapper for the SENA Staff service.\n\nTwo INDEPENDENT sections, one per UI chip \u2014 they never share tools or data:\n\n  \u2022 POST /staff/query/stream   \u2192 \"Check Shifts\" chip   (shifts, rosters, team)\n  \u2022 POST /client/query/stream  \u2192 \"Client's information\" chip (participant data)\n\nA staff-section request can never reach client data, and vice-versa: each section\nis handed only its own tool set (see services/staff/tools/registry.py). The\nfrontend (chip-selector) decides which endpoint to call \u2014 there is no free-text\nclassification here.\n\nEvery endpoint streams Server-Sent Events (SSE):\n\n    data: {\"type\": \"meta\",  \"session_id\": \"...\"}                  # routing acknowledged\n    data: {\"type\": \"token\", \"text\": \"...\"}                        # the answer (one block today)\n    data: {\"type\": \"usage\", \"input_tokens\": N, \"output_tokens\": N}# Bedrock tokens for this question\n    data: {\"type\": \"done\"}                                        # stream finished\n    data: {\"type\": \"error\", \"text\": \"...\"}                        # something went wrong\n",
+        "description": "**Internal API — called by ai-chatbot only.** Two completely independent sections with separate tool sets:\n\n**Sections:**\n- `POST /staff/query/stream` → Check Shifts (shifts, rosters, team directory)\n- `POST /client/query/stream` → Client's Information (participant data)\n\nA staff-section request can never reach client data, and vice-versa. Each section gets only its own tool set. The frontend (chip-selector) never calls this directly — only ai-chatbot does.\n\n**Streaming:** All endpoints return Server-Sent Events: `meta` → `token` → `usage` → `done` (or `error`)",
         "version": "2.0.0"
     },
+    "servers": [
+        {
+            "url": "http://127.0.0.1:8001",
+            "description": "Internal staff service (child process of ai-chatbot)"
+        }
+    ],
     "paths": {
-        "/health": {
-            "get": {
-                "tags": [
-                    "Health"
-                ],
-                "summary": "Liveness probe",
-                "description": "Return ``{\"status\": \"ok\"}`` when the service is up.",
-                "operationId": "health_check_health_get",
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "additionalProperties": true,
-                                    "type": "object",
-                                    "title": "Response Health Check Health Get"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/staff/query/stream": {
             "post": {
-                "tags": [
-                    "Staff"
-                ],
-                "summary": "Ask a STAFF-section question (shifts, rosters, team)",
-                "description": "Answer a question using ONLY staff/shift tools.\n\nScope: shifts, rosters, shift details, the staff/team directory, plus general\nidentity tools (who am I, current time, my organisations). Client data is\n**not** reachable from here.\n\n**Example**\n\n```\nPOST /staff/query/stream\nAuthorization: Bearer <JWT>\n{\"question\": \"What are my shifts this week?\", \"is_new_chat\": true}\n```",
+                "tags": ["Staff"],
+                "summary": "Answer a shifts/roster question",
+                "description": "Ask about shifts, rosters, shift details, the staff/team directory, or general identity information.\n\nThis section can **only** access:\n- Shift data (list, details, schedule)\n- Staff/team directory\n- User identity and timezone\n- Organization info\n\nIt cannot access client/participant data.\n\n**Token Usage:** Response includes `input_tokens` and `output_tokens` from Bedrock for metrics and cost tracking.",
                 "operationId": "staff_query_stream_staff_query_stream_post",
                 "parameters": [
                     {
-                        "name": "authorization",
+                        "name": "Authorization",
                         "in": "header",
                         "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
+                        "schema": {"type": "string"},
+                        "description": "Bearer JWT token (validated by gateway, passed through)"
                     }
                 ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/QueryRequest"
+                            "schema": {"$ref": "#/components/schemas/QueryRequest"},
+                            "examples": {
+                                "list_shifts": {
+                                    "value": {
+                                        "question": "What are my shifts this week?",
+                                        "is_new_chat": true
+                                    }
+                                },
+                                "with_session": {
+                                    "value": {
+                                        "question": "When is my next shift?",
+                                        "session_id": "sess-abc123"
+                                    }
+                                }
                             }
                         }
                     }
                 },
                 "responses": {
                     "200": {
-                        "description": "SSE stream of meta \u2192 token \u2192 usage \u2192 done (or an error event). The `usage` event reports Bedrock input/output tokens for the question.",
+                        "description": "SSE stream with events: meta → token → usage → done",
                         "content": {
-                            "application/json": {
-                                "schema": {}
-                            },
                             "text/event-stream": {
-                                "example": "data: {\"type\": \"meta\", \"session_id\": \"staff-session\"}\n\ndata: {\"type\": \"token\", \"text\": \"Here are your shifts this week: ...\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 2496, \"output_tokens\": 320}\n\ndata: {\"type\": \"done\"}\n\n"
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
+                                "example": "data: {\"type\": \"meta\", \"session_id\": \"staff-session-001\"}\n\ndata: {\"type\": \"token\", \"text\": \"You have 2 shifts this week:\\n\\n1. **Monday 10:00–2:00 PM**\\n2. **Thursday 6:00–10:00 PM**\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 2496, \"output_tokens\": 320}\n\ndata: {\"type\": \"done\"}\n"
                             }
                         }
                     }
@@ -86,107 +63,66 @@
         },
         "/client/query/stream": {
             "post": {
-                "tags": [
-                    "Client"
-                ],
-                "summary": "Ask a CLIENT-section question (participant info)",
-                "description": "Answer a question using ONLY client tools.\n\nScope: client list, client details, support workers, guardians, and\nsearch/filter, plus general identity tools. Shift/staff data is **not**\nreachable from here.\n\n**Example**\n\n```\nPOST /client/query/stream\nAuthorization: Bearer <JWT>\n{\"question\": \"Who are my clients?\", \"is_new_chat\": true}\n```",
+                "tags": ["Client"],
+                "summary": "Answer a participant/client question",
+                "description": "Ask about clients, participant information, support workers, guardians, or search/filter participants.\n\nThis section can **only** access:\n- Client/participant list and details\n- Support worker and guardian information\n- Client search and filtering\n- User identity and timezone\n- Organization info\n\nIt cannot access shift/staff data.\n\n**Token Usage:** Response includes `input_tokens` and `output_tokens` from Bedrock for metrics and cost tracking.",
                 "operationId": "client_query_stream_client_query_stream_post",
                 "parameters": [
                     {
-                        "name": "authorization",
+                        "name": "Authorization",
                         "in": "header",
                         "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
+                        "schema": {"type": "string"},
+                        "description": "Bearer JWT token (validated by gateway, passed through)"
                     }
                 ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/QueryRequest"
+                            "schema": {"$ref": "#/components/schemas/QueryRequest"},
+                            "examples": {
+                                "list_clients": {
+                                    "value": {
+                                        "question": "Who are my clients?",
+                                        "is_new_chat": true
+                                    }
+                                },
+                                "client_details": {
+                                    "value": {
+                                        "question": "Tell me about John Smith",
+                                        "session_id": "sess-abc123"
+                                    }
+                                }
                             }
                         }
                     }
                 },
                 "responses": {
                     "200": {
-                        "description": "SSE stream of meta \u2192 token \u2192 usage \u2192 done (or an error event). The `usage` event reports Bedrock input/output tokens for the question.",
+                        "description": "SSE stream with events: meta → token → usage → done",
                         "content": {
-                            "application/json": {
-                                "schema": {}
-                            },
                             "text/event-stream": {
-                                "example": "data: {\"type\": \"meta\", \"session_id\": \"staff-session\"}\n\ndata: {\"type\": \"token\", \"text\": \"Here are your shifts this week: ...\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 2496, \"output_tokens\": 320}\n\ndata: {\"type\": \"done\"}\n\n"
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
+                                "example": "data: {\"type\": \"meta\", \"session_id\": \"client-session-001\"}\n\ndata: {\"type\": \"token\", \"text\": \"You have 3 clients:\\n\\n1. John Smith (Age 28)\\n2. Sarah Johnson (Age 35)\\n3. Michael Brown (Age 42)\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 3124, \"output_tokens\": 256}\n\ndata: {\"type\": \"done\"}\n"
                             }
                         }
                     }
                 }
             }
         },
-        "/query/stream": {
-            "post": {
-                "tags": [
-                    "Staff"
-                ],
-                "summary": "[Deprecated] Legacy staff endpoint \u2014 use /staff/query/stream",
-                "description": "Backwards-compatible alias that maps to the **staff** section.\n\nKept so existing callers (e.g. the CLI test harness) keep working. New\nintegrations should call `/staff/query/stream` or `/client/query/stream`.",
-                "operationId": "legacy_query_stream_query_stream_post",
-                "deprecated": true,
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/QueryRequest"
-                            }
-                        }
-                    }
-                },
+        "/health": {
+            "get": {
+                "tags": ["Health"],
+                "summary": "Liveness probe",
+                "description": "Returns 200 when the service is healthy.",
+                "operationId": "health_check_health_get",
                 "responses": {
                     "200": {
-                        "description": "SSE stream of meta \u2192 token \u2192 usage \u2192 done (or an error event). The `usage` event reports Bedrock input/output tokens for the question.",
+                        "description": "Service is healthy",
                         "content": {
                             "application/json": {
-                                "schema": {}
-                            },
-                            "text/event-stream": {
-                                "example": "data: {\"type\": \"meta\", \"session_id\": \"staff-session\"}\n\ndata: {\"type\": \"token\", \"text\": \"Here are your shifts this week: ...\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 2496, \"output_tokens\": 320}\n\ndata: {\"type\": \"done\"}\n\n"
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
+                                "schema": {"type": "object"},
+                                "example": {"status": "ok"}
                             }
                         }
                     }
@@ -196,135 +132,50 @@
     },
     "components": {
         "schemas": {
-            "HTTPValidationError": {
-                "properties": {
-                    "detail": {
-                        "items": {
-                            "$ref": "#/components/schemas/ValidationError"
-                        },
-                        "type": "array",
-                        "title": "Detail"
-                    }
-                },
-                "type": "object",
-                "title": "HTTPValidationError"
-            },
             "QueryRequest": {
+                "type": "object",
+                "required": ["question"],
                 "properties": {
                     "question": {
                         "type": "string",
                         "minLength": 1,
-                        "title": "Question",
-                        "description": "The user's natural-language question for THIS section.",
-                        "examples": [
-                            "What are my shifts this week?"
-                        ]
+                        "description": "The user's natural-language question for this section.",
+                        "example": "What are my shifts this week?"
                     },
                     "session_id": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Session Id",
-                        "description": "Conversation id to continue a thread. Omit/null to start fresh.",
-                        "examples": [
-                            "3f9c1a7e-staff-001"
-                        ]
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Conversation ID to continue a thread. Omit or null to start fresh.",
+                        "example": "sess-abc123"
                     },
                     "session_title": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Session Title",
+                        "type": "string",
+                        "nullable": true,
                         "description": "Optional human-readable title for a new conversation.",
-                        "examples": [
-                            "This week's roster"
-                        ]
+                        "example": "This week's roster"
                     },
                     "is_new_chat": {
                         "type": "boolean",
-                        "title": "Is New Chat",
-                        "description": "True to begin a brand-new conversation (clears prior turns).",
-                        "default": false
+                        "default": false,
+                        "description": "True to begin a brand-new conversation (clears prior turns)."
                     }
                 },
-                "type": "object",
-                "required": [
-                    "question"
-                ],
-                "title": "QueryRequest",
-                "description": "A user question for one section, plus optional session context.",
-                "examples": [
-                    {
-                        "is_new_chat": true,
-                        "question": "What are my shifts this week?",
-                        "session_title": "This week's roster"
-                    }
-                ]
-            },
-            "ValidationError": {
-                "properties": {
-                    "loc": {
-                        "items": {
-                            "anyOf": [
-                                {
-                                    "type": "string"
-                                },
-                                {
-                                    "type": "integer"
-                                }
-                            ]
-                        },
-                        "type": "array",
-                        "title": "Location"
-                    },
-                    "msg": {
-                        "type": "string",
-                        "title": "Message"
-                    },
-                    "type": {
-                        "type": "string",
-                        "title": "Error Type"
-                    },
-                    "input": {
-                        "title": "Input"
-                    },
-                    "ctx": {
-                        "type": "object",
-                        "title": "Context"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "loc",
-                    "msg",
-                    "type"
-                ],
-                "title": "ValidationError"
+                "description": "A user question for one section, plus optional session context."
             }
         }
     },
     "tags": [
         {
             "name": "Staff",
-            "description": "Worker's own work \u2014 shifts, rosters, shift details, and the staff/team directory."
+            "description": "Worker's own work — shifts, rosters, shift details, team directory"
         },
         {
             "name": "Client",
-            "description": "Participant data \u2014 client list, details, support workers, guardians, search/filter."
+            "description": "Participant data — client list, details, support workers, guardians"
         },
         {
             "name": "Health",
-            "description": "Liveness probe for orchestration."
+            "description": "Service health checks"
         }
     ]
 }
