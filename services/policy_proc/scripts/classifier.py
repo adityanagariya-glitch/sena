@@ -4,7 +4,6 @@ import json
 import logging
 import re
 
-from services.policy_proc.scripts.config import REGION, CLASSIFIER_MODEL, MESSAGES
 from config import REGION, CLASSIFIER_MODEL, MESSAGES
 
 logger = logging.getLogger(__name__)
