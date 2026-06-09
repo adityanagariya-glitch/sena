@@ -12,10 +12,10 @@ services:
   # ── Public gateway — only container with host-exposed ports ───────────────
   sena-reverse-proxy:
     image: nginx:alpine
-    container_name: sena-reverse-proxy
+    container_name: sena-reverse-proxy-internal
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8443:443"
     volumes:
       - ./nginx/dev-api.isena.org.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
@@ -39,7 +39,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: voice
-    container_name: sena-voice
+    container_name: sena-voice-internal
     env_file:
       - ../.env
     environment:
@@ -65,7 +65,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: onboarding
-    container_name: sena-onboarding
+    container_name: sena-onboarding-internal
     env_file:
       - ../.env
     environment:
@@ -86,7 +86,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: case-review
-    container_name: sena-case-review
+    container_name: sena-case-review-internal
     env_file:
       - ../.env
     environment:
@@ -106,7 +106,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: casenote-monthly
-    container_name: sena-casenote-monthly
+    container_name: sena-casenote-monthly-internal
     env_file:
       - ../.env
     expose:
@@ -122,7 +122,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: ai-chatbot
-    container_name: sena-ai-chatbot
+    container_name: sena-ai-chatbot-internal
     env_file:
       - ../.env
     environment:
@@ -142,7 +142,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: ai-communication-log
-    container_name: sena-ai-communication-log
+    container_name: sena-ai-communication-log-internal
     env_file:
       - ../.env
     expose:
@@ -156,7 +156,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: shift-summary
-    container_name: sena-shift-summary
+    container_name: sena-shift-summary-internal
     env_file:
       - ../.env
     expose:
