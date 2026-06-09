@@ -21,6 +21,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN pip install -U pip
 
+
 # Create virtual environment for shared dependencies
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -28,7 +29,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install shared dependencies from requirements.txt
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
-
 # shared/ lives inside services/ — same level as this Dockerfile
 COPY shared /app/shared
 RUN pip install /app/shared
@@ -102,6 +102,7 @@ COPY casenote_monthly/api_main.py \
      casenote_monthly/guardrails.py \
      casenote_monthly/agents_types.py \
      casenote_monthly/bedrock_client.py \
+     casenote_monthly/trend_store.py \
      /app/
 
 WORKDIR /app
