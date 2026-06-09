@@ -25,8 +25,8 @@ RUN pip install -U pip
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install shared dependencies from services/requirements.txt
-COPY services/requirements.txt /tmp/requirements.txt
+# Install shared dependencies from requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
 # shared/ lives inside services/ — same level as this Dockerfile
@@ -45,7 +45,7 @@ ENV PYTHONPATH=/app/src
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
 
 CMD ["uvicorn", "voice.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
@@ -63,7 +63,7 @@ ENV PYTHONPATH=/app/src
 
 EXPOSE 8001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health/live').status==200 else 1)"
 
 CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8001"]
@@ -80,7 +80,7 @@ ENV PYTHONPATH=/app/src
 
 EXPOSE 8002
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/health/live').status==200 else 1)"
 
 CMD ["uvicorn", "case_review.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8002"]
@@ -144,6 +144,11 @@ WORKDIR /app/services/ai_chatbot
 
 EXPOSE 8003
 
+# Longer start-period: the gateway spawns staff_api + policy_api and waits for them
+# to report healthy (CHILD_HEALTH_TIMEOUT) before it's ready to serve.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=75s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8003/healthz').status==200 else 1)"
+
 CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8003"]
 
 
@@ -158,9 +163,29 @@ COPY ai-communication-log/ai-classifier /app
 
 WORKDIR /app
 
+ENV PYTHONPATH=/app
+
 EXPOSE 8005
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8005/health').status==200 else 1)"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+
+
+# ── Shift Summary — summary consolidation via Bedrock (port 8006) ────────────
+FROM base AS shift-summary
+
+COPY shift-summary/requirements.txt /tmp/req-shift-summary.txt
+RUN pip install -r /tmp/req-shift-summary.txt
+
+COPY shift-summary /app
+
+WORKDIR /app
+
+EXPOSE 8006
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8006/health').status==200 else 1)"
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]

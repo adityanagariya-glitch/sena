@@ -42,7 +42,7 @@ AMAZON_RERANK_MODEL_ARN = os.environ.get(
 NUM_RESULTS       = int(os.environ.get("NUM_RESULTS",  "20"))
 RERANK_TOP        = int(os.environ.get("RERANK_TOP",   "8"))
 RERANK_PROVIDER   = os.environ.get("RERANK_PROVIDER", "amazon")
-RERANK_COMPARE    = os.environ.get("RERANK_COMPARE", "true").lower() == "true"
+RERANK_COMPARE    = os.environ.get("RERANK_COMPARE", "false").lower() == "true"
 RERANK_LOG_PATH   = os.environ.get("RERANK_LOG_PATH", "logs/rerank_comparison.jsonl")
 
 # ── S3 ────────────────────────────────────────────────────────────────────────
