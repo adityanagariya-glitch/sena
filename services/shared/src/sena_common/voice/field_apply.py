@@ -5,8 +5,8 @@ from typing import Literal
 
 import structlog
 
-from onboarding.models.schema_spec import StepSchema
-from onboarding.services.coverage import is_eligible
+from sena_common.voice.schema_spec import StepSchema
+from sena_common.voice.coverage import is_eligible
 
 log = structlog.get_logger(__name__)
 

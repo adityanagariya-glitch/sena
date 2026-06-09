@@ -1,8 +1,8 @@
 """Tests for Redis-backed FormStateRepo."""
 from __future__ import annotations
 
-from onboarding.models.form_state import FormState
-from onboarding.models.schema_spec import StepSchema
+from sena_common.voice.form_state import FormState
+from sena_common.voice.schema_spec import StepSchema
 
 _MINIMAL_SCHEMA: dict = {
     "step_id": "personal_information",

@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from onboarding.models.cross_screen_summary import CrossScreenContext, StepSummary
-from onboarding.models.form_state import FieldSource, FieldValue, FormState
+from sena_common.voice.form_state import FieldSource, FieldValue, FormState
 from onboarding.services.cross_screen_context import (
     ALLOWLIST_PATHS,
     build_summary,

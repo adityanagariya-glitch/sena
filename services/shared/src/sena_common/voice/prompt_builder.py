@@ -21,10 +21,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import onboarding
 from onboarding.core.settings import settings
-from onboarding.models.turn_payload import TurnPayload, VisibleField
+from sena_common.voice.turn_payload import TurnPayload, VisibleField
 
-_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+# T1: onboarding-package-relative resolution via __path__ (namespace-package safe;
+# onboarding.__file__ is None because there is no __init__.py). Becomes an injected
+# config param (prompts_dir on VoiceEngineConfig) in T3 so case_review supplies its own.
+_PROMPTS_DIR = Path(next(iter(onboarding.__path__))).resolve() / "prompts"
 _TEMPLATE_PATH = _PROMPTS_DIR / "onboarding_system.md"
 _STEPS_DIR = _PROMPTS_DIR / "steps"
 _MODES_DIR = _PROMPTS_DIR / "modes"

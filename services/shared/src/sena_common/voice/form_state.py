@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from onboarding.models.schema_spec import StepSchema
+from sena_common.voice.schema_spec import StepSchema
 
 
 def _utcnow() -> datetime:

@@ -34,15 +34,15 @@ from google import genai
 from google.genai import types
 
 from onboarding.core.settings import settings
-from onboarding.services.grounding import build_live_tools
-from onboarding.services.screen_context import (
+from sena_common.voice.grounding import build_live_tools
+from sena_common.voice.screen_context import (
     ScreenStateMessage,
     ScreenStateV2Message,
     from_v1,
     payload_hash,
     render_injection_text,
 )
-from onboarding.services.tools import FUNCTION_DECLS
+from sena_common.voice.tools import FUNCTION_DECLS
 
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
 # path (e.g. shared/ hasn't been pip-installed editable into the venv), fall
@@ -85,10 +85,10 @@ def _sum_audio_tokens(details: object) -> int:
 
 
 if TYPE_CHECKING:
-    from onboarding.models.turn_payload import TurnPayload
-    from onboarding.repositories.state_repo import FormStateRepo
-    from onboarding.services.mobile_bridge import MobileBridge
-    from onboarding.services.tools import ToolDispatcher
+    from sena_common.voice.turn_payload import TurnPayload
+    from sena_common.voice.state_repo import FormStateRepo
+    from sena_common.voice.mobile_bridge import MobileBridge
+    from sena_common.voice.tools import ToolDispatcher
 
 import structlog
 
@@ -594,7 +594,7 @@ class GeminiLiveSession:
         falls through to the legacy screen-state injection for Gemini context."""
         from pydantic import ValidationError
 
-        from onboarding.models.turn_payload import TurnPayload
+        from sena_common.voice.turn_payload import TurnPayload
 
         turn_json = data.get("turn")
         if turn_json is not None:

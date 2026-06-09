@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from onboarding.services.screen_context import (
+from sena_common.voice.screen_context import (
     ScreenData,
     ScreenStateMessage,
     ScreenStateV2,

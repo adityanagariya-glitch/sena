@@ -42,15 +42,15 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
-from onboarding.models.turn_payload import Participant, StepInfo, TurnPayload
-from onboarding.repositories.state_repo import FormStateRepo
+from sena_common.voice.gemini_live import GeminiLiveSession
+from sena_common.voice.mobile_bridge import MobileBridge
+from sena_common.voice.prompt_builder import build_system_prompt
+from sena_common.voice.resumption import build_replay_context, issue_handle, redeem_handle
+from sena_common.voice.state_repo import FormStateRepo
+from sena_common.voice.tools import ToolDispatcher
+from sena_common.voice.turn_payload import Participant, StepInfo, TurnPayload
 from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
-from onboarding.services.gemini_live import GeminiLiveSession
-from onboarding.services.mobile_bridge import MobileBridge
-from onboarding.services.prompt_builder import build_system_prompt
-from onboarding.services.resumption import build_replay_context, issue_handle, redeem_handle
-from onboarding.services.tools import ToolDispatcher
 
 
 log = structlog.get_logger(__name__)

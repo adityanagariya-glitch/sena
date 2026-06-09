@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from onboarding.models.schema_spec import FieldSpec, FieldType, SectionSpec
+from sena_common.voice.schema_spec import FieldSpec, FieldType, SectionSpec
 
 
 class TestFieldSpec:
@@ -27,7 +27,7 @@ class TestFieldSpec:
 
 class TestSectionSpec:
     def test_repeatable_requires_item_fields(self):
-        from onboarding.models.schema_spec import RepeatableConfig
+        from sena_common.voice.schema_spec import RepeatableConfig
         with pytest.raises(ValidationError, match="item_fields"):
             SectionSpec(id="x", label="X", repeatable=RepeatableConfig(min=1))
 
@@ -36,7 +36,7 @@ class TestSectionSpec:
             SectionSpec(id="x", label="X")
 
     def test_is_repeatable(self):
-        from onboarding.models.schema_spec import RepeatableConfig
+        from sena_common.voice.schema_spec import RepeatableConfig
         section = SectionSpec(
             id="contacts",
             label="Contacts",

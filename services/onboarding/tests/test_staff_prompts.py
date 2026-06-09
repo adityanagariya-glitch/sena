@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from onboarding.models.schema_spec import StepSchema
-from onboarding.services.prompt_builder import _step_rules_section
+from sena_common.voice.schema_spec import StepSchema
+from sena_common.voice.prompt_builder import _step_rules_section
 
 STAFF_STEP_IDS = [
     "staff_personal_information",

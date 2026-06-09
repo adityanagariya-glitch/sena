@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from onboarding.services.mobile_bridge import MobileBridge
+from sena_common.voice.mobile_bridge import MobileBridge
 
 
 class _FakeWS:

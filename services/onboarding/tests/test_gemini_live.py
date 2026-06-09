@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-from onboarding.models.form_state import FormState
-from onboarding.repositories.state_repo import FormStateRepo
-from onboarding.services.gemini_live import GeminiLiveSession, _is_client_disconnect
+from sena_common.voice.form_state import FormState
+from sena_common.voice.state_repo import FormStateRepo
+from sena_common.voice.gemini_live import GeminiLiveSession, _is_client_disconnect
 
 # ── _is_client_disconnect (graceful WS teardown vs real fault) ────────────────
 

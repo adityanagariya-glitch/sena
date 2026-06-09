@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 if TYPE_CHECKING:
-    from onboarding.repositories.state_repo import FormStateRepo
+    from sena_common.voice.state_repo import FormStateRepo
 
 log = structlog.get_logger(__name__)
 

@@ -34,13 +34,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from onboarding.repositories.state_repo import FormStateRepo
-from onboarding.services.gemini_live import GeminiLiveSession
+from sena_common.voice.state_repo import FormStateRepo
+from sena_common.voice.gemini_live import GeminiLiveSession
 
 # Patch emit_usage where it is USED (imported at gemini_live.py:52), NOT where
 # it is defined in sena_common.usage_logger. Covers the real import and the
 # ImportError fallback stub — both bind the name in this module's namespace.
-EMIT_USAGE_TARGET = "onboarding.services.gemini_live.emit_usage"
+EMIT_USAGE_TARGET = "sena_common.voice.gemini_live.emit_usage"
 
 
 def _make_session(repo: FormStateRepo, session_id: str = "sid-1") -> GeminiLiveSession:
@@ -157,7 +157,7 @@ async def test_session_end_invokes_flush_pending_usage(fake_redis) -> None:
     fake_client.aio.live.connect = MagicMock(return_value=connect_cm)
 
     with (
-        patch("onboarding.services.gemini_live.genai.Client", return_value=fake_client),
+        patch("sena_common.voice.gemini_live.genai.Client", return_value=fake_client),
         # b2g returns immediately → simulates client_stop ending the bridge.
         patch.object(session, "_browser_to_gemini", new=AsyncMock(return_value=None)),
         patch.object(session, "_gemini_to_browser", new=AsyncMock(return_value=None)),

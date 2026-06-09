@@ -7,8 +7,8 @@ understand the key but still tolerate its presence.
 """
 from __future__ import annotations
 
-from onboarding.models.schema_spec import StepSchema
-from onboarding.services.field_apply import build_envelope
+from sena_common.voice.schema_spec import StepSchema
+from sena_common.voice.field_apply import build_envelope
 
 # Minimal schema replicating voice_coverage=[] from the real personal_info schema.
 # The empty voice_coverage is what test_envelope_returns_none_when_blocked_by_coverage
