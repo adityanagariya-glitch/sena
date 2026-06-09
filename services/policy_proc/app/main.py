@@ -38,19 +38,19 @@ from pydantic import BaseModel
 from typing import Optional
 
 import boto3
-from registry import registry_create, registry_update, registry_get, registry_list_by_org
-from config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN, BACKEND_API_BASE, INTERNAL_API_KEY, REGION
+from scripts.registry import registry_create, registry_update, registry_get, registry_list_by_org
+from scripts.config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN, BACKEND_API_BASE, INTERNAL_API_KEY, REGION
 
-from pipeline import run_pipeline
-from generator import generate_stream
-from classifier import classify, should_block
-from retriever import retrieve, is_context_empty
-from memory import (
+from scripts.pipeline import run_pipeline
+from scripts.generator import generate_stream
+from scripts.classifier import classify, should_block
+from scripts.retriever import retrieve, is_context_empty
+from scripts.memory import (
     get_sessions, get_turns, rename_session,
     get_memory_context, save_memory, create_session,
 )
-from config import MESSAGES
-from registry import now_iso
+from scripts.config import MESSAGES
+from scripts.registry import now_iso
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 s3            = boto3.client("s3",            region_name=REGION)
@@ -605,7 +605,7 @@ def trigger_ingestion(req: TriggerIngestionRequest, authorization: str = Header(
     registry_update(doc_id, {"status": final_status})
  
     # Clear org doc cache so retriever picks up new doc immediately
-    from retriever import clear_org_cache
+    from scripts.retriever import clear_org_cache
     clear_org_cache(doc_org)
  
     return {
@@ -703,7 +703,7 @@ def trigger_cleanup(req: TriggerCleanupRequest, authorization: str = Header(defa
     })
  
     # Clear org doc cache
-    from retriever import clear_org_cache
+    from scripts.retriever import clear_org_cache
     clear_org_cache(doc_org)
  
     return {
