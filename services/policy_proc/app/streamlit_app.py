@@ -233,6 +233,15 @@ st.markdown("""
     background: #e5e5e5 !important;
 }
 
+/* doc type radio in sidebar */
+[data-testid="stSidebar"] [data-testid="stRadio"] label {
+    font-size: 12px !important;
+    color: #a3a3a3 !important;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
+    font-size: 12px !important;
+}
+
 /* user chip in sidebar footer */
 .user-chip {
     background: #1a1a1a;
@@ -277,6 +286,7 @@ def _init():
         "all_sessions":   [],
         "active_session": None,
         "login_error":    "",
+        "doc_type":       "All",      # "All" | "Policy" | "Procedure"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -414,6 +424,12 @@ def send_message(question: str):
         "session_title": session_title,
         "is_new_chat":   is_new,
     }
+    selected_doc_type = st.session_state.get("doc_type", "All")
+    if selected_doc_type == "Policy":
+        payload["doc_type"] = "policy"
+    elif selected_doc_type == "Procedure":
+        payload["doc_type"] = "procedure"
+    # "All" → omit doc_type so backend returns both
 
     # Placeholder for streaming tokens
     with st.chat_message("assistant"):
@@ -658,6 +674,22 @@ with st.sidebar:
             "<div style='font-size:12px;color:#404040;padding:4px 2px'>No conversations yet.</div>",
             unsafe_allow_html=True,
         )
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+    # Doc type filter
+    st.markdown(
+        "<div style='font-size:10px;color:#525252;letter-spacing:0.08em;"
+        "text-transform:uppercase;padding:0 2px 6px'>Filter by type</div>",
+        unsafe_allow_html=True,
+    )
+    st.session_state.doc_type = st.radio(
+        "Document type",
+        options=["All", "Policy", "Procedure"],
+        index=["All", "Policy", "Procedure"].index(st.session_state.get("doc_type", "All")),
+        label_visibility="collapsed",
+        horizontal=True,
+    )
 
     st.markdown("<hr>", unsafe_allow_html=True)
 

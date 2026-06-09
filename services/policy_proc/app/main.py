@@ -12,24 +12,34 @@ Run:
 """
 import sys
 import os
+
+# Load .env before any config imports so all env vars are available at import time
+from dotenv import load_dotenv
+load_dotenv()
+
 import uuid
 import json
 import logging
+import time
+import time as _time
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
+from enum import Enum
+import requests as http_requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 import jwt
-from fastapi import FastAPI, HTTPException, Header
+import botocore.exceptions
+from fastapi import FastAPI, HTTPException, Header, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
 import boto3
-import time
 from scripts.registry import registry_create, registry_update, registry_get, registry_list_by_org
-from scripts.config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN
+from scripts.config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN, BACKEND_API_BASE, INTERNAL_API_KEY, REGION
 
 from scripts.pipeline import run_pipeline
 from scripts.generator import generate_stream
@@ -43,18 +53,14 @@ from scripts.config import MESSAGES
 from scripts.registry import now_iso
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-s3            = boto3.client("s3",            region_name="ap-southeast-2")
-bedrock_agent = boto3.client("bedrock-agent", region_name="ap-southeast-2")
+s3            = boto3.client("s3",            region_name=REGION)
+bedrock_agent = boto3.client("bedrock-agent", region_name=REGION)
 
-JWT_SECRET    = os.environ.get("JWT_SECRET", "sena-local-qa-secret-change-in-prod")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is not set")
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL     = 3600  # seconds
-
-# Production ISENA tokens (POST /auth/ai/login) are signed by ISENA with a secret
-# we don't hold. Set ISENA_JWT_SECRET to enable full signature verification once
-# available; otherwise we trust the gateway as the auth boundary and only decode +
-# enforce expiry (same model as the staff service).
-ISENA_JWT_SECRET = os.environ.get("ISENA_JWT_SECRET", "")
 
 USERS_FILE    = os.environ.get("SENA_USERS_FILE",
                     os.path.join(os.path.dirname(__file__), "..", "fake_users.json"))
@@ -65,6 +71,59 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ── Login rate limiter ─────────────────────────────────────────────────────────
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_WINDOW = 60   # seconds
+_RATE_LIMIT_MAX    = int(os.environ.get("LOGIN_RATE_LIMIT_MAX", "20"))  # attempts per window per IP
+
+# ── User role cache ────────────────────────────────────────────────────────────
+_user_role_cache: dict[str, str] = {}
+
+def map_user_type_to_role(user_type_response: dict) -> str:
+    data      = user_type_response.get("data", {})
+    user_type = data.get("userType")
+
+    if user_type == "superAdmin":
+        return "superadmin"
+    elif user_type == "organizationMember":
+        staff_type = data.get("staffType")
+        if staff_type == "support_worker":
+            return "support_worker"
+        elif staff_type == "in_office":
+            return "coordinator"
+        else:
+            return "support_worker"
+    elif user_type == "serviceProvider":
+        if data.get("isISW"):
+            return "support_worker"
+        else:
+            return "coordinator"
+    return "blocked"
+
+
+def get_user_role(user_id: str, token: str, jwt_role: str = "support_worker") -> str:
+    if user_id in _user_role_cache:
+        return _user_role_cache[user_id]
+    if not BACKEND_API_BASE:
+        # No external user service configured — trust the role embedded in the JWT.
+        logger.info(f"BACKEND_API_BASE not set — using JWT role for {user_id}: {jwt_role}")
+        _user_role_cache[user_id] = jwt_role
+        return jwt_role
+    try:
+        r = http_requests.get(
+            f"{BACKEND_API_BASE}/api/auth/user-type",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5
+        )
+        r.raise_for_status()
+        role = map_user_type_to_role(r.json())
+        _user_role_cache[user_id] = role
+        logger.info(f"User role resolved: {user_id} → {role}")
+        return role
+    except Exception as e:
+        logger.error(f"Failed to get user type from backend: {e}")
+        return jwt_role
+
 app = FastAPI(title="SENA RAG API", version="2.0.0")
 
 app.add_middleware(
@@ -74,7 +133,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+# ── Internal API key guard ─────────────────────────────────────────────────────
+def verify_api_key(x_api_key: str = Header(default=None)):
+    if not INTERNAL_API_KEY:
+        return  # enforcement disabled — INTERNAL_API_KEY not configured
+    if x_api_key != INTERNAL_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
 # ── User store ─────────────────────────────────────────────────────────────────
 
 def _load_users() -> dict:
@@ -114,69 +179,29 @@ def _mint_token(user: dict) -> str:
     )
 
 
-def _normalize_isena_claims(claims: dict) -> dict:
-    """Map ISENA's camelCase claims to the shape policy_proc expects.
-
-    ISENA token: {userId, organizationId, role (UUID), email, memberId, roles[...]}
-    policy_proc expects: {user_id, org_id, role}. ISENA `role` is an opaque UUID —
-    admin checks simply won't match it, so an ISENA user defaults to a regular member.
-    """
-    user_id = claims.get("user_id") or claims.get("userId")
-    org_id  = claims.get("org_id")  or claims.get("organizationId")
-    role    = claims.get("role") or claims.get("roleId") or "member"
-    if not user_id or not org_id:
-        raise HTTPException(status_code=401, detail="Token missing user/org identity claims")
-    return {
-        "user_id":   user_id,
-        "org_id":    org_id,
-        "role":      role,
-        "email":     claims.get("email", ""),
-        "full_name": claims.get("full_name") or claims.get("name", ""),
-        "login_id":  claims.get("login_id") or claims.get("email", ""),
-        "member_id": claims.get("memberId"),
-        "_source":   "isena",
-    }
-
-
 def decode_token(authorization: str) -> dict:
-    """Accept BOTH token types:
-
-    1. policy_proc-minted dev/test token — HS256 signed with our JWT_SECRET,
-       already carrying user_id / org_id / role (fully signature-verified).
-    2. production ISENA token (POST /auth/ai/login) — signed by ISENA. Verified
-       with ISENA_JWT_SECRET if configured, else decoded-without-signature (gateway
-       is the trust boundary, like staff) with manual expiry, then claim-normalized.
-    """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
     token = authorization.split(" ", 1)[1]
-
-    # 1. Try as our own minted token (full signature verification).
     try:
-        claims = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        if claims.get("org_id") and claims.get("user_id") and claims.get("role"):
-            return claims
-        return _normalize_isena_claims(claims)  # verified but not our shape
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        pass  # signature didn't match our secret → likely an ISENA token
-
-    # 2. Treat as a production ISENA token.
-    try:
-        if ISENA_JWT_SECRET:
-            isena = jwt.decode(token, ISENA_JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        else:
-            isena = jwt.decode(token, options={"verify_signature": False})
-            exp = isena.get("exp")
-            if exp and datetime.now(timezone.utc) > datetime.fromtimestamp(exp, tz=timezone.utc):
-                raise HTTPException(status_code=401, detail="Token expired")
+        raw = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
 
-    return _normalize_isena_claims(isena)
+    # Normalise field names — support both real backend (camelCase) and local dev (snake_case)
+    user_id = raw.get("user_id") or raw.get("userId") or raw.get("sub", "")
+    org_id  = raw.get("org_id")  or raw.get("organizationId", "")
+    role    = raw.get("role", "")   # absent in real backend JWTs — filled later by get_user_role()
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token missing user identifier (user_id / userId / sub)")
+    if not org_id:
+        raise HTTPException(status_code=401, detail="Token missing org identifier (org_id / organizationId)")
+
+    # Return normalised dict so all downstream code uses consistent snake_case keys
+    return {**raw, "user_id": user_id, "org_id": org_id, "role": role}
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
@@ -185,11 +210,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class DocType(str, Enum):
+    POLICY    = "policy"
+    PROCEDURE = "procedure"
+
+
 class QueryRequest(BaseModel):
     question:      str
     session_id:    Optional[str] = None
     session_title: Optional[str] = None
     is_new_chat:   bool = False
+    doc_type:      Optional[DocType] = None
 
 
 class TurnsRequest(BaseModel):
@@ -202,19 +233,30 @@ class RenameRequest(BaseModel):
 
 class TriggerIngestionRequest(BaseModel):
     s3_key: str
+    org_id: str
+    doc_type: DocType = DocType.POLICY
 
 class TriggerCleanupRequest(BaseModel):
     s3_key: str
+    org_id: str
+    doc_type: DocType = DocType.POLICY
 
 
 # ── Auth endpoint ──────────────────────────────────────────────────────────────
 
 @app.post("/auth/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
     """
     Validates login_id + password against fake_users.json.
     Returns a signed JWT on success.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    now_ts = _time.time()
+    _login_attempts[client_ip] = [t for t in _login_attempts[client_ip] if now_ts - t < _RATE_LIMIT_WINDOW]
+    if len(_login_attempts[client_ip]) >= _RATE_LIMIT_MAX:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in a minute.")
+    _login_attempts[client_ip].append(now_ts)
+
     users = _load_users()
     user  = users.get(req.login_id.lower().strip())
 
@@ -245,6 +287,15 @@ def health():
     return {"status": "ok"}
 
 
+# ── Logout ─────────────────────────────────────────────────────────────────────
+
+@app.post("/auth/logout")
+def logout(authorization: str = Header(default=None)):
+    """Validates token and instructs client to discard it. JWT is stateless — server cannot revoke."""
+    decode_token(authorization)
+    return {"success": True}
+
+
 # ── Query (streaming) ──────────────────────────────────────────────────────────
 
 @app.post("/query/stream")
@@ -253,7 +304,6 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
     SSE streaming. Events:
         data: {"type": "meta",    "session_id": "...", "label": "...", "sources": [...]}
         data: {"type": "token",   "text": "..."}
-        data: {"type": "usage",   "input_tokens": N, "output_tokens": N}
         data: {"type": "done",    "stop_reason": "end_turn"}
         data: {"type": "blocked", "text": "...", "label": "..."}
         data: {"type": "error",   "text": "..."}
@@ -262,6 +312,9 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
     user_id = claims["user_id"]
     org_id  = claims["org_id"]
     role    = claims["role"]
+    role = get_user_role(user_id, authorization.split(" ", 1)[1], jwt_role=role)
+    if role == "blocked":
+        raise HTTPException(status_code=403, detail="Your account does not have access to this service. Contact your administrator for support.")
     actor_id = f"{org_id}/{user_id}"
     session_id    = req.session_id or str(uuid.uuid4())
     session_title = req.session_title or req.question[:60]
@@ -281,6 +334,7 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
                 org_id      = org_id,
                 role        = role,
                 is_new_chat = req.is_new_chat,
+                doc_type    = req.doc_type.value if req.doc_type else None,
             )
         except Exception as exc:
             logger.error(f"Pipeline error: {exc}")
@@ -292,7 +346,6 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
         blocked      = result.get("blocked", False)
         block_reason = result.get("block_reason")
         label        = result.get("classification", {}).get("label")
-        usage        = result.get("usage") or {"input_tokens": 0, "output_tokens": 0}
 
         yield f"data: {json.dumps({'type': 'meta', 'session_id': result.get('session_id', session_id), 'label': label, 'sources': sources, '_identity': {'user_id': user_id, 'org_id': org_id, 'role': role}})}\n\n"
 
@@ -301,8 +354,6 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
             return
 
         yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
-        # Token usage for THIS question (input + output), emitted before done.
-        yield f"data: {json.dumps({'type': 'usage', 'input_tokens': usage.get('input_tokens', 0), 'output_tokens': usage.get('output_tokens', 0)})}\n\n"
         yield f"data: {json.dumps({'type': 'done', 'stop_reason': 'end_turn'})}\n\n"
 
     return StreamingResponse(
@@ -353,6 +404,9 @@ def rename(req: RenameRequest, authorization: str = Header(default=None)):
     user_id = claims["user_id"]
     org_id  = claims["org_id"]
     actor_id = f"{org_id}/{user_id}"
+    sessions = get_sessions(actor_id)
+    if req.session_id not in [s["session_id"] for s in sessions]:
+        raise HTTPException(status_code=403, detail="Access denied — session not found for this user")
     return {"success": rename_session(actor_id, req.session_id, req.title)}
 
 # ── Registry functions (auto update and delete) ──────────────────────────────────────────────────────────
@@ -449,7 +503,7 @@ def run_cleanup_job(doc_id: str) -> tuple[str, str]:
 # ══════════════════════════════════════════════════════════════════════════════
  
 @app.post("/admin/trigger_ingestion")
-def trigger_ingestion(req: TriggerIngestionRequest, authorization: str = Header(default=None)):
+def trigger_ingestion(req: TriggerIngestionRequest, authorization: str = Header(default=None), _: None = Depends(verify_api_key)):
     """
     Triggers ingestion for a document already uploaded to S3.
     
@@ -495,11 +549,13 @@ def trigger_ingestion(req: TriggerIngestionRequest, authorization: str = Header(
     # Verify file exists in S3
     try:
         s3.head_object(Bucket=BUCKET_NAME, Key=s3_key)
-    except Exception:
-        raise HTTPException(
-            status_code=404,
-            detail=f"File not found in S3: s3://{BUCKET_NAME}/{s3_key}"
-        )
+    except botocore.exceptions.ClientError as e:
+        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
+            raise HTTPException(
+                status_code=404,
+                detail=f"File not found in S3: s3://{BUCKET_NAME}/{s3_key}"
+            )
+        raise HTTPException(status_code=502, detail=f"S3 error: {e}")
  
     # Check file type
     if not s3_key.lower().endswith((".pdf", ".docx")):
@@ -530,7 +586,7 @@ def trigger_ingestion(req: TriggerIngestionRequest, authorization: str = Header(
         s3.put_object(
             Bucket=BUCKET_NAME,
             Key=metadata_key,
-            Body=json.dumps({"metadataAttributes": {"org_id": doc_org}}),
+            Body=json.dumps({"metadataAttributes": {"org_id": doc_org, "doc_type": req.doc_type.value}}),
             ContentType="application/json"
         )
         logger.info(f"Metadata sidecar created: {metadata_key}")
@@ -562,7 +618,7 @@ def trigger_ingestion(req: TriggerIngestionRequest, authorization: str = Header(
  
  
 @app.post("/admin/trigger_cleanup")
-def trigger_cleanup(req: TriggerCleanupRequest, authorization: str = Header(default=None)):
+def trigger_cleanup(req: TriggerCleanupRequest, authorization: str = Header(default=None), _: None = Depends(verify_api_key)):
     """
     Triggers vector cleanup after a document has been deleted from S3.
  
@@ -607,16 +663,16 @@ def trigger_cleanup(req: TriggerCleanupRequest, authorization: str = Header(defa
     # Confirm file is actually gone from S3
     try:
         s3.head_object(Bucket=BUCKET_NAME, Key=s3_key)
-        # If we reach here the file still exists
         raise HTTPException(
             status_code=400,
-            detail=f"File still exists in S3. Delete it first, then call this endpoint."
+            detail="File still exists in S3. Delete it first, then call this endpoint."
         )
     except HTTPException:
         raise
-    except Exception:
+    except botocore.exceptions.ClientError as e:
+        if e.response["Error"]["Code"] not in ("404", "NoSuchKey"):
+            raise HTTPException(status_code=502, detail=f"S3 error: {e}")
         # File not found — good, proceed with cleanup
-        pass
  
     logger.info(f"Trigger cleanup | user={user_id} | org={doc_org} | key={s3_key}")
  
@@ -659,7 +715,7 @@ def trigger_cleanup(req: TriggerCleanupRequest, authorization: str = Header(defa
  
  
 @app.get("/admin/list_docs")
-def list_docs(org_id: str, authorization: str = Header(default=None)):
+def list_docs(org_id: str, authorization: str = Header(default=None), _: None = Depends(verify_api_key)):
     """
     Lists all documents in the registry for a given org.
     Coordinators can only list their own org. Superadmin can list any.
@@ -671,7 +727,7 @@ def list_docs(org_id: str, authorization: str = Header(default=None)):
     if role not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Not authorised")
  
-    if role not in ORG_ADMIN and org_id != caller_org:
+    if role != "superadmin" and org_id != caller_org:
         raise HTTPException(status_code=403, detail="You can only view your own organisation's documents")
  
     docs = registry_list_by_org(org_id)

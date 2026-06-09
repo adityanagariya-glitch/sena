@@ -10,8 +10,7 @@ from memory import (
     get_memory_context,
     save_memory,
     create_session,
-    get_sessions,
-    get_turns
+    get_turns,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,8 @@ def run_pipeline(
     user_id:    str  = None,
     org_id:     str  = None,
     role:       str  = None,
-    is_new_chat: bool = False
+    is_new_chat: bool = False,
+    doc_type: str = None
 ) -> dict:
     """
     Full RAG pipeline with memory:
@@ -106,7 +106,6 @@ def run_pipeline(
     if classification.get("label") == "GREETING":
         logger.info("Greeting detected — skipping retrieval, generating direct response")
         full_answer = []
-        greet_usage = {"input_tokens": 0, "output_tokens": 0}
         for chunk in generate_stream(
             question=question,
             context="",
@@ -115,11 +114,6 @@ def run_pipeline(
         ):
             if chunk.get("type") == "token":
                 full_answer.append(chunk.get("text", ""))
-            elif chunk.get("type") == "usage":
-                greet_usage = {
-                    "input_tokens": chunk.get("input_tokens", 0),
-                    "output_tokens": chunk.get("output_tokens", 0),
-                }
         answer = "".join(full_answer).strip()
         try:
             save_memory(user_id, session_id, question, answer, [])
@@ -132,8 +126,7 @@ def run_pipeline(
             "block_reason":   None,
             "classification": classification,
             "sources":        [],
-            "session_id":     session_id,
-            "usage":          greet_usage,
+            "session_id":     session_id
         }
     
     # Step 3.5: Rewrite query for better retrieval
@@ -145,7 +138,7 @@ def run_pipeline(
 
     # Step 4: Retrieve from KB
     try:
-        chunks, context, sources = retrieve(rewritten_query, org_id=org_id, role=role)
+        _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
     except Exception as e:
         logger.error(f"Retrieval failed: {e}")
         return {

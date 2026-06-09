@@ -1,30 +1,6 @@
 # config.py
 import os
 import logging
-from pathlib import Path
-
-# ── Load shared environment (AWS credentials, region, secrets) ──────────────────
-# boto3 resolves AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION from the
-# environment, so load the repo-root .env BEFORE any boto3 client is created
-# (config.py is imported first by every module). override=False means a value
-# already set in the real environment (e.g. an IAM role or an exported var) always
-# wins — the .env only fills in what's missing.
-#
-# Add your AWS keys to /home/main/SENA/.env (repo root):
-#   # AWS_ACCESS_KEY_ID=your_access_key
-#   # AWS_SECRET_ACCESS_KEY=your_secret_key
-try:
-    from dotenv import load_dotenv
-    _here = Path(__file__).resolve()
-    for _env in (
-        _here.parents[3] / ".env",   # repo-root  /home/main/SENA/.env  (shared, primary)
-        _here.parents[1] / ".env",   # services/policy_proc/.env        (optional local override)
-        Path.cwd() / ".env",
-    ):
-        if _env.is_file():
-            load_dotenv(_env, override=False)
-except ImportError:
-    pass
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -102,3 +78,7 @@ TURNS_TABLE    = os.environ.get("TURNS_TABLE",    f"sena-{ENV}-chat-turns")
 # # ── Auto Update and Auto Deletion ──────────────────────────────────────────────────────────────
 ADMIN_ROLES = os.environ.get("ADMIN_ROLES", "coordinator,superadmin").split(",")
 ORG_ADMIN   = os.environ.get("ORG_ADMIN", "superadmin,admin,coordinator").split(",")
+
+
+BACKEND_API_BASE = os.environ.get("BACKEND_API_BASE", "")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
