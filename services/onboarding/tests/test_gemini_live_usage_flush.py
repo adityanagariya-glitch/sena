@@ -35,6 +35,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from sena_common.voice.state_repo import FormStateRepo
+from sena_common.voice.config import VoiceEngineConfig
 from sena_common.voice.gemini_live import GeminiLiveSession
 
 # Patch emit_usage where it is USED (imported at gemini_live.py:52), NOT where
@@ -44,13 +45,22 @@ EMIT_USAGE_TARGET = "sena_common.voice.gemini_live.emit_usage"
 
 
 def _make_session(repo: FormStateRepo, session_id: str = "sid-1") -> GeminiLiveSession:
+    import onboarding
+    from pathlib import Path
+
     ws = MagicMock()
     ws.send_text = AsyncMock()
+    cfg = VoiceEngineConfig(
+        gemini_api_key="test-key",
+        gemini_live_model_id="gemini-3.1-flash-live-preview",
+        prompts_dir=Path(next(iter(onboarding.__path__))).resolve() / "prompts",
+    )
     return GeminiLiveSession(
         websocket=ws,
         session_id=session_id,
         system_instruction="test",
         repo=repo,
+        config=cfg,
     )
 
 

@@ -7,6 +7,7 @@ use these re-exports for convenience in tests and service wiring.
 
 from __future__ import annotations
 
+from sena_common.voice.config import VoiceEngineConfig
 from sena_common.voice.coverage import coverage_paths, is_eligible, is_repeatable_eligible
 from sena_common.voice.field_apply import build_envelope
 from sena_common.voice.form_state import FieldValue, FormState
@@ -23,6 +24,8 @@ from sena_common.voice.turn_payload import TurnPayload
 from sena_common.voice.webhook import fire_webhook
 
 __all__ = [
+    # Engine config (injected — replaces onboarding.core.settings coupling)
+    "VoiceEngineConfig",
     # Gemini bridge
     "GeminiLiveSession",
     # Tool dispatcher

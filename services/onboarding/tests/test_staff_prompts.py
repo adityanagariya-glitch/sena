@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+import onboarding
+
 from sena_common.voice.schema_spec import StepSchema
 from sena_common.voice.prompt_builder import _step_rules_section
 
@@ -31,6 +33,7 @@ STAFF_STEP_IDS = [
 ]
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "staff"
+_STAFF_STEPS_DIR = Path(next(iter(onboarding.__path__))).resolve() / "prompts" / "steps"
 
 # Client-flow copy-paste tells: section/field ids that belong ONLY to the
 # participant flow. Their presence in a staff fragment means the client step
@@ -54,7 +57,7 @@ _CLIENT_LEAKAGE_TOKENS = [
 
 @pytest.mark.parametrize("step_id", STAFF_STEP_IDS)
 def test_staff_step_fragment_loads(step_id: str) -> None:
-    fragment = _step_rules_section(step_id)
+    fragment = _step_rules_section(step_id, _STAFF_STEPS_DIR)
     assert fragment.strip(), f"empty/missing staff fragment for {step_id}"
     assert "context override" in fragment.lower(), (
         f"{step_id} missing the staff CONTEXT OVERRIDE header"
@@ -63,7 +66,7 @@ def test_staff_step_fragment_loads(step_id: str) -> None:
 
 @pytest.mark.parametrize("step_id", STAFF_STEP_IDS)
 def test_staff_fragment_has_no_client_leakage(step_id: str) -> None:
-    body = _step_rules_section(step_id).lower()
+    body = _step_rules_section(step_id, _STAFF_STEPS_DIR).lower()
     leaked = [tok for tok in _CLIENT_LEAKAGE_TOKENS if tok in body]
     assert not leaked, f"{step_id} leaked client-flow tokens: {leaked}"
 
@@ -90,6 +93,12 @@ def test_loader_resolves_steps_across_flow_subfolders() -> None:
     """After flow-grouping, the recursive loader resolves a client step
     (steps/client/) and a staff step (steps/staff/) by step_id alone, and
     returns empty for an unknown step."""
-    assert _step_rules_section("personal_information").strip(), "client step did not resolve"
-    assert _step_rules_section("staff_personal_information").strip(), "staff step did not resolve"
-    assert _step_rules_section("no_such_step").strip() == "", "unknown step must be empty"
+    assert _step_rules_section(
+        "personal_information", _STAFF_STEPS_DIR
+    ).strip(), "client step did not resolve"
+    assert _step_rules_section(
+        "staff_personal_information", _STAFF_STEPS_DIR
+    ).strip(), "staff step did not resolve"
+    assert _step_rules_section("no_such_step", _STAFF_STEPS_DIR).strip() == "", (
+        "unknown step must be empty"
+    )

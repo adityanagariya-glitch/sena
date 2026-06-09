@@ -19,6 +19,7 @@ import pytest_asyncio
 
 from sena_common.voice.form_state import FormState
 from sena_common.voice.state_repo import FormStateRepo
+from sena_common.voice.config import VoiceEngineConfig
 from sena_common.voice.gemini_live import GeminiLiveSession, _is_client_disconnect
 
 # ── _is_client_disconnect (graceful WS teardown vs real fault) ────────────────
@@ -48,13 +49,22 @@ class TestIsClientDisconnect:
 
 
 def _make_session(repo: FormStateRepo, session_id: str = "sid-1") -> GeminiLiveSession:
+    import onboarding
+    from pathlib import Path
+
     ws = MagicMock()
     ws.send_text = AsyncMock()
+    cfg = VoiceEngineConfig(
+        gemini_api_key="test-key",
+        gemini_live_model_id="gemini-3.1-flash-live-preview",
+        prompts_dir=Path(next(iter(onboarding.__path__))).resolve() / "prompts",
+    )
     return GeminiLiveSession(
         websocket=ws,
         session_id=session_id,
         system_instruction="test",
         repo=repo,
+        config=cfg,
     )
 
 

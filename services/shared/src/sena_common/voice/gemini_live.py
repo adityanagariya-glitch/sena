@@ -33,7 +33,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import types
 
-from onboarding.core.settings import settings
+from sena_common.voice.config import VoiceEngineConfig
 from sena_common.voice.grounding import build_live_tools
 from sena_common.voice.screen_context import (
     ScreenStateMessage,
@@ -142,6 +142,7 @@ class GeminiLiveSession:
         mobile_bridge: MobileBridge | None = None,
         initial_state_text: str | None = None,
         *,
+        config: VoiceEngineConfig,
         tenant_id: str | None = None,
         user_id: str | None = None,
         participant_id: str | None = None,
@@ -151,6 +152,7 @@ class GeminiLiveSession:
         self._system_instruction = system_instruction
         self._repo = repo
         self._tools = tool_dispatcher
+        self._cfg = config
         self._replay_context = replay_context
         self._mobile_bridge = mobile_bridge
         # Phase 1.5 — auth context for per-turn usage logging. Sourced from
@@ -235,7 +237,7 @@ class GeminiLiveSession:
 
     async def run(self) -> None:
         """Open Gemini connection and bridge until the client disconnects."""
-        client = genai.Client(api_key=settings.gemini_api_key)
+        client = genai.Client(api_key=self._cfg.gemini_api_key)
 
         # Long-session compression — official Gemini Live mechanism for sessions
         # that would otherwise exceed the model's native window. Sliding window
@@ -282,7 +284,7 @@ class GeminiLiveSession:
             # when SENA_AI_ONBOARDING_GROUNDING_ENABLED=true (default off).
             tools=build_live_tools(
                 FUNCTION_DECLS,
-                grounding_enabled=settings.onboarding_grounding_enabled,
+                grounding_enabled=self._cfg.grounding_enabled,
             )
             if self._tools
             else None,
@@ -314,12 +316,12 @@ class GeminiLiveSession:
         )
 
         async with client.aio.live.connect(
-            model=settings.gemini_live_model_id, config=config
+            model=self._cfg.gemini_live_model_id, config=config
         ) as session:
             log.info(
                 "gemini_connected session=%s model=%s",
                 self._session_id,
-                settings.gemini_live_model_id,
+                self._cfg.gemini_live_model_id,
             )
             # Phase E — inject replay context so model continues without reintroducing
             if self._replay_context:
@@ -462,7 +464,7 @@ class GeminiLiveSession:
         elif msg_type in ("screen_state", "screen_state_v2"):
             # api.md: enforce SCREEN_STATE_MAX_BYTES BEFORE Pydantic parse to
             # prevent memory exhaustion via a giant payload.
-            if len(raw_text) > settings.screen_state_max_bytes:
+            if len(raw_text) > self._cfg.screen_state_max_bytes:
                 await self._ws.send_text(
                     json.dumps(
                         {
@@ -470,7 +472,7 @@ class GeminiLiveSession:
                             "code": "screen_state_too_large",
                             "message": (
                                 f"screen_state payload exceeds "
-                                f"{settings.screen_state_max_bytes} bytes"
+                                f"{self._cfg.screen_state_max_bytes} bytes"
                             ),
                         }
                     )
@@ -534,7 +536,7 @@ class GeminiLiveSession:
                 "reason_human": reason_human,
             }
         )
-        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+        await self._repo.save_state(state, ttl_sec=self._cfg.session_max_sec)
 
         loc = f"{section_id}.{field_id}"
         if repeatable_index is not None:
@@ -579,7 +581,7 @@ class GeminiLiveSession:
             )
             != key
         ]
-        await self._repo.save_state(state, ttl_sec=settings.session_max_sec)
+        await self._repo.save_state(state, ttl_sec=self._cfg.session_max_sec)
         log.info(
             "validation_cleared session=%s section=%s field=%s",
             self._session_id,
@@ -716,7 +718,7 @@ class GeminiLiveSession:
                             "reason_human": reason_human,
                         }
                     )
-                await self._repo.save_state(state_fv, ttl_sec=settings.session_max_sec)
+                await self._repo.save_state(state_fv, ttl_sec=self._cfg.session_max_sec)
                 # Parity with _handle_validation_failed: a screen-originated
                 # validation error must be SPOKEN, not just stored — otherwise the
                 # participant sees a rejected field the agent never mentions. Only
@@ -737,7 +739,7 @@ class GeminiLiveSession:
                         len(newly_rejected),
                     )
 
-        if settings.debug:
+        if self._cfg.debug:
             await self._ws.send_text(
                 json.dumps(
                     {
@@ -775,7 +777,7 @@ class GeminiLiveSession:
             tenant_id=self._tenant_id or "unknown",
             user_id=self._user_id,
             feature=UsageFeature.VOICE_ONBOARDING,
-            model=settings.gemini_live_model_id,
+            model=self._cfg.gemini_live_model_id,
             session_id=self._session_id,
             prompt_tokens=d_prompt,
             response_tokens=d_response,
@@ -873,7 +875,7 @@ class GeminiLiveSession:
                             await self._repo.append_transcript(
                                 self._session_id,
                                 {"speaker": "user", "text": txt, "turn_id": self._turn_id},
-                                ttl_sec=settings.session_max_sec,
+                                ttl_sec=self._cfg.session_max_sec,
                             )
 
                         # ── Output transcription (Gemini speech → text) ────────
@@ -930,7 +932,7 @@ class GeminiLiveSession:
                                         "text": full_text,
                                         "turn_id": self._turn_id,
                                     },
-                                    ttl_sec=settings.session_max_sec,
+                                    ttl_sec=self._cfg.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "interrupted"}))
@@ -993,7 +995,7 @@ class GeminiLiveSession:
                                         "text": full_text,
                                         "turn_id": self._turn_id,
                                     },
-                                    ttl_sec=settings.session_max_sec,
+                                    ttl_sec=self._cfg.session_max_sec,
                                 )
                                 agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "turn_complete"}))
@@ -1038,7 +1040,7 @@ class GeminiLiveSession:
                                     tenant_id=self._tenant_id or "unknown",
                                     user_id=self._user_id,
                                     feature=UsageFeature.VOICE_ONBOARDING,
-                                    model=settings.gemini_live_model_id,
+                                    model=self._cfg.gemini_live_model_id,
                                     session_id=self._session_id,
                                     prompt_tokens=d_prompt,
                                     response_tokens=d_response,
@@ -1153,7 +1155,7 @@ class GeminiLiveSession:
         Two-step silence watchdog (per voice protocol).
 
         Polls every _SILENCE_POLL_SEC seconds. If the user has been silent for
-        >= settings.onboarding_silence_timeout_sec AND Gemini is not currently
+        >= self._cfg.silence_timeout_sec AND Gemini is not currently
         speaking:
 
         - **First fire** (self._silence_warned == False): inject a gentle
@@ -1167,14 +1169,14 @@ class GeminiLiveSession:
 
         Set SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC=0 to disable entirely.
         """
-        if settings.onboarding_silence_timeout_sec <= 0:
+        if self._cfg.silence_timeout_sec <= 0:
             return
         try:
             while True:
                 await asyncio.sleep(_SILENCE_POLL_SEC)
                 elapsed = time.monotonic() - self._last_audio_at
                 if (
-                    elapsed < settings.onboarding_silence_timeout_sec
+                    elapsed < self._cfg.silence_timeout_sec
                     or self._gemini_is_speaking
                     or self._silence_exhausted
                 ):

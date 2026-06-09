@@ -21,20 +21,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import onboarding
-from onboarding.core.settings import settings
 from sena_common.voice.turn_payload import TurnPayload, VisibleField
 
-# T1: onboarding-package-relative resolution via __path__ (namespace-package safe;
-# onboarding.__file__ is None because there is no __init__.py). Becomes an injected
-# config param (prompts_dir on VoiceEngineConfig) in T3 so case_review supplies its own.
-_PROMPTS_DIR = Path(next(iter(onboarding.__path__))).resolve() / "prompts"
-_TEMPLATE_PATH = _PROMPTS_DIR / "onboarding_system.md"
-_STEPS_DIR = _PROMPTS_DIR / "steps"
-_MODES_DIR = _PROMPTS_DIR / "modes"
+
+def _default_prompts_dir() -> Path:
+    """Fallback prompts dir = onboarding's, resolved lazily.
+
+    Lazy import so loading this module does NOT require ``onboarding`` to be
+    installed — case_review passes its own ``prompts_dir`` and never triggers
+    this. ``onboarding.__file__`` is None (namespace pkg), so resolve via
+    ``__path__``.
+    """
+    import onboarding
+
+    return Path(next(iter(onboarding.__path__))).resolve() / "prompts"
 
 
-def _bootstrap_state_json(turn: TurnPayload) -> str:
+def _bootstrap_state_json(turn: TurnPayload, tool_state_channel: bool) -> str:
     """Render the bootstrap state block for the system prompt.
 
     At session-open we embed the FULL TurnPayload — participant + step +
@@ -51,7 +54,7 @@ def _bootstrap_state_json(turn: TurnPayload) -> str:
     The legacy header-only mode is retained behind the off flag for
     rollback, but is no longer the default behaviour.
     """
-    if not settings.onboarding_tool_state_channel:
+    if not tool_state_channel:
         return turn.model_dump_json()
 
     return turn.model_dump_json()
@@ -75,7 +78,7 @@ def _grounding_section(enabled: bool) -> str:
     )
 
 
-def _step_rules_section(step_id: str) -> str:
+def _step_rules_section(step_id: str, steps_dir: Path) -> str:
     """Load the `{step_id}.md` step fragment from anywhere under prompts/steps/.
 
     Step files are grouped into per-flow subfolders (steps/client/, steps/staff/,
@@ -86,7 +89,7 @@ def _step_rules_section(step_id: str) -> str:
     """
     if not step_id:
         return ""
-    matches = sorted(_STEPS_DIR.rglob(f"{step_id}.md"))
+    matches = sorted(steps_dir.rglob(f"{step_id}.md"))
     if not matches:
         return ""
     body = matches[0].read_text(encoding="utf-8").strip()
@@ -116,9 +119,9 @@ def _detect_form_mode(visible_fields: list[VisibleField]) -> str:
     return "fresh"
 
 
-def _mode_rules_section(mode: str) -> str:
+def _mode_rules_section(mode: str, modes_dir: Path) -> str:
     """Load `prompts/modes/{mode}.md` if present, else empty."""
-    fragment_path = _MODES_DIR / f"{mode}.md"
+    fragment_path = modes_dir / f"{mode}.md"
     if not fragment_path.is_file():
         return ""
     body = fragment_path.read_text(encoding="utf-8").strip()
@@ -132,14 +135,17 @@ def build_system_prompt(
     *,
     grounding_enabled: bool = False,
     voice_coverage: list[str] | None = None,
+    prompts_dir: Path | None = None,
+    tool_state_channel: bool = True,
 ) -> str:
-    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    base = prompts_dir if prompts_dir is not None else _default_prompts_dir()
+    template = (base / "onboarding_system.md").read_text(encoding="utf-8")
     mode = _detect_form_mode(turn.visible_fields)
     return (
         template.replace("__STEP_LABEL__", turn.step.label)
         .replace("__VOICE_COVERAGE_SECTION__", _voice_coverage_section(voice_coverage))
         .replace("__GROUNDING_SECTION__", _grounding_section(grounding_enabled))
-        .replace("__MODE_RULES__", _mode_rules_section(mode))
-        .replace("__STEP_RULES__", _step_rules_section(turn.step.id))
-        .replace("__TURN_JSON__", _bootstrap_state_json(turn))
+        .replace("__MODE_RULES__", _mode_rules_section(mode, base / "modes"))
+        .replace("__STEP_RULES__", _step_rules_section(turn.step.id, base / "steps"))
+        .replace("__TURN_JSON__", _bootstrap_state_json(turn, tool_state_channel))
     )

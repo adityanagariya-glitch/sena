@@ -42,6 +42,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
+from sena_common.voice.config import VoiceEngineConfig
 from sena_common.voice.gemini_live import GeminiLiveSession
 from sena_common.voice.mobile_bridge import MobileBridge
 from sena_common.voice.prompt_builder import build_system_prompt
@@ -171,10 +172,27 @@ async def onboarding_ws(
             next_target=None,
         )
 
+        import onboarding
+        from pathlib import Path
+
+        voice_cfg = VoiceEngineConfig(
+            gemini_api_key=settings.gemini_api_key,
+            gemini_live_model_id=settings.gemini_live_model_id,
+            prompts_dir=Path(next(iter(onboarding.__path__))).resolve() / "prompts",
+            grounding_enabled=settings.onboarding_grounding_enabled,
+            screen_state_max_bytes=settings.screen_state_max_bytes,
+            session_max_sec=settings.session_max_sec,
+            silence_timeout_sec=settings.onboarding_silence_timeout_sec,
+            tool_state_channel=settings.onboarding_tool_state_channel,
+            debug=settings.debug,
+        )
+
         system_instruction = build_system_prompt(
             initial_turn,
             grounding_enabled=settings.onboarding_grounding_enabled,
             voice_coverage=(schema.voice_coverage if schema and schema.voice_coverage else None),
+            prompts_dir=voice_cfg.prompts_dir,
+            tool_state_channel=voice_cfg.tool_state_channel,
         )
 
         mobile_bridge = MobileBridge(
@@ -246,6 +264,7 @@ async def onboarding_ws(
             replay_context=replay_context or None,
             mobile_bridge=mobile_bridge,
             initial_state_text=initial_state_text,
+            config=voice_cfg,
             # Phase 1.5 — pass auth context for per-turn usage logging. Sourced
             # from FormState (populated by POST /session from request headers,
             # NOT request body). When tenant_id is empty the emit defaults to
