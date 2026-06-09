@@ -77,3 +77,9 @@ graphify-out/
 .windsurfrules
 .opencode.json
 .qoder/mcp.json
+services/policy_proc/logs/
+services/ai_chatbot/logs/
+services/casenote_monthly/example.json
+*.doc
+*.pdf
+*.ipynb
