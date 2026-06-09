@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import Header, HTTPException, status
+from redis.asyncio import from_url as redis_from_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from case_review.clients.case_note_client import CaseNoteClient
@@ -19,6 +20,18 @@ _engine = create_async_engine(
     max_overflow=20,
 )
 _session_factory = async_sessionmaker(bind=_engine, expire_on_commit=False, class_=AsyncSession)
+
+# ── Voice Redis (dedicated case_review instance — separate from onboarding) ────
+# Lazy: from_url does not open a socket until the first command, so importing
+# this module (and the REST test suite) never requires Redis to be running. The
+# voice WS route builds FormStateRepo(voice_redis_client, key_prefix=
+# "sena:case_review", tenant_id=<auth>) per session for NDIS tenant-scoped keys.
+voice_redis_client = redis_from_url(settings.case_review_redis_url, decode_responses=True)
+
+
+def get_voice_redis():
+    """Dependency accessor for the dedicated case_review voice Redis client."""
+    return voice_redis_client
 
 
 async def get_db() -> AsyncSession:

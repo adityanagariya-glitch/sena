@@ -21,6 +21,15 @@ services:
     ports:
       - "6379:6379"
 
+  # Dedicated Redis for case_review voice case-note dictation (separate from the
+  # onboarding/voice `redis` above per design decision 2026-06-10). Ephemeral
+  # session state only; key prefix sena:case_review:{tenant} isolates data.
+  case-review-redis:
+    image: redis:7.4-alpine
+    container_name: sena-case-review-redis
+    ports:
+      - "6380:6379"
+
   ai-db:
     image: pgvector/pgvector:pg16
     container_name: sena-ai-db
@@ -42,6 +51,7 @@ services:
       - "8084:8084"
     depends_on:
       - ai-db
+      - case-review-redis
 
   shared-db:
     image: postgres:16-alpine

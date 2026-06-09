@@ -47,6 +47,26 @@ class CaseReviewSettings(BaseSettings):
     # SENA_AI_GEMINI_REGION — Australian data residency requirement
     gemini_region: str = "australia-southeast1"
 
+    # ── Voice case-note dictation (Gemini Live + dedicated Redis) ─────────────
+    # SENA_AI_CASE_REVIEW_REDIS_URL — DEDICATED case_review Redis instance.
+    # Distinct env var (NOT SENA_AI_REDIS_URL, which onboarding owns) so the two
+    # services use SEPARATE instances; the sena:case_review:{tenant} key prefix
+    # isolates data as defense-in-depth. Local host dev → localhost:6380; in
+    # docker → redis://case-review-redis:6379/0.
+    case_review_redis_url: str = "redis://localhost:6380/0"
+    # SENA_AI_GEMINI_LIVE_MODEL_ID — Live API model (WebSocket BidiGenerateContent).
+    # Distinct from gemini_model_id above (standard generate_content).
+    gemini_live_model_id: str = "gemini-3.1-flash-live-preview"
+    # SENA_AI_APP_WEBHOOK_URL / SECRET — mobile-proxy finalize_note delivery target
+    # (app backend persists the finished note; this service writes nothing).
+    app_webhook_url: str = ""
+    app_webhook_secret: str = ""
+    # Voice session tuning (mirror onboarding defaults)
+    screen_state_max_bytes: int = 8192
+    voice_session_max_sec: int = 3600
+    voice_silence_timeout_sec: int = 8
+    voice_grounding_enabled: bool = False
+
     # ── Auth ──────────────────────────────────────────────────────────────────
     # SENA_AI_AUTH_MODE: "dev_header" | "jwt"
     auth_mode: str = "dev_header"
