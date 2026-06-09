@@ -3,7 +3,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class VoiceSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="SENA_AI_", case_sensitive=False)
+    # env_file list: checked in order, later entries override earlier.
+    # "../../.env" = repo-root .env (shared across services) when cwd = services/voice
+    # ".env" = local override if present
+    model_config = SettingsConfigDict(
+        env_file=["../../.env", ".env"],
+        env_prefix="SENA_AI_",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     service_name: str = Field(default="sena-voice", alias="SERVICE_NAME")
     service_version: str = Field(default="0.1.0", alias="SERVICE_VERSION")
@@ -48,7 +56,9 @@ class VoiceSettings(BaseSettings):
 
     gemini_api_key: str = Field(alias="GEMINI_API_KEY")
     gemini_model_id: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL_ID")
-    gemini_live_model_id: str = Field(default="gemini-2.5-flash-native-audio-latest", alias="GEMINI_LIVE_MODEL_ID")
+    gemini_live_model_id: str = Field(
+        default="gemini-2.5-flash-native-audio-latest", alias="GEMINI_LIVE_MODEL_ID"
+    )
 
 
 settings = VoiceSettings()
