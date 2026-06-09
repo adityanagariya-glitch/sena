@@ -151,17 +151,6 @@ def run_pipeline(
             "session_id":  session_id
         }
 
-    # DEBUG - remove before production
-    print(f"\n=== RETRIEVED CHUNKS ===")
-    for i, chunk in enumerate(chunks):
-        src   = chunk.get("location", {}).get("s3Location", {}).get("uri", "").split("/")[-1]
-        score = round(chunk.get("score", 0), 4)
-        text  = chunk["content"]["text"][:300].replace("\n", " ")
-        print(f"[{i+1}] Score: {score} | Source: {src}")
-        print(f"      Text: {text}")
-        print()
-    print(f"=== END CHUNKS ===\n")
-
     # Step 5: Check empty context
     if is_context_empty(context):
         logger.info("Context empty — returning NOT_IN_KB")

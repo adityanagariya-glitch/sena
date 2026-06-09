@@ -171,9 +171,12 @@ async def lifespan(app: FastAPI):
     app.state.client = httpx.AsyncClient(timeout=httpx.Timeout(None), follow_redirects=False)
     app.state.children = []
 
-    # Initialize service orchestrator for query routing
+    # Initialize service orchestrator for query routing.
+    # NOTE: policy queries go to the policy FastAPI (POLICY_API_PORT, default 8000),
+    # NOT the policy Streamlit UI (POLICY_PORT 8602). Pointing the adapter at 8602
+    # causes ConnectError on /query/stream even though /health (checked on 8000) passes.
     staff_url = os.getenv("STAFF_ORIGIN", "http://127.0.0.1:8601")
-    policy_url = os.getenv("POLICY_ORIGIN", "http://127.0.0.1:8602")
+    policy_url = os.getenv("POLICY_ORIGIN", "http://127.0.0.1:8000")
     jwt_secret = os.getenv("JWT_SECRET", "sena-local-qa-secret-change-in-prod")
     app.state.orchestrator = ServiceOrchestrator(
         staff_url=staff_url,
@@ -299,7 +302,17 @@ async def route_query(
             logger.exception("Error in route_and_stream")
             yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            # Stream SSE events in real time — stop nginx/proxies from buffering the
+            # response (X-Accel-Buffering is honoured by nginx per-response), and
+            # stop any cache from holding it.
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 if __name__ == "__main__":

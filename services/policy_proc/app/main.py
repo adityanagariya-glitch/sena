@@ -184,11 +184,24 @@ def decode_token(authorization: str) -> dict:
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
     token = authorization.split(" ", 1)[1]
     try:
+        # 1. Policy's own dev token (POST /auth/login) — signed with our JWT_SECRET.
         raw = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+    except jwt.InvalidTokenError:
+        # 2. Production ISENA token (POST /auth/ai/login) — signed by ISENA with a
+        #    secret we don't hold. The frontend obtains it and the gateway forwards
+        #    it unchanged; the gateway is the trust boundary (same model as the staff
+        #    service), so we decode without signature verification but still enforce
+        #    expiry. To require a verified signature instead, set JWT_SECRET to
+        #    ISENA's signing key and this branch won't be reached.
+        try:
+            raw = jwt.decode(token, options={"verify_signature": False})
+        except jwt.InvalidTokenError as exc:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+        exp = raw.get("exp")
+        if exp and datetime.now(timezone.utc) > datetime.fromtimestamp(exp, tz=timezone.utc):
+            raise HTTPException(status_code=401, detail="Token expired")
 
     # Normalise field names — support both real backend (camelCase) and local dev (snake_case)
     user_id = raw.get("user_id") or raw.get("userId") or raw.get("sub", "")
@@ -304,6 +317,7 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
     SSE streaming. Events:
         data: {"type": "meta",    "session_id": "...", "label": "...", "sources": [...]}
         data: {"type": "token",   "text": "..."}
+        data: {"type": "usage",   "input_tokens": N, "output_tokens": N}
         data: {"type": "done",    "stop_reason": "end_turn"}
         data: {"type": "blocked", "text": "...", "label": "..."}
         data: {"type": "error",   "text": "..."}
@@ -346,6 +360,7 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
         blocked      = result.get("blocked", False)
         block_reason = result.get("block_reason")
         label        = result.get("classification", {}).get("label")
+        usage        = result.get("usage") or {"input_tokens": 0, "output_tokens": 0}
 
         yield f"data: {json.dumps({'type': 'meta', 'session_id': result.get('session_id', session_id), 'label': label, 'sources': sources, '_identity': {'user_id': user_id, 'org_id': org_id, 'role': role}})}\n\n"
 
@@ -354,6 +369,8 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
             return
 
         yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+        # Token usage for THIS question (input + output) — same shape as the staff service.
+        yield f"data: {json.dumps({'type': 'usage', 'input_tokens': usage.get('input_tokens', 0), 'output_tokens': usage.get('output_tokens', 0)})}\n\n"
         yield f"data: {json.dumps({'type': 'done', 'stop_reason': 'end_turn'})}\n\n"
 
     return StreamingResponse(
