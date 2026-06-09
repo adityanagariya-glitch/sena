@@ -143,6 +143,8 @@ class GeminiLiveSession:
         initial_state_text: str | None = None,
         *,
         config: VoiceEngineConfig,
+        usage_feature: UsageFeature = UsageFeature.VOICE_ONBOARDING,
+        function_decls: list[dict] | None = None,
         tenant_id: str | None = None,
         user_id: str | None = None,
         participant_id: str | None = None,
@@ -153,6 +155,8 @@ class GeminiLiveSession:
         self._repo = repo
         self._tools = tool_dispatcher
         self._cfg = config
+        self._usage_feature = usage_feature
+        self._function_decls = function_decls if function_decls is not None else FUNCTION_DECLS
         self._replay_context = replay_context
         self._mobile_bridge = mobile_bridge
         # Phase 1.5 — auth context for per-turn usage logging. Sourced from
@@ -229,7 +233,7 @@ class GeminiLiveSession:
             session_id,
             _instruction_sha8,
             len(system_instruction),
-            (len(FUNCTION_DECLS) if tool_dispatcher else 0),
+            (len(self._function_decls) if tool_dispatcher else 0),
             ("yes" if replay_context else "no"),
         )
 
@@ -283,7 +287,7 @@ class GeminiLiveSession:
             # Phase C/E — tool list built by grounding module; includes Google Search
             # when SENA_AI_ONBOARDING_GROUNDING_ENABLED=true (default off).
             tools=build_live_tools(
-                FUNCTION_DECLS,
+                self._function_decls,
                 grounding_enabled=self._cfg.grounding_enabled,
             )
             if self._tools
@@ -776,7 +780,7 @@ class GeminiLiveSession:
         emit_usage(
             tenant_id=self._tenant_id or "unknown",
             user_id=self._user_id,
-            feature=UsageFeature.VOICE_ONBOARDING,
+            feature=self._usage_feature,
             model=self._cfg.gemini_live_model_id,
             session_id=self._session_id,
             prompt_tokens=d_prompt,
@@ -1039,7 +1043,7 @@ class GeminiLiveSession:
                                 emit_usage(
                                     tenant_id=self._tenant_id or "unknown",
                                     user_id=self._user_id,
-                                    feature=UsageFeature.VOICE_ONBOARDING,
+                                    feature=self._usage_feature,
                                     model=self._cfg.gemini_live_model_id,
                                     session_id=self._session_id,
                                     prompt_tokens=d_prompt,
