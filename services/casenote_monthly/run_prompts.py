@@ -26,7 +26,7 @@ MAX_TOKENS = 4096
 
 def load_inputs() -> dict:
     """Build the placeholder substitutions from example.json."""
-    raw = json.loads((HERE / "example.json").read_text())
+    raw = json.loads((HERE / "example.json").read_bytes().lstrip(b"\xe2\x80\x8b").decode("utf-8"))
     data = raw.get("data", raw)
     client = data.get("client", {})
     goals = client.get("ndisPlanGoals") or client.get("personalGoals") or []
