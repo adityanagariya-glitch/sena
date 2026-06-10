@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from case_review.api.routes import router
+from case_review.api.voice_routes import voice_router
 from case_review.core.logging import configure_logging
 from case_review.core.settings import settings
 
@@ -25,4 +26,5 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(router)
+    app.include_router(voice_router)
     return app
