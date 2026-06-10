@@ -192,12 +192,18 @@ class ToolDispatcher:
         *,
         bridge: _Bridge,
         on_incident: Callable[[dict[str, Any]], Any] | None = None,
+        known_tools: frozenset[str] = _KNOWN_TOOLS,
+        submit_tool_name: str = "submit_step",
     ) -> None:
         self._bridge = bridge
         self._on_incident = on_incident
+        # Injectable per flow (T4/T7): onboarding keeps the defaults; case_review
+        # passes its own tool set + "finalize_note" as the submit/loop-exit tool.
+        self._known_tools = known_tools
+        self._submit_tool_name = submit_tool_name
         # Loop-exit flag — gemini_live.py polls this after each tool call to end
-        # the WS session once the step is submitted. Set True when submit_step
-        # returns {ok: True}.
+        # the WS session once the submit/finalize tool succeeds. Set True when the
+        # tool named ``submit_tool_name`` returns {ok: True}.
         self.step_completed: bool = False
         self._turn_id: int = 0
 
@@ -209,7 +215,7 @@ class ToolDispatcher:
             if self._on_incident is not None:
                 self._on_incident(args)
             return {"ok": True}
-        if name not in _KNOWN_TOOLS:
+        if name not in self._known_tools:
             log.warning("unknown_tool_called", tool=name)
             return {"ok": False, "reason": f"Unknown tool: {name}", "code": "unknown_tool"}
 
@@ -232,7 +238,7 @@ class ToolDispatcher:
             }
 
         result = await self._bridge.dispatch(name, args)
-        if name == "submit_step" and result.get("ok") is True:
+        if name == self._submit_tool_name and result.get("ok") is True:
             self.step_completed = True
         return result
 
