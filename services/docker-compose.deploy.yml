@@ -27,6 +27,8 @@ services:
       - sena-case-review
       - sena-casenote-monthly
       - sena-ai-chatbot
+      - sena-policy-proc
+      - sena-staff
       - sena-ai-communication-log
       - sena-shift-summary
     networks:
@@ -131,8 +133,51 @@ services:
       CHILD_HOST: 127.0.0.1
       STAFF_DIR: /app/services/staff
       POLICY_DIR: /app/services/policy_proc
+    ports:
+      - "8003:8003"
     expose:
       - "8003"
+    depends_on:
+      - sena-policy-proc
+      - sena-staff
+    networks:
+      - sena-network
+    restart: unless-stopped
+
+  sena-policy-proc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: policy-proc
+    container_name: sena-policy-proc-internal
+    env_file:
+      - ../.env
+    environment:
+      SENA_AI_HOST: 0.0.0.0
+      SENA_AI_POLICY_PROC_PORT: "8000"
+    ports:
+      - "8000:8000"
+    expose:
+      - "8000"
+    networks:
+      - sena-network
+    restart: unless-stopped
+
+  sena-staff:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: staff
+    container_name: sena-staff-internal
+    env_file:
+      - ../.env
+    environment:
+      SENA_AI_HOST: 0.0.0.0
+      SENA_AI_STAFF_PORT: "8001"
+    ports:
+      - "8001:8001"
+    expose:
+      - "8001"
     networks:
       - sena-network
     restart: unless-stopped

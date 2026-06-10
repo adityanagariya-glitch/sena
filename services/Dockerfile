@@ -115,6 +115,38 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 CMD ["uvicorn", "api_main:app", "--host", "0.0.0.0", "--port", "8004"]
 
 
+# ── Policy Proc — policy & procedures via Bedrock (port 8000) ────────────
+FROM base AS policy-proc
+
+COPY policy_proc /app/policy_proc
+WORKDIR /app/policy_proc
+
+ENV PYTHONPATH=/app
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+
+# ── Staff API — shifts & client information via Bedrock (port 8001) ────────
+FROM base AS staff
+
+COPY staff /app/staff
+WORKDIR /app/staff
+
+ENV PYTHONPATH=/app
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health').status==200 else 1)"
+
+CMD ["uvicorn", "api_main:app", "--host", "0.0.0.0", "--port", "8001"]
+
+
 # ── AI Chatbot — gateway + staff API + policy API (port 8003) ─────────────
 #
 # The gateway spawns staff_api and policy_api as child processes bound to
