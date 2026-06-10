@@ -133,6 +133,8 @@ services:
       CHILD_HOST: 127.0.0.1
       STAFF_DIR: /app/services/staff
       POLICY_DIR: /app/services/policy_proc
+    ports:
+      - "8003:8003"
     expose:
       - "8003"
     depends_on:
@@ -153,6 +155,8 @@ services:
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_POLICY_PROC_PORT: "8000"
+    ports:
+      - "8000:8000"
     expose:
       - "8000"
     networks:
@@ -170,6 +174,8 @@ services:
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_STAFF_PORT: "8001"
+    ports:
+      - "8001:8001"
     expose:
       - "8001"
     networks:
