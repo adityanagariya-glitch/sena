@@ -52,7 +52,7 @@ Once up: gateway on **http://localhost:9000**, interactive docs at **/docs**.
 
 ## 3. Authentication
 
-All requests to `POST /api/route` require a bearer token:
+All requests to `POST /ai-chatbot/route` require a bearer token:
 
 ```
 Authorization: Bearer <JWT>
@@ -74,7 +74,7 @@ Missing/invalid token → `401`.
 
 ## 4. The API
 
-### `POST /api/route` — route a message and stream the answer
+### `POST /ai-chatbot/route` — route a message and stream the answer
 
 **Request body**
 
@@ -105,7 +105,7 @@ Missing/invalid token → `401`.
 No `category` (or an unknown one) → the stream returns a single guidance message
 asking the user to choose a section.
 
-### `GET /healthz`
+### `GET /ai-chatbot/healthz`
 
 Returns gateway + child health: `{"gateway": true, "children": {"staff_api": true, "policy_api": true}}`.
 
@@ -238,7 +238,7 @@ Any HTTP client that can read a streaming response works. Example with `curl`:
 ```bash
 TOKEN="<ISENA JWT>"
 
-curl -N -X POST http://localhost:9000/api/route \
+curl -N -X POST http://localhost:9000/ai-chatbot/route \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"question": "What are my shifts this week?", "context": {"category": "shifts"}}'
@@ -246,7 +246,7 @@ curl -N -X POST http://localhost:9000/api/route \
 
 Consuming the stream in a client:
 
-1. Open a streaming POST to `/api/route` with the JSON body.
+1. Open a streaming POST to `/ai-chatbot/route` with the JSON body.
 2. Read the response line by line; split on the blank line (`\n\n`) between events.
 3. For each `data: <json>` line, parse the JSON and switch on `type`:
    - `meta` → show a "routing…" status;
@@ -261,7 +261,7 @@ Consuming the stream in a client:
 
 | Symptom | Likely cause |
 |---------|--------------|
-| `401` from `/api/route` | Missing/invalid `Authorization: Bearer <token>` header. |
+| `401` from `/ai-chatbot/route` | Missing/invalid `Authorization: Bearer <token>` header. |
 | Stream returns only the "choose a section" message | No `context.category` was sent. |
 | "switch to … section" message | A cross-section question (expected — sections are independent). |
 | Staff answers ignore section boundaries | `SENA_AI_AGENT_MODE` is not `on`. |

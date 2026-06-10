@@ -180,7 +180,7 @@ EXPOSE 8003
 # Longer start-period: the gateway spawns staff_api + policy_api and waits for them
 # to report healthy (CHILD_HEALTH_TIMEOUT) before it's ready to serve.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=75s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8003/healthz').status==200 else 1)"
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8003/ai-chatbot/healthz').status==200 else 1)"
 
 CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8003"]
 

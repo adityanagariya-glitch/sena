@@ -2,17 +2,17 @@
     "openapi": "3.1.0",
     "info": {
         "title": "SENA AI Chatbot",
-        "description": "**Production entry point for all SENA AI conversations.** Frontend hits this endpoint only — the ai-chatbot service routes to staff or policy backends and streams the answer.\n\n**Key Features:**\n- Single `/api/route` endpoint for all questions\n- Chip-driven routing (no free-text classification)\n- Staff and Client sections are completely independent\n- Real-time SSE streaming with token usage tracking\n- JWT authentication (ISENA tokens from login endpoint)\n\n**Sections:**\n- `shifts` → Check Shifts (staff service)\n- `client` → Client's Information (staff service)\n- `policy` → Policy Questions (policy service)\n- `procedure` → Compliance Procedures (policy service)",
+        "description": "**Production entry point for all SENA AI conversations.** Frontend hits this endpoint only — the ai-chatbot service routes to staff or policy backends and streams the answer.\n\n**Key Features:**\n- Single `/ai-chatbot/route` endpoint for all questions\n- Chip-driven routing (no free-text classification)\n- Staff and Client sections are completely independent\n- Real-time SSE streaming with token usage tracking\n- JWT authentication (ISENA tokens from login endpoint)\n\n**Sections:**\n- `shifts` → Check Shifts (staff service)\n- `client` → Client's Information (staff service)\n- `policy` → Policy Questions (policy service)\n- `procedure` → Compliance Procedures (policy service)\n\n**Note:** Conversation storage is handled by a separate department.",
         "version": "2.0.0"
     },
     "servers": [
         {
-            "url": "https://dev-api.isena.org/chatbot",
+            "url": "https://dev-api.isena.org/ai-chatbot",
             "description": "Production ai-chatbot service (behind nginx)"
         }
     ],
     "paths": {
-        "/api/route": {
+        "/ai-chatbot/route": {
             "post": {
                 "tags": ["Routing"],
                 "summary": "Ask a question in a chip-selected section",
@@ -81,7 +81,7 @@
                 }
             }
         },
-        "/healthz": {
+        "/ai-chatbot/healthz": {
             "get": {
                 "tags": ["Health"],
                 "summary": "Health check",
