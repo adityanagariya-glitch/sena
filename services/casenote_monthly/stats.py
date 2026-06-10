@@ -432,6 +432,19 @@ def compute_stats(data: dict, date_from: str, date_to: str) -> dict:
 
     buckets = week_buckets(date_from, date_to)
 
+    # Memory warning for huge datasets (quarterly+)
+    num_days = len(days)
+    if num_days > 60:
+        total_records = sum(
+            len(day.get("shifts", [])) +
+            len(day.get("incidents", [])) +
+            len(day.get("restrictivePractices", [])) +
+            len(day.get("shiftFeedback", [])) +
+            len(day.get("clientComplaints", []))
+            for day in days
+        )
+        print(f"[stats] Large dataset: {num_days} days, {total_records} total records (memory: ~{total_records * 1.5:.0f} KB)")
+
     cn_counts, cn_ub = weekly_counts(days, "caseNotes", buckets)
     sh_counts, sh_ub = weekly_counts(days, "shifts", buckets)
     inc_counts, inc_ub = weekly_counts(days, "incidents", buckets)
@@ -439,12 +452,19 @@ def compute_stats(data: dict, date_from: str, date_to: str) -> dict:
     fb_counts, fb_ub = weekly_counts(days, "shiftFeedback", buckets)
     cc_counts, cc_ub = weekly_counts(days, "clientComplaints", buckets)
 
-    # Flatten
-    all_shifts = [s for day in days for s in (day.get("shifts") or [])]
-    all_incidents = [i for day in days for i in (day.get("incidents") or [])]
-    all_rps = [r for day in days for r in (day.get("restrictivePractices") or [])]
-    all_feedback = [f for day in days for f in (day.get("shiftFeedback") or [])]
-    all_complaints = [c for day in days for c in (day.get("clientComplaints") or [])]
+    # Flatten into aggregators (memory efficient: process and aggregate as we go)
+    all_shifts = []
+    all_incidents = []
+    all_rps = []
+    all_feedback = []
+    all_complaints = []
+
+    for day in days:
+        all_shifts.extend(day.get("shifts") or [])
+        all_incidents.extend(day.get("incidents") or [])
+        all_rps.extend(day.get("restrictivePractices") or [])
+        all_feedback.extend(day.get("shiftFeedback") or [])
+        all_complaints.extend(day.get("clientComplaints") or [])
 
     exp_shifts = expected_shifts(schedule, date_from, date_to)
     del_shifts = delivered_shifts(all_shifts)

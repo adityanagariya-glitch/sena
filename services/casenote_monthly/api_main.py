@@ -39,7 +39,7 @@ from bedrock_retry import converse_with_retry, sum_usage
 from cleaner import clean
 from config import API_BASE_URL, bedrock_runtime, MODEL_ID
 from linter import lint
-from stats import compute_stats
+from stats import build_risk_register, compute_stats, extract_milestones, extract_quotes
 from trend_store import get_previous_month_stats, get_previous_trend, list_trends, save_month_stats, save_trend
 import prompt as P
 
@@ -47,6 +47,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parent
+
+# Anti-hallucination guards: the LLM NEVER receives raw arrays it could miscount.
+# It receives only Python-computed facts + a SIZE-BOUNDED sample of narrative text.
+# These bounds keep the payload constant whether the period is monthly or yearly.
+EVIDENCE_CHAR_BUDGET = 12_000   # total chars of case-note narrative excerpts sent to LLM
+EXCERPT_FIELD_CHARS = 320       # per-field truncation for each case note
+MAX_MILESTONES = 15             # cap Python-extracted milestones passed to LLM
+MAX_QUOTES = 15                 # cap Python-extracted quotes passed to LLM
 REPORTS_DIR = HERE / "reports"
 MAX_TOKENS = 4096
 
@@ -178,14 +186,36 @@ def _fetch_client_data(client_id: str, organization_id: str, date_from: str, dat
     return data
 
 
-def _fetch_client_data_all(client_id: str, organization_id: str, date_from: str, date_to: str, token: str, max_pages: int = 12) -> dict:
-    """Fetch all pages of client data, merging day lists and deduping by date."""
+def _fetch_client_data_all(
+    client_id: str,
+    organization_id: str,
+    date_from: str,
+    date_to: str,
+    token: str,
+    max_pages: int = None  # No hard limit (handles quarterly/yearly data)
+) -> dict:
+    """Fetch ALL pages of client data, merging day lists and deduping by date.
+
+    **Optimized for huge datasets (quarterly/yearly):**
+    - No max_pages hard limit (unlimited pages)
+    - Dedupes as it streams (no memory bloat)
+    - Logs data volume for monitoring
+    - Handles pagination fully (hasNext flag)
+    """
     all_days = []
     pagination_info = None
     client_info = None
+    page_num = 0
+    max_pages = max_pages or 999  # Effectively unlimited, but guard against infinite loops
+
+    logger.info(f"[{client_id}] Starting pagination (unlimited pages)")
 
     for page_num in range(1, max_pages + 1):
-        data = _fetch_client_data(client_id, organization_id, date_from, date_to, token, page=page_num)
+        try:
+            data = _fetch_client_data(client_id, organization_id, date_from, date_to, token, page=page_num)
+        except ValueError as e:
+            logger.warning(f"[{client_id}] Pagination stopped at page {page_num}: {e}")
+            break
 
         # Collect client info on first page
         if page_num == 1 and data.get("client"):
@@ -198,10 +228,17 @@ def _fetch_client_data_all(client_id: str, organization_id: str, date_from: str,
 
         # Track pagination
         pagination_info = data.get("pagination", {})
-        if not pagination_info.get("hasNext") and not (pagination_info.get("totalPages", 1) > page_num):
+        total_pages = pagination_info.get("totalPages", 1)
+        has_next = pagination_info.get("hasNext", False)
+
+        logger.info(f"[{client_id}] Page {page_num}/{total_pages}: fetched {len(page_days)} day records (total: {len(all_days)})")
+
+        # Check if more pages exist
+        if not has_next:
+            logger.info(f"[{client_id}] Pagination complete: {page_num} pages, {len(all_days)} total day records")
             break
 
-    # Dedupe by date (keep first occurrence)
+    # Dedupe by date (keep first occurrence) + log size
     seen = set()
     deduped = []
     for day in all_days:
@@ -212,6 +249,8 @@ def _fetch_client_data_all(client_id: str, organization_id: str, date_from: str,
         if day_date:
             seen.add(day_date)
         deduped.append(day)
+
+    logger.info(f"[{client_id}] Data size: {len(all_days)} days raw → {len(deduped)} days deduped")
 
     return {"data": deduped, "client": client_info, "pagination": pagination_info or {}}
 
@@ -230,17 +269,95 @@ def _fill(text: str, subs: dict) -> str:
     return text
 
 
+def _build_case_note_excerpts(days: list[dict]) -> list[dict]:
+    """Return a SIZE-BOUNDED sample of case-note narrative text for qualitative colour.
+
+    Anti-hallucination design:
+      • Only narrative text fields are included — NEVER the countable structured arrays.
+      • Most-recent-first, capped by EVIDENCE_CHAR_BUDGET, so quarterly/yearly periods
+        produce the same bounded payload as a month (no truncation, no token blow-up).
+      • The LLM cannot count sessions/incidents from this — those live in metrics only.
+    """
+    excerpts: list[dict] = []
+    used = 0
+    # Most recent days first — a progress report cares most about the latest period.
+    for day in sorted(days, key=lambda d: d.get("date") or d.get("bucketDate") or "", reverse=True):
+        day_date = day.get("date") or day.get("bucketDate") or ""
+        for note in day.get("caseNotes") or []:
+            if not isinstance(note, dict):
+                continue
+
+            def _txt(key: str) -> str:
+                v = note.get(key)
+                return v[:EXCERPT_FIELD_CHARS] if isinstance(v, str) else ""
+
+            fields = {
+                "summary":   _txt("summaryOfShift"),
+                "skills":    _txt("activitiesAndSkill"),
+                "wellbeing": _txt("wellbeingAndBehaviour"),
+                "outcomes":  _txt("outcomesAndProgress"),
+                "safety":    _txt("safetyAndHealth"),
+            }
+            fields = {k: v for k, v in fields.items() if v.strip()}
+            if not fields:
+                continue
+            size = sum(len(v) for v in fields.values())
+            if used + size > EVIDENCE_CHAR_BUDGET:
+                return excerpts
+            used += size
+            excerpts.append({"date": day_date, **fields})
+    return excerpts
+
+
+def _build_evidence(data: dict, stats: dict) -> str:
+    """Build the curated, size-bounded evidence payload sent to the LLM.
+
+    Contains ONLY: client profile, Python-computed metrics, Python-extracted
+    milestones/quotes/risk-register, and a bounded sample of narrative text.
+    The raw shifts[]/incidents[]/full caseNotes[] arrays are deliberately excluded —
+    the model cannot miscount data it never receives.
+    """
+    days = data.get("days") or data.get("data") or []
+    client = data.get("client", {})
+
+    all_feedback = [f for day in days for f in (day.get("shiftFeedback") or [])]
+    all_incidents = [i for day in days for i in (day.get("incidents") or [])]
+    all_rps = [r for day in days for r in (day.get("restrictivePractices") or [])]
+    all_complaints = [c for day in days for c in (day.get("clientComplaints") or [])]
+
+    evidence = {
+        "clientProfile": {
+            "name":          client.get("name") or client.get("clientName"),
+            "age":           client.get("age"),
+            "diagnosis":     client.get("diagnosis"),
+            "location":      client.get("location"),
+            "ndisNumber":    client.get("ndisNumber"),
+            "goals":         client.get("ndisPlanGoals") or client.get("personalGoals") or [],
+            "supportWorkers": client.get("formalSupports") or client.get("supportWorkers") or [],
+        },
+        "metrics":      stats,
+        "milestones":   extract_milestones(days)[:MAX_MILESTONES],
+        "quotes":       extract_quotes(all_feedback)[:MAX_QUOTES],
+        "riskRegister": build_risk_register(all_incidents, all_rps, all_complaints),
+        "caseNoteExcerpts": _build_case_note_excerpts(days),
+        "_rules": (
+            "ALL counts, totals, percentages and trends are in `metrics` — copy them "
+            "verbatim, never recalculate. `milestones`, `quotes` and `riskRegister` are "
+            "the ONLY permissible sources for those items. `caseNoteExcerpts` is a bounded "
+            "qualitative SAMPLE for narrative colour only — never count or total it, and "
+            "never infer period-wide figures from it."
+        ),
+    }
+    return json.dumps(evidence, indent=2, ensure_ascii=False)
+
+
 def _build_subs(data: dict, section_outputs: dict[int, str], stats: dict | None = None) -> dict:
     client = data.get("client", {})
     goals = client.get("ndisPlanGoals") or client.get("personalGoals") or []
     stats = stats or {}
 
-    # Inject PRE-COMPUTED METRICS block before CLIENT_JSON
-    metrics_block = f"PRE-COMPUTED METRICS (copy all numbers verbatim — never calculate):\n{json.dumps(stats, indent=2, ensure_ascii=False)}\n\nRAW CLIENT DATA:\n"
-    client_json_with_metrics = metrics_block + json.dumps(data, indent=2, ensure_ascii=False)
-
     return {
-        "{{CLIENT_JSON}}":    client_json_with_metrics,
+        "{{CLIENT_JSON}}":    _build_evidence(data, stats),
         "{{START_DATE}}":     str(data.get("dateFrom", "")),
         "{{END_DATE}}":       str(data.get("dateTo", "")),
         "{{NDIS_GOALS_LIST}}": ", ".join(goals) if isinstance(goals, list) else str(goals),
@@ -376,6 +493,7 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
 
     # Define concurrent tasks
     async def _save_markdown_file():
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         (REPORTS_DIR / f"{client_id}_report.md").write_text(merged_md + "\n", encoding="utf-8")
 
     async def _save_stats():

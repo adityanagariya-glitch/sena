@@ -210,19 +210,17 @@ STEP 2 — EXTRACT PARTICIPANT PROFILE
   • Diagnosis verbatim from clientInfo.diagnosis
   • Note 1–2 characteristics relevant to support approach (derive from case notes only)
  
-STEP 3 — CALCULATE QUARTER SCOPE
+STEP 3 — REPORT PERIOD SCOPE (numbers are pre-computed — never recount)
   • Format dates as: Month–Month YYYY (e.g., "May–July 2025")
-  • Count total shifts: sum of len(day.shifts) across all clientCaseNotes entries
-  • Count unique support workers: collect all unique staffId values across shifts
-  State the counts explicitly before writing.
- 
-STEP 4 — IDENTIFY MILESTONES (Tier 1 and 2 only)
-  • Scan shiftFeedback[] and caseNotes[] for milestone signals:
-    "first time", "independently", "initiated", "enrolled", "achieved", "without prompting"
-  • Extract exactly 1–2 most significant milestones
-  • For each milestone, verify the source internally from caseNote ID or shiftFeedback ID
-  • If no milestones found → write about planned next steps instead
-  State the milestones found (or confirm none) before writing.
+  • Session count = metrics.shifts.deliveredShifts.completed (copy verbatim)
+  • Support-worker count = read from clientProfile.supportWorkers (copy verbatim)
+  • NEVER count or sum anything yourself; caseNoteExcerpts is a sample, NOT the full set.
+
+STEP 4 — REPORT MILESTONES (Tier 1 and 2 only)
+  • Use ONLY the `milestones` array provided in the input — it is the complete,
+    pre-extracted list. Do NOT scan caseNoteExcerpts for additional milestones.
+  • Surface the 1–2 highest-weight milestones (weight field) for the narrative.
+  • If the milestones array is empty → write about planned next steps instead.
  
 STEP 5 — LANGUAGE AUDIT RULES (apply during drafting)
   Replace deficit terms:
@@ -241,14 +239,14 @@ STEP 6 — DRAFT PARAGRAPHS
  
 <rules>
   ✓ Format as clear, focused bullet points (5–8 bullets)
-  ✓ Session count must be the exact shift count from JSON (not estimated)
-  ✓ Milestone statements must be traceable internally to a case note or feedback ID
+  ✓ Session count must be copied verbatim from metrics (never recounted)
+  ✓ Milestones must come from the provided `milestones` array only
   ✓ Third-person past tense throughout
   ✓ Australian English spelling (organisation, realised, etc.)
   ✓ Do not output citations, source labels, IDs, internal steps, or self-verification
-  ✗ Never claim a milestone without traceable evidence
+  ✗ Never claim a milestone not present in the `milestones` array
   ✗ Never use superlatives without a supporting metric
-  ✗ Never invent a support worker name or session type not in JSON
+  ✗ Never invent a support worker name or session type not in the input
 </rules>
 
 <few_shot_examples>
@@ -285,7 +283,7 @@ NEGATIVE EXAMPLE — Do NOT produce this:
 INTERNAL ONLY — DO NOT OUTPUT THIS BLOCK OR ANY PART OF IT.
 Run these checks silently before writing:
   □ Data tier was identified and applied correctly
-  □ Session count matches actual shift records in JSON
+  □ Session count copied verbatim from metrics (not recounted)
   □ All milestones are internally traceable to a source case note ID or feedback ID
   □ No deficit-based or stigmatising language
   □ No superlatives without supporting evidence
@@ -387,12 +385,13 @@ AFTER all notes are classified:
     Domains with 1 note   → include if note is significant; else fold into closest domain.
  
   PER-DOMAIN EXTRACTION:
-    Metric     : frequency count ("3 of 5 sessions"), % ("87% of sessions"), or progression level
-                 — mark *(est.)* if inferred rather than explicitly flagged
-    Quote      : verbatim participant quote from shiftFeedback[].quote
-                 — use [Participant quote not recorded this quarter] if none
-    Self-awareness signal : any note where participant verbalised their own state or needs
-    Prior quarter comparison : if prior data in JSON, calculate improvement %
+    Metric     : use ONLY figures present in metrics — copy verbatim, never recount
+                 from caseNoteExcerpts (which is a sample, not the full record).
+                 If no metric fits the domain, describe progress qualitatively instead.
+    Quote      : use ONLY a quote from the provided `quotes` array (verbatim)
+                 — use [Participant feedback not recorded this period] if the array is empty
+    Self-awareness signal : qualitative observation drawn from caseNoteExcerpts (no counting)
+    Prior period comparison : use metrics.momDeltas if present — never compute deltas yourself
  
   DOMAIN SUMMARY:
     For each domain, provide a clear, strengths-focused overview.
@@ -407,8 +406,8 @@ AFTER all notes are classified:
   ✓ Australian English spelling throughout (organise, realised, etc.)
   ✓ Do not output citations, source labels, IDs, internal steps, branch analysis, or self-verification
   ✗ Never use: refuses, non-compliant, aggressive, inability, failed
-  ✗ Never invent a quote — verbatim text from JSON only
-  ✗ Never fabricate a percentage without a calculable basis in the data
+  ✗ Never invent a quote — use only quotes from the provided `quotes` array
+  ✗ Never state a percentage or count not present in metrics
   ✗ Do not cite NDIS goals or link domains to goals
 </rules>
  
@@ -520,10 +519,15 @@ SOCIAL_RISK              : isolation, withdrawn, no peer contact, social withdra
 <internal_branching_analysis>
 /*  SOURCE SCANNING ORDER — process in priority sequence  */
  
-PASS 1  incidents[]              → formal incidents (highest priority)
-PASS 2  restrictivePractices[]   → include every entry as Restrictive Practices
-PASS 3  caseNotes[] + shiftFeedback[]  → keyword scan for risk signals
-PASS 4  hasMedicalInformation flag     → reference if true
+PASS 1  riskRegister (source_type=formal_incident)     → formal incidents (highest priority)
+PASS 2  riskRegister (source_type=restrictive_practice) → include every entry as Restrictive Practices
+PASS 3  caseNoteExcerpts                                → qualitative scan for OBSERVED patterns only
+                                                          (label "observed pattern — not a formal incident";
+                                                           this is a sample, so never imply a period-wide count)
+PASS 4  clientProfile / metrics flags                   → reference medical info if present
+
+NOTE: riskRegister is the COMPLETE, authoritative list of formal records — every entry
+must appear. caseNoteExcerpts is only a bounded sample for observed-pattern colour.
  
 FOR each risk signal S found:
  
@@ -847,27 +851,25 @@ Keywords                                                   → Framework
  
 /*  MAPPING PROCEDURE — execute passes in order, do not skip               */
  
-PASS 1 — Explicit approach fields:
-  FOR each shift IN shifts[]:
-    IF shift.approachUsed IS NOT NULL:
-      framework = LookupFramework(shift.approachUsed)
-      ADD row: {approach, description=shift.approachDescription, framework, source="explicit"}
- 
-PASS 2 — Keyword inference from case notes (only if Pass 1 returned fewer than 3 rows):
-  FOR each note IN caseNotes[]:
+  Work ONLY from caseNoteExcerpts (a bounded qualitative sample) and the provided
+  `quotes` array. Never count how often an approach was used across the period —
+  caseNoteExcerpts is a sample, not the full record.
+
+PASS 1 — Keyword inference from caseNoteExcerpts:
+  FOR each excerpt IN caseNoteExcerpts:
     FOR each keyword IN FRAMEWORK_LOOKUP_TABLE:
-      IF keyword FOUND IN note.text:
+      IF keyword FOUND IN excerpt text:
         approach  = DeriveApproachName(keyword)  // e.g., "zone chart" → "Zones of Regulation"
         framework = LookupFramework(keyword)
-        context   = extract surrounding sentence from note.text
+        context   = the surrounding phrase from the excerpt
         ADD row: {approach + " *(inferred)*", description=context, framework}
- 
-PASS 3 — Example interaction:
-  SCAN caseNotes[] and shiftFeedback[] for the most behaviour-rich quote
+
+PASS 2 — Example interaction:
+  Use the most behaviour-rich entry from the provided `quotes` array
   that demonstrates an approach in action (e.g., dialogue, participant response).
   IF found: output as → *Example interaction:* "[verbatim quote]"
-  IF not found: omit this line entirely — do NOT invent
- 
+  IF the quotes array is empty: omit this line entirely — do NOT invent
+
 PASS 4 — Empty fallback (only if both Pass 1 and Pass 2 returned zero rows):
   Output placeholder row
   List all available frameworks below the table

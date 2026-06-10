@@ -22,6 +22,7 @@ Run:
     /home/main/SENA/ai-sena/bin/python test.py
 """
 import json
+import os
 import sys
 import time
 import traceback
@@ -30,6 +31,10 @@ from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+
+# Set SKIP_API=1 to skip the live Bedrock API tests (offline checks only).
+#   SKIP_API=1 /home/main/SENA/ai-sena/bin/python test.py
+SKIP_API = os.getenv("SKIP_API") == "1"
 
 # ── Load example.json ─────────────────────────────────────────────────────────
 raw = json.loads((HERE / "example.json").read_bytes().lstrip(b"\xe2\x80\x8b").decode("utf-8"))
@@ -132,69 +137,104 @@ with patch("api_main.validate_jwt", return_value=(True, None, {"sub": "test-user
 
     # ── TEST 2: Monthly report (real Bedrock) ─────────────────────────────────
     section("TEST 2 — POST /psr-report/monthly-report  (real Bedrock — may take 60s+)")
-    info(f"client_id : {CLIENT_ID}")
-    info(f"org_id    : {ORG_ID}")
-    info(f"period    : {DATE_FROM} → {DATE_TO}")
-    info("Sections 1–6 run in parallel; section 7 runs after.")
-    print()
-
     html_output = ""
-    t0 = time.time()
-    try:
-        resp = client.post(
-            "/psr-report/monthly-report",
-            json={
-                "client_id": CLIENT_ID,
-                "organization_id": ORG_ID,
-                "date_from": DATE_FROM,
-                "date_to":   DATE_TO,
-            },
-            headers={"Authorization": "Bearer test-token"},
-            timeout=300,
-        )
-        elapsed = time.time() - t0
+    if SKIP_API:
+        info("skipped (SKIP_API=1)")
+        results["monthly_report"] = None
+    else:
+        info(f"client_id : {CLIENT_ID}")
+        info(f"org_id    : {ORG_ID}")
+        info(f"period    : {DATE_FROM} → {DATE_TO}")
+        info("Sections 1–6 run in parallel; section 7 runs after.")
+        print()
 
-        if resp.status_code == 200:
-            html_output = resp.text
-            html_path = HERE / "out" / "_test_report.html"
-            html_path.parent.mkdir(exist_ok=True)
-            html_path.write_text(html_output, encoding="utf-8")
-
-            ok(f"status=200  elapsed={elapsed:.1f}s  html_chars={len(html_output):,}")
-            ok(f"saved → out/_test_report.html")
-
-            # Token header checks
-            input_tokens  = resp.headers.get("X-Input-Tokens")
-            output_tokens = resp.headers.get("X-Output-Tokens")
-            total_tokens  = resp.headers.get("X-Total-Tokens")
-            if input_tokens and output_tokens:
-                ok(f"token headers present: in={input_tokens}, out={output_tokens}")
-            else:
-                info(f"token headers: in={input_tokens}, out={output_tokens} (may be 0 in mock mode)")
-
-            # Quick content checks
-            checks = [
-                ("## 1." in html_output or "<h2>" in html_output,  "contains section headers"),
-                ("<table>" in html_output,                          "contains markdown table"),
-                ("<li>" in html_output or "•" in html_output,      "contains list items"),
-                (len(html_output) > 500,                           "non-trivial HTML length"),
-            ]
-            for passed, label in checks:
-                (ok if passed else fail)(label)
-
-            results["monthly_report"] = True
-        else:
+        t0 = time.time()
+        try:
+            resp = client.post(
+                "/psr-report/monthly-report",
+                json={
+                    "client_id": CLIENT_ID,
+                    "organization_id": ORG_ID,
+                    "date_from": DATE_FROM,
+                    "date_to":   DATE_TO,
+                },
+                headers={"Authorization": "Bearer test-token"},
+                timeout=300,
+            )
             elapsed = time.time() - t0
-            fail(f"status={resp.status_code}  elapsed={elapsed:.1f}s")
-            print(f"\n  Response body (first 800 chars):\n")
-            print("  " + resp.text[:800].replace("\n", "\n  "))
-            results["monthly_report"] = False
 
-    except Exception as e:
-        elapsed = time.time() - t0
-        fail(f"Exception after {elapsed:.1f}s: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        results["monthly_report"] = False
+            if resp.status_code == 200:
+                html_output = resp.text
+                output_dir = HERE / "output"
+                output_dir.mkdir(exist_ok=True)
+
+                # 1. Raw HTML
+                (output_dir / "report.html").write_text(html_output, encoding="utf-8")
+
+                ok(f"status=200  elapsed={elapsed:.1f}s  html_chars={len(html_output):,}")
+                ok(f"saved → output/report.html  (raw)")
+
+                # 2. Markdown report (readable)
+                md_src = HERE / "reports" / f"{CLIENT_ID}_report.md"
+                if md_src.exists():
+                    md_text = md_src.read_text(encoding="utf-8")
+                    (output_dir / "report.md").write_text(md_text, encoding="utf-8")
+                    ok(f"saved → output/report.md  ({len(md_text):,} bytes)")
+                else:
+                    info("markdown report not found in reports/ (skipped .md copy)")
+
+                # Token header checks
+                input_tokens  = resp.headers.get("X-Input-Tokens")
+                output_tokens = resp.headers.get("X-Output-Tokens")
+                total_tokens  = resp.headers.get("X-Total-Tokens")
+                if input_tokens and output_tokens:
+                    ok(f"token headers present: in={input_tokens}, out={output_tokens}")
+                else:
+                    info(f"token headers: in={input_tokens}, out={output_tokens} (may be 0 in mock mode)")
+
+                # 3. Token usage JSON (totals — what the API exposes to clients)
+                from datetime import datetime, timezone
+                from config import MODEL_ID
+                usage = {
+                    "model": MODEL_ID,
+                    "client_id": CLIENT_ID,
+                    "period": f"{DATE_FROM} → {DATE_TO}",
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "elapsed_sec": round(elapsed, 2),
+                    "totals": {
+                        "inputTokens":  int(input_tokens or 0),
+                        "outputTokens": int(output_tokens or 0),
+                        "totalTokens":  int(total_tokens or 0),
+                    },
+                }
+                (output_dir / "usage_token.json").write_text(
+                    json.dumps(usage, indent=2), encoding="utf-8"
+                )
+                ok(f"saved → output/usage_token.json  (total={usage['totals']['totalTokens']:,} tokens)")
+
+                # Quick content checks
+                checks = [
+                    ("## 1." in html_output or "<h2>" in html_output,  "contains section headers"),
+                    ("<table>" in html_output,                          "contains markdown table"),
+                    ("<li>" in html_output or "•" in html_output,      "contains list items"),
+                    (len(html_output) > 500,                           "non-trivial HTML length"),
+                ]
+                for passed, label in checks:
+                    (ok if passed else fail)(label)
+
+                results["monthly_report"] = True
+            else:
+                elapsed = time.time() - t0
+                fail(f"status={resp.status_code}  elapsed={elapsed:.1f}s")
+                print(f"\n  Response body (first 800 chars):\n")
+                print("  " + resp.text[:800].replace("\n", "\n  "))
+                results["monthly_report"] = False
+
+        except Exception as e:
+            elapsed = time.time() - t0
+            fail(f"Exception after {elapsed:.1f}s: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            results["monthly_report"] = False
 
     # ── TEST 3: Trend list (should exist now if report succeeded) ─────────────
     section("TEST 3 — GET /psr-report/trend/{client_id}")
