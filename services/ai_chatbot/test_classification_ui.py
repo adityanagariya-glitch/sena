@@ -62,7 +62,7 @@ def ask_gateway(question, category=None):
     try:
         with httpx.stream(
             "POST",
-            f"{GATEWAY_URL}/api/route",
+            f"{GATEWAY_URL}/ai-chatbot/route",
             json={"question": question or "", "context": context},
             headers={"Authorization": f"Bearer {get_token()}"},
             timeout=120,

@@ -204,7 +204,7 @@ app = FastAPI(
         "Single production entry point for the SENA assistant (Flutter mobile / "
         "React web).\n\n"
         "**One endpoint, chip-driven routing.** The frontend sends every message to "
-        "`POST /api/route` with the tapped chip in `context.category`; the gateway "
+        "`POST /ai-chatbot/route` with the tapped chip in `context.category`; the gateway "
         "routes it to the right backend section and streams the answer back as "
         "Server-Sent Events. There is no free-text classification — no chip means "
         "out of scope.\n\n"
@@ -224,14 +224,14 @@ app = FastAPI(
 
 @app.get("/")
 async def root():
-    """The gateway is a JSON routing API now — no UI. Point clients at /api/route."""
+    """The gateway is a JSON routing API now — no UI. Point clients at /ai-chatbot/route."""
     return JSONResponse({
         "service": "SENA ai_chatbot gateway",
-        "endpoints": {"route": "POST /api/route", "health": "GET /healthz"},
+        "endpoints": {"route": "POST /ai-chatbot/route", "health": "GET /ai-chatbot/healthz"},
     })
 
 
-@app.get("/healthz")
+@app.get("/ai-chatbot/healthz")
 async def healthz():
     client: httpx.AsyncClient = app.state.client
     results = {}
@@ -245,7 +245,7 @@ async def healthz():
 
 
 @app.post(
-    "/api/route",
+    "/ai-chatbot/route",
     tags=["Routing"],
     summary="Route a chip-selected message and stream the answer (SSE)",
     response_description="text/event-stream of meta → token → done (or error).",
@@ -279,7 +279,7 @@ async def route_query(
     **Example**
 
     ```
-    POST /api/route
+    POST /ai-chatbot/route
     Authorization: Bearer <JWT>
     {"question": "What are my shifts this week?", "context": {"category": "shifts"}}
     ```

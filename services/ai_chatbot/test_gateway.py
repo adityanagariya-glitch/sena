@@ -68,10 +68,10 @@ DOCKER_CONFIG = {
 
 # Localhost configuration (for dev on host)
 LOCALHOST_CONFIG = {
-    "gateway_reverse_proxy": "http://localhost:8080/chatbot",  # Via nginx
-    "gateway_direct": "http://localhost:8003",                 # Direct to ai-chatbot
-    "policy_auth": "http://localhost:8000/auth/login",         # Policy internal
-    "staff_auth": "http://localhost:8001",                     # Staff internal
+    "gateway_reverse_proxy": "http://localhost:8080/ai-chatbot",  # Via nginx
+    "gateway_direct": "http://localhost:8003",                    # Direct to ai-chatbot
+    "policy_auth": "http://localhost:8000/auth/login",            # Policy internal
+    "staff_auth": "http://localhost:8001",                        # Staff internal
 }
 
 # Determine configuration
@@ -90,7 +90,7 @@ if "--local" in sys.argv or not is_in_docker():
         logger.info(f"   Using direct ai-chatbot: {GATEWAY_URL}")
     else:
         if can_reach_localhost(8080):
-            logger.error("❌ nginx is reachable on localhost:8080, but /chatbot/healthz is not.")
+            logger.error("❌ nginx is reachable on localhost:8080, but /ai-chatbot/healthz is not.")
             logger.error("   Recreate/reload the reverse proxy so services/nginx/dev-api.isena.org.conf is mounted.")
         logger.error("❌ Cannot reach ai-chatbot. Make sure containers are running:")
         logger.error("   docker compose -f services/docker-compose.deploy.yml up -d")
@@ -202,7 +202,7 @@ def query_gateway(token, category, question):
         answer_parts = []
         with httpx.stream(
             "POST",
-            f"{GATEWAY_URL}/api/route",
+            f"{GATEWAY_URL}/ai-chatbot/route",
             json={
                 "question": question,
                 "context": {"category": category}
