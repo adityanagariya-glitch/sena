@@ -8,6 +8,9 @@ Usage:
 
 Options:
     --local     Run tests against localhost (dev mode)
+    --policy-dev-auth
+                Test policy_proc's internal fake_users.json login directly.
+                By default policy/procedure use the gateway ISENA bearer token.
     (default)   Run tests against docker services
 
 Credentials:
@@ -45,6 +48,16 @@ def can_reach_localhost(port):
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
 
+def gateway_is_healthy(base_url):
+    """Check the gateway health endpoint, not just whether a port is open."""
+    try:
+        resp = httpx.get(f"{base_url.rstrip('/')}/healthz", timeout=3)
+        if resp.status_code != 200:
+            return False
+        return resp.json().get("gateway") is True
+    except Exception:
+        return False
+
 # Docker configuration from docker-compose.deploy.yml
 DOCKER_CONFIG = {
     "reverse_proxy": "http://sena-reverse-proxy-internal:80",  # Internal to docker
@@ -64,17 +77,22 @@ LOCALHOST_CONFIG = {
 # Determine configuration
 if "--local" in sys.argv or not is_in_docker():
     logger.info("🖥️  Running in LOCAL mode (host machine)")
-    # Try to detect which endpoint is available
-    if can_reach_localhost(8080):
+    # Try to detect which endpoint is available. Port 8080 can be open even when
+    # nginx is serving Certbot's fallback 404, so probe /healthz through the
+    # chatbot prefix before selecting it.
+    if gateway_is_healthy(LOCALHOST_CONFIG["gateway_reverse_proxy"]):
         GATEWAY_URL = LOCALHOST_CONFIG["gateway_reverse_proxy"]
         POLICY_AUTH_URL = LOCALHOST_CONFIG["policy_auth"]
         logger.info(f"   Using reverse proxy: {GATEWAY_URL}")
-    elif can_reach_localhost(8003):
+    elif gateway_is_healthy(LOCALHOST_CONFIG["gateway_direct"]):
         GATEWAY_URL = LOCALHOST_CONFIG["gateway_direct"]
         POLICY_AUTH_URL = LOCALHOST_CONFIG["policy_auth"]
         logger.info(f"   Using direct ai-chatbot: {GATEWAY_URL}")
     else:
-        logger.error("❌ Cannot reach Docker services. Make sure containers are running:")
+        if can_reach_localhost(8080):
+            logger.error("❌ nginx is reachable on localhost:8080, but /chatbot/healthz is not.")
+            logger.error("   Recreate/reload the reverse proxy so services/nginx/dev-api.isena.org.conf is mounted.")
+        logger.error("❌ Cannot reach ai-chatbot. Make sure containers are running:")
         logger.error("   docker compose -f services/docker-compose.deploy.yml up -d")
         sys.exit(1)
 else:
@@ -86,6 +104,10 @@ else:
 # Allow override via environment variable
 GATEWAY_URL = os.getenv("GATEWAY_URL", GATEWAY_URL)
 POLICY_AUTH_URL = os.getenv("POLICY_AUTH_URL", POLICY_AUTH_URL)
+USE_POLICY_DEV_AUTH = (
+    "--policy-dev-auth" in sys.argv
+    or os.getenv("USE_POLICY_DEV_AUTH", "").lower() in ("1", "true", "yes")
+)
 
 # Auth service URL (for staff/client login) — always hits the real API
 AUTH_URL = "https://dev-api.isena.org/api/auth/ai/login"
@@ -256,7 +278,10 @@ def main():
     logger.info("SENA AI Chatbot Gateway Test Suite")
     logger.info("=" * 80)
     logger.info(f"🌐 Gateway URL: {GATEWAY_URL}")
-    logger.info(f"🔑 Policy Auth URL: {POLICY_AUTH_URL}\n")
+    if USE_POLICY_DEV_AUTH:
+        logger.info(f"🔑 Policy Auth URL: {POLICY_AUTH_URL}\n")
+    else:
+        logger.info("🔑 Policy/Procedure auth: ISENA gateway bearer token\n")
 
     results = {}
 
@@ -284,7 +309,7 @@ def main():
     logger.info("\n" + "=" * 80)
     logger.info("SECTION 3: POLICY")
     logger.info("=" * 80)
-    token = get_policy_proc_token()
+    token = get_policy_proc_token() if USE_POLICY_DEV_AUTH else get_staff_client_token()
     if token:
         results["policy"] = query_gateway(token, "policy", QUESTIONS["policy"])
     else:
@@ -294,7 +319,7 @@ def main():
     logger.info("\n" + "=" * 80)
     logger.info("SECTION 4: PROCEDURE")
     logger.info("=" * 80)
-    token = get_policy_proc_token()
+    token = get_policy_proc_token() if USE_POLICY_DEV_AUTH else get_staff_client_token()
     if token:
         results["procedure"] = query_gateway(token, "procedure", QUESTIONS["procedure"])
     else:

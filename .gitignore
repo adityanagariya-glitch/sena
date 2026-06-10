@@ -138,4 +138,6 @@ restrictive_practices/   # reference-only (Ritika's code); pushed in error — v
 !services/voice/**/*.md
 !services/case_review/**/*.md
 !services/ai-communication-log/**/*.md
+
 services/casenote_monthly/example.json
+services/casenote_monthly/trends/

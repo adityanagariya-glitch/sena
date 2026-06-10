@@ -1,175 +1,76 @@
-[
-  {
-    "clientProfile": {
-      "clientInfo": {
-        "id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
-        "firstName": "Michael",
-        "lastName": "Smith",
-        "preferredName": "Jee",
-        "dateOfBirth": "1988-09-22",
-        "gender": "Male",
-        "culturalBackground": "indian",
-        "languagesSpoken": [
-          "mandarin"
-        ],
-        "interpreterRequired": false,
-        "ndisNumber": "433434",
-        "supportRequirements": "Eu deleniti aut quas",
-        "planStartDate": "2026-02-03",
-        "planEndDate": "2026-02-11",
-        "selfIntro": "Hello, I am Michael.",
-        "culturalConsiderations": "hello c",
-        "mostImportantToMe": "hello personal information",
-        "ndisPlanGoals": [
-          "go with client at location",
-          "help client if cliente neeed"
-        ],
-        "medicalProfile": {
-          "bloodType": "B+",
-          "medications": [
-            "Pills"
-          ],
-          "mobilityStatus": "independent",
-          "primaryDiagnosis": "Corporis et ullamco ",
-          "secondaryDiagnoses": []
-        },
-        "primaryDoctor": {
-          "name": "Gannon Leon",
-          "lastCheckedUpOn": "1998-04-18"
-        }
-      },
-      "onboardingStep2": {
-        "hasRequirements": true
-      },
-      "onboardingStep3": {
-        "hasNdisPlan": true
-      },
-      "onboardingStep5": {
-        "hasMedicalInformation": true
-      }
+{
+  "method": "GET",
+  "path": "/ai/client-data",
+  "summary": "Get client activity data",
+  "description": "Returns all client-related activity within a date range, grouped by day.",
+  "queryParameters": [
+    {
+      "name": "clientId",
+      "type": "uuid",
+      "required": true,
+      "description": "Client identifier."
     },
-    "clientSupportWorker": {},
-    "clientGuardian": {},
-    "clientCaseNotes": [
-      {
-        "date": "2026-05-01",
-        "caseNotes": [],
-        "shifts": [],
-        "incidents": [],
-        "restrictivePractices": [],
-        "shiftFeedback": [],
-        "clientComplaints": []
+    {
+      "name": "organizationId",
+      "type": "uuid",
+      "required": true,
+      "description": "Organization identifier."
+    },
+    {
+      "name": "dateFrom",
+      "type": "date",
+      "format": "YYYY-MM-DD",
+      "required": true,
+      "description": "Start date (inclusive)."
+    },
+    {
+      "name": "dateTo",
+      "type": "date",
+      "format": "YYYY-MM-DD",
+      "required": true,
+      "description": "End date (inclusive)."
+    },
+    {
+      "name": "page",
+      "type": "integer",
+      "required": false,
+      "default": 1,
+      "description": "Page number."
+    },
+    {
+      "name": "limit",
+      "type": "integer",
+      "required": false,
+      "default": 30,
+      "description": "Number of days returned per page."
+    }
+  ],
+  "response": {
+    "success": true,
+    "message": "Client data retrieved successfully",
+    "data": {
+      "clientId": "uuid",
+      "clientName": "John Smith",
+      "organizationId": "uuid",
+      "dateFrom": "2026-05-01",
+      "dateTo": "2026-05-31",
+      "pagination": {
+        "page": 1,
+        "limit": 30,
+        "totalPages": 1,
+        "totalRecords": 31
       },
-      {
-        "date": "2026-05-04",
-        "caseNotes": [],
-        "shifts": [],
-        "incidents": [],
-        "restrictivePractices": [],
-        "shiftFeedback": [
-          {
-            "rating": 2,
-            "feedback_description": "Disappointed by the kitchen incident during meal prep. First aid was handled well but better safety briefings needed."
-          }
-        ],
-        "clientComplaints": []
-      },
-      {
-        "date": "2026-05-08",
-        "caseNotes": [],
-        "shifts": [],
-        "incidents": [],
-        "restrictivePractices": [
-          {
-            "type": "mechanical",
-            "status": "rejected",
-            "description": "Soft table-top harness used during lunch to support upright posture."
-          }
-        ],
-        "shiftFeedback": [],
-        "clientComplaints": []
-      },
-      {
-        "date": "2026-05-23",
-        "caseNotes": [
-          {
-            "summaryOfShift": "Personal care in the morning followed by joint meal-prep session.",
-            "anyIncident": false
-          },
-          {
-            "summaryOfShift": "Joint cooking session. Client sustained a small burn from a hot pan.",
-            "anyIncident": true
-          }
-        ],
-        "shifts": [
-          {
-            "title": "Personal care + meal prep",
-            "status": "completed",
-            "location": "Client home"
-          }
-        ],
-        "incidents": [
-          {
-            "incidentType": "injury",
-            "riskRating": "low",
-            "summary": "Client sustained a small first-degree burn to right index finger."
-          }
-        ],
-        "restrictivePractices": [
-          {
-            "type": "physical",
-            "status": "approved"
-          }
-        ],
-        "shiftFeedback": [],
-        "clientComplaints": []
-      },
-      {
-        "date": "2026-05-27",
-        "caseNotes": [
-          {
-            "summaryOfShift": "Art workshop — watercolour session."
-          },
-          {
-            "summaryOfShift": "Music corner — supported percussion participation."
-          },
-          {
-            "summaryOfShift": "1:1 lunch support — sensory-friendly meal."
-          },
-          {
-            "summaryOfShift": "Afternoon walk in the park followed by coffee."
-          }
-        ],
-        "shifts": [
-          {
-            "title": "Day program — art workshop",
-            "status": "completed"
-          },
-          {
-            "title": "Afternoon social support",
-            "status": "completed"
-          }
-        ],
-        "incidents": [],
-        "restrictivePractices": [],
-        "shiftFeedback": [],
-        "clientComplaints": []
-      },
-      {
-        "date": "2026-05-29",
-        "caseNotes": [],
-        "shifts": [],
-        "incidents": [],
-        "restrictivePractices": [],
-        "shiftFeedback": [],
-        "clientComplaints": [
-          {
-            "complaint_type": "Service_Quality",
-            "subject": "Late arrival of support worker",
-            "status": "pending"
-          }
-        ]
-      }
-    ]
+      "days": [
+        {
+          "date": "2026-05-01",
+          "caseNotes": [],
+          "shifts": [],
+          "incidents": [],
+          "restrictivePractices": [],
+          "shiftFeedback": [],
+          "clientComplaints": []
+        }
+      ]
+    }
   }
-]
+}
