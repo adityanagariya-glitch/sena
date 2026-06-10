@@ -230,15 +230,20 @@ STEP 5 — LANGUAGE AUDIT RULES (apply during drafting)
     "can't" / "unable" → "is developing the capacity to"
   Remove superlatives unless supported by a specific metric in the data.
  
-STEP 6 — DRAFT PARAGRAPHS
-  Para 1: Participant profile + diagnosis characteristics + quarter focus areas
-  Para 2: Most significant milestone(s) OR onboarding/baseline framing (Tier 3/4)
-  Para 3: Session scope (total sessions, activity types, support workers) OR
-           data-collection intent (Tier 3/4)
+STEP 6 — DRAFT AS RICH BULLETS
+  Cover the same content the original narrative did, but as full-sentence bullets:
+  • Participant profile + diagnosis characteristics + period focus areas
+  • Most significant milestone(s) OR onboarding/baseline framing (Tier 3/4)
+  • Support approach / strategies applied
+  • Session scope (total sessions, activity types, support workers) OR
+    data-collection intent (Tier 3/4)
+  Each bullet = one complete, information-rich sentence. Do NOT use "label: value"
+  fragments. Do NOT collapse into a single paragraph.
 </internal_steps>
  
 <rules>
-  ✓ Format as clear, focused bullet points (5–8 bullets)
+  ✓ Format as full-sentence bullet points (4–6 rich bullets, NOT "label: value" fragments)
+  ✓ Preserve the narrative depth of a written introduction — bullets aid readability only
   ✓ Session count must be copied verbatim from metrics (never recounted)
   ✓ Milestones must come from the provided `milestones` array only
   ✓ Third-person past tense throughout
@@ -252,29 +257,29 @@ STEP 6 — DRAFT PARAGRAPHS
 <few_shot_examples>
 EXAMPLE A — Tier 1 (Full Data):
 ## 2. Introduction
-• **Participant:** Jordan, 19 years old, primary diagnosis: Autism Spectrum Disorder (Level 2)
-• **Key characteristics:** Social anxiety, sensory sensitivities, transitions between tasks and environments
-• **Quarter focus:** Building community engagement, communication confidence, and independent living skills
-• **Milestone:** Initiated volunteering independently at a local op shop through staged exposure strategy
-• **Support team approach:** Collaborative development of strategies; strengthening executive functioning and emotional regulation
-• **Support sessions:** 24 sessions over May–July 2025, combining in-home and community-based activities
-• **Support workers involved:** 2 dedicated support workers
- 
+• Jordan is a 19-year-old NDIS participant with a primary diagnosis of Autism Spectrum Disorder (Level 2), presenting with social anxiety, sensory sensitivities, and difficulties transitioning between tasks and environments.
+• Over the current period (May–July 2025), support focused on building community engagement, communication confidence, and independent living capabilities.
+• A notable milestone was Jordan's independent initiation of volunteering at a local op shop, achieved through a staged exposure strategy developed collaboratively with the support team.
+• Support also pivoted toward strengthening executive functioning and emotional regulation in preparation for upcoming educational responsibilities (TAFE commencement).
+• Participation spanned 24 support sessions, combining in-home and community-based activities captured by two support workers.
+
 EXAMPLE B — Tier 3 (Onboarding Only):
 ## 2. Introduction
-• **Participant:** [Name], NDIS participant
-• **Status:** Completed initial onboarding phase including requirements assessment, NDIS plan verification, and medical information documentation
-• **Current focus:** Foundational period focused on rapport-building and baseline assessment
-• **Support sessions:** Not yet commenced; milestones to be recorded once sessions begin
-• **Diagnosis/medical information:** [On file]
-• **Preparation:** Support team developing individualised strategies
-• **Next steps:** Session frequency, activity types, and engagement patterns will be recorded in future reports
+• Jordan is an NDIS participant who has completed the initial onboarding phase, including requirements assessment, NDIS plan verification, and medical information documentation.
+• The current period represents a foundational stage focused on rapport-building and baseline assessment.
+• As scheduled support sessions have not yet commenced, no direct support milestones are recorded for this period.
+• The participant profile indicates medical information is on file, and the support team is preparing individualised strategies aligned with identified NDIS goals.
+• Once support sessions begin, this section will capture session frequency, activity types, and participant engagement patterns.
+
+NOTE ON STYLE: Each bullet is a complete, information-rich sentence (not a "label: value"
+fragment). Preserve the narrative depth of the original — bullets are for readability, not brevity.
 
 NEGATIVE EXAMPLE — Do NOT produce this:
+ • **Participant:** Jordan, 19   ← terse label:value fragment; write a full sentence instead
  Jordan has made remarkable progress this quarter.
    (superlative without a supporting metric — remove or use specific data)
  Support worker Sarah helped Jordan with tasks.
-   (staff name not in JSON — never invent)
+   (staff name not in input — never invent)
  "Soup is yummy." — Jordan, 23 May 2026
    (remove citation format; use only verbatim quotes from feedback data with clear context)
 </few_shot_examples>
@@ -287,7 +292,7 @@ Run these checks silently before writing:
   □ All milestones are internally traceable to a source case note ID or feedback ID
   □ No deficit-based or stigmatising language
   □ No superlatives without supporting evidence
-  □ Format is clear bullet points (5–8 bullets)
+  □ Format is full-sentence bullets (4–6), each a complete sentence — not label:value
   □ Australian English spellings used throughout
   □ Third-person past tense throughout
   □ No citation/reference format used for quotes
@@ -296,7 +301,8 @@ Run these checks silently before writing:
 
 <output_format>
 ## 2. Introduction
-[5–8 focused bullet points, adaptive to data tier]
+[4–6 full-sentence bullet points carrying the same depth as a written introduction,
+adaptive to data tier — never "label: value" fragments, never a single paragraph]
 </output_format>
 
 CRITICAL: Write ONLY the formatted report section below. No verification log. No blockquotes. No analysis. No emoji.

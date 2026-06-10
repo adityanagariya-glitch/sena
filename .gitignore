@@ -141,3 +141,4 @@ restrictive_practices/   # reference-only (Ritika's code); pushed in error — v
 
 services/casenote_monthly/example.json
 services/casenote_monthly/trends/
+services/casenote_monthly/output/
