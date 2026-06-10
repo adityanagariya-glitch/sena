@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 
 import structlog
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
@@ -75,6 +75,28 @@ async def onboarding_ws(
     if state is None:
         await _close_with_error(websocket, "session_not_found", "Session not found or expired", 4004)
         return
+
+    # ── 1b. Tenant ownership guard (defense-in-depth) ─────────────────────────
+    # Onboarding Redis keys are flat (session-id only), so a guessed session_id
+    # could otherwise read another tenant's session over the WS — the REST routes
+    # already call assert_session_owner, but this WS route never did. Enforce it
+    # when the client presents X-Tenant-Id (matches the REST contract). Header-less
+    # legacy connections are allowed through but logged; FULL closure needs the
+    # Flutter WS client to send X-Tenant-Id/X-Participant-Id (see followups.md).
+    _hdr_tenant = websocket.headers.get("x-tenant-id")
+    _hdr_participant = websocket.headers.get("x-participant-id")
+    if _hdr_tenant:
+        try:
+            await repo.assert_session_owner(
+                session_id, _hdr_tenant, _hdr_participant or state.participant_id
+            )
+        except HTTPException:
+            await _close_with_error(
+                websocket, "forbidden", "Session does not belong to caller", 4403
+            )
+            return
+    else:
+        log.warning("ws_ownership_check_skipped_no_tenant_header", session_id=session_id)
 
     schema = await repo.get_schema(session_id)
     if schema is None:
