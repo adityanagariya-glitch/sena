@@ -137,9 +137,10 @@ def build_system_prompt(
     voice_coverage: list[str] | None = None,
     prompts_dir: Path | None = None,
     tool_state_channel: bool = True,
+    template_name: str = "onboarding_system.md",
 ) -> str:
     base = prompts_dir if prompts_dir is not None else _default_prompts_dir()
-    template = (base / "onboarding_system.md").read_text(encoding="utf-8")
+    template = (base / template_name).read_text(encoding="utf-8")
     mode = _detect_form_mode(turn.visible_fields)
     return (
         template.replace("__STEP_LABEL__", turn.step.label)
