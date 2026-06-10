@@ -97,12 +97,10 @@ _SECTIONS: list[SectionSpec] = [
         id="handover",
         label="Handover",
         fields=[
-            FieldSpec(
-                id="handover",
-                type=FieldType.textarea,
-                label="Handover Note",
-                required=False,
-            ),
+            # Required on the Flutter screen (validator requiredWithMinMax 5-1000)
+            # even though the wire payload defaults handoverNote to '' — the form
+            # will not submit without it, so the voice flow treats it as required.
+            FieldSpec(id="handover", type=FieldType.textarea, label="Handover Note"),
         ],
     ),
 ]
