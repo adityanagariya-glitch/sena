@@ -46,7 +46,7 @@ services:
       - ../.env
     environment:
       # Voice uses Field(alias=...) which bypasses env_prefix — no SENA_AI_ here
-      REDIS_URL: redis://redis-internal:6379/0
+      REDIS_URL: redis://redis-internal:6979/0
       AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
       SHARED_DB_URL: postgresql+asyncpg://shared:shared@shared-db-internal:5432/platform
     expose:
@@ -71,7 +71,7 @@ services:
     env_file:
       - ../.env
     environment:
-      SENA_AI_REDIS_URL: redis://redis-internal:6379/0
+      SENA_AI_REDIS_URL: redis://redis-internal:6979/0
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_ONBOARDING_PORT: "8001"
     expose:
@@ -216,7 +216,7 @@ services:
     image: redis:7.4-alpine
     container_name: sena-redis-internal
     expose:
-      - "6379"
+      - "6979"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
