@@ -102,6 +102,9 @@ COPY casenote_monthly/api_main.py \
      casenote_monthly/guardrails.py \
      casenote_monthly/agents_types.py \
      casenote_monthly/bedrock_client.py \
+     casenote_monthly/bedrock_retry.py \
+     casenote_monthly/linter.py \
+     casenote_monthly/stats.py \
      casenote_monthly/trend_store.py \
      /app/
 

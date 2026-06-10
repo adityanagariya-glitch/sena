@@ -9,7 +9,7 @@ name: sena-ai
 
 services:
 
-  # ── Public gateway — only container with host-exposed ports ───────────────
+  # ── Public gateway (TLS termination) — also see dev debugging ports on ai-chatbot, policy-proc, staff ───
   sena-reverse-proxy:
     image: nginx:alpine
     container_name: sena-reverse-proxy-internal
@@ -115,6 +115,7 @@ services:
       - "8004"
     volumes:
       - casenote-reports:/app/reports
+      - casenote-trends:/app/trends
     networks:
       - sena-network
     restart: unless-stopped
@@ -156,7 +157,7 @@ services:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_POLICY_PROC_PORT: "8000"
     ports:
-      - "8000:8000"
+      - "8010:8000"
     expose:
       - "8000"
     networks:
@@ -175,7 +176,7 @@ services:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_STAFF_PORT: "8001"
     ports:
-      - "8001:8001"
+      - "8011:8001"
     expose:
       - "8001"
     networks:
@@ -277,3 +278,4 @@ volumes:
   ai-db-data:
   shared-db-data:
   casenote-reports:
+  casenote-trends:

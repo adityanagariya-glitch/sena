@@ -9,11 +9,14 @@
 6. Merged report saved as ``reports/{client_id}_report.md`` and returned as raw HTML.
 
 **Port:** 8602
+
+**Performance:** Uses uvloop (if available), ThreadPoolExecutor, and async/await for max speed.
 """
 import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,10 +27,20 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
+# Use uvloop for faster async event loop (10-4x faster than default)
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass  # Fall back to default event loop
+
 from auth import get_auth_headers, validate_jwt
+from bedrock_retry import converse_with_retry, sum_usage
 from cleaner import clean
 from config import API_BASE_URL, bedrock_runtime, MODEL_ID
-from trend_store import get_previous_trend, list_trends, save_trend
+from linter import lint
+from stats import compute_stats
+from trend_store import get_previous_month_stats, get_previous_trend, list_trends, save_month_stats, save_trend
 import prompt as P
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -68,7 +81,12 @@ _TAGS = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     REPORTS_DIR.mkdir(exist_ok=True)
+    # Create thread pool for CPU-bound tasks (stats, linting, markdown conversion)
+    # Use 4 workers; adjust based on CPU cores if needed
+    app.state.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sena-worker-")
     yield
+    # Cleanup
+    app.state.executor.shutdown(wait=True)
 
 
 app = FastAPI(
@@ -88,6 +106,11 @@ class ReportRequest(BaseModel):
         ...,
         description="Client UUID from the SENA system.",
         examples=["0ce6359f-9138-4e05-b83b-6c39875f1828"],
+    )
+    organization_id: str = Field(
+        ...,
+        description="Organization UUID from the SENA system.",
+        examples=["org-123e4567-e89b-12d3-a456-426614174000"],
     )
     date_from: str = Field(
         ...,
@@ -138,13 +161,13 @@ class HealthResponse(BaseModel):
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _fetch_client_data(client_id: str, date_from: str, date_to: str, token: str) -> dict:
+def _fetch_client_data(client_id: str, organization_id: str, date_from: str, date_to: str, token: str, page: int = 1) -> dict:
     """Call GET /ai/client-data and return the inner data object.
 
     Raises ValueError if the backend returns a non-200 status or empty data.
     """
     url = f"{API_BASE_URL}/ai/client-data"
-    params = {"clientId": client_id, "dateFrom": date_from, "dateTo": date_to}
+    params = {"clientId": client_id, "organizationId": organization_id, "dateFrom": date_from, "dateTo": date_to, "page": page}
     resp = requests.get(url, params=params, headers=get_auth_headers(token), timeout=30)
     if resp.status_code != 200:
         raise ValueError(f"Backend returned {resp.status_code}: {resp.text[:200]}")
@@ -153,6 +176,44 @@ def _fetch_client_data(client_id: str, date_from: str, date_to: str, token: str)
     if not data:
         raise ValueError("Backend returned empty data for this client / date range.")
     return data
+
+
+def _fetch_client_data_all(client_id: str, organization_id: str, date_from: str, date_to: str, token: str, max_pages: int = 12) -> dict:
+    """Fetch all pages of client data, merging day lists and deduping by date."""
+    all_days = []
+    pagination_info = None
+    client_info = None
+
+    for page_num in range(1, max_pages + 1):
+        data = _fetch_client_data(client_id, organization_id, date_from, date_to, token, page=page_num)
+
+        # Collect client info on first page
+        if page_num == 1 and data.get("client"):
+            client_info = data["client"]
+
+        # Merge days
+        days_key = "days" if "days" in data else "data"
+        page_days = data.get(days_key) or []
+        all_days.extend(page_days)
+
+        # Track pagination
+        pagination_info = data.get("pagination", {})
+        if not pagination_info.get("hasNext") and not (pagination_info.get("totalPages", 1) > page_num):
+            break
+
+    # Dedupe by date (keep first occurrence)
+    seen = set()
+    deduped = []
+    for day in all_days:
+        day_date = day.get("date") or day.get("bucketDate", "")
+        if day_date and day_date in seen:
+            logger.warning(f"[{client_id}] Duplicate date in pagination: {day_date}, skipping")
+            continue
+        if day_date:
+            seen.add(day_date)
+        deduped.append(day)
+
+    return {"data": deduped, "client": client_info, "pagination": pagination_info or {}}
 
 
 def _normalize(section: dict | str) -> dict:
@@ -169,11 +230,17 @@ def _fill(text: str, subs: dict) -> str:
     return text
 
 
-def _build_subs(data: dict, section_outputs: dict[int, str]) -> dict:
+def _build_subs(data: dict, section_outputs: dict[int, str], stats: dict | None = None) -> dict:
     client = data.get("client", {})
     goals = client.get("ndisPlanGoals") or client.get("personalGoals") or []
+    stats = stats or {}
+
+    # Inject PRE-COMPUTED METRICS block before CLIENT_JSON
+    metrics_block = f"PRE-COMPUTED METRICS (copy all numbers verbatim — never calculate):\n{json.dumps(stats, indent=2, ensure_ascii=False)}\n\nRAW CLIENT DATA:\n"
+    client_json_with_metrics = metrics_block + json.dumps(data, indent=2, ensure_ascii=False)
+
     return {
-        "{{CLIENT_JSON}}":    json.dumps(data, indent=2, ensure_ascii=False),
+        "{{CLIENT_JSON}}":    client_json_with_metrics,
         "{{START_DATE}}":     str(data.get("dateFrom", "")),
         "{{END_DATE}}":       str(data.get("dateTo", "")),
         "{{NDIS_GOALS_LIST}}": ", ".join(goals) if isinstance(goals, list) else str(goals),
@@ -186,17 +253,22 @@ def _build_subs(data: dict, section_outputs: dict[int, str]) -> dict:
 def _call_bedrock(section: dict, subs: dict) -> tuple[str, dict]:
     system = section.get("system", "")
     user = _fill(section.get("user", ""), subs)
-    resp = bedrock_runtime.converse(
-        modelId=MODEL_ID,
-        system=[{"text": system}] if system else [],
-        messages=[{"role": "user", "content": [{"text": user}]}],
-        inferenceConfig={"maxTokens": MAX_TOKENS},
-    )
+    payload = {
+        "modelId": MODEL_ID,
+        "system": [{"text": system}] if system else [],
+        "messages": [{"role": "user", "content": [{"text": user}]}],
+        "inferenceConfig": {"maxTokens": MAX_TOKENS},
+    }
+    resp = converse_with_retry(bedrock_runtime, payload, attempts=3, base_delay=1.5)
     text = ""
     for block in (resp.get("output") or {}).get("message", {}).get("content", []):
         if "text" in block:
             text += block["text"]
-    return clean(text.strip()), resp.get("usage") or {}
+    text = clean(text.strip())
+    text, violations = lint(text)
+    if violations:
+        logger.info("Language violations found and corrected: %s", violations[:3])
+    return text, resp.get("usage") or {}
 
 
 async def _run_one(i: int, sec: dict, subs: dict, client_id: str) -> tuple[int, str, dict]:
@@ -207,19 +279,43 @@ async def _run_one(i: int, sec: dict, subs: dict, client_id: str) -> tuple[int, 
     return i, text, usage
 
 
-def _sum_usage(usages: list[dict]) -> dict:
-    return {
-        "inputTokens":  sum(u.get("inputTokens", 0)  for u in usages),
-        "outputTokens": sum(u.get("outputTokens", 0) for u in usages),
-        "totalTokens":  sum(u.get("totalTokens",  0) for u in usages),
-    }
 
 
 async def _generate_report(data: dict, client_id: str, current_period: str) -> tuple[str, dict]:
     """Run sections 1-6 in parallel, then section 7 (needs 3/4/5 context).
 
     Returns (html, usage_totals) where usage_totals has inputTokens, outputTokens, totalTokens.
+
+    **Optimization:** Stats computation and trend loading run in parallel.
     """
+    # PARALLEL: Compute stats and load previous month stats concurrently
+    async def _compute_and_load_stats():
+        try:
+            stats = await asyncio.to_thread(
+                compute_stats, data, data.get("dateFrom", ""), data.get("dateTo", "")
+            )
+        except ValueError as e:
+            logger.error("[%s] stats computation failed: %s", client_id, e)
+            stats = {}
+        return stats
+
+    async def _load_prev_stats():
+        prev = await asyncio.to_thread(get_previous_month_stats, client_id, current_period)
+        return prev.get("stats", {}) if prev else {}
+
+    # Run stats computation and trend loading in parallel
+    stats, prev_stats = await asyncio.gather(
+        _compute_and_load_stats(),
+        _load_prev_stats(),
+        return_exceptions=False
+    )
+
+    # Compute MoM deltas if previous month exists
+    if prev_stats:
+        from stats import mom_deltas
+        stats["momDeltas"] = mom_deltas(stats, prev_stats)
+        logger.info("[%s] MoM deltas computed for %s", client_id, current_period)
+
     sections: list[tuple[int, dict]] = []
     for i in range(1, 50):
         obj = getattr(P, f"section_{i}", None)
@@ -239,7 +335,7 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
     else:
         logger.info("[%s] no previous trend — section 5 will be baseline month", client_id)
 
-    base_subs = _build_subs(data, {})
+    base_subs = _build_subs(data, {}, stats)
 
     def _subs_for(i: int) -> dict:
         if i == 5 and prev_trend_text:
@@ -267,17 +363,40 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
 
     for i, sec in wave2:
         logger.info("[%s] wave 2: section %d (uses 3/4/5 context)", client_id, i)
-        _, text, usage = await _run_one(i, sec, _build_subs(data, section_outputs), client_id)
+        _, text, usage = await _run_one(i, sec, _build_subs(data, section_outputs, stats), client_id)
         section_outputs[i] = text
         all_usages.append(usage)
 
     parts = [section_outputs[i] for i, _ in sections if i in section_outputs]
     merged_md = "\n\n---\n\n".join(parts)
-    (REPORTS_DIR / f"{client_id}_report.md").write_text(merged_md + "\n", encoding="utf-8")
 
-    totals = _sum_usage(all_usages)
+    # PARALLEL: Markdown conversion and stats saving run concurrently (both CPU/IO bound)
+    totals = sum_usage(all_usages)
     logger.info("[%s] report saved  total_tokens=%d", client_id, totals["totalTokens"])
-    return md_lib.markdown(merged_md, extensions=["tables", "fenced_code"]), totals
+
+    # Define concurrent tasks
+    async def _save_markdown_file():
+        (REPORTS_DIR / f"{client_id}_report.md").write_text(merged_md + "\n", encoding="utf-8")
+
+    async def _save_stats():
+        saved_at = datetime.now(timezone.utc).isoformat()
+        await asyncio.to_thread(save_month_stats, client_id, current_period, stats, saved_at)
+        logger.info("[%s] month stats saved for %s", client_id, current_period)
+
+    async def _convert_markdown():
+        return await asyncio.to_thread(
+            md_lib.markdown, merged_md, extensions=["tables", "fenced_code", "sane_lists"]
+        )
+
+    # Run all three in parallel: markdown conversion + stats save + file write
+    html, _, _ = await asyncio.gather(
+        _convert_markdown(),
+        _save_stats(),
+        _save_markdown_file(),
+        return_exceptions=False
+    )
+
+    return html, totals
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -287,7 +406,7 @@ def _token(creds: HTTPAuthorizationCredentials | None) -> str:
 
 
 @app.get(
-    "/health",
+    "/psr-report/health",
     summary="Liveness probe",
     tags=["Health"],
     response_model=HealthResponse,
@@ -299,7 +418,7 @@ async def health() -> HealthResponse:
 
 
 @app.post(
-    "/casenote/monthly-report",
+    "/psr-report/monthly-report",
     response_class=HTMLResponse,
     summary="Generate a 7-section NDIS monthly progress report",
     tags=["Report"],
@@ -361,7 +480,7 @@ async def monthly_report(
 
     try:
         data = await asyncio.to_thread(
-            _fetch_client_data, req.client_id, req.date_from, req.date_to, token
+            _fetch_client_data_all, req.client_id, req.organization_id, req.date_from, req.date_to, token
         )
     except ValueError as exc:
         return HTMLResponse(f"<p>502 Backend error: {exc}</p>", status_code=502)
@@ -413,7 +532,7 @@ class TrendSaveRequest(BaseModel):
 
 
 @app.post(
-    "/casenote/trend/save",
+    "/psr-report/trend/save",
     summary="Manually save a monthly trend entry",
     tags=["Trend"],
     response_model=TrendSaveResponse,
@@ -450,7 +569,7 @@ async def trend_save(
 
 
 @app.get(
-    "/casenote/trend/{client_id}",
+    "/psr-report/trend/{client_id}",
     summary="Get all stored trend entries for a client",
     tags=["Trend"],
     response_model=TrendListResponse,

@@ -69,3 +69,32 @@ def list_trends(client_id: str) -> list[dict]:
         except Exception:
             pass
     return entries
+
+
+def save_month_stats(client_id: str, period: str, stats: dict, saved_at: str) -> Path:
+    """Save computed stats for cross-month MoM analysis.
+
+    Stats saved as trends/{client_id}/{YYYY-MM}_stats.json
+    """
+    path = _client_dir(client_id) / f"{period}_stats.json"
+    path.write_text(
+        json.dumps({"client_id": client_id, "period": period, "stats": stats, "saved_at": saved_at}, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def get_previous_month_stats(client_id: str, current_period: str) -> dict | None:
+    """Return the most recent stats strictly before current_period, or None.
+
+    Walks back up to 12 months using the same logic as get_previous_trend.
+    """
+    d = _client_dir(client_id)
+    year, month = map(int, current_period.split("-"))
+    check = date(year, month, 1)
+    for _ in range(12):
+        check = (check.replace(day=1) - timedelta(days=1)).replace(day=1)
+        candidate = d / f"{check.strftime('%Y-%m')}_stats.json"
+        if candidate.exists():
+            return json.loads(candidate.read_text(encoding="utf-8"))
+    return None

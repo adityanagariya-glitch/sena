@@ -35,6 +35,7 @@ httplib2
 httptools
 httpx
 httpx-sse
+hypercorn
 identify
 idna
 itsdangerous
