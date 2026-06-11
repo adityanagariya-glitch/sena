@@ -1,7 +1,11 @@
-fastapi
-uvicorn
-pydantic
-pydantic-settings
-boto3
-httpx
-python-dotenv
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+boto3==1.35.80
+botocore==1.35.80
+python-dotenv==1.0.1
+
+# Testing
+pytest==8.3.4
+requests==2.32.3
