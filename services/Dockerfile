@@ -52,15 +52,15 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 CMD ["uvicorn", "voice.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8008"]
 
 
-# ── Onboarding — Gemini Live voice onboarding (port 8001) ─────────────────
+# ── Onboarding — Gemini Live voice onboarding (port 8009) ─────────────────
 FROM base AS onboarding
 
-# Copy both together so setuptools can find packages under src/
-COPY onboarding/pyproject.toml /app/pyproject.toml
-COPY onboarding/src /app/src
-RUN pip install .
+# Copy onboarding package (flat structure: no src/ subdirectory)
+# Excludes: tests/, __pycache__, .git, *.pyc (handled by .dockerignore)
+COPY onboarding/ /app/onboarding/
 
-ENV PYTHONPATH=/app/src
+WORKDIR /app
+ENV PYTHONPATH=/app
 
 EXPOSE 8009
 
