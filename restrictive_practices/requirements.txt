@@ -1,0 +1,31 @@
+# Core framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic>=2.9.0,<3.0.0
+pydantic-settings>=2.4.0
+
+# AWS SDK (Bedrock LLMs + embeddings)
+boto3>=1.34.0
+
+# Database (async SQLAlchemy + pgvector)
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.35
+pgvector==0.3.2
+alembic==1.13.2
+
+# PDF ingestion
+pymupdf==1.24.10
+langchain-text-splitters==0.3.0
+
+# Pipeline orchestration
+langgraph==0.2.28
+langchain-core==0.3.10
+
+# Utilities
+python-multipart==0.0.12
+httpx>=0.28.1,<1.0.0
+
+# Voice assistant (Gemini Live) — fixes ModuleNotFoundError redis/structlog/google-genai
+redis[hiredis]==5.2.1
+structlog==24.4.0
+google-genai>=1.10.0
