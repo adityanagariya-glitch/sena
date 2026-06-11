@@ -114,3 +114,5 @@ zstandard
 pymupdf
 docx
 fitz
+pytest
+structlogfastapi

@@ -26,7 +26,7 @@ RUN pip install -U pip
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install shared dependencies from requirements.txt
+# Install all dependencies (merged from all services) in one shot
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 # shared/ lives inside services/ — same level as this Dockerfile
@@ -34,14 +34,15 @@ COPY shared /app/shared
 RUN pip install /app/shared
 
 
-# ── Voice — case note dictation via Bedrock (port 8000) ───────────────────
+# ── Voice — case note dictation via Bedrock (port 8008) ───────────────────
 FROM base AS voice
 
-COPY voice/pyproject.toml /app/pyproject.toml
-RUN pip install .
+# Copy voice package (flat structure: no src/ subdirectory)
+# Excludes: tests/, __pycache__, .git, *.pyc (handled by .dockerignore)
+COPY voice/ /app/voice/
 
-COPY voice/src /app/src
-ENV PYTHONPATH=/app/src
+WORKDIR /app
+ENV PYTHONPATH=/app
 
 EXPOSE 8008
 
@@ -88,9 +89,6 @@ CMD ["uvicorn", "case_review.main:create_app", "--factory", "--host", "0.0.0.0",
 
 # ── Casenote Monthly — NDIS report generator via Bedrock (port 8004) ──────
 FROM base AS casenote-monthly
-
-COPY casenote_monthly/requirements.txt /tmp/req-casenote.txt
-RUN pip install -r /tmp/req-casenote.txt
 
 # Copy only the Python source files — exclude .env, __pycache__, out/, reports/
 COPY casenote_monthly/api_main.py \
@@ -162,10 +160,6 @@ CMD ["uvicorn", "api_main:app", "--host", "0.0.0.0", "--port", "8001"]
 # back in below.
 FROM base AS ai-chatbot
 
-# Gateway deps (fastapi, uvicorn, httpx, websockets, jinja2)
-COPY ai_chatbot/requirements.txt /tmp/req-gateway.txt
-RUN pip install -r /tmp/req-gateway.txt
-
 # Gateway code only — staff/policy run as their own containers.
 COPY ai_chatbot  /app/services/ai_chatbot
 
@@ -189,9 +183,6 @@ CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8003"]
 # ── AI Communication Log — classifier via Bedrock (port 8005) ─────────────
 FROM base AS ai-communication-log
 
-COPY ai-communication-log/requirements.txt /tmp/req-comm-log.txt
-RUN pip install -r /tmp/req-comm-log.txt
-
 # Code lives in ai-classifier/ — copy its contents to /app so `app.main:app` resolves
 COPY ai-communication-log/ai-classifier /app
 
@@ -210,9 +201,6 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
 # ── Shift Summary — summary consolidation via Bedrock (port 8006) ────────────
 FROM base AS shift-summary
 
-COPY shift-summary/requirements.txt /tmp/req-shift-summary.txt
-RUN pip install -r /tmp/req-shift-summary.txt
-
 COPY shift-summary /app
 
 WORKDIR /app
@@ -227,9 +215,6 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]
 
 # ── AI Text Extraction — identity-document field extraction via Bedrock Nova Lite (port 8007) ──
 FROM base AS ai-text-extraction
-
-COPY ai-text-extraction/requirements.txt /tmp/req-text-extraction.txt
-RUN pip install -r /tmp/req-text-extraction.txt
 
 # Code uses absolute `scripts.*` imports — keep the scripts/ package under /app
 COPY ai-text-extraction/scripts /app/scripts
