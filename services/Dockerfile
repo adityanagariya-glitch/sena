@@ -73,11 +73,12 @@ CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", 
 # ── Case Review — pgvector intelligence layer (port 8002) ─────────────────
 FROM base AS case-review
 
-COPY case_review/pyproject.toml /app/pyproject.toml
-COPY case_review/src /app/src
-RUN pip install .
+# Copy case_review package (flat structure: no src/ subdirectory)
+# Excludes: tests/, __pycache__, .git, *.pyc (handled by .dockerignore)
+COPY case_review/ /app/case_review/
 
-ENV PYTHONPATH=/app/src
+WORKDIR /app
+ENV PYTHONPATH=/app
 
 EXPOSE 8002
 
