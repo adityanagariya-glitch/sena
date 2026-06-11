@@ -28,13 +28,8 @@ class FieldSpec(BaseModel):
     options: list[str] | None = None
     pattern: str | None = None
     format: str | None = None
-    # visible_if: {field_id: expected_value} — skip field if condition not met
     visible_if: dict[str, Any] | None = None
     default: Any | None = None
-    # readonly: true → voice agent must NEVER call update_field on this field.
-    # Used for identity-bound values (email, externally-managed IDs) that flow
-    # from the auth/account system. The dispatcher rejects writes server-side
-    # in addition to the prompt's Rule 3 readonly handling.
     readonly: bool = False
 
     @model_validator(mode="after")
@@ -52,12 +47,9 @@ class RepeatableConfig(BaseModel):
 class SectionSpec(BaseModel):
     id: str
     label: str
-    # Regular (non-repeatable) section has `fields`
     fields: list[FieldSpec] | None = None
-    # Repeatable section has `item_fields` + `repeatable`
     item_fields: list[FieldSpec] | None = None
     repeatable: RepeatableConfig | None = None
-    # If set: "Is this the same as <copy_from_if_flagged>?" shortcut
     copy_from_if_flagged: str | None = None
     flag_field: FieldSpec | None = None
 
@@ -74,7 +66,6 @@ class SectionSpec(BaseModel):
         return self.repeatable is not None
 
     def all_fields(self) -> list[FieldSpec]:
-        """Return all fields (regular or item_fields for repeatable)."""
         base = list(self.item_fields or []) if self.is_repeatable else list(self.fields or [])
         if self.flag_field:
             base.insert(0, self.flag_field)
@@ -102,11 +93,6 @@ class StepSchema(BaseModel):
         return next((s for s in self.sections if s.id == section_id), None)
 
     def get_field_spec(self, section_id: str, field_id: str) -> FieldSpec | None:
-        """Look up a FieldSpec by (section_id, field_id).
-
-        Handles both regular sections (fields) and repeatable sections (item_fields).
-        Returns None — never raises — for unknown section/field pairs.
-        """
         for section in self.sections:
             if section.id != section_id:
                 continue
@@ -114,5 +100,5 @@ class StepSchema(BaseModel):
             for f in (fields or []):
                 if f.id == field_id:
                     return f
-            return None  # section found, field not found
-        return None  # section not found
+            return None
+        return None
