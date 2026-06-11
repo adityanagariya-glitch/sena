@@ -8,7 +8,6 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -142,31 +141,3 @@ class ReviewAuditLog(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-
-class RpCaseNoteRuns(Base):
-    """
-    Performance tracking for case note processing runs.
-    Records timing metrics for each stage of the review pipeline.
-    """
-
-    __tablename__ = "rp_case_note_runs"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_note_id: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
-    client_id: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
-    worker_id: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
-    triage_flagged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    evaluator_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    authorisation_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    alert_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    processing_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    triage_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    reg_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    evaluator_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    cross_check_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    summary_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    incident_draft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    evaluator_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
