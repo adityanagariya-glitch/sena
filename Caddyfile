@@ -1,0 +1,25 @@
+# SENA local backend gateway — one port, routes by path to the 3 services.
+# Run:  caddy run --config Caddyfile
+:8000 {
+	handle /v1/voice* {
+		reverse_proxy 127.0.0.1:8082
+	}
+	handle /v1/approval* {
+		reverse_proxy 127.0.0.1:8082
+	}
+	handle /v1/onboarding* {
+		reverse_proxy 127.0.0.1:8090
+	}
+	handle /ws/onboarding* {
+		reverse_proxy 127.0.0.1:8090
+	}
+	handle /v1/case-review* {
+		reverse_proxy 127.0.0.1:8084
+	}
+	handle /health* {
+		reverse_proxy 127.0.0.1:8090
+	}
+	handle {
+		respond "SENA local backend. Use /v1/voice/* , /v1/onboarding/* , /ws/onboarding/* , /v1/case-review/*" 200
+	}
+}
