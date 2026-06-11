@@ -92,10 +92,11 @@ def _resolve(input_str: str) -> str | None:
         return None
     norm = input_str.strip().lower()
 
-    # Exact IANA match
+    # Exact IANA match — .title() capitalizes each segment incl. after "_"
+    # ("australia/lord_howe" → "Australia/Lord_Howe"); .capitalize() would
+    # produce the invalid "Lord_howe".
     if norm in _VALID_IANA:
-        # Re-canonicalize capitalization
-        return "Australia/" + norm.split("/", 1)[1].capitalize().replace("act", "Sydney")
+        return norm.title()
 
     # Substring match against known locations — try longer keys first to avoid
     # "Sydney" matching when user says "North Sydney" etc.
@@ -106,15 +107,59 @@ def _resolve(input_str: str) -> str | None:
     return None
 
 
-def _run(inputs: dict | None) -> ToolResult:
-    raw = (inputs or {}).get("timezone_or_location", "").strip()
-    if not raw:
-        return ToolResult(error="Missing required input: timezone_or_location.")
+def _latlong_to_iana(lat: float, lon: float) -> str | None:
+    """Approximate lat/long → Australian IANA zone via state borders.
 
-    tz_iana = _resolve(raw)
+    Coarse boxes are fine here: every supported zone is state-sized, and the
+    only borders where the offset actually differs are WA|SA (lon 129),
+    NT|SA (lat -26), SA|QLD/NSW (lon 141), and QLD|NSW (lat -28.2, DST split).
+    Returns None outside Australian bounds so the caller can fall back.
+    """
+    if not (-44.5 <= lat <= -9.0):
+        return None
+    # Lord Howe Island sits ~159.08°E, well east of the mainland (max ~153.6°E)
+    if 158.0 <= lon <= 160.0:
+        return "Australia/Lord_Howe"
+    if not (112.0 <= lon <= 154.5):
+        return None
+    if lon < 125.5:
+        return "Australia/Perth"
+    if lon < 129.0:
+        # Eucla strip (UTC+8:45) hugs the south coast; the rest is Perth time
+        return "Australia/Eucla" if lat < -28.0 else "Australia/Perth"
+    if lon < 138.0:
+        return "Australia/Darwin" if lat > -26.0 else "Australia/Adelaide"
+    if lon < 141.0:
+        return "Australia/Brisbane" if lat > -26.0 else "Australia/Adelaide"
+    if lat < -39.5:
+        return "Australia/Hobart"
+    if lat > -28.2:
+        return "Australia/Brisbane"
+    return "Australia/Melbourne" if lat < -36.0 else "Australia/Sydney"
+
+
+def _run(inputs: dict | None) -> ToolResult:
+    inputs = inputs or {}
+    raw = (inputs.get("timezone_or_location") or "").strip()
+    lat, lon = inputs.get("latitude"), inputs.get("longitude")
+
+    if not raw and lat is None:
+        return ToolResult(error="Missing input: timezone_or_location (or latitude+longitude).")
+
+    tz_iana = _resolve(raw) if raw else None
+
+    # Optional GPS fallback — frontend may pass device coordinates so the
+    # timezone resolves even when the user never names a city/state.
+    if not tz_iana and lat is not None and lon is not None:
+        try:
+            tz_iana = _latlong_to_iana(float(lat), float(lon))
+        except (TypeError, ValueError):
+            tz_iana = None
+        if tz_iana and VERBOSE:
+            print(f"[set_my_timezone] ({lat}, {lon}) → {tz_iana}", file=sys.stderr)
     if not tz_iana:
         return ToolResult(
-            data={"saved": False, "input": raw},
+            data={"saved": False, "input": raw or f"({lat}, {lon})"},
             next_hint=(
                 f"Couldn't work out '{raw}' as an Australian location. Ask the user "
                 "in a friendly way to pick one of: Sydney (NSW), Melbourne (VIC), "
@@ -180,11 +225,25 @@ TOOL = ToolSpec(
                 "type": "string",
                 "description": (
                     "The user's location or timezone. Examples: 'Perth', 'NSW', "
-                    "'Brisbane', 'Australia/Adelaide', 'Western Australia'."
+                    "'Brisbane', 'Australia/Adelaide', 'Western Australia'. "
+                    "May be empty when latitude/longitude are provided instead."
+                ),
+            },
+            "latitude": {
+                "type": "number",
+                "description": (
+                    "Optional device latitude (e.g. -33.87). Only pass when the "
+                    "message context includes GPS coordinates from the app."
+                ),
+            },
+            "longitude": {
+                "type": "number",
+                "description": (
+                    "Optional device longitude (e.g. 151.21). Pair with latitude."
                 ),
             },
         },
-        "required": ["timezone_or_location"],
+        "required": [],
     },
     run=_run,
 )

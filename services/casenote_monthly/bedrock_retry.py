@@ -44,9 +44,16 @@ def converse_with_retry(bedrock_runtime, payload: dict, attempts: int = 3, base_
 
 
 def sum_usage(usages: list[dict]) -> dict:
-    """Sum usage dicts from multiple Bedrock calls."""
+    """Sum usage dicts from multiple Bedrock calls.
+
+    totalTokens falls back to input+output when the key is absent, so the
+    X-Total-Tokens header can never report 0 while input/output are non-zero.
+    """
     return {
         "inputTokens": sum(u.get("inputTokens", 0) for u in usages),
         "outputTokens": sum(u.get("outputTokens", 0) for u in usages),
-        "totalTokens": sum(u.get("totalTokens", 0) for u in usages),
+        "totalTokens": sum(
+            u.get("totalTokens") or (u.get("inputTokens", 0) + u.get("outputTokens", 0))
+            for u in usages
+        ),
     }

@@ -37,16 +37,15 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     """
     msg_lower = message.lower().strip()
     
-    # Meta patterns: "you said", "earlier", "remind me", etc.
-    if any(x in msg_lower for x in ["you said", "earlier", "before", "remind me", "remember when", "what did we talk", "last time", "last session"]):
+    # Meta patterns: explicit recall phrases only. Bare "earlier"/"before" are
+    # ambiguous ("shifts before Friday" is an API ask) — let Bedrock decide those.
+    if any(x in msg_lower for x in ["you said", "you told me", "remind me", "remember when", "what did we talk", "last time", "last session"]):
         return {
             "needs_api": False,
-            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": True,
             "intent": "META",
             "wants_fresh_data": False,
             "api_question": "",
-            "kb_question": "",
             "meta_question": message,
             "reason": "conversation memory (pattern matched)",
         }
@@ -55,12 +54,10 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     if msg_lower in ("hi", "hello", "hey", "thanks", "ok", "okay", "thanks!"):
         return {
             "needs_api": False,
-            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "CHAT",
             "wants_fresh_data": False,
             "api_question": "",
-            "kb_question": "",
             "meta_question": "",
             "reason": "greeting (pattern matched)",
         }
@@ -69,12 +66,10 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     if any(x in msg_lower for x in ["what is my ", "who am i", "my user type", "my role", "my permissions", "my email"]):
         return {
             "needs_api": False,
-            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "CHAT",
             "wants_fresh_data": False,
             "api_question": "",
-            "kb_question": "",
             "meta_question": "",
             "reason": "user profile identity (pattern matched)",
         }
@@ -83,26 +78,22 @@ def _simple_intent_pattern(message: str | None) -> dict | None:
     if any(x in msg_lower for x in ["show me", "list ", "get my", "tell me about"]):
         return {
             "needs_api": True,
-            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "API",
             "wants_fresh_data": False,
             "api_question": message,
-            "kb_question": "",
             "meta_question": "",
             "reason": "live data request (pattern matched)",
         }
     
-    # Freshness patterns: "refresh", "latest", "now", "updated", "changed"
-    if any(x in msg_lower for x in ["refresh", "latest", "now", "updated", "changed", "anything new"]):
+    # Freshness patterns. " now" (leading space) so "know"/"snow" don't false-match.
+    if any(x in msg_lower for x in ["refresh", "latest", " now", "updated", "changed", "anything new"]):
         return {
             "needs_api": True,
-            "needs_kb": False,  # KB disabled — staff uses API only
             "needs_meta": False,
             "intent": "API",
             "wants_fresh_data": True,
             "api_question": message,
-            "kb_question": "",
             "meta_question": "",
             "reason": "fresh data request (pattern matched)",
         }
@@ -186,14 +177,14 @@ def detect_route(user_question: str | None) -> dict:
     """Unified router: intent + multi-source detection in ONE Bedrock call.
 
     Replaces the separate detect_intent + detect_hybrid_intent pair. Caller
-    branches on `needs_api`/`needs_kb`/`needs_meta` (2+ flags → hybrid path,
+    branches on `needs_api`/`needs_meta` (2 flags → hybrid path,
     1 flag → matches `intent`, 0 flags → intent=CHAT). `find_best_api` is
     still called separately downstream for any API-needing path.
 
     Returns dict:
-      needs_api, needs_kb, needs_meta: bool
-      intent: "API"|"KB"|"META"|"CHAT"  (primary single-source intent)
-      api_question, kb_question, meta_question: standalone sub-questions
+      needs_api, needs_meta: bool
+      intent: "API"|"META"|"CHAT"  (primary single-source intent)
+      api_question, meta_question: standalone sub-questions
       reason: str
     """
     recent_context = ""
@@ -222,12 +213,10 @@ Sources:
 Return JSON only:
 {{
   "needs_api": true|false,
-  "needs_kb": false,
   "needs_meta": true|false,
   "intent": "API|META|CHAT",
   "wants_fresh_data": true|false,
   "api_question": "<standalone sub-question for live data, or empty>",
-  "kb_question": "",
   "meta_question": "<standalone sub-question for conversation memory, or empty>",
   "reason": "<brief>"
 }}
@@ -238,31 +227,30 @@ Rules:
 - Memory-first: ONLY if the user uses explicit recall keywords ("you said", "earlier", "before", "previous", "remind me", "what did we talk about", "last time", "remember when"), set needs_meta=true AND intent=META. Past-tense framing alone is NOT enough — require the keyword.
 - Otherwise, set exactly one needs_* flag for single-source asks and match `intent` to it. Set 2+ flags for multi-source asks (intent should be the primary one).
 - If no data sources are needed (greetings, small talk, generic chat), set all needs_* to false AND intent=CHAT.
-- ALWAYS set needs_kb=false and kb_question="" — knowledge base is disabled for staff.
 - Preserve date/time/entity details in sub-questions, including typos like "tommow".
 - Default bias: when in doubt between API and META, choose API — re-fetch is safer than returning stale information.
 
 Examples:
 User: "what is my shift tomorrow"
-{{"needs_api": true, "needs_kb": false, "needs_meta": false, "intent": "API", "api_question": "what is my shift tomorrow", "kb_question": "", "meta_question": "", "reason": "live shift data"}}
+{{"needs_api": true, "needs_meta": false, "intent": "API", "api_question": "what is my shift tomorrow", "meta_question": "", "reason": "live shift data"}}
 
 User: "what did you tell me about my shifts last time"
-{{"needs_api": false, "needs_kb": false, "needs_meta": true, "intent": "META", "api_question": "", "kb_question": "", "meta_question": "what did you tell me about my shifts last time", "reason": "conversation memory"}}
+{{"needs_api": false, "needs_meta": true, "intent": "META", "api_question": "", "meta_question": "what did you tell me about my shifts last time", "reason": "conversation memory"}}
 
 User: "what is my shift tomorrow and what did you tell me earlier about breaks"
-{{"needs_api": true, "needs_kb": false, "needs_meta": true, "intent": "API", "api_question": "what is my shift tomorrow", "kb_question": "", "meta_question": "what did you tell me earlier about breaks?", "reason": "live shift data and prior conversation"}}
+{{"needs_api": true, "needs_meta": true, "intent": "API", "api_question": "what is my shift tomorrow", "meta_question": "what did you tell me earlier about breaks?", "reason": "live shift data and prior conversation"}}
 
 User: "what did I ask earlier"
-{{"needs_api": false, "needs_kb": false, "needs_meta": true, "intent": "META", "api_question": "", "kb_question": "", "meta_question": "what did I ask earlier?", "reason": "conversation memory"}}
+{{"needs_api": false, "needs_meta": true, "intent": "META", "api_question": "", "meta_question": "what did I ask earlier?", "reason": "conversation memory"}}
 
 User: "hi"
-{{"needs_api": false, "needs_kb": false, "needs_meta": false, "intent": "CHAT", "api_question": "", "kb_question": "", "meta_question": "", "reason": "greeting"}}
+{{"needs_api": false, "needs_meta": false, "intent": "CHAT", "api_question": "", "meta_question": "", "reason": "greeting"}}
 
 User: "what is my role"
-{{"needs_api": false, "needs_kb": false, "needs_meta": false, "intent": "CHAT", "api_question": "", "kb_question": "", "meta_question": "", "reason": "profile question — answered from user_context, no API"}}
+{{"needs_api": false, "needs_meta": false, "intent": "CHAT", "api_question": "", "meta_question": "", "reason": "profile question — answered from user_context, no API"}}
 
 User: "who am I"
-{{"needs_api": false, "needs_kb": false, "needs_meta": false, "intent": "CHAT", "api_question": "", "kb_question": "", "meta_question": "", "reason": "identity question — profile info already loaded"}}"""
+{{"needs_api": false, "needs_meta": false, "intent": "CHAT", "api_question": "", "meta_question": "", "reason": "identity question — profile info already loaded"}}"""
 
     # ---- INTENT CACHING: check cache + pattern matching before Bedrock ----
     cache_key = _intent_cache_key(user_question)
@@ -282,24 +270,20 @@ User: "who am I"
     # Internal routing classifier — output is JSON, not user-facing, skip guardrails
     response = call_bedrock(messages, system_prompt, use_guardrail=False)
     if not response:
-        return {"needs_api": False, "needs_kb": False, "needs_meta": False, "intent": "CHAT", "wants_fresh_data": False, "reason": "no response"}
+        return {"needs_api": False, "needs_meta": False, "intent": "CHAT", "wants_fresh_data": False, "reason": "no response"}
 
     try:
         json_match = re.search(r'\{.*\}', response, re.DOTALL)
         if json_match:
             decision = json.loads(json_match.group())
             if isinstance(decision, dict):
-                # KB is disabled for staff — always force needs_kb=False
-                decision["needs_kb"] = False
-                if decision.get("intent") == "KB":
-                    decision["intent"] = "CHAT"
                 # Cache the Bedrock decision for future identical messages
                 _store_cached_intent(cache_key, decision)
                 return decision
     except Exception:
         pass
 
-    return {"needs_api": False, "needs_kb": False, "needs_meta": False, "intent": "CHAT", "wants_fresh_data": False, "reason": "parse error"}
+    return {"needs_api": False, "needs_meta": False, "intent": "CHAT", "wants_fresh_data": False, "reason": "parse error"}
 
 
 def find_best_api(user_question):

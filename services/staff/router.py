@@ -558,10 +558,8 @@ def process_query(user_question, scope: str = "staff", usage: dict | None = None
                 api_path,
                 api_method,
                 route.get("api_question") or user_question,
-                "",  # kb_question — KB disabled system-wide
                 meta_question=route.get("meta_question") or user_question,
                 needs_api=needs_api,
-                needs_kb=False,
                 needs_meta=needs_meta,
                 api_parameters=api_parameters,
                 api_query_params=api_query_params,

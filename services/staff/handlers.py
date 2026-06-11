@@ -513,24 +513,22 @@ def process_hybrid_query(
     api_path,
     api_method,
     api_question,
-    kb_question,
     meta_question=None,
     needs_api=True,
-    needs_kb=True,
     needs_meta=False,
     api_parameters=None,
     api_query_params=None,
 ):
-    """Handle queries that need multiple sources: API, KB, and/or memory.
+    """Handle queries that need multiple sources: API and/or memory.
 
     Strategy:
     1. Fetch each requested source
     2. Combine the available evidence into a cohesive response using LLM
 
-    Example: "Show me my shifts and what's the policy about breaks?"
+    Example: "Show me my shifts and what did you tell me earlier about breaks?"
     - API: Get user's actual shifts
-    - KB: Get policy document about break requirements
-    - LLM: Combine "Here are your shifts: [X]. The break policy states: [Y]."
+    - META: Pull the prior conversation turns
+    - LLM: Combine "Here are your shifts: [X]. Earlier we covered: [Y]."
     """
     if needs_api and not check_access(api_path):
         return "You don't appear to have access to that information. Please contact your administrator if you think you should."
@@ -538,7 +536,6 @@ def process_hybrid_query(
     print("\nSena: ", end="", flush=True)
 
     api_response = None
-    kb_context = ""
     meta_context = ""
 
     # Step 1: Fetch API data if requested
@@ -556,11 +553,7 @@ def process_hybrid_query(
         if "error" in api_response:
             return _explain_api_error(user_question, {"api_path": api_path, "method": api_method}, api_response)
 
-    # Step 2: KB context fetch disabled — knowledge base not available for staff
-    # needs_kb should always be False from api_router (KB disabled system-wide)
-    kb_context = ""
-
-    # Step 3: Fetch conversation memory if requested
+    # Step 2: Fetch conversation memory if requested
     if needs_meta:
         transcript = _get_conversation_transcript()
         if transcript:
@@ -570,10 +563,9 @@ def process_hybrid_query(
 
     # Strip API response to save tokens — same as process_api_call
     api_section = json.dumps(strip_api_response(api_path or "", api_response, verbose=VERBOSE), indent=2) if needs_api else "(Not requested)"
-    kb_section = kb_context if needs_kb and kb_context else ("(No confirmed policy information available)" if needs_kb else "(Not requested)")
     meta_section = meta_context if needs_meta else "(Not requested)"
 
-    # Step 4: Combine selected sources via LLM
+    # Step 3: Combine selected sources via LLM
     system_prompt = f"""{AUS_ENGLISH_BANNER}
 
         You are the SENA NDIS assistant. Combine the internal evidence into a single, cohesive response.
@@ -583,14 +575,11 @@ def process_hybrid_query(
         Internal live information, not visible to the user:
         {api_section}
 
-        Internal policy/procedure context, not visible to the user:
-        {kb_section}
-
         Internal conversation memory, not visible to the user:
         {meta_section}
 
         Synthesize these into a natural, friendly response that:
-        1. Clearly separates fresh/live facts from policy/procedure context and prior conversation memory when that distinction matters
+        1. Clearly separates fresh/live facts from prior conversation memory when that distinction matters
         2. Uses only the evidence provided above
         3. Says plainly if confirmed information is missing, without naming any internal source
         4. Helps the user understand the combined answer without over-explaining internals
@@ -610,7 +599,7 @@ def process_hybrid_query(
         }
     ]
 
-    # Hybrid synthesizer — input is trusted backend API/KB/Meta data, skip guardrails
+    # Hybrid synthesizer — input is trusted backend API/Meta data, skip guardrails
     result = _hide_internal_sources(
         call_bedrock(messages, system_prompt, user_profile=_format_user_profile(), use_guardrail=False)
     )
@@ -628,7 +617,6 @@ def process_hybrid_query(
         api_path=api_path if needs_api else None,
         api_response={
             "api_data": api_response,
-            "kb_context": kb_context,
             "meta_context": meta_context,
         },
     )

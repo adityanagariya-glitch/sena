@@ -58,10 +58,18 @@ class ServiceOrchestrator:
     async def _stream_one(
         self, service_name: str, question: str, ctx: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream one service, recording circuit-breaker success/failure."""
+        """Stream one service, recording circuit-breaker success/failure.
+
+        The child's own terminal `done` event is swallowed — route_and_stream
+        emits exactly ONE `done` at the end. Otherwise the client sees two (or,
+        in fan-out mode, a mid-stream `done` from the faster service truncates
+        the slower one's answer on spec-compliant frontends).
+        """
         adapter = self._adapter_for(service_name)
         try:
             async for event in adapter.call_streaming(question, ctx):
+                if event.get("type") == "done":
+                    continue
                 yield event
             await record_success(service_name)
         except Exception as e:

@@ -15,6 +15,7 @@
 import asyncio
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -112,6 +113,7 @@ app = FastAPI(
 class ReportRequest(BaseModel):
     client_id: str = Field(
         ...,
+        pattern=r"^[A-Za-z0-9_-]{1,64}$",  # used in file paths — no separators/dots allowed
         description="Client UUID from the SENA system.",
         examples=["0ce6359f-9138-4e05-b83b-6c39875f1828"],
     )
@@ -196,11 +198,10 @@ def _fetch_client_data_all(
 ) -> dict:
     """Fetch ALL pages of client data, merging day lists and deduping by date.
 
-    **Optimized for huge datasets (quarterly/yearly):**
-    - No max_pages hard limit (unlimited pages)
-    - Dedupes as it streams (no memory bloat)
-    - Logs data volume for monitoring
-    - Handles pagination fully (hasNext flag)
+    Pagination signals (spec: loop while page < totalPages; tolerate hasNext):
+    - continues while EITHER hasNext is true OR totalPages says more pages remain
+    - stops on an empty page (guards against a backend stuck on hasNext=true)
+    - hard cap max_pages prevents runaway loops against a misbehaving backend
     """
     all_days = []
     pagination_info = None
@@ -233,10 +234,17 @@ def _fetch_client_data_all(
 
         logger.info(f"[{client_id}] Page {page_num}/{total_pages}: fetched {len(page_days)} day records (total: {len(all_days)})")
 
-        # Check if more pages exist
-        if not has_next:
+        # Empty page → nothing more to gain, even if the backend claims otherwise
+        if not page_days and page_num > 1:
+            logger.warning(f"[{client_id}] Page {page_num} returned no day records — stopping pagination")
+            break
+
+        # More pages if EITHER signal says so (some backends send only totalPages)
+        if not has_next and page_num >= total_pages:
             logger.info(f"[{client_id}] Pagination complete: {page_num} pages, {len(all_days)} total day records")
             break
+    else:
+        logger.error(f"[{client_id}] Pagination hit max_pages={max_pages} without a natural stop — data may be incomplete")
 
     # Dedupe by date (keep first occurrence) + log size
     seen = set()
@@ -377,6 +385,9 @@ def _call_bedrock(section: dict, subs: dict) -> tuple[str, dict]:
         "inferenceConfig": {"maxTokens": MAX_TOKENS},
     }
     resp = converse_with_retry(bedrock_runtime, payload, attempts=3, base_delay=1.5)
+    if resp.get("stopReason") == "max_tokens":
+        # Output was cut mid-generation — never ship a truncated compliance section silently
+        logger.warning("Bedrock output TRUNCATED at maxTokens=%d — section may be incomplete", MAX_TOKENS)
     text = ""
     for block in (resp.get("output") or {}).get("message", {}).get("content", []):
         if "text" in block:
@@ -621,11 +632,13 @@ async def monthly_report(
 class TrendSaveRequest(BaseModel):
     client_id: str = Field(
         ...,
+        pattern=r"^[A-Za-z0-9_-]{1,64}$",  # used in file paths — no separators/dots allowed
         description="Client UUID from the SENA system.",
         examples=["0ce6359f-9138-4e05-b83b-6c39875f1828"],
     )
     period: str = Field(
         ...,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",  # becomes a filename — strict YYYY-MM only
         description="Reporting month in **YYYY-MM** format.",
         examples=["2026-05"],
     )
@@ -720,6 +733,9 @@ async def trend_list(
     valid, error_msg, _ = validate_jwt(token)
     if not valid:
         raise HTTPException(status_code=401, detail=error_msg)
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", client_id):
+        raise HTTPException(status_code=422, detail="Invalid client_id format.")
 
     entries = await asyncio.to_thread(list_trends, client_id)
     if not entries:

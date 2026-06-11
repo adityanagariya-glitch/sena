@@ -14,7 +14,7 @@ Module layout:
     bedrock_client.py — call_bedrock + streaming variant
     memory.py         — AgentCore + DDB audit + in-memory history + memory-first gate
     api_router.py     — intent detection, API selection, URL construction, access check
-    handlers.py       — KB / META / CHAT / API mode handlers
+    handlers.py       — META / CHAT / API mode handlers
     router.py         — process_query (top-level orchestrator)
     index.py          — this file (auth + REPL)
 """

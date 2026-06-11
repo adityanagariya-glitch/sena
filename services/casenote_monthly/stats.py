@@ -470,7 +470,7 @@ def compute_stats(data: dict, date_from: str, date_to: str) -> dict:
     del_shifts = delivered_shifts(all_shifts)
     comp_shifts = del_shifts.get("completed", 0)
 
-    return {
+    result = {
         "period": {
             "dateFrom": date_from,
             "dateTo": date_to,
@@ -490,8 +490,10 @@ def compute_stats(data: dict, date_from: str, date_to: str) -> dict:
         "incidents": incident_stats(all_incidents, comp_shifts, inc_counts),
         "restrictivePractices": rp_stats(all_rps, rp_counts),
         "feedbackAndComplaints": feedback_complaint_stats(all_feedback, all_complaints),
-        "dataQuality": data_quality({"shifts": {}}),  # Placeholder; proper logic in real usage
     }
+    # Score quality from the REAL computed counters (malformed/zero-duration/unparseable)
+    result["dataQuality"] = data_quality(result)
+    return result
 
 
 def extract_milestones(days: list[dict]) -> list[dict]:
