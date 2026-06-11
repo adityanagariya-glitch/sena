@@ -225,3 +225,23 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8006/health').status==200 else 1)"
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]
+
+
+# ── AI Text Extraction — identity-document field extraction via Bedrock Nova Lite (port 8007) ──
+FROM base AS ai-text-extraction
+
+COPY ai-text-extraction/requirements.txt /tmp/req-text-extraction.txt
+RUN pip install -r /tmp/req-text-extraction.txt
+
+# Code uses absolute `scripts.*` imports — keep the scripts/ package under /app
+COPY ai-text-extraction/scripts /app/scripts
+
+WORKDIR /app
+ENV PYTHONPATH=/app
+
+EXPOSE 8007
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8007/health').status==200 else 1)"
+
+CMD ["uvicorn", "scripts.api:app", "--host", "0.0.0.0", "--port", "8007"]
