@@ -11,6 +11,9 @@ from case_review.core.settings import settings
 from case_review.models.schemas import AuthContext
 from case_review.repositories.review_repo import ReviewRepo
 
+from typing import AsyncGenerator
+from sqlalchemy.ext.asyncio import AsyncSession
+
 # ── DB engine (ai-db, pgvector, port 5433) ────────────────────────────────────
 
 _engine = create_async_engine(
@@ -33,11 +36,9 @@ def get_voice_redis():
     """Dependency accessor for the dedicated case_review voice Redis client."""
     return voice_redis_client
 
-
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with _session_factory() as session:
         yield session
-
 
 def get_repo(session: AsyncSession) -> ReviewRepo:
     return ReviewRepo(session)

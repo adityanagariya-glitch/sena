@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from sena_common.voice.webhook import fire_webhook
+from voice.webhook import fire_webhook
 
 
 class TestFireWebhook:
@@ -14,7 +14,7 @@ class TestFireWebhook:
         mock_resp.is_success = True
         mock_resp.status_code = 200
 
-        with patch("sena_common.voice.webhook.httpx.AsyncClient") as mock_cls:
+        with patch("voice.webhook.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = False
@@ -35,8 +35,8 @@ class TestFireWebhook:
         ok_resp.is_success = True
         ok_resp.status_code = 200
 
-        with patch("sena_common.voice.webhook.httpx.AsyncClient") as mock_cls:
-            with patch("sena_common.voice.webhook.asyncio.sleep", new_callable=AsyncMock):
+        with patch("voice.webhook.httpx.AsyncClient") as mock_cls:
+            with patch("voice.webhook.asyncio.sleep", new_callable=AsyncMock):
                 mock_client = AsyncMock()
                 mock_client.__aenter__.return_value = mock_client
                 mock_client.__aexit__.return_value = False
@@ -55,8 +55,8 @@ class TestFireWebhook:
         fail_resp.is_success = False
         fail_resp.status_code = 503
 
-        with patch("sena_common.voice.webhook.httpx.AsyncClient") as mock_cls:
-            with patch("sena_common.voice.webhook.asyncio.sleep", new_callable=AsyncMock):
+        with patch("voice.webhook.httpx.AsyncClient") as mock_cls:
+            with patch("voice.webhook.asyncio.sleep", new_callable=AsyncMock):
                 mock_client = AsyncMock()
                 mock_client.__aenter__.return_value = mock_client
                 mock_client.__aexit__.return_value = False
@@ -71,8 +71,8 @@ class TestFireWebhook:
         assert mock_client.post.call_count == 3
 
     async def test_handles_connection_error(self):
-        with patch("sena_common.voice.webhook.httpx.AsyncClient") as mock_cls:
-            with patch("sena_common.voice.webhook.asyncio.sleep", new_callable=AsyncMock):
+        with patch("voice.webhook.httpx.AsyncClient") as mock_cls:
+            with patch("voice.webhook.asyncio.sleep", new_callable=AsyncMock):
                 mock_client = AsyncMock()
                 mock_client.__aenter__.return_value = mock_client
                 mock_client.__aexit__.return_value = False

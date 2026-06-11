@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from onboarding.models.cross_screen_summary import CrossScreenContext, StepSummary
-from sena_common.voice.form_state import FormState
+from voice.form_state import FormState
 
 # ── Public constants ─────────────────────────────────────────────────────────
 

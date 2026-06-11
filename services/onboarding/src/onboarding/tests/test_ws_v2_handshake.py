@@ -17,9 +17,9 @@ from fastapi.testclient import TestClient
 
 from onboarding.api.deps import get_repo
 from onboarding.main import create_app
-from sena_common.voice.form_state import FormState
-from sena_common.voice.schema_spec import StepSchema
-from sena_common.voice.state_repo import FormStateRepo
+from voice.form_state import FormState
+from voice.schema_spec import StepSchema
+from voice.state_repo import FormStateRepo
 
 _SESSION_ID = "test-hello-gate-session"
 

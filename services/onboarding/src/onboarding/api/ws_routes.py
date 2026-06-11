@@ -42,14 +42,14 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
-from sena_common.voice.config import VoiceEngineConfig
-from sena_common.voice.gemini_live import GeminiLiveSession
-from sena_common.voice.mobile_bridge import MobileBridge
-from sena_common.voice.prompt_builder import build_system_prompt
-from sena_common.voice.resumption import build_replay_context, issue_handle, redeem_handle
-from sena_common.voice.state_repo import FormStateRepo
-from sena_common.voice.tools import ToolDispatcher
-from sena_common.voice.turn_payload import Participant, StepInfo, TurnPayload
+from voice.config import VoiceEngineConfig
+from voice.gemini_live import GeminiLiveSession
+from voice.mobile_bridge import MobileBridge
+from voice.prompt_builder import build_system_prompt
+from voice.resumption import build_replay_context, issue_handle, redeem_handle
+from voice.state_repo import FormStateRepo
+from voice.tools import ToolDispatcher
+from voice.turn_payload import Participant, StepInfo, TurnPayload
 from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
 

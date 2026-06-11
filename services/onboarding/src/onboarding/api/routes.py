@@ -10,11 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from onboarding.api.deps import get_repo
 from onboarding.core.settings import settings
-from sena_common.voice.form_state import FieldSource, FieldValue, FormState
-from sena_common.voice.schema_spec import StepSchema
-from sena_common.voice.session_bootstrap import SessionBootstrap
-from sena_common.voice.state_repo import FormStateRepo
-from sena_common.voice.webhook import fire_webhook
+from voice.form_state import FieldSource, FieldValue, FormState
+from voice.schema_spec import StepSchema
+from voice.session_bootstrap import SessionBootstrap
+from voice.state_repo import FormStateRepo
+from voice.webhook import fire_webhook
 from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
 
