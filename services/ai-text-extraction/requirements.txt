@@ -1,0 +1,24 @@
+# Document Extraction Module — Python dependencies
+# Install with: pip install -r requirements.txt
+
+# AWS SDK — Bedrock runtime client
+boto3
+
+# PDF → image rasterisation (pure Python, no system deps)
+pymupdf
+
+# DOCX parsing
+python-docx
+
+# Image processing — PNG/JPEG handling, DOCX canvas rendering
+Pillow
+
+# Data validation and response modelling
+pydantic
+
+# HTTP client — used in test script to download sample documents
+requests
+
+# API server
+fastapi
+uvicorn[standard]
