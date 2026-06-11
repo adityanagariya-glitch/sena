@@ -1,7 +1,7 @@
 """Voice coverage check — pure module (no IO)."""
 from __future__ import annotations
 
-from sena_common.voice.schema_spec import StepSchema
+from schema_spec import StepSchema
 
 
 def is_eligible(section_id: str, field_id: str, schema: StepSchema) -> bool:

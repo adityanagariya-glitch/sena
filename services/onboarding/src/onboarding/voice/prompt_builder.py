@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sena_common.voice.turn_payload import TurnPayload, VisibleField
+from turn_payload import TurnPayload, VisibleField
 
 
 def _default_prompts_dir() -> Path:

@@ -5,8 +5,8 @@ from typing import Literal
 
 import structlog
 
-from sena_common.voice.schema_spec import StepSchema
-from sena_common.voice.coverage import is_eligible
+from schema_spec import StepSchema
+from coverage import is_eligible
 
 log = structlog.get_logger(__name__)
 
