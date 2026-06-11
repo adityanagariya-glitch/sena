@@ -24,3 +24,8 @@ langchain-core==0.3.10
 # Utilities
 python-multipart==0.0.12
 httpx>=0.28.1,<1.0.0
+
+# Voice assistant (Gemini Live) — fixes ModuleNotFoundError redis/structlog/google-genai
+redis[hiredis]==5.2.1
+structlog==24.4.0
+google-genai>=1.10.0
