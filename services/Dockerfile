@@ -43,12 +43,12 @@ RUN pip install .
 COPY voice/src /app/src
 ENV PYTHONPATH=/app/src
 
-EXPOSE 8000
+EXPOSE 8008
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live').status==200 else 1)"
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8008/health/live').status==200 else 1)"
 
-CMD ["uvicorn", "voice.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "voice.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8008"]
 
 
 # ── Onboarding — Gemini Live voice onboarding (port 8001) ─────────────────
@@ -61,12 +61,12 @@ RUN pip install .
 
 ENV PYTHONPATH=/app/src
 
-EXPOSE 8001
+EXPOSE 8009
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health/live').status==200 else 1)"
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8009/health/live').status==200 else 1)"
 
-CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8009"]
 
 
 # ── Case Review — pgvector intelligence layer (port 8002) ─────────────────
@@ -150,29 +150,26 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 CMD ["uvicorn", "api_main:app", "--host", "0.0.0.0", "--port", "8001"]
 
 
-# ── AI Chatbot — gateway + staff API + policy API (port 8003) ─────────────
+# ── AI Chatbot — routing gateway (port 8003) ──────────────────────────────
 #
-# The gateway spawns staff_api and policy_api as child processes bound to
-# 127.0.0.1, so all three must live in the same container.
+# Network mode (docker-compose deploy): the gateway talks to the standalone
+# sena-staff / sena-policy-proc containers over the docker network, so it does
+# NOT bundle or spawn their code. boto3 (router's classifier) and PyJWT are
+# already provided by the base requirements.txt.
+#
+# To run staff + policy as in-process children instead (local one-command dev
+# via run.sh), set MANAGE_CHILDREN=true and COPY the staff + policy_proc trees
+# back in below.
 FROM base AS ai-chatbot
 
 # Gateway deps (fastapi, uvicorn, httpx, websockets, jinja2)
 COPY ai_chatbot/requirements.txt /tmp/req-gateway.txt
 RUN pip install -r /tmp/req-gateway.txt
 
-# Staff + policy child deps (boto3 for Bedrock, PyJWT for auth)
-RUN pip install boto3 PyJWT
-
-# Copy all code the gateway manages
+# Gateway code only — staff/policy run as their own containers.
 COPY ai_chatbot  /app/services/ai_chatbot
-COPY staff       /app/services/staff
-COPY policy_proc /app/services/policy_proc
 
-# Repo root on PYTHONPATH so `services.policy_proc.scripts.*` imports resolve
-ENV PYTHONPATH=/app
-
-ENV STAFF_DIR=/app/services/staff \
-    POLICY_DIR=/app/services/policy_proc \
+ENV PYTHONPATH=/app \
     GATEWAY_HOST=0.0.0.0 \
     GATEWAY_PORT=8003
 
@@ -180,9 +177,10 @@ WORKDIR /app/services/ai_chatbot
 
 EXPOSE 8003
 
-# Longer start-period: the gateway spawns staff_api + policy_api and waits for them
-# to report healthy (CHILD_HEALTH_TIMEOUT) before it's ready to serve.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=75s --retries=3 \
+# Short start-period: the gateway no longer spawns/health-gates children, it just
+# needs its own HTTP server up. (compose depends_on gates on the backends being
+# healthy before this container even starts.)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8003/ai-chatbot/healthz').status==200 else 1)"
 
 CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "8003"]

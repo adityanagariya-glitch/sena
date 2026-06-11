@@ -9,7 +9,7 @@ name: sena-ai
 
 services:
 
-  # ── Public gateway (TLS termination) — also see dev debugging ports on ai-chatbot, policy-proc, staff ───
+  # ── Public gateway (TLS termination) — the ONLY container with host-published ports ───
   sena-reverse-proxy:
     image: nginx:alpine
     container_name: sena-reverse-proxy-internal
@@ -49,9 +49,9 @@ services:
       # Voice uses Field(alias=...) which bypasses env_prefix — no SENA_AI_ here
       REDIS_URL: redis://redis-internal:6979/0
       AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
-      SHARED_DB_URL: postgresql+asyncpg://shared:shared@shared-db-internal:5432/platform
+      SHARED_DB_URL: postgresql+asyncpg://shared:shared@shared-db-internal:5433/platform
     expose:
-      - "8000"
+      - "8008"
     depends_on:
       redis-internal:
         condition: service_healthy
@@ -74,9 +74,9 @@ services:
     environment:
       SENA_AI_REDIS_URL: redis://redis-internal:6979/0
       SENA_AI_HOST: 0.0.0.0
-      SENA_AI_ONBOARDING_PORT: "8001"
+      SENA_AI_ONBOARDING_PORT: "8009"
     expose:
-      - "8001"
+      - "8009"
     depends_on:
       redis-internal:
         condition: service_healthy
@@ -132,16 +132,22 @@ services:
     environment:
       GATEWAY_HOST: 0.0.0.0
       GATEWAY_PORT: "8003"
-      CHILD_HOST: 127.0.0.1
-      STAFF_DIR: /app/services/staff
-      POLICY_DIR: /app/services/policy_proc
-    ports:
-      - "8003:8003"
+      # Network mode: the gateway talks to the standalone sena-staff /
+      # sena-policy-proc containers over the docker network instead of spawning
+      # them as child processes. No duplicate copies; each backend restarts,
+      # logs and scales on its own. (run.sh still spawns children for local dev.)
+      MANAGE_CHILDREN: "false"
+      STAFF_ORIGIN: "http://sena-staff-internal:8001"
+      POLICY_ORIGIN: "http://sena-policy-proc-internal:8000"
     expose:
       - "8003"
     depends_on:
-      - sena-policy-proc
-      - sena-staff
+      # Gate startup on both backends being HEALTHY (their /health probes), not
+      # merely started — so the gateway never comes up pointing at a dead origin.
+      sena-policy-proc:
+        condition: service_healthy
+      sena-staff:
+        condition: service_healthy
     networks:
       - sena-network
     restart: unless-stopped
@@ -157,8 +163,6 @@ services:
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_POLICY_PROC_PORT: "8000"
-    ports:
-      - "8010:8000"
     expose:
       - "8000"
     networks:
@@ -176,8 +180,6 @@ services:
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_STAFF_PORT: "8001"
-    ports:
-      - "8011:8001"
     expose:
       - "8001"
     networks:
@@ -273,6 +275,9 @@ services:
   shared-db-internal:
     image: postgres:16-alpine
     container_name: sena-shared-db-internal
+    # Listen on 5433 (not the default 5432) so it has a unique port distinct from
+    # ai-db-internal. The only consumer is voice's SHARED_DB_URL (also :5433).
+    command: ["postgres", "-p", "5433"]
     environment:
       POSTGRES_USER: shared
       POSTGRES_PASSWORD: shared
@@ -280,9 +285,9 @@ services:
     volumes:
       - shared-db-data:/var/lib/postgresql/data
     expose:
-      - "5432"
+      - "5433"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shared -d platform"]
+      test: ["CMD-SHELL", "pg_isready -U shared -d platform -p 5433"]
       interval: 10s
       timeout: 5s
       retries: 5
