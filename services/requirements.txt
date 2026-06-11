@@ -116,3 +116,17 @@ docx
 fitz
 pytest
 structlogfastapi
+
+# LangChain & AI
+langchain-core
+langchain-community
+langchain-aws
+langchain-openai
+openai
+
+# Data Processing & Analysis
+pandas
+numpy
+datasets
+openpyxl
+ragas
