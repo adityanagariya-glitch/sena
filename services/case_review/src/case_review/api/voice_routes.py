@@ -1,6 +1,6 @@
 """Voice case-note dictation — session-create REST + Gemini Live WebSocket.
 
-Reuses the shared ``sena_common.voice`` engine. Mobile-proxy model: the server
+Reuses the shared ``voice`` engine. Mobile-proxy model: the server
 holds ephemeral Redis state during the session; on ``finalize_note`` the mobile
 client assembles + submits the note to the app backend (this service writes
 nothing to Postgres for the voice flow).
@@ -28,7 +28,7 @@ from case_review.core.settings import settings
 from case_review.models.schemas import AuthContext
 from case_review.voice.casenote_schema import CASE_NOTE_SCHEMA
 from case_review.voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
-from sena_common.voice import (
+from voice import (
     FormStateRepo,
     GeminiLiveSession,
     MobileBridge,
@@ -36,9 +36,9 @@ from sena_common.voice import (
     VoiceEngineConfig,
     build_system_prompt,
 )
-from sena_common.voice.form_state import FormState
-from sena_common.voice.gemini_live import UsageFeature
-from sena_common.voice.turn_payload import Participant, StepInfo, TurnPayload
+from voice.form_state import FormState
+from voice.gemini_live import UsageFeature
+from voice.turn_payload import Participant, StepInfo, TurnPayload
 
 log = structlog.get_logger(__name__)
 
