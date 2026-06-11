@@ -60,6 +60,7 @@ packaging
 pathspec
 pgvector
 pillow
+python-docx
 pip-tools
 platformdirs
 proto-plus
@@ -110,3 +111,6 @@ websockets
 wheel
 yarl
 zstandard
+pymupdf
+docx
+fitz

@@ -39,19 +39,17 @@ app = FastAPI(
 
 # ---------------------------------------------------------------------------
 # CORS
-# TODO: Replace the wildcard origin with your actual frontend domain(s) before
 #       deploying to production.
 #       Example: allow_origins=["https://your-frontend.com"]
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # TODO: restrict to frontend origin in production
+    allow_origins=["*"],          
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------------
-# TODO: ADD AUTHENTICATION MIDDLEWARE HERE
 # The backend team should add API key / JWT verification before this API is
 # exposed beyond the internal network.
 #
