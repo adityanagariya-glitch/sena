@@ -9,7 +9,7 @@ All three AI services sit behind **ONE** base URL; a reverse proxy routes by URL
 
 ### 1. Point the app at THIS URL (not the old EC2 one)
 ```
-https://grey-spiritual-simon-injection.trycloudflare.com
+https://bosc-sena-backend.loca.lt
 ```
 If you see `SocketException: Connection reset … astride-supremacy-constant.ngrok-free.dev`,
 the app is still on the OLD address. In the Flutter project, find/replace the base URL:
@@ -17,7 +17,7 @@ the app is still on the OLD address. In the Flutter project, find/replace the ba
 grep -rn "astride-supremacy-constant" .      # old EC2 ngrok — replace all
 grep -rn "ngrok-free" .                        # also check here
 ```
-Set it to `grey-spiritual-simon-injection.trycloudflare.com`. WS base = `wss://grey-spiritual-simon-injection.trycloudflare.com`.
+Set it to `bosc-sena-backend.loca.lt`. WS base = `wss://bosc-sena-backend.loca.lt`.
 
 ### 2. Send these headers on EVERY request (or you get 401)
 ```
@@ -33,14 +33,15 @@ X-User-Roles: staff          # use: manager,admin  for approval endpoints
 ## Base URLs
 | | URL |
 |--|-----|
-| HTTPS | `https://grey-spiritual-simon-injection.trycloudflare.com` |
-| WebSocket | `wss://grey-spiritual-simon-injection.trycloudflare.com` |
+| HTTPS | `https://bosc-sena-backend.loca.lt` |
+| WebSocket | `wss://bosc-sena-backend.loca.lt` |
 
 ## Required headers (all requests)
 | Header | Value |
 |--------|-------|
 | `X-User-Id` | any id, e.g. `dev` |
 | `X-User-Roles` | `staff` (or `manager,admin`) |
+| `bypass-tunnel-reminder` | `true` (skips loca.lt reminder page) |
 | `X-Tenant-Id` | (onboarding, recommended) tenant id |
 | `X-Participant-Id` | (onboarding, recommended) participant id |
 | `Content-Type` | `application/json` (except multipart/audio) |
@@ -58,7 +59,11 @@ X-User-Roles: staff          # use: manager,admin  for approval endpoints
 | WSS | `/ws/onboarding/{session_id}` | Live voice stream |
 | GET | `/health/live`, `/health/ready` | Health |
 
-**WebSocket flow:** connect `wss://…/ws/onboarding/{session_id}`, first frame `{"type":"hello","client_proto":"v2"}`.
+**WebSocket flow (VERIFIED end-to-end — follow exactly):**
+1. Build the WS URL yourself — do NOT use the `ws_url` from the `POST /session` response (it returns `ws://`/internal host and FAILS over the HTTPS tunnel). Use: `wss://bosc-sena-backend.loca.lt/ws/onboarding/{session_id}` (must be `wss://`).
+2. Send header on the WS handshake: `bypass-tunnel-reminder: true` (loca.lt blocks the upgrade without it).
+3. First frame after connect: `{"type":"hello","client_proto":"v2"}`.
+4. **Speak first** — the model does NOT greet on its own (no proactive audio).
 Audio in = PCM16 mono **16 kHz**; audio out = PCM16 mono **24 kHz**. Mute mic between `turn_start` and `turn_complete` (echo).
 **Server -> client events** (handle all): `ready`, `turn_start`, `turn_complete`, `interrupted`, `user_said`, `agent_said`,
 `field_updated`, `state`, `step_completed`, `row_added`, `repeatable_section_entered`, `repeatable_section_exited`,
@@ -94,7 +99,7 @@ Audio in = PCM16 mono **16 kHz**; audio out = PCM16 mono **24 kHz**. Mute mic be
 
 # Quick smoke test (paste into a terminal)
 ```bash
-B=https://grey-spiritual-simon-injection.trycloudflare.com
+B=https://bosc-sena-backend.loca.lt
 curl $B/                       # gateway -> 200 "SENA local backend..."
 curl $B/health/live            # onboarding -> {"status":"ok"}
 # onboarding + voice with auth headers:
