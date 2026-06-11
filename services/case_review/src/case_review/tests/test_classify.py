@@ -23,7 +23,7 @@ from case_review.models.schemas import ClassifyRequest, ClassifyResponse, ReaskP
 from case_review.repositories.review_repo import ReviewRepo
 from case_review.services.classify_service import classify_paragraph
 from case_review.services.llm.classifier import ClassifyResult
-from tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
+from services.case_review.src.case_review.tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

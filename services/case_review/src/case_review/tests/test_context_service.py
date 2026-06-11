@@ -20,7 +20,7 @@ from case_review.clients.case_note_client import CaseNoteClient
 from case_review.models.schemas import CaseNoteDTO, ContextResponse
 from case_review.repositories.review_repo import ReviewRepo
 from case_review.services.context_service import get_context
-from tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID
+from services.case_review.src.case_review.tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

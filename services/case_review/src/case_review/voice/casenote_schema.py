@@ -13,7 +13,8 @@ enforced by the app backend at submit, not by the voice flow.
 """
 from __future__ import annotations
 
-from sena_common.voice.schema_spec import FieldSpec, FieldType, SectionSpec, StepSchema
+# Now you can safely import from the separate folder
+from voice.schema_spec import FieldSpec, FieldType, SectionSpec, StepSchema
 
 _SECTIONS: list[SectionSpec] = [
     SectionSpec(

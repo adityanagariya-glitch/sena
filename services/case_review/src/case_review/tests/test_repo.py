@@ -12,7 +12,7 @@ import pytest
 
 from case_review.models.db import IncidentDraft, ReviewAuditLog, ReviewSession, RollingSummary
 from case_review.repositories.review_repo import ReviewRepo
-from tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
+from services.case_review.src.case_review.tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
 
 
 def _make_repo() -> tuple[ReviewRepo, MagicMock]:

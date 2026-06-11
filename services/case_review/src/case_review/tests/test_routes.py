@@ -12,7 +12,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
+from services.case_review.src.case_review.tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
 
 
 def test_health_live(client: TestClient) -> None:
