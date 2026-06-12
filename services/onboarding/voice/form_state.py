@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from schema_spec import StepSchema
+from .schema_spec import StepSchema
 
 
 def _utcnow() -> datetime:

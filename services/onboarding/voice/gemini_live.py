@@ -33,16 +33,16 @@ from fastapi import WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import types
 
-from config import VoiceEngineConfig
-from grounding import build_live_tools
-from screen_context import (
+from .config import VoiceEngineConfig
+from .grounding import build_live_tools
+from .screen_context import (
     ScreenStateMessage,
     ScreenStateV2Message,
     from_v1,
     payload_hash,
     render_injection_text,
 )
-from tools import FUNCTION_DECLS
+from .tools import FUNCTION_DECLS
 
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
 # path (e.g. shared/ hasn't been pip-installed editable into the venv), fall
