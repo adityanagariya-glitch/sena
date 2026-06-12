@@ -1,0 +1,39 @@
+# Build context = services/ (see Dockerfile header). Applies to EVERY service
+# image built from the unified Dockerfile. Keeps secrets, caches, tests, and
+# local-dev cruft out of the images — the Dockerfile stage comments assume this
+# file exists ("Excludes: tests/, __pycache__, .git, *.pyc").
+
+# Python bytecode / build / type-checker caches
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Secrets & local env — NEVER bake into an image
+**/.env
+**/.env.*
+!**/.env.example
+
+# Tests & local smoke scripts (e.g. case_review/test.py)
+**/tests/
+**/test.py
+**/test_*.py
+**/*_test.py
+
+# Virtualenvs
+**/.venv/
+**/venv/
+
+# VCS & editor metadata
+**/.git/
+**/.gitignore
+**/.vscode/
+**/.idea/
+**/.DS_Store
+
+# Docker / compose definitions are not needed inside the images
+**/Dockerfile
+**/.dockerignore
+docker-compose*.yml

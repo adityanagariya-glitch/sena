@@ -3,7 +3,10 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_ENV_FILE = Path(__file__).parent / ".env"
+# case_review reads the repo-root .env (/home/main/SENA/.env). In Docker the path
+# resolves to /.env (absent) and compose injects the same vars via env_file, which
+# pydantic reads from the real environment regardless — so this is harmless there.
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
@@ -42,8 +45,9 @@ class Settings(BaseSettings):
     chunk_overlap: int = 120
 
     # LLM models (Bedrock — Claude)
-    triage_model: str = "anthropic.claude-haiku-4-5-20251001-v1:0"
-    evaluator_model: str = "anthropic.claude-sonnet-4-6-v1:0"
+    triage_model: str = "au.anthropic.claude-sonnet-4-6"
+    evaluator_model: str = "au.anthropic.claude-sonnet-4-6"
+    
 
     # RAG
     rag_top_k: int = 5
