@@ -103,6 +103,12 @@ Figma/
 *.html
 *.md
 *.txt
+
+# NDIS policy PDFs (ingestion input → chunked + embedded into pgvector).
+# Binary & large; populated locally / at deploy, not version-controlled.
+# Ignoring the whole folder also catches the Windows ":Zone.Identifier"
+# download-marker files that the *.pdf rule above does not match.
+services/case_review/pdfs/
 # ==========================================
 # AI Project Outputs
 # ==========================================
