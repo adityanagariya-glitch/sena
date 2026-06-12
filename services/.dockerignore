@@ -22,18 +22,9 @@
 **/test_*.py
 **/*_test.py
 
-# Virtualenvs
-**/.venv/
-**/venv/
-
 # VCS & editor metadata
 **/.git/
 **/.gitignore
 **/.vscode/
 **/.idea/
 **/.DS_Store
-
-# Docker / compose definitions are not needed inside the images
-**/Dockerfile
-**/.dockerignore
-docker-compose*.yml
