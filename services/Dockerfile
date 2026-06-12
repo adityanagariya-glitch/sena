@@ -19,6 +19,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# System build deps — required to compile psycopg / asyncpg (PostgreSQL) and other
+# C-extension packages. Matches the proven standalone case_review build.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install -U pip
 
 
@@ -70,22 +77,25 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8009"]
 
 
-# ── Case Review — pgvector intelligence layer (port 8002) ─────────────────
+# ── Case Review — RP-detection + voice pipeline (port 8002) ───────────────
 FROM base AS case-review
 
-# Copy case_review package (flat structure: no src/ subdirectory)
-# Excludes: tests/, __pycache__, .git, *.pyc (handled by .dockerignore)
+# New layout uses BARE imports (from api..., from config, from db..., from voice...)
+# and a module-level `app = create_app()`. Run from INSIDE the package dir so the
+# top-level modules resolve.
 COPY case_review/ /app/case_review/
 
-WORKDIR /app
-ENV PYTHONPATH=/app
+WORKDIR /app/case_review
+ENV PYTHONPATH=/app/case_review
 
 EXPOSE 8002
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/health/live').status==200 else 1)"
+# Health route is router-prefixed: /v1/restrictive-practices/health
+# Longer start-period: startup creates DB tables + connects Redis.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/v1/restrictive-practices/health').status==200 else 1)"
 
-CMD ["uvicorn", "case_review.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
 
 
 # ── Casenote Monthly — NDIS report generator via Bedrock (port 8004) ──────

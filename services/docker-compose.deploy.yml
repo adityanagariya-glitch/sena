@@ -93,12 +93,17 @@ services:
     env_file:
       - ../.env
     environment:
-      SENA_AI_HOST: 0.0.0.0
-      SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
+      # New RP-detection config (config.py, env_prefix SENA_AI_):
+      #  - rp_database_url → the pgvector DB (ai-db-internal:5432)
+      #  - redis_url → override ../.env's SENA_AI_REDIS_URL (Upstash) to the local container
+      SENA_AI_RP_DATABASE_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
+      SENA_AI_REDIS_URL: redis://redis-internal:6979/0
     expose:
       - "8002"
     depends_on:
       ai-db-internal:
+        condition: service_healthy
+      redis-internal:
         condition: service_healthy
     networks:
       - sena-network

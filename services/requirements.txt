@@ -112,19 +112,15 @@ wheel
 yarl
 zstandard
 pymupdf
-docx
-fitz
 pytest
-structlogfastapi
-
-# LangChain & AI
+pytest-asyncio
 langchain-core
 langchain-community
 langchain-aws
 langchain-openai
+langchain-text-splitters
+langgraph
 openai
-
-# Data Processing & Analysis
 pandas
 numpy
 datasets

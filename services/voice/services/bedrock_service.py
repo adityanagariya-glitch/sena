@@ -10,23 +10,20 @@ from fastapi import HTTPException, status
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
 # path, fall back to a no-op stub so the AI critical path never fails.
 # To enable real logging: `pip install -e sena-ai/shared/` from repo root.
-try:
-    from services.shared import UsageFeature, emit_usage
-except ImportError:
-    import enum
+import enum
 
-    class UsageFeature(str, enum.Enum):
-        VOICE_ONBOARDING = "voice_onboarding"
-        CASE_NOTE_DRAFTING = "case_note_drafting"
-        CASE_NOTE_SUMMARY = "case_note_summary"
-        INCIDENT_REPORT_ANALYSIS = "incident_report_analysis"
-        AI_CHAT = "ai_chat"
-        PSR_SUMMARY = "psr_summary"
-        MONTHLY_REPORT = "monthly_report"
-        STAFF_DOC_EXTRACTION = "staff_doc_extraction"
+class UsageFeature(str, enum.Enum):
+    VOICE_ONBOARDING = "voice_onboarding"
+    CASE_NOTE_DRAFTING = "case_note_drafting"
+    CASE_NOTE_SUMMARY = "case_note_summary"
+    INCIDENT_REPORT_ANALYSIS = "incident_report_analysis"
+    AI_CHAT = "ai_chat"
+    PSR_SUMMARY = "psr_summary"
+    MONTHLY_REPORT = "monthly_report"
+    STAFF_DOC_EXTRACTION = "staff_doc_extraction"
 
-    def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
-        return None
+def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
+    return None
 
 from voice.core.settings import settings
 from voice.prompts.dictation_prompt import SYSTEM_PROMPT, build_user_prompt
