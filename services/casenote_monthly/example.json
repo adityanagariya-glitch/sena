@@ -1,0 +1,1034 @@
+​{
+    "success": true,
+    "message": "Get AI Client Data",
+    "data": {
+        "client": {
+            "id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+            "firstName": "Michael",
+            "lastName": "Smith",
+            "preferredName": "Jee",
+            "dateOfBirth": "1988-09-22",
+            "gender": "Male",
+            "culturalBackground": "indian",
+            "languagesSpoken": [
+                "mandarin"
+            ],
+            "interpreterRequired": false,
+            "ndisNumber": "433434",
+            "planManagement": null,
+            "planManagerName": null,
+            "supportRequirements": "Eu deleniti aut quas",
+            "planStartDate": "2026-02-03",
+            "planEndDate": "2026-02-11",
+            "planStatus": null,
+            "personalGoals": null,
+            "supportCoordinatorName": null,
+            "selfIntro": "Hello, I am Michael.",
+            "culturalConsiderations": "hello c",
+            "mostImportantToMe": "hello personal information",
+            "ndisPlanGoals": [
+                "go with client at location",
+                "help client if cliente neeed"
+            ],
+            "hobbiesAndInterests": null,
+            "modeOfCommunication": null,
+            "styleOfCommunication": null,
+            "preferredDaysForSupports": null,
+            "generalRisk": "",
+            "criticalRisk": "<p>Zxscdvfbghnjmk,l./</p>",
+            "medicalProfile": {
+                "bloodType": "B+",
+                "medications": [
+                    "Pills"
+                ],
+                "mobilityStatus": "independent",
+                "primaryDiagnosis": "Corporis et ullamco ",
+                "secondaryDiagnoses": []
+            },
+            "medicalHistory": [
+                {
+                    "year": "1983",
+                    "title": "Cum eligendi praesen",
+                    "description": "Quas quos qui labori"
+                }
+            ],
+            "medications": [
+                {
+                    "notes": "Optio sit dolorem v",
+                    "dosage": "Dolor rerum sed nisi",
+                    "purpose": "Delectus recusandae",
+                    "frequency": "Quam dolor eu reicie",
+                    "medicationName": "Yardley Moody"
+                }
+            ],
+            "primaryDoctor": {
+                "name": "Gannon Leon",
+                "lastCheckedUpOn": "1998-04-18"
+            },
+            "informationSharingConsent": null,
+            "mediaConsent": null,
+            "morningRoutine": [
+                {
+                    "time": "11:55",
+                    "description": "fdf",
+                    "assistanceRequired": false
+                }
+            ],
+            "eveningRoutine": [
+                {
+                    "time": "03:54",
+                    "description": "ff",
+                    "assistanceRequired": false
+                }
+            ],
+            "fundAllocations": [
+                {
+                    "amount": 343,
+                    "category": "CORE_SUPPORTS"
+                },
+                {
+                    "amount": 1,
+                    "category": "CAPACITY_BUILDING"
+                },
+                {
+                    "amount": 11,
+                    "category": "CAPITAL_SUPPORTS"
+                },
+                {
+                    "amount": 3,
+                    "category": "TRANSPORT"
+                }
+            ],
+            "supportSchedule": [
+                {
+                    "endTime": "01:49",
+                    "dayOfWeek": "WE",
+                    "startTime": "00:50"
+                },
+                {
+                    "endTime": "02:50",
+                    "dayOfWeek": "TU",
+                    "startTime": "03:55"
+                },
+                {
+                    "endTime": "03:50",
+                    "dayOfWeek": "MO",
+                    "startTime": "03:50"
+                }
+            ]
+        },
+        "organizationId": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+        "dateFrom": "2026-05-01",
+        "dateTo": "2026-05-31",
+        "pagination": {
+            "page": 1,
+            "limit": 31,
+            "total": 31,
+            "totalPages": 1,
+            "hasNext": false,
+            "hasPrev": false
+        },
+        "data": [
+            {
+                "date": "2026-05-01",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-02",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-03",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-04",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [
+                    {
+                        "id": "34f30eba-656a-42aa-8b00-12e50719a777",
+                        "createdAt": "2026-05-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "rating": 2,
+                        "feedback_description": "Disappointed by the kitchen incident during meal prep. First aid was handled well but better safety briefings needed.",
+                        "shift_id": "00000000-0000-0000-0000-000000000006",
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "organization_member_id": "554e216b-6ebd-4066-a399-2d6b4a3b27f6",
+                        "improvement_id": null,
+                        "bucketDate": "2026-05-04"
+                    }
+                ],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-05",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-06",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-07",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-08",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [
+                    {
+                        "id": "27f1e7b6-d9af-4f76-a7b9-1fea4176cc2b",
+                        "createdAt": "2026-06-05T00:34:50.676Z",
+                        "updatedAt": "2026-06-05T00:34:50.676Z",
+                        "deletedAt": null,
+                        "time_of_practice": "2026-05-08T14:00:00.000Z",
+                        "type_of_restrictive_practice": "mechanical",
+                        "status": "rejected",
+                        "description_occurring": "Soft table-top harness used during lunch to support upright posture (prescribed by OT).",
+                        "reason_for_practice": "OT-prescribed postural support; client cannot maintain trunk control for sustained eating.",
+                        "trigger_cause": "Standing frame unavailable on the day; harness used as documented fallback in client's BSP.",
+                        "duration_start": "2026-05-08T14:00:00.000Z",
+                        "duration_end": "2026-05-08T14:25:00.000Z",
+                        "immediate_action_taken": "Harness applied per BSP section 4.2; checked every 5 minutes; skin integrity verified at removal.",
+                        "outcome": "Lunch completed without choking or aspiration; no skin redness noted.",
+                        "date_reported_ndis": "2026-05-09T18:30:00.000Z",
+                        "date_reported_other": null,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "undertaken_by_id": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "authorized_by_id": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "incident_id": null,
+                        "created_by": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "last_edited_by": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "bucketDate": "2026-05-08"
+                    }
+                ],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-09",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-10",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-11",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-12",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-13",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-14",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-15",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [
+                    {
+                        "id": "148c485e-a8ac-4537-b869-6d8934fe94f9",
+                        "createdAt": "2026-06-05T00:34:50.676Z",
+                        "updatedAt": "2026-06-05T00:34:50.676Z",
+                        "deletedAt": null,
+                        "time_of_practice": "2026-05-15T09:15:00.000Z",
+                        "type_of_restrictive_practice": "environmental",
+                        "status": "pending",
+                        "description_occurring": "Client moved to low-stimulation quiet room for 12 minutes after loud group activity became overwhelming.",
+                        "reason_for_practice": "Sensory overload indicated by hand-covering and pacing; standard redirection had failed.",
+                        "trigger_cause": "Three simultaneous group activities (music + cooking + art) created more stimulation than usual.",
+                        "duration_start": "2026-05-15T09:15:00.000Z",
+                        "duration_end": "2026-05-15T09:27:00.000Z",
+                        "immediate_action_taken": "Worker 1 walked client to quiet room at client's request; offered weighted blanket and water; stayed at the doorway.",
+                        "outcome": "Client chose to rejoin group after 12 minutes; mood logged as \"calm\" by Worker 2 on return.",
+                        "date_reported_ndis": null,
+                        "date_reported_other": null,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "undertaken_by_id": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "authorized_by_id": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "incident_id": null,
+                        "created_by": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "last_edited_by": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "bucketDate": "2026-05-15"
+                    }
+                ],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-16",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-17",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-18",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-19",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-20",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-21",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-22",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-23",
+                "caseNotes": [
+                    {
+                        "id": "d4cbcaaa-9366-40ff-a163-f826888ff08c",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "summaryOfShift": "Personal care in the morning followed by joint meal-prep session.",
+                        "activitiesAndSkill": {
+                            "assisted": "Shower, dressing, chopping vegetables (with support)",
+                            "observation": "Identified all 5 ingredients by name",
+                            "practisedSkill": "Safe knife handling on soft foods",
+                            "participantsLevelOfIndependence": "Low — close supervision"
+                        },
+                        "wellbeingAndBehaviour": {
+                            "mood": "Content",
+                            "anyConcerns": false,
+                            "behaviouralEvents": "None"
+                        },
+                        "outcomesAndProgress": {
+                            "whatWentWell": "Client engaged in cooking for 45 minutes",
+                            "furtherSupport": "Add a baking goal next month",
+                            "participantsComments": "\"Soup is yummy\" — client"
+                        },
+                        "safetyAndHealth": {
+                            "anyInjuries": false,
+                            "reportMedia": null,
+                            "injuryDetails": null,
+                            "safetyHazardObserved": false,
+                            "medicationReminderGiven": true
+                        },
+                        "careFeedback": "Family sent thank-you message; client proud of cooking.",
+                        "anyIncident": false,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "shift_id": "00000000-0000-0000-0000-000000000006",
+                        "organization_member_id": "1069a43b-b985-43a1-8c14-4d0cd905a5bf",
+                        "last_edited_by_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "reviewNote": null,
+                        "handover": null,
+                        "bucketDate": "2026-05-23"
+                    },
+                    {
+                        "id": "f1efec05-d90e-4582-955e-3f05a341171c",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "summaryOfShift": "Joint cooking session. Client sustained a small burn from a hot pan — first aid applied. See incident record.",
+                        "activitiesAndSkill": {
+                            "assisted": "Stirring pot, plating food",
+                            "observation": "Stopped stirring when reminded pan was hot",
+                            "practisedSkill": "Following a 3-step recipe",
+                            "participantsLevelOfIndependence": "Low"
+                        },
+                        "wellbeingAndBehaviour": {
+                            "mood": "Anxious after incident, recovered well",
+                            "anyConcerns": true,
+                            "behaviouralEvents": "Brief distress following burn"
+                        },
+                        "outcomesAndProgress": {
+                            "whatWentWell": "Recovered emotionally within 20 minutes",
+                            "furtherSupport": "Re-do session with visual safety prompts",
+                            "participantsComments": "\"It hurt a bit\" — client"
+                        },
+                        "safetyAndHealth": {
+                            "anyInjuries": true,
+                            "reportMedia": null,
+                            "injuryDetails": "Small first-degree burn on right index finger, 1 cm; cold water applied for 10 min, no dressing required.",
+                            "safetyHazardObserved": true,
+                            "medicationReminderGiven": true
+                        },
+                        "careFeedback": null,
+                        "anyIncident": true,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "shift_id": "00000000-0000-0000-0000-000000000006",
+                        "organization_member_id": "554e216b-6ebd-4066-a399-2d6b4a3b27f6",
+                        "last_edited_by_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "reviewNote": "Burn logged; safety briefing scheduled with all workers.",
+                        "handover": "Visual reminders placed near stove.",
+                        "bucketDate": "2026-05-23"
+                    }
+                ],
+                "shifts": [
+                    {
+                        "id": "00000000-0000-0000-0000-000000000006",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "title": "Personal care + meal prep",
+                        "meeting_type": "client",
+                        "start_time": "2026-05-23T04:21:19.171Z",
+                        "end_time": "2026-05-23T11:21:19.171Z",
+                        "is_recurring": false,
+                        "date": null,
+                        "location": {
+                            "lat": null,
+                            "lng": null,
+                            "url": null,
+                            "address": "Client home"
+                        },
+                        "todolist": [
+                            {
+                                "title": "Medication",
+                                "isRequired": true
+                            },
+                            {
+                                "title": "Meal prep",
+                                "isRequired": true
+                            }
+                        ],
+                        "agenda": "Morning routine, then assisted with cooking lunch for the week.",
+                        "notes": "Used frozen vegetables and chicken — followed food safety guidelines.",
+                        "is_24_hour_care": false,
+                        "remoteworksegments": null,
+                        "recurrence_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "created_by": "1069a43b-b985-43a1-8c14-4d0cd905a5bf",
+                        "broken_shift": "none",
+                        "status": "completed",
+                        "cancelled_at": null,
+                        "cancelled_by": null,
+                        "parent_shift_id": null,
+                        "ends_next_day": false,
+                        "allowances": null,
+                        "ndis_support_item_id": null,
+                        "bucketDate": "2026-05-23"
+                    }
+                ],
+                "incidents": [
+                    {
+                        "id": "3ff05587-715a-4e5e-9ee6-fb12da610680",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "incidentDate": "2026-05-22T18:30:00.000Z",
+                        "incidentTime": "11:30:00",
+                        "locationOfTheIncident": "Client home kitchen",
+                        "individualsInvolved": [
+                            {
+                                "name": "Client 3",
+                                "role": "participant",
+                                "contact": "0400000003"
+                            },
+                            {
+                                "name": "Worker 2",
+                                "role": "support_worker",
+                                "contact": "w2@example.com"
+                            },
+                            {
+                                "name": "Worker 3",
+                                "role": "support_worker",
+                                "contact": "w3@example.com"
+                            }
+                        ],
+                        "summaryOfTheIncident": "Client sustained a small first-degree burn to right index finger while stirring a hot pot during the meal-prep activity.",
+                        "detailedDescriptionOfTheIncident": "Client was standing at the stove, stirring a pot of soup on the back burner. Worker 3 stepped away briefly to fetch a serving bowl. When worker 3 returned, the client had moved their hand to check the pot lid and the steam contacted the index finger for approximately 2 seconds. Client immediately pulled hand back and called out.",
+                        "injuriesAndDamages": {
+                            "propertyDamage": "None",
+                            "physicalInjuries": "1 cm first-degree burn on right index finger",
+                            "emotionalOrBehaviouralImpact": "Brief distress, recovered within 20 minutes"
+                        },
+                        "immediateActionTaken": "Cold water applied to burn for 10 minutes. Burn assessed as superficial — no dressing required. Client consoled with preferred sensory item. Worker 2 supervised while worker 3 completed cooking with client at safe distance.",
+                        "witnesses": [],
+                        "followUpRequired": "Review safe-stove procedures with all support workers. Schedule home safety re-assessment with OT.",
+                        "reportedTo": {
+                            "media": null,
+                            "dateOfNotification": "2026-05-23",
+                            "timeOfNotification": "12:00:00",
+                            "organizationMemberName": "Team Leader"
+                        },
+                        "additionalNotes": "Burn photographed for client records (with consent). Family informed by phone within 1 hour.",
+                        "shift_id": "00000000-0000-0000-0000-000000000006",
+                        "reported_by_id": "554e216b-6ebd-4066-a399-2d6b4a3b27f6",
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "last_edited_by_id": "1069a43b-b985-43a1-8c14-4d0cd905a5bf",
+                        "involved_client_ids": [
+                            "0ce6359f-9138-4e05-b83b-6c39875f1828"
+                        ],
+                        "involved_support_worker_ids": [
+                            "1069a43b-b985-43a1-8c14-4d0cd905a5bf",
+                            "554e216b-6ebd-4066-a399-2d6b4a3b27f6"
+                        ],
+                        "steps_completed": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7,
+                            8,
+                            9
+                        ],
+                        "requestUpdates": [],
+                        "participantSafe": true,
+                        "otherPeopleSafe": true,
+                        "immediateActions": [
+                            {
+                                "notes": "Cold water 10 min",
+                                "dueTime": "2026-05-23 12:36:19.171919+00",
+                                "actionType": "first_aid",
+                                "responsiblePersonId": "554e216b-6ebd-4066-a399-2d6b4a3b27f6",
+                                "responsiblePersonName": "Worker 3"
+                            }
+                        ],
+                        "incidentType": "injury",
+                        "riskRating": "low",
+                        "ongoingRisk": "Low — single supervised event, no equipment failure.",
+                        "reportableChecklist": {
+                            "death": false,
+                            "seriousInjury": false,
+                            "abuseOrAssault": false,
+                            "sexualMisconduct": false,
+                            "missingOrAbandoned": false,
+                            "unauthorisedRestrictivePractice": false
+                        },
+                        "ndisReportable": false,
+                        "notifyParticipant": true,
+                        "internalNotifications": null,
+                        "externalNotifications": null,
+                        "participantFollowUp": {
+                            "noReason": null,
+                            "newConcerns": false,
+                            "wellbeingCheck": true,
+                            "carePlanUpdated": true,
+                            "followUpCompleted": true
+                        },
+                        "staffFollowUp": {
+                            "noReason": null,
+                            "learningShared": true,
+                            "debriefCompleted": true,
+                            "trainingDescription": "Kitchen-safety refresher for all support workers",
+                            "supportNeedsIdentified": true
+                        },
+                        "notesFactualAndRespectful": true,
+                        "managementCommentsAdded": true,
+                        "supportingDocuments": null,
+                        "followUpConversationNotes": "Client and family confirmed they are comfortable continuing cooking sessions with additional safeguards.",
+                        "closureChecklist": {
+                            "allStepsCompleted": true,
+                            "ndisReportCompleted": false
+                        },
+                        "dateClosed": "2026-05-30T12:21:19.171Z",
+                        "closed_by_id": "0b09b617-b775-44ba-b58a-2580e954582c",
+                        "status": "completed",
+                        "requestUpdateStatus": "updated",
+                        "ndisDueDate": null,
+                        "ndisReportSubmitted": null,
+                        "ndisReferenceNumber": null,
+                        "ndisReportableStatus": "pending",
+                        "attachmentsAndEvidence": null,
+                        "shortTermActions": {
+                            "staffSupport": true,
+                            "extraSupervision": true,
+                            "environmentChanges": true,
+                            "temporaryRestrictions": false,
+                            "responsiblePersonAndDueDate": true
+                        },
+                        "longTermActions": {
+                            "training": true,
+                            "policyReview": false,
+                            "carePlanUpdates": true,
+                            "behaviourSupportPlanReview": false,
+                            "responsiblePersonAndDueDate": true
+                        },
+                        "ndis_responsible_person_id": null,
+                        "bucketDate": "2026-05-23"
+                    }
+                ],
+                "restrictivePractices": [
+                    {
+                        "id": "68600961-57e9-42a0-9efe-1f791e253977",
+                        "createdAt": "2026-06-05T00:34:50.676Z",
+                        "updatedAt": "2026-06-05T00:34:50.676Z",
+                        "deletedAt": null,
+                        "time_of_practice": "2026-05-23T11:30:00.000Z",
+                        "type_of_restrictive_practice": "physical",
+                        "status": "approved",
+                        "description_occurring": "Client briefly held at wrists to prevent self-injury when agitated after the burn incident; released as soon as client de-escalated.",
+                        "reason_for_practice": "Imminent risk of self-injury; standard de-escalation techniques had been tried without success for 2 minutes.",
+                        "trigger_cause": "Visible distress and self-directed hitting following the burn; risk escalated suddenly.",
+                        "duration_start": "2026-05-23T11:25:00.000Z",
+                        "duration_end": "2026-05-23T11:28:00.000Z",
+                        "immediate_action_taken": "Worker 3 held both wrists loosely while Worker 2 talked the client through a breathing exercise; released within 3 minutes.",
+                        "outcome": "Client de-escalated fully within 5 minutes; no marks or lasting distress reported.",
+                        "date_reported_ndis": "2026-05-22T18:30:00.000Z",
+                        "date_reported_other": null,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "undertaken_by_id": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "authorized_by_id": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "incident_id": "3ff05587-715a-4e5e-9ee6-fb12da610680",
+                        "created_by": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "last_edited_by": "3b67a190-2062-4a03-9cc6-63d9bce84898",
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "bucketDate": "2026-05-23"
+                    }
+                ],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-24",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-25",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-26",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-27",
+                "caseNotes": [
+                    {
+                        "id": "b53ba4bc-0353-436b-8ea4-0c9d6ecd0c57",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "summaryOfShift": "Art workshop — watercolour session. Worker 1 led the activity.",
+                        "activitiesAndSkill": {
+                            "assisted": "Paint setup, brush selection, cleanup",
+                            "observation": "Completed 1 finished painting",
+                            "practisedSkill": "Holding brush with modified grip",
+                            "participantsLevelOfIndependence": "Moderate"
+                        },
+                        "wellbeingAndBehaviour": {
+                            "mood": "Engaged",
+                            "anyConcerns": false,
+                            "behaviouralEvents": "None"
+                        },
+                        "outcomesAndProgress": {
+                            "whatWentWell": "Stayed on task for 90 minutes",
+                            "furtherSupport": "Add framing goal for next workshop",
+                            "participantsComments": "\"It looks like a rainbow\" — client"
+                        },
+                        "safetyAndHealth": {
+                            "anyInjuries": false,
+                            "reportMedia": null,
+                            "injuryDetails": null,
+                            "safetyHazardObserved": false,
+                            "medicationReminderGiven": false
+                        },
+                        "careFeedback": "Family requested copy of finished painting — emailed JPEG.",
+                        "anyIncident": false,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "shift_id": "00000000-0000-0000-0000-000000000009",
+                        "organization_member_id": "0b09b617-b775-44ba-b58a-2580e954582c",
+                        "last_edited_by_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "reviewNote": null,
+                        "handover": null,
+                        "bucketDate": "2026-05-27"
+                    },
+                    {
+                        "id": "71831e71-e5ac-432e-ab1f-b96450099270",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "summaryOfShift": "Music corner — supported percussion participation and group turn-taking.",
+                        "activitiesAndSkill": {
+                            "assisted": "Instrument choice, rhythm matching",
+                            "observation": "Initiated a rhythm — others followed",
+                            "practisedSkill": "Waiting for turn (3-minute avg)",
+                            "participantsLevelOfIndependence": "Moderate"
+                        },
+                        "wellbeingAndBehaviour": {
+                            "mood": "Joyful",
+                            "anyConcerns": false,
+                            "behaviouralEvents": "None"
+                        },
+                        "outcomesAndProgress": {
+                            "whatWentWell": "Led the group for one song",
+                            "furtherSupport": "Build confidence in leading",
+                            "participantsComments": "\"I made the song\" — client"
+                        },
+                        "safetyAndHealth": {
+                            "anyInjuries": false,
+                            "reportMedia": null,
+                            "injuryDetails": null,
+                            "safetyHazardObserved": false,
+                            "medicationReminderGiven": false
+                        },
+                        "careFeedback": null,
+                        "anyIncident": false,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "shift_id": "00000000-0000-0000-0000-000000000009",
+                        "organization_member_id": "1069a43b-b985-43a1-8c14-4d0cd905a5bf",
+                        "last_edited_by_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "reviewNote": null,
+                        "handover": null,
+                        "bucketDate": "2026-05-27"
+                    },
+                    {
+                        "id": "3877f194-9795-450e-a8ee-2d32c88940c1",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "summaryOfShift": "1:1 lunch support — sensory-friendly meal in quiet room.",
+                        "activitiesAndSkill": {
+                            "assisted": "Cutting food, fluid prompts, pacing",
+                            "observation": "Finished full portion",
+                            "practisedSkill": "Using fork independently for soft foods",
+                            "participantsLevelOfIndependence": "Moderate"
+                        },
+                        "wellbeingAndBehaviour": {
+                            "mood": "Calm",
+                            "anyConcerns": false,
+                            "behaviouralEvents": "None"
+                        },
+                        "outcomesAndProgress": {
+                            "whatWentWell": "No sensory overload despite busy hall",
+                            "furtherSupport": "Continue offering quiet-room option",
+                            "participantsComments": "\"Lunch was nice\" — client"
+                        },
+                        "safetyAndHealth": {
+                            "anyInjuries": false,
+                            "reportMedia": null,
+                            "injuryDetails": null,
+                            "safetyHazardObserved": false,
+                            "medicationReminderGiven": false
+                        },
+                        "careFeedback": "Recommend a permanent quiet-room booking for this client.",
+                        "anyIncident": false,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "shift_id": "00000000-0000-0000-0000-000000000009",
+                        "organization_member_id": "554e216b-6ebd-4066-a399-2d6b4a3b27f6",
+                        "last_edited_by_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "reviewNote": null,
+                        "handover": null,
+                        "bucketDate": "2026-05-27"
+                    },
+                    {
+                        "id": "437be35d-f980-42cb-a5b7-d425cf5c7200",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "summaryOfShift": "Afternoon walk in the park followed by coffee at the kiosk.",
+                        "activitiesAndSkill": {
+                            "assisted": "Navigation on uneven paths, ordering coffee",
+                            "observation": "Smiled at three passers-by unprompted",
+                            "practisedSkill": "Initiating small talk with barista",
+                            "participantsLevelOfIndependence": "Moderate"
+                        },
+                        "wellbeingAndBehaviour": {
+                            "mood": "Relaxed",
+                            "anyConcerns": false,
+                            "behaviouralEvents": "None"
+                        },
+                        "outcomesAndProgress": {
+                            "whatWentWell": "Walked 1.4 km without resting",
+                            "furtherSupport": "Build stamina — aim for 2 km next time",
+                            "participantsComments": "\"Coffee was too hot\" — client"
+                        },
+                        "safetyAndHealth": {
+                            "anyInjuries": false,
+                            "reportMedia": null,
+                            "injuryDetails": null,
+                            "safetyHazardObserved": true,
+                            "medicationReminderGiven": false
+                        },
+                        "careFeedback": "Client enjoyed the outing; suggested repeating weekly.",
+                        "anyIncident": false,
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "shift_id": "00000000-0000-0000-0000-000000000003",
+                        "organization_member_id": "1069a43b-b985-43a1-8c14-4d0cd905a5bf",
+                        "last_edited_by_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "reviewNote": null,
+                        "handover": "Bring water bottle next time.",
+                        "bucketDate": "2026-05-27"
+                    }
+                ],
+                "shifts": [
+                    {
+                        "id": "00000000-0000-0000-0000-000000000009",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "title": "Day program — art workshop",
+                        "meeting_type": "client",
+                        "start_time": "2026-05-27T02:21:19.171Z",
+                        "end_time": "2026-05-27T08:21:19.171Z",
+                        "is_recurring": false,
+                        "date": null,
+                        "location": {
+                            "lat": -33.896,
+                            "lng": 151.18,
+                            "url": null,
+                            "address": "Community Centre, Newtown"
+                        },
+                        "todolist": null,
+                        "agenda": "Three-worker day program with art, music, and lunch.",
+                        "notes": "One worker on art, one on music, one on 1:1 lunch support.",
+                        "is_24_hour_care": false,
+                        "remoteworksegments": null,
+                        "recurrence_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "created_by": "0b09b617-b775-44ba-b58a-2580e954582c",
+                        "broken_shift": "2_unpaid_breaks",
+                        "status": "completed",
+                        "cancelled_at": null,
+                        "cancelled_by": null,
+                        "parent_shift_id": null,
+                        "ends_next_day": false,
+                        "allowances": null,
+                        "ndis_support_item_id": null,
+                        "bucketDate": "2026-05-27"
+                    },
+                    {
+                        "id": "00000000-0000-0000-0000-000000000003",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "title": "Afternoon social support",
+                        "meeting_type": "client",
+                        "start_time": "2026-05-27T23:21:19.171Z",
+                        "end_time": "2026-05-28T03:21:19.171Z",
+                        "is_recurring": false,
+                        "date": null,
+                        "location": {
+                            "lat": -33.895,
+                            "lng": 151.228,
+                            "url": null,
+                            "address": "Centennial Park, Sydney"
+                        },
+                        "todolist": null,
+                        "agenda": "Walk in the park and coffee",
+                        "notes": null,
+                        "is_24_hour_care": false,
+                        "remoteworksegments": null,
+                        "recurrence_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "created_by": "1069a43b-b985-43a1-8c14-4d0cd905a5bf",
+                        "broken_shift": "none",
+                        "status": "completed",
+                        "cancelled_at": null,
+                        "cancelled_by": null,
+                        "parent_shift_id": null,
+                        "ends_next_day": false,
+                        "allowances": null,
+                        "ndis_support_item_id": null,
+                        "bucketDate": "2026-05-27"
+                    }
+                ],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-28",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-29",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": [
+                    {
+                        "id": "21435d75-f66c-4f1a-b22f-383bd5850901",
+                        "createdAt": "2026-06-04T06:51:19.171Z",
+                        "updatedAt": "2026-06-04T06:51:19.171Z",
+                        "deletedAt": null,
+                        "complaint_type": "Service_Quality",
+                        "subject": "Late arrival of support worker",
+                        "issue_datetime": "2026-05-29T12:21:19.171Z",
+                        "what_happened": "The support worker arrived 40 minutes late for the scheduled morning shift. The client was waiting at the door and became anxious.",
+                        "upload_proof": null,
+                        "impact": "Client was visibly distressed and missed scheduled medication reminder window.",
+                        "expected_outcome": "Worker to arrive on time, or call ahead if running late. A written explanation and assurance it will not recur.",
+                        "is_anonymous": true,
+                        "is_information_accurate": true,
+                        "status": "pending",
+                        "client_id": "0ce6359f-9138-4e05-b83b-6c39875f1828",
+                        "shift_id": null,
+                        "organization_id": "a329f63d-d1f0-40ae-9ad3-ed6f662ed47a",
+                        "risk_flag": false,
+                        "is_more_details_requested": false,
+                        "more_details": null,
+                        "request_update_status": null,
+                        "created_by_user_type": "client",
+                        "bucketDate": "2026-05-29"
+                    }
+                ]
+            },
+            {
+                "date": "2026-05-30",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            },
+            {
+                "date": "2026-05-31",
+                "caseNotes": [],
+                "shifts": [],
+                "incidents": [],
+                "restrictivePractices": [],
+                "shiftFeedback": [],
+                "clientComplaints": []
+            }
+        ]
+    },
+    "timestamp": "2026-06-05T06:05:47.828Z"
+}
