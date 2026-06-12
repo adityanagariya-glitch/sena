@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from sena_common.voice.mobile_bridge import MobileBridge
-from sena_common.voice.tools import ToolDispatcher
+from voice.mobile_bridge import MobileBridge
+from voice.tools import ToolDispatcher
 
 
 class _ScriptedWS:

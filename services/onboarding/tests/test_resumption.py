@@ -5,8 +5,8 @@ import pytest
 import pytest_asyncio
 from fakeredis.aioredis import FakeRedis
 
-from sena_common.voice.state_repo import FormStateRepo
-from sena_common.voice.resumption import build_replay_context, issue_handle, redeem_handle
+from voice.state_repo import FormStateRepo
+from voice.resumption import build_replay_context, issue_handle, redeem_handle
 
 
 @pytest_asyncio.fixture

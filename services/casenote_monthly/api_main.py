@@ -9,11 +9,15 @@
 6. Merged report saved as ``reports/{client_id}_report.md`` and returned as raw HTML.
 
 **Port:** 8602
+
+**Performance:** Uses uvloop (if available), ThreadPoolExecutor, and async/await for max speed.
 """
 import asyncio
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,16 +28,34 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
+# Use uvloop for faster async event loop (10-4x faster than default)
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass  # Fall back to default event loop
+
 from auth import get_auth_headers, validate_jwt
+from bedrock_retry import converse_with_retry, sum_usage
 from cleaner import clean
 from config import API_BASE_URL, bedrock_runtime, MODEL_ID
-from trend_store import get_previous_trend, list_trends, save_trend
+from linter import lint
+from stats import build_risk_register, compute_stats, extract_milestones, extract_quotes
+from trend_store import get_previous_month_stats, get_previous_trend, list_trends, save_month_stats, save_trend
 import prompt as P
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parent
+
+# Anti-hallucination guards: the LLM NEVER receives raw arrays it could miscount.
+# It receives only Python-computed facts + a SIZE-BOUNDED sample of narrative text.
+# These bounds keep the payload constant whether the period is monthly or yearly.
+EVIDENCE_CHAR_BUDGET = 12_000   # total chars of case-note narrative excerpts sent to LLM
+EXCERPT_FIELD_CHARS = 320       # per-field truncation for each case note
+MAX_MILESTONES = 15             # cap Python-extracted milestones passed to LLM
+MAX_QUOTES = 15                 # cap Python-extracted quotes passed to LLM
 REPORTS_DIR = HERE / "reports"
 MAX_TOKENS = 4096
 
@@ -68,7 +90,12 @@ _TAGS = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     REPORTS_DIR.mkdir(exist_ok=True)
+    # Create thread pool for CPU-bound tasks (stats, linting, markdown conversion)
+    # Use 4 workers; adjust based on CPU cores if needed
+    app.state.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sena-worker-")
     yield
+    # Cleanup
+    app.state.executor.shutdown(wait=True)
 
 
 app = FastAPI(
@@ -86,8 +113,14 @@ app = FastAPI(
 class ReportRequest(BaseModel):
     client_id: str = Field(
         ...,
+        pattern=r"^[A-Za-z0-9_-]{1,64}$",  # used in file paths — no separators/dots allowed
         description="Client UUID from the SENA system.",
         examples=["0ce6359f-9138-4e05-b83b-6c39875f1828"],
+    )
+    organization_id: str = Field(
+        ...,
+        description="Organization UUID from the SENA system.",
+        examples=["org-123e4567-e89b-12d3-a456-426614174000"],
     )
     date_from: str = Field(
         ...,
@@ -138,13 +171,13 @@ class HealthResponse(BaseModel):
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _fetch_client_data(client_id: str, date_from: str, date_to: str, token: str) -> dict:
+def _fetch_client_data(client_id: str, organization_id: str, date_from: str, date_to: str, token: str, page: int = 1) -> dict:
     """Call GET /ai/client-data and return the inner data object.
 
     Raises ValueError if the backend returns a non-200 status or empty data.
     """
     url = f"{API_BASE_URL}/ai/client-data"
-    params = {"clientId": client_id, "dateFrom": date_from, "dateTo": date_to}
+    params = {"clientId": client_id, "organizationId": organization_id, "dateFrom": date_from, "dateTo": date_to, "page": page}
     resp = requests.get(url, params=params, headers=get_auth_headers(token), timeout=30)
     if resp.status_code != 200:
         raise ValueError(f"Backend returned {resp.status_code}: {resp.text[:200]}")
@@ -153,6 +186,81 @@ def _fetch_client_data(client_id: str, date_from: str, date_to: str, token: str)
     if not data:
         raise ValueError("Backend returned empty data for this client / date range.")
     return data
+
+
+def _fetch_client_data_all(
+    client_id: str,
+    organization_id: str,
+    date_from: str,
+    date_to: str,
+    token: str,
+    max_pages: int = None  # No hard limit (handles quarterly/yearly data)
+) -> dict:
+    """Fetch ALL pages of client data, merging day lists and deduping by date.
+
+    Pagination signals (spec: loop while page < totalPages; tolerate hasNext):
+    - continues while EITHER hasNext is true OR totalPages says more pages remain
+    - stops on an empty page (guards against a backend stuck on hasNext=true)
+    - hard cap max_pages prevents runaway loops against a misbehaving backend
+    """
+    all_days = []
+    pagination_info = None
+    client_info = None
+    page_num = 0
+    max_pages = max_pages or 999  # Effectively unlimited, but guard against infinite loops
+
+    logger.info(f"[{client_id}] Starting pagination (unlimited pages)")
+
+    for page_num in range(1, max_pages + 1):
+        try:
+            data = _fetch_client_data(client_id, organization_id, date_from, date_to, token, page=page_num)
+        except ValueError as e:
+            logger.warning(f"[{client_id}] Pagination stopped at page {page_num}: {e}")
+            break
+
+        # Collect client info on first page
+        if page_num == 1 and data.get("client"):
+            client_info = data["client"]
+
+        # Merge days
+        days_key = "days" if "days" in data else "data"
+        page_days = data.get(days_key) or []
+        all_days.extend(page_days)
+
+        # Track pagination
+        pagination_info = data.get("pagination", {})
+        total_pages = pagination_info.get("totalPages", 1)
+        has_next = pagination_info.get("hasNext", False)
+
+        logger.info(f"[{client_id}] Page {page_num}/{total_pages}: fetched {len(page_days)} day records (total: {len(all_days)})")
+
+        # Empty page → nothing more to gain, even if the backend claims otherwise
+        if not page_days and page_num > 1:
+            logger.warning(f"[{client_id}] Page {page_num} returned no day records — stopping pagination")
+            break
+
+        # More pages if EITHER signal says so (some backends send only totalPages)
+        if not has_next and page_num >= total_pages:
+            logger.info(f"[{client_id}] Pagination complete: {page_num} pages, {len(all_days)} total day records")
+            break
+    else:
+        logger.error(f"[{client_id}] Pagination hit max_pages={max_pages} without a natural stop — data may be incomplete")
+
+    # Dedupe by date (keep first occurrence) + log size
+    seen = set()
+    deduped = []
+    for day in all_days:
+        day_date = day.get("date") or day.get("bucketDate", "")
+        if day_date and day_date in seen:
+            logger.warning(f"[{client_id}] Duplicate date in pagination: {day_date}, skipping")
+            continue
+        if day_date:
+            seen.add(day_date)
+        deduped.append(day)
+
+    logger.info(f"[{client_id}] Data size: {len(all_days)} days raw → {len(deduped)} days deduped")
+
+    return {"data": deduped, "client": client_info, "pagination": pagination_info or {}}
 
 
 def _normalize(section: dict | str) -> dict:
@@ -169,11 +277,95 @@ def _fill(text: str, subs: dict) -> str:
     return text
 
 
-def _build_subs(data: dict, section_outputs: dict[int, str]) -> dict:
+def _build_case_note_excerpts(days: list[dict]) -> list[dict]:
+    """Return a SIZE-BOUNDED sample of case-note narrative text for qualitative colour.
+
+    Anti-hallucination design:
+      • Only narrative text fields are included — NEVER the countable structured arrays.
+      • Most-recent-first, capped by EVIDENCE_CHAR_BUDGET, so quarterly/yearly periods
+        produce the same bounded payload as a month (no truncation, no token blow-up).
+      • The LLM cannot count sessions/incidents from this — those live in metrics only.
+    """
+    excerpts: list[dict] = []
+    used = 0
+    # Most recent days first — a progress report cares most about the latest period.
+    for day in sorted(days, key=lambda d: d.get("date") or d.get("bucketDate") or "", reverse=True):
+        day_date = day.get("date") or day.get("bucketDate") or ""
+        for note in day.get("caseNotes") or []:
+            if not isinstance(note, dict):
+                continue
+
+            def _txt(key: str) -> str:
+                v = note.get(key)
+                return v[:EXCERPT_FIELD_CHARS] if isinstance(v, str) else ""
+
+            fields = {
+                "summary":   _txt("summaryOfShift"),
+                "skills":    _txt("activitiesAndSkill"),
+                "wellbeing": _txt("wellbeingAndBehaviour"),
+                "outcomes":  _txt("outcomesAndProgress"),
+                "safety":    _txt("safetyAndHealth"),
+            }
+            fields = {k: v for k, v in fields.items() if v.strip()}
+            if not fields:
+                continue
+            size = sum(len(v) for v in fields.values())
+            if used + size > EVIDENCE_CHAR_BUDGET:
+                return excerpts
+            used += size
+            excerpts.append({"date": day_date, **fields})
+    return excerpts
+
+
+def _build_evidence(data: dict, stats: dict) -> str:
+    """Build the curated, size-bounded evidence payload sent to the LLM.
+
+    Contains ONLY: client profile, Python-computed metrics, Python-extracted
+    milestones/quotes/risk-register, and a bounded sample of narrative text.
+    The raw shifts[]/incidents[]/full caseNotes[] arrays are deliberately excluded —
+    the model cannot miscount data it never receives.
+    """
+    days = data.get("days") or data.get("data") or []
+    client = data.get("client", {})
+
+    all_feedback = [f for day in days for f in (day.get("shiftFeedback") or [])]
+    all_incidents = [i for day in days for i in (day.get("incidents") or [])]
+    all_rps = [r for day in days for r in (day.get("restrictivePractices") or [])]
+    all_complaints = [c for day in days for c in (day.get("clientComplaints") or [])]
+
+    evidence = {
+        "clientProfile": {
+            "name":          client.get("name") or client.get("clientName"),
+            "age":           client.get("age"),
+            "diagnosis":     client.get("diagnosis"),
+            "location":      client.get("location"),
+            "ndisNumber":    client.get("ndisNumber"),
+            "goals":         client.get("ndisPlanGoals") or client.get("personalGoals") or [],
+            "supportWorkers": client.get("formalSupports") or client.get("supportWorkers") or [],
+        },
+        "metrics":      stats,
+        "milestones":   extract_milestones(days)[:MAX_MILESTONES],
+        "quotes":       extract_quotes(all_feedback)[:MAX_QUOTES],
+        "riskRegister": build_risk_register(all_incidents, all_rps, all_complaints),
+        "caseNoteExcerpts": _build_case_note_excerpts(days),
+        "_rules": (
+            "ALL counts, totals, percentages and trends are in `metrics` — copy them "
+            "verbatim, never recalculate. `milestones`, `quotes` and `riskRegister` are "
+            "the ONLY permissible sources for those items. `caseNoteExcerpts` is a bounded "
+            "qualitative SAMPLE for narrative colour only — never count or total it, and "
+            "never infer period-wide figures from it."
+        ),
+    }
+    return json.dumps(evidence, indent=2, ensure_ascii=False)
+
+
+def _build_subs(data: dict, section_outputs: dict[int, str], stats: dict | None = None) -> dict:
     client = data.get("client", {})
     goals = client.get("ndisPlanGoals") or client.get("personalGoals") or []
+    stats = stats or {}
+
     return {
-        "{{CLIENT_JSON}}":    json.dumps(data, indent=2, ensure_ascii=False),
+        "{{CLIENT_JSON}}":    _build_evidence(data, stats),
         "{{START_DATE}}":     str(data.get("dateFrom", "")),
         "{{END_DATE}}":       str(data.get("dateTo", "")),
         "{{NDIS_GOALS_LIST}}": ", ".join(goals) if isinstance(goals, list) else str(goals),
@@ -186,17 +378,25 @@ def _build_subs(data: dict, section_outputs: dict[int, str]) -> dict:
 def _call_bedrock(section: dict, subs: dict) -> tuple[str, dict]:
     system = section.get("system", "")
     user = _fill(section.get("user", ""), subs)
-    resp = bedrock_runtime.converse(
-        modelId=MODEL_ID,
-        system=[{"text": system}] if system else [],
-        messages=[{"role": "user", "content": [{"text": user}]}],
-        inferenceConfig={"maxTokens": MAX_TOKENS},
-    )
+    payload = {
+        "modelId": MODEL_ID,
+        "system": [{"text": system}] if system else [],
+        "messages": [{"role": "user", "content": [{"text": user}]}],
+        "inferenceConfig": {"maxTokens": MAX_TOKENS},
+    }
+    resp = converse_with_retry(bedrock_runtime, payload, attempts=3, base_delay=1.5)
+    if resp.get("stopReason") == "max_tokens":
+        # Output was cut mid-generation — never ship a truncated compliance section silently
+        logger.warning("Bedrock output TRUNCATED at maxTokens=%d — section may be incomplete", MAX_TOKENS)
     text = ""
     for block in (resp.get("output") or {}).get("message", {}).get("content", []):
         if "text" in block:
             text += block["text"]
-    return clean(text.strip()), resp.get("usage") or {}
+    text = clean(text.strip())
+    text, violations = lint(text)
+    if violations:
+        logger.info("Language violations found and corrected: %s", violations[:3])
+    return text, resp.get("usage") or {}
 
 
 async def _run_one(i: int, sec: dict, subs: dict, client_id: str) -> tuple[int, str, dict]:
@@ -207,19 +407,43 @@ async def _run_one(i: int, sec: dict, subs: dict, client_id: str) -> tuple[int, 
     return i, text, usage
 
 
-def _sum_usage(usages: list[dict]) -> dict:
-    return {
-        "inputTokens":  sum(u.get("inputTokens", 0)  for u in usages),
-        "outputTokens": sum(u.get("outputTokens", 0) for u in usages),
-        "totalTokens":  sum(u.get("totalTokens",  0) for u in usages),
-    }
 
 
 async def _generate_report(data: dict, client_id: str, current_period: str) -> tuple[str, dict]:
     """Run sections 1-6 in parallel, then section 7 (needs 3/4/5 context).
 
     Returns (html, usage_totals) where usage_totals has inputTokens, outputTokens, totalTokens.
+
+    **Optimization:** Stats computation and trend loading run in parallel.
     """
+    # PARALLEL: Compute stats and load previous month stats concurrently
+    async def _compute_and_load_stats():
+        try:
+            stats = await asyncio.to_thread(
+                compute_stats, data, data.get("dateFrom", ""), data.get("dateTo", "")
+            )
+        except ValueError as e:
+            logger.error("[%s] stats computation failed: %s", client_id, e)
+            stats = {}
+        return stats
+
+    async def _load_prev_stats():
+        prev = await asyncio.to_thread(get_previous_month_stats, client_id, current_period)
+        return prev.get("stats", {}) if prev else {}
+
+    # Run stats computation and trend loading in parallel
+    stats, prev_stats = await asyncio.gather(
+        _compute_and_load_stats(),
+        _load_prev_stats(),
+        return_exceptions=False
+    )
+
+    # Compute MoM deltas if previous month exists
+    if prev_stats:
+        from stats import mom_deltas
+        stats["momDeltas"] = mom_deltas(stats, prev_stats)
+        logger.info("[%s] MoM deltas computed for %s", client_id, current_period)
+
     sections: list[tuple[int, dict]] = []
     for i in range(1, 50):
         obj = getattr(P, f"section_{i}", None)
@@ -239,7 +463,7 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
     else:
         logger.info("[%s] no previous trend — section 5 will be baseline month", client_id)
 
-    base_subs = _build_subs(data, {})
+    base_subs = _build_subs(data, {}, stats)
 
     def _subs_for(i: int) -> dict:
         if i == 5 and prev_trend_text:
@@ -267,17 +491,41 @@ async def _generate_report(data: dict, client_id: str, current_period: str) -> t
 
     for i, sec in wave2:
         logger.info("[%s] wave 2: section %d (uses 3/4/5 context)", client_id, i)
-        _, text, usage = await _run_one(i, sec, _build_subs(data, section_outputs), client_id)
+        _, text, usage = await _run_one(i, sec, _build_subs(data, section_outputs, stats), client_id)
         section_outputs[i] = text
         all_usages.append(usage)
 
     parts = [section_outputs[i] for i, _ in sections if i in section_outputs]
     merged_md = "\n\n---\n\n".join(parts)
-    (REPORTS_DIR / f"{client_id}_report.md").write_text(merged_md + "\n", encoding="utf-8")
 
-    totals = _sum_usage(all_usages)
+    # PARALLEL: Markdown conversion and stats saving run concurrently (both CPU/IO bound)
+    totals = sum_usage(all_usages)
     logger.info("[%s] report saved  total_tokens=%d", client_id, totals["totalTokens"])
-    return md_lib.markdown(merged_md, extensions=["tables", "fenced_code"]), totals
+
+    # Define concurrent tasks
+    async def _save_markdown_file():
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        (REPORTS_DIR / f"{client_id}_report.md").write_text(merged_md + "\n", encoding="utf-8")
+
+    async def _save_stats():
+        saved_at = datetime.now(timezone.utc).isoformat()
+        await asyncio.to_thread(save_month_stats, client_id, current_period, stats, saved_at)
+        logger.info("[%s] month stats saved for %s", client_id, current_period)
+
+    async def _convert_markdown():
+        return await asyncio.to_thread(
+            md_lib.markdown, merged_md, extensions=["tables", "fenced_code", "sane_lists"]
+        )
+
+    # Run all three in parallel: markdown conversion + stats save + file write
+    html, _, _ = await asyncio.gather(
+        _convert_markdown(),
+        _save_stats(),
+        _save_markdown_file(),
+        return_exceptions=False
+    )
+
+    return html, totals
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -287,7 +535,7 @@ def _token(creds: HTTPAuthorizationCredentials | None) -> str:
 
 
 @app.get(
-    "/health",
+    "/psr-report/health",
     summary="Liveness probe",
     tags=["Health"],
     response_model=HealthResponse,
@@ -299,7 +547,7 @@ async def health() -> HealthResponse:
 
 
 @app.post(
-    "/casenote/monthly-report",
+    "/psr-report/monthly-report",
     response_class=HTMLResponse,
     summary="Generate a 7-section NDIS monthly progress report",
     tags=["Report"],
@@ -361,7 +609,7 @@ async def monthly_report(
 
     try:
         data = await asyncio.to_thread(
-            _fetch_client_data, req.client_id, req.date_from, req.date_to, token
+            _fetch_client_data_all, req.client_id, req.organization_id, req.date_from, req.date_to, token
         )
     except ValueError as exc:
         return HTMLResponse(f"<p>502 Backend error: {exc}</p>", status_code=502)
@@ -384,11 +632,13 @@ async def monthly_report(
 class TrendSaveRequest(BaseModel):
     client_id: str = Field(
         ...,
+        pattern=r"^[A-Za-z0-9_-]{1,64}$",  # used in file paths — no separators/dots allowed
         description="Client UUID from the SENA system.",
         examples=["0ce6359f-9138-4e05-b83b-6c39875f1828"],
     )
     period: str = Field(
         ...,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",  # becomes a filename — strict YYYY-MM only
         description="Reporting month in **YYYY-MM** format.",
         examples=["2026-05"],
     )
@@ -413,7 +663,7 @@ class TrendSaveRequest(BaseModel):
 
 
 @app.post(
-    "/casenote/trend/save",
+    "/psr-report/trend/save",
     summary="Manually save a monthly trend entry",
     tags=["Trend"],
     response_model=TrendSaveResponse,
@@ -450,7 +700,7 @@ async def trend_save(
 
 
 @app.get(
-    "/casenote/trend/{client_id}",
+    "/psr-report/trend/{client_id}",
     summary="Get all stored trend entries for a client",
     tags=["Trend"],
     response_model=TrendListResponse,
@@ -483,6 +733,9 @@ async def trend_list(
     valid, error_msg, _ = validate_jwt(token)
     if not valid:
         raise HTTPException(status_code=401, detail=error_msg)
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", client_id):
+        raise HTTPException(status_code=422, detail="Invalid client_id format.")
 
     entries = await asyncio.to_thread(list_trends, client_id)
     if not entries:

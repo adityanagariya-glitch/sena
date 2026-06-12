@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from google.genai import types
 
-from sena_common.voice.grounding import build_live_tools
+from voice.grounding import build_live_tools
 
 _DECLS = [{"name": "update_field", "description": "test", "parameters": {"type": "object", "properties": {}}}]
 

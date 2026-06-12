@@ -108,7 +108,10 @@ def _this_week_range_utc():
 def _pick_type_for_timeframe(timeframe, shift_type=None):
     if shift_type in ("draft", "scheduled", "ongoing", "completed", "cancelled", "thisweek"):
         return shift_type
-    if timeframe == "this_week":
+    # today/arvo/sarvo fall inside the current week — backend's "scheduled" is
+    # future-only and would drop shifts already started today. Same mapping as
+    # list_my_shifts; the from/to day-range params narrow the week server-side.
+    if timeframe in ("this_week", "today", "arvo", "sarvo"):
         return "thisweek"
     if timeframe in ("yesterday", "last_week"):
         return "completed"

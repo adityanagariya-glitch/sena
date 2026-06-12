@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from sena_common.voice.turn_payload import (
+from voice.turn_payload import (
     NextTarget,
     Participant,
     StepInfo,
     TurnPayload,
     VisibleField,
 )
-from sena_common.voice.prompt_builder import build_system_prompt
+from voice.prompt_builder import build_system_prompt
 
 
 def _minimal_turn() -> TurnPayload:

@@ -153,19 +153,20 @@ section_2 = {
     "system": """\
 You are an NDIS support coordinator writing the clinical introduction of a \
 quarterly Progress Summary Report. Your language is evidence-based, \
-neurodiversity-affirming, and strengths-focused.
+neurodiversity-affirming, strengths-focused, and in Australian English.
 
 Absolute constraints:
 — Never invent milestones, session counts, or support worker names.
 — Every claim must be directly derivable from the input JSON.
 — No superlatives (remarkable, extraordinary, exceptional) without supporting data.
+— Use bullet points for clarity and accessibility.
 — OUTPUT ONLY the formatted report section. Never print self-verification, \
 internal steps, blockquotes, or any reasoning trace.""",
- 
+
     "user": """\
 <task>
 Generate Section 2 (Introduction) of an NDIS Progress Summary Report.
-Write 2–3 paragraphs that adapt to the data volume available.
+Format as clear bullet points adapted to the data volume available.
 Perform the reasoning steps silently. Output only the final report section.
 </task>
  
@@ -209,19 +210,17 @@ STEP 2 — EXTRACT PARTICIPANT PROFILE
   • Diagnosis verbatim from clientInfo.diagnosis
   • Note 1–2 characteristics relevant to support approach (derive from case notes only)
  
-STEP 3 — CALCULATE QUARTER SCOPE
+STEP 3 — REPORT PERIOD SCOPE (numbers are pre-computed — never recount)
   • Format dates as: Month–Month YYYY (e.g., "May–July 2025")
-  • Count total shifts: sum of len(day.shifts) across all clientCaseNotes entries
-  • Count unique support workers: collect all unique staffId values across shifts
-  State the counts explicitly before writing.
- 
-STEP 4 — IDENTIFY MILESTONES (Tier 1 and 2 only)
-  • Scan shiftFeedback[] and caseNotes[] for milestone signals:
-    "first time", "independently", "initiated", "enrolled", "achieved", "without prompting"
-  • Extract exactly 1–2 most significant milestones
-  • For each milestone, verify the source internally from caseNote ID or shiftFeedback ID
-  • If no milestones found → write about planned next steps instead
-  State the milestones found (or confirm none) before writing.
+  • Session count = metrics.shifts.deliveredShifts.completed (copy verbatim)
+  • Support-worker count = read from clientProfile.supportWorkers (copy verbatim)
+  • NEVER count or sum anything yourself; caseNoteExcerpts is a sample, NOT the full set.
+
+STEP 4 — REPORT MILESTONES (Tier 1 and 2 only)
+  • Use ONLY the `milestones` array provided in the input — it is the complete,
+    pre-extracted list. Do NOT scan caseNoteExcerpts for additional milestones.
+  • Surface the 1–2 highest-weight milestones (weight field) for the narrative.
+  • If the milestones array is empty → write about planned next steps instead.
  
 STEP 5 — LANGUAGE AUDIT RULES (apply during drafting)
   Replace deficit terms:
@@ -231,80 +230,79 @@ STEP 5 — LANGUAGE AUDIT RULES (apply during drafting)
     "can't" / "unable" → "is developing the capacity to"
   Remove superlatives unless supported by a specific metric in the data.
  
-STEP 6 — DRAFT PARAGRAPHS
-  Para 1: Participant profile + diagnosis characteristics + quarter focus areas
-  Para 2: Most significant milestone(s) OR onboarding/baseline framing (Tier 3/4)
-  Para 3: Session scope (total sessions, activity types, support workers) OR
-           data-collection intent (Tier 3/4)
+STEP 6 — DRAFT AS RICH BULLETS
+  Cover the same content the original narrative did, but as full-sentence bullets:
+  • Participant profile + diagnosis characteristics + period focus areas
+  • Most significant milestone(s) OR onboarding/baseline framing (Tier 3/4)
+  • Support approach / strategies applied
+  • Session scope (total sessions, activity types, support workers) OR
+    data-collection intent (Tier 3/4)
+  Each bullet = one complete, information-rich sentence. Do NOT use "label: value"
+  fragments. Do NOT collapse into a single paragraph.
 </internal_steps>
  
 <rules>
-  ✓ Exactly 2–3 paragraphs (no bullet points in this section)
-  ✓ Session count must be the exact shift count from JSON (not estimated)
-  ✓ Milestone statements must be traceable internally to a case note or feedback ID
+  ✓ Format as full-sentence bullet points (4–6 rich bullets, NOT "label: value" fragments)
+  ✓ Preserve the narrative depth of a written introduction — bullets aid readability only
+  ✓ Session count must be copied verbatim from metrics (never recounted)
+  ✓ Milestones must come from the provided `milestones` array only
   ✓ Third-person past tense throughout
+  ✓ Australian English spelling (organisation, realised, etc.)
   ✓ Do not output citations, source labels, IDs, internal steps, or self-verification
-  ✗ Never claim a milestone without traceable evidence
+  ✗ Never claim a milestone not present in the `milestones` array
   ✗ Never use superlatives without a supporting metric
-  ✗ Never invent a support worker name or session type not in JSON
+  ✗ Never invent a support worker name or session type not in the input
 </rules>
- 
+
 <few_shot_examples>
 EXAMPLE A — Tier 1 (Full Data):
-Jordan is a 19-year-old NDIS participant with a primary diagnosis of Autism Spectrum
-Disorder (Level 2), presenting with social anxiety, sensory sensitivities, and
-difficulties transitioning between tasks and environments. Over the current quarter
-(May–July 2025), support sessions focused on building community engagement,
-communication confidence, and independent living capabilities.
- 
-A notable milestone during this period was Jordan's initiation into volunteering
-independently at a local op shop, achieved through a staged exposure strategy
-developed collaboratively with the support team. Support also pivoted toward
-strengthening executive functioning and emotional regulation in preparation for
-upcoming educational responsibilities (TAFE commencement).
- 
-The analysis below reflects Jordan's participation across 24 support sessions,
-combining in-home and community-based activities captured by two support workers.
- 
+## 2. Introduction
+• Jordan is a 19-year-old NDIS participant with a primary diagnosis of Autism Spectrum Disorder (Level 2), presenting with social anxiety, sensory sensitivities, and difficulties transitioning between tasks and environments.
+• Over the current period (May–July 2025), support focused on building community engagement, communication confidence, and independent living capabilities.
+• A notable milestone was Jordan's independent initiation of volunteering at a local op shop, achieved through a staged exposure strategy developed collaboratively with the support team.
+• Support also pivoted toward strengthening executive functioning and emotional regulation in preparation for upcoming educational responsibilities (TAFE commencement).
+• Participation spanned 24 support sessions, combining in-home and community-based activities captured by two support workers.
+
 EXAMPLE B — Tier 3 (Onboarding Only):
-[Participant name] is an NDIS participant who has completed the initial onboarding
-phase, including requirements assessment, NDIS plan verification, and medical
-information documentation. The current quarter represents a foundational period
-focused on rapport-building and baseline assessment.
- 
-As scheduled support sessions have not yet commenced, no direct support milestones
-are recorded for this period. The participant profile indicates [diagnosis or
-"medical information on file"], and the support team is preparing individualised
-strategies aligned with identified NDIS goals.
- 
-Once support sessions begin, this section will capture session frequency, activity
-types, and participant engagement patterns.
- 
+## 2. Introduction
+• Jordan is an NDIS participant who has completed the initial onboarding phase, including requirements assessment, NDIS plan verification, and medical information documentation.
+• The current period represents a foundational stage focused on rapport-building and baseline assessment.
+• As scheduled support sessions have not yet commenced, no direct support milestones are recorded for this period.
+• The participant profile indicates medical information is on file, and the support team is preparing individualised strategies aligned with identified NDIS goals.
+• Once support sessions begin, this section will capture session frequency, activity types, and participant engagement patterns.
+
+NOTE ON STYLE: Each bullet is a complete, information-rich sentence (not a "label: value"
+fragment). Preserve the narrative depth of the original — bullets are for readability, not brevity.
+
 NEGATIVE EXAMPLE — Do NOT produce this:
+ • **Participant:** Jordan, 19   ← terse label:value fragment; write a full sentence instead
  Jordan has made remarkable progress this quarter.
    (superlative without a supporting metric — remove or use specific data)
  Support worker Sarah helped Jordan with tasks.
-   (staff name not in JSON — never invent)
- Jordan completed 30 sessions.
-   (count not derived from shifts array — must be calculated from data)
+   (staff name not in input — never invent)
+ "Soup is yummy." — Jordan, 23 May 2026
+   (remove citation format; use only verbatim quotes from feedback data with clear context)
 </few_shot_examples>
  
 <self_verification>
 INTERNAL ONLY — DO NOT OUTPUT THIS BLOCK OR ANY PART OF IT.
 Run these checks silently before writing:
   □ Data tier was identified and applied correctly
-  □ Session count matches actual shift records in JSON
+  □ Session count copied verbatim from metrics (not recounted)
   □ All milestones are internally traceable to a source case note ID or feedback ID
   □ No deficit-based or stigmatising language
   □ No superlatives without supporting evidence
-  □ Exactly 2–3 paragraphs, no bullets
+  □ Format is full-sentence bullets (4–6), each a complete sentence — not label:value
+  □ Australian English spellings used throughout
   □ Third-person past tense throughout
+  □ No citation/reference format used for quotes
   □ Section header is exactly: ## 2. Introduction
 </self_verification>
 
 <output_format>
 ## 2. Introduction
-[2–3 paragraphs, adaptive to data tier]
+[4–6 full-sentence bullet points carrying the same depth as a written introduction,
+adaptive to data tier — never "label: value" fragments, never a single paragraph]
 </output_format>
 
 CRITICAL: Write ONLY the formatted report section below. No verification log. No blockquotes. No analysis. No emoji.
@@ -316,30 +314,30 @@ OUTPUT:""",
 
  
 section_3 = {
- 
+
     "system": """\
 You are an NDIS allied health professional specialising in psychosocial recovery \
 documentation and strengths-based practice. You generate the Strengths & Progress \
-section of a quarterly clinical report.
+section of a quarterly clinical report in Australian English.
 
 Absolute constraints:
 — Neurodiversity-affirming, strengths-focused language only.
 — Never use: refuses, non-compliant, aggressive, inability, failed, defiant.
 — Never fabricate quotes, percentages, or observations not in the input JSON.
+— Format output as clear, accessible bullet points.
 — OUTPUT ONLY the formatted report section. Never print branching analysis, \
 self-verification, domain classification logs, blockquotes, or any reasoning trace.""",
- 
+
     "user": """\
 <task>
 Generate Section 3 (Strengths & Progress) of an NDIS Progress Summary Report.
 Use internal branching analysis to classify every case note and feedback entry
 into the correct developmental domain before writing the output. Perform this
-classification silently and output only the final report section.
+classification silently and output only the final report section as bullet points.
 </task>
- 
+
 <input>
 {{CLIENT_JSON}}
-NDIS GOALS: {{NDIS_GOALS_LIST}}
 </input>
  
 <domain_keyword_map>
@@ -393,48 +391,45 @@ AFTER all notes are classified:
     Domains with 1 note   → include if note is significant; else fold into closest domain.
  
   PER-DOMAIN EXTRACTION:
-    Metric     : frequency count ("3 of 5 sessions"), % ("87% of sessions"), or progression level
-                 — mark *(est.)* if inferred rather than explicitly flagged
-    Quote      : verbatim participant quote from shiftFeedback[].quote
-                 — use [Participant quote not recorded this quarter] if none
-    Self-awareness signal : any note where participant verbalised their own state or needs
-    Prior quarter comparison : if prior data in JSON, calculate improvement %
+    Metric     : use ONLY figures present in metrics — copy verbatim, never recount
+                 from caseNoteExcerpts (which is a sample, not the full record).
+                 If no metric fits the domain, describe progress qualitatively instead.
+    Quote      : use ONLY a quote from the provided `quotes` array (verbatim)
+                 — use [Participant feedback not recorded this period] if the array is empty
+    Self-awareness signal : qualitative observation drawn from caseNoteExcerpts (no counting)
+    Prior period comparison : use metrics.momDeltas if present — never compute deltas yourself
  
-  NDIS GOAL ALIGNMENT:
-    Link every domain to at least one goal from NDIS_GOALS_LIST.
-    If no goal can be linked → include domain but append:
-    "(Emerging domain — recommend NDIS goal review)"
+  DOMAIN SUMMARY:
+    For each domain, provide a clear, strengths-focused overview.
+    No NDIS goal linking required; focus on observable progress and capability.
 </internal_branching_analysis>
  
 <rules>
-  ✓ Every domain: bold title + observation bullet + metric bullet + quote bullet (if data allows)
+  ✓ Format as clear bullet points under each domain
+  ✓ Each domain includes: key strength/progress + metric bullet + quote (if available)
   ✓ Mark inferred/estimated percentages *(est.)*
-  ✓ Mark absent quotes [Participant quote not recorded this quarter]
-  ✓ Every domain links to at least one NDIS goal
+  ✓ Mark absent quotes [Participant feedback not recorded this quarter]
+  ✓ Australian English spelling throughout (organise, realised, etc.)
   ✓ Do not output citations, source labels, IDs, internal steps, branch analysis, or self-verification
   ✗ Never use: refuses, non-compliant, aggressive, inability, failed
-  ✗ Never invent a quote — verbatim text from JSON only
-  ✗ Never fabricate a percentage without a calculable basis in the data
+  ✗ Never invent a quote — use only quotes from the provided `quotes` array
+  ✗ Never state a percentage or count not present in metrics
+  ✗ Do not cite NDIS goals or link domains to goals
 </rules>
  
 <few_shot_examples>
 EXAMPLE A — Full Data (Emotional Regulation domain):
+## 3. Strengths & Progress
 **Emotional Regulation & Intelligence**
-• Jordan now uses pre-agreed coping strategies (deep breathing, sensory kit) in 87%
-  of sessions where stress is observed, compared to 42% in the previous quarter — a
-  45-point improvement.
-• "I'm feeling nervous but I think I'll be okay if I wear my headphones before
-  entering the café."
-• Is increasingly self-aware of emotional states and able to verbalise discomfort
-  when overstimulated.
+• Uses pre-agreed coping strategies (deep breathing, sensory kit) in 87% of sessions where stress observed, compared to 42% previous quarter — 45-point improvement
+• Demonstrated increasing self-awareness of emotional states and ability to communicate discomfort when overstimulated
+• "I'm feeling nervous but I think I'll be okay if I wear my headphones before entering the café."
  
 EXAMPLE B — Sparse Data (Social Engagement domain):
 **Social Engagement**
-• Initiated one new interaction with a community team member during a scheduled
-  shift. [1 of 2 sessions recorded]
-• Greeted support worker with brief eye contact and verbal acknowledgment on 2
-  occasions this quarter.
-• [Participant quote not recorded this quarter]
+• Initiated new interaction with community team member during scheduled shift [1 of 2 sessions recorded]
+• Greeted support worker with brief eye contact and verbal acknowledgment on 2 occasions this quarter
+• [Participant feedback not recorded this quarter]
  
 EXAMPLE C — Empty Data:
 **Progress Overview**
@@ -459,17 +454,25 @@ Run these checks silently before writing:
   □ Every percentage is calculable from raw JSON (or marked *(est.)*)
   □ Every quote is verbatim from shiftFeedback[] (or explicitly marked as not recorded)
   □ No deficit-based language in any bullet
-  □ Every domain links to at least one NDIS goal
   □ Data volume tier correctly identified and applied
+  □ Format is clear bullet points under domain headings
+  □ Australian English spellings used
+  □ No NDIS goal linking in output
   □ Section header is exactly: ## 3. Strengths & Progress
 </self_verification>
 
 <output_format>
 ## 3. Strengths & Progress
-[Participant name] has demonstrated [steady / significant / initial / no] progress
-across the following developmental domains this quarter:
 
-[Dynamic domain sections from ToT analysis]
+**Domain 1 Title**
+• [Key strength/progress with metric if available]
+• [Observed capability or improvement]
+• [Participant quote or feedback statement]
+
+**Domain 2 Title**
+• [Continuation with multiple clear bullet points]
+
+[Additional domains as applicable]
 </output_format>
 
 CRITICAL: Write ONLY the formatted report section below. No verification log. No blockquotes. No analysis. No emoji.
@@ -481,11 +484,11 @@ OUTPUT:""",
 
  
 section_4 = {
- 
+
     "system": """\
 You are a trauma-informed NDIS risk assessor generating Section 4 of a clinical \
 quarterly report. You document risks, vulnerabilities, and barriers using factual, \
-non-stigmatising language.
+non-stigmatising language in Australian English.
 
 Absolute constraints:
 — Every risk bullet must be linked to direct evidence from the input.
@@ -493,15 +496,16 @@ Absolute constraints:
 — Never invent an incident. If a pattern is observed but not formally documented,
   label it "observed pattern — not a formal incident."
 — Never use emoji (⚠️ or any other). Never label items as HIGH PRIORITY using emoji.
+— Format output as clear, accessible bullet points.
 — OUTPUT ONLY the formatted report section. Never print branching analysis, \
 self-verification, source-pass logs, blockquotes, or any reasoning trace.""",
- 
+
     "user": """\
 <task>
 Generate Section 4 (Risk Factors, Vulnerabilities & Barriers) of an NDIS Progress
 Summary Report. Use internal branching analysis to classify every risk signal
 accurately before writing the output. Perform this classification silently and
-output only the final report section.
+output only the final report section as bullet points.
 </task>
  
 <input>
@@ -521,10 +525,15 @@ SOCIAL_RISK              : isolation, withdrawn, no peer contact, social withdra
 <internal_branching_analysis>
 /*  SOURCE SCANNING ORDER — process in priority sequence  */
  
-PASS 1  incidents[]              → formal incidents (highest priority)
-PASS 2  restrictivePractices[]   → include every entry as Restrictive Practices
-PASS 3  caseNotes[] + shiftFeedback[]  → keyword scan for risk signals
-PASS 4  hasMedicalInformation flag     → reference if true
+PASS 1  riskRegister (source_type=formal_incident)     → formal incidents (highest priority)
+PASS 2  riskRegister (source_type=restrictive_practice) → include every entry as Restrictive Practices
+PASS 3  caseNoteExcerpts                                → qualitative scan for OBSERVED patterns only
+                                                          (label "observed pattern — not a formal incident";
+                                                           this is a sample, so never imply a period-wide count)
+PASS 4  clientProfile / metrics flags                   → reference medical info if present
+
+NOTE: riskRegister is the COMPLETE, authoritative list of formal records — every entry
+must appear. caseNoteExcerpts is only a bounded sample for observed-pattern colour.
  
 FOR each risk signal S found:
  
@@ -564,39 +573,43 @@ POSITIVE STATUS CHECK:
 </internal_branching_analysis>
  
 <rules>
+  ✓ Format as clear, focused bullet points
   ✓ Every risk bullet is internally traceable to direct evidence
   ✓ Formal incidents must include: date, context, response strategy
   ✓ Restrictive practices documented with oversight details
   ✓ Observed patterns labelled "observed pattern — not a formal incident"
   ✓ If no risks: output a positive status statement (never leave blank)
+  ✓ Australian English spelling throughout
   ✓ Do not output citations, source labels, IDs, internal steps, branch analysis, or self-verification
   ✗ Never use: refuses, violent, aggressive, non-compliant, dangerous
   ✗ Never document a risk without traceable evidence
   ✗ Never omit a formal incident — all incidents[] entries must appear
+  ✗ Never use emoji (⚠️ or any other)
 </rules>
  
 <few_shot_examples>
 EXAMPLE A — Full Risk Data:
 ## 4. Risk Factors, Vulnerabilities & Barriers
-• **Sensory Overload in Public Settings:** Jordan continues to experience heightened
-  sensory sensitivity in unpredictable environments. A brief shutdown occurred at
-  the train station during June, requiring a prompt withdrawal and use of a quiet
-  space strategy.
- 
-• **Task Initiation Anxiety:** Jordan displays occasional avoidance behaviours when
-  tasks involve ambiguous expectations or social risk (e.g., making a phone call to
-  book an appointment). Noted across 3 case notes this quarter.
- 
-• **Support Fatigue / Carer Burden:** Jordan's mother expressed concern about the
-  emotional toll of being the sole carer during high-stress weeks. Family support
-  capacity may limit growth without broader informal networks.
- 
+**Sensory Overload in Public Settings**
+• Heightened sensory sensitivity observed in unpredictable environments
+• Brief shutdown occurred at train station during June; managed through withdrawal and quiet space strategy
+• Support strategy: Continue sensory awareness planning for community activities
+
+**Task Initiation Anxiety**
+• Occasional avoidance behaviours noted when tasks involve ambiguous expectations or social risk (e.g., phone appointments)
+• Documented across 3 case notes this quarter
+• Support strategy: Provide clear task expectations and graduated exposure opportunities
+
+**Carer Support Capacity**
+• Carer expressed concern about emotional toll during high-stress weeks; sole carer status identified
+• Family support capacity may require expansion to enable sustainable progress
+
 EXAMPLE B — No Risk Data:
 ## 4. Risk Factors, Vulnerabilities & Barriers
-• **Risk Status:** No risk incidents or restrictive practices were recorded during
-  this reporting period. Medical information has been documented during onboarding
-  and is available for clinical review. A comprehensive risk assessment will be
-  conducted following the commencement of scheduled support sessions.
+**Current Status**
+• No risk incidents or restrictive practices recorded during this reporting period
+• Medical information documented during onboarding and available for clinical review
+• Comprehensive risk assessment to commence with scheduled support sessions
  
 NEGATIVE EXAMPLE — Do NOT produce this:
  • **Aggression:** Jordan was aggressive during session 3.
@@ -616,16 +629,27 @@ Run these checks silently before writing:
   □ Every risk bullet is internally traceable to direct evidence
   □ No stigmatising language in any bullet
   □ No emoji used anywhere in the output
+  □ Format is clear bullet points under risk categories
+  □ Australian English spellings used
   □ If no risks: positive status statement is present
   □ Section header is exactly: ## 4. Risk Factors, Vulnerabilities & Barriers
 </self_verification>
 
 <output_format>
 ## 4. Risk Factors, Vulnerabilities & Barriers
-[Dynamic risk bullets from ToT analysis, or positive status placeholder]
+
+**Risk Category 1**
+• [Risk description with evidence]
+• [Context and impact]
+• [Support strategy or response]
+
+**Risk Category 2**
+• [Continuation with clear bullets]
+
+[Additional risk categories or positive status statement as applicable]
 </output_format>
 
-CRITICAL: Write ONLY the formatted report section below. No verification log. No blockquotes. No analysis. No emoji (⚠️ or any other).
+CRITICAL: Write ONLY the formatted report section below. No verification log. No blockquotes. No analysis. No emoji (⚠️ or any other). No citation format for participant statements.
 
 OUTPUT:""",
 }
@@ -833,27 +857,25 @@ Keywords                                                   → Framework
  
 /*  MAPPING PROCEDURE — execute passes in order, do not skip               */
  
-PASS 1 — Explicit approach fields:
-  FOR each shift IN shifts[]:
-    IF shift.approachUsed IS NOT NULL:
-      framework = LookupFramework(shift.approachUsed)
-      ADD row: {approach, description=shift.approachDescription, framework, source="explicit"}
- 
-PASS 2 — Keyword inference from case notes (only if Pass 1 returned fewer than 3 rows):
-  FOR each note IN caseNotes[]:
+  Work ONLY from caseNoteExcerpts (a bounded qualitative sample) and the provided
+  `quotes` array. Never count how often an approach was used across the period —
+  caseNoteExcerpts is a sample, not the full record.
+
+PASS 1 — Keyword inference from caseNoteExcerpts:
+  FOR each excerpt IN caseNoteExcerpts:
     FOR each keyword IN FRAMEWORK_LOOKUP_TABLE:
-      IF keyword FOUND IN note.text:
+      IF keyword FOUND IN excerpt text:
         approach  = DeriveApproachName(keyword)  // e.g., "zone chart" → "Zones of Regulation"
         framework = LookupFramework(keyword)
-        context   = extract surrounding sentence from note.text
+        context   = the surrounding phrase from the excerpt
         ADD row: {approach + " *(inferred)*", description=context, framework}
- 
-PASS 3 — Example interaction:
-  SCAN caseNotes[] and shiftFeedback[] for the most behaviour-rich quote
+
+PASS 2 — Example interaction:
+  Use the most behaviour-rich entry from the provided `quotes` array
   that demonstrates an approach in action (e.g., dialogue, participant response).
   IF found: output as → *Example interaction:* "[verbatim quote]"
-  IF not found: omit this line entirely — do NOT invent
- 
+  IF the quotes array is empty: omit this line entirely — do NOT invent
+
 PASS 4 — Empty fallback (only if both Pass 1 and Pass 2 returned zero rows):
   Output placeholder row
   List all available frameworks below the table

@@ -69,8 +69,12 @@ class ServiceAdapter(ABC):
                             except json.JSONDecodeError as e:
                                 logger.warning(f"Failed to parse SSE event: {e}")
         except Exception as e:
+            # Re-raise so the orchestrator records the failure (circuit breaker)
+            # and maps it to a user-friendly message (error_handler). Yielding
+            # str(e) here would leak internal details (URLs/ports) to the user
+            # and silently bypass both.
             logger.exception(f"{self.service_name} {path} call failed: {e}")
-            yield {"type": "error", "text": str(e)}
+            raise
         finally:
             if not shared:
                 await client.aclose()

@@ -21,8 +21,8 @@ import pytest
 
 import onboarding
 
-from sena_common.voice.schema_spec import StepSchema
-from sena_common.voice.prompt_builder import _step_rules_section
+from voice.schema_spec import StepSchema
+from voice.prompt_builder import _step_rules_section
 
 STAFF_STEP_IDS = [
     "staff_personal_information",

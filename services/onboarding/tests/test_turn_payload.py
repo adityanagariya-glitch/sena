@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from sena_common.voice.turn_payload import TurnPayload
+from voice.turn_payload import TurnPayload
 
 
 def _valid_turn() -> dict:

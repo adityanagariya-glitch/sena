@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from onboarding.api.deps import get_repo
 from onboarding.main import create_app
-from sena_common.voice.state_repo import FormStateRepo
+from voice.state_repo import FormStateRepo
 
 
 @pytest_asyncio.fixture

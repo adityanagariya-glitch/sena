@@ -15,7 +15,7 @@ class StopReasonResponse(TypedDict, total=False):
 
 class APIRouteResponse(TypedDict, total=False):
     """Intent-based API routing decision."""
-    intent: str  # "KB" | "API" | "GREETING"
+    intent: str  # "API" | "META" | "CHAT"
     endpoint: str | None
     method: str  # "GET" | "POST" | "PUT"
     payload: dict | None
@@ -30,7 +30,7 @@ class APIErrorResponse(TypedDict, total=False):
 
 class ResponseTypeResponse(TypedDict, total=False):
     """Post-process response type detection."""
-    response_type: str  # "KB" | "API" | "GREETING"
+    response_type: str  # "API" | "META" | "CHAT"
     content: str
     metadata: dict | None
 

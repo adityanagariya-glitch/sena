@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from sena_common.voice.tools import (
+from voice.tools import (
     _KNOWN_TOOLS,
     FUNCTION_DECLS,
     ToolDispatcher,

@@ -24,7 +24,7 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 
 import config
-from gateway_extensions import ServiceOrchestrator
+from gateway_extensions import ServiceOrchestrator, health_check_services
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -233,15 +233,26 @@ async def root():
 
 @app.get("/ai-chatbot/healthz")
 async def healthz():
+    # Probe staff + policy at the SAME origins the orchestrator routes to
+    # (STAFF_ORIGIN / POLICY_ORIGIN) — correct whether they're in-process children
+    # (localhost) or standalone containers (docker network). The endpoint itself
+    # always returns 200 so the container's own liveness check passes; the body
+    # reports each backend's true reachability for ops/debugging.
+
+    # Primary: orchestrator-aware health check (uses actual routing origins)
+    children = await health_check_services(app.state.orchestrator)
+
+    # Supplement: probe any config-declared children not already covered
     client: httpx.AsyncClient = app.state.client
-    results = {}
     for spec in config.child_specs():
-        try:
-            r = await client.get(spec["health_url"], timeout=2)
-            results[spec["name"]] = r.status_code < 400
-        except Exception:
-            results[spec["name"]] = False
-    return JSONResponse({"gateway": True, "children": results})
+        if spec["name"] not in children:
+            try:
+                r = await client.get(spec["health_url"], timeout=2)
+                children[spec["name"]] = r.status_code < 400
+            except Exception:
+                children[spec["name"]] = False
+
+    return JSONResponse({"gateway": True, "children": children})
 
 
 @app.post(

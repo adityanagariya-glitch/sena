@@ -12,9 +12,9 @@ class ClassificationService:
     """
     Orchestrates the end-to-end classification flow:
     1. Trims history to configured limit
-    2. Calls Bedrock via BedrockService
-    3. Determines uncertainty
-    4. Builds and returns the final response
+    2. Calls Bedrock via BedrockService (returns BedrockOutput)
+    3. Determines uncertainty from classification confidence scores
+    4. Builds and returns the full ClassificationResponse
     """
 
     def __init__(self):
@@ -22,7 +22,7 @@ class ClassificationService:
 
     def classify(self, request: ClassificationRequest) -> ClassificationResponse:
         # ── 1. Trim history to last N messages ────────────────────────────────
-        trimmed_history = request.history[-settings.CONVERSATION_HISTORY_LIMIT :]
+        trimmed_history = request.history[-settings.CONVERSATION_HISTORY_LIMIT:]
         total_messages = len(trimmed_history) + 1  # +1 for current message
 
         logger.info(
@@ -32,21 +32,19 @@ class ClassificationService:
         )
 
         # ── 2. Call Bedrock ───────────────────────────────────────────────────
-        classifications = self.bedrock.classify(
+        output = self.bedrock.classify(
             current_message=request.current_message,
             history=trimmed_history,
         )
 
-        # ── 3. Determine uncertainty ──────────────────────────────────────────
-        # Mark uncertain if ALL labels have confidence below threshold
+        # ── 3. Determine uncertainty (classification confidence only) ─────────
         is_uncertain = all(
             c.confidence < settings.CONFIDENCE_THRESHOLD
-            for c in classifications
+            for c in output.classifications
         )
-
         if is_uncertain:
             logger.warning(
-                f"Low confidence on all labels for conversation [{request.conversation_id}]"
+                f"Low confidence on all classification labels for [{request.conversation_id}]"
             )
 
         # ── 4. Build response ─────────────────────────────────────────────────
@@ -54,7 +52,12 @@ class ClassificationService:
             conversation_id=request.conversation_id,
             provider_id=request.provider_id,
             is_uncertain=is_uncertain,
-            classifications=classifications,
+            classifications=output.classifications,
+            sentiment=output.sentiment,
+            risk=output.risk,
+            breakdown=output.breakdown,
+            outcome=output.outcome,
+            recommended_action=output.recommended_action,
             messages_analysed=total_messages,
             analysed_at=datetime.utcnow(),
         )

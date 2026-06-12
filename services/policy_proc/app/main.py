@@ -58,7 +58,16 @@ bedrock_agent = boto3.client("bedrock-agent", region_name=REGION)
 
 JWT_SECRET = os.environ.get("JWT_SECRET")
 if not JWT_SECRET:
-    raise RuntimeError("JWT_SECRET environment variable is not set")
+    # JWT_SECRET only signs the DEV login tokens (POST /auth/login). Production
+    # auth uses ISENA tokens, decoded without this secret (see decode_token), so
+    # a missing secret must not crash the service — fall back to an ephemeral
+    # per-process secret. Dev tokens just won't survive a restart.
+    import secrets as _secrets
+    JWT_SECRET = _secrets.token_hex(32)
+    logging.getLogger(__name__).warning(
+        "JWT_SECRET not set — using an ephemeral per-process secret. "
+        "Dev /auth/login tokens won't survive restarts; ISENA tokens unaffected."
+    )
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL     = 3600  # seconds
 

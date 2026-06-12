@@ -18,7 +18,7 @@ TOOL = ToolSpec(
     name="cannot_help",
     description=(
         "Use for ANY question whose answer doesn't live in a SENA tool (shifts, clients, "
-        "staff, organisations, policies/KB) AND isn't a personal-memory fact about this "
+        "staff, organisations) AND isn't a personal-memory fact about this "
         "user (name, preferences, timezone). This includes — but isn't limited to — "
         "general maths, arithmetic, code/database/MongoDB help, debugging, recipes, "
         "weather, world news, jokes, trivia, definitions of generic terms, opinions, or "

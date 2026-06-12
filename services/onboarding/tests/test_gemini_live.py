@@ -17,10 +17,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-from sena_common.voice.form_state import FormState
-from sena_common.voice.state_repo import FormStateRepo
-from sena_common.voice.config import VoiceEngineConfig
-from sena_common.voice.gemini_live import GeminiLiveSession, _is_client_disconnect
+from voice.form_state import FormState
+from voice.state_repo import FormStateRepo
+from voice.config import VoiceEngineConfig
+from voice.gemini_live import GeminiLiveSession, _is_client_disconnect
 
 # ── _is_client_disconnect (graceful WS teardown vs real fault) ────────────────
 
