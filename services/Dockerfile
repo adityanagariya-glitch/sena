@@ -242,3 +242,22 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8007/health').status==200 else 1)"
 
 CMD ["uvicorn", "scripts.api:app", "--host", "0.0.0.0", "--port", "8007"]
+
+
+# ── Case-Review Streamlit UI (port 8501) ──────────────────────────────────
+# Thin UI over the case-review API. Only needs streamlit + httpx (both in the
+# base requirements). Talks to the case-review container directly over the
+# docker network; served publicly via nginx under /case-review-ui/.
+FROM base AS case-review-ui
+
+COPY case_review/streamlit_app.py /app/streamlit_app.py
+
+WORKDIR /app
+
+# In-cluster API target (the app appends /v1/restrictive-practices itself).
+ENV SENA_TEST_BASE_URL=http://sena-case-review-internal:8002
+
+EXPOSE 8501
+
+# --server.baseUrlPath case-review-ui lets nginx serve it under that prefix.
+CMD ["streamlit", "run", "streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--server.headless", "true", "--server.baseUrlPath", "case-review-ui"]
