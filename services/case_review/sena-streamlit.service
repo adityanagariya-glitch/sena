@@ -28,10 +28,12 @@ User=root
 WorkingDirectory=/root/test/SENA/services/case_review
 Environment=SENA_TEST_BASE_URL=http://localhost:8080/case-review
 # --server.headless true stops Streamlit asking for an email / opening a browser.
+# --server.baseUrlPath case-review-ui lets it sit behind nginx at /case-review-ui/.
 ExecStart=/root/test/SENA/ai-sena/bin/streamlit run streamlit_app.py \
     --server.address 0.0.0.0 \
     --server.port 8501 \
-    --server.headless true
+    --server.headless true \
+    --server.baseUrlPath case-review-ui
 Restart=always
 RestartSec=5
 
