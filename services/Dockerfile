@@ -67,7 +67,10 @@ FROM base AS onboarding
 COPY onboarding/ /app/onboarding/
 
 WORKDIR /app
-ENV PYTHONPATH=/app
+# Two roots on the path: /app resolves the `onboarding.*` imports (9 files);
+# /app/onboarding resolves the BARE `voice.*` imports (22 files) — the voice
+# package sits at /app/onboarding/voice/ after the flat copy.
+ENV PYTHONPATH=/app:/app/onboarding
 
 EXPOSE 8009
 
