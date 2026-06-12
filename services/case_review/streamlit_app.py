@@ -168,13 +168,26 @@ if run:
     # ── Result summary (same fields test.py prints) ─────────────────────────
     st.subheader("⚖️ Verdict")
     v = verdict.get("verdict", verdict) if isinstance(verdict, dict) else {}
-    c1, c2, c3, c4 = st.columns(4)
+
+    # Shrink the (default huge) metric value font so values fit and wrap.
+    st.markdown(
+        "<style>[data-testid='stMetricValue']{font-size:1.4rem;line-height:1.35;white-space:normal;}</style>",
+        unsafe_allow_html=True,
+    )
+
+    # Short scalar fields → compact metrics.
+    c1, c2, c3 = st.columns(3)
     c1.metric("Outcome", str(v.get("outcome", "—")))
     c2.metric("Risk level", str(v.get("risk_level", "—")))
     c3.metric("Alert required", str(v.get("alert_required", "—")))
-    c4.metric("Action", str(v.get("action_required", "—")))
 
-    with st.expander("Full verdict JSON", expanded=True):
+    # Action is usually a full sentence → full-width box so it wraps over multiple lines.
+    action = v.get("action_required")
+    if action is not None:
+        st.markdown("**Action required**")
+        st.info(str(action))
+
+    with st.expander("Full verdict JSON", expanded=False):
         st.json(verdict)
 
     st.download_button(
