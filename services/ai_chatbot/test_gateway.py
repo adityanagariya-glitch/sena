@@ -202,7 +202,10 @@ def query_gateway(token, category, question):
         answer_parts = []
         with httpx.stream(
             "POST",
-            f"{GATEWAY_URL}/ai-chatbot/route",
+            # GATEWAY_URL already ends in /ai-chatbot (reverse-proxy) — append only
+            # /route, matching the /healthz check above. Appending /ai-chatbot/route
+            # here produced a doubled prefix (.../ai-chatbot/ai-chatbot/route → 404).
+            f"{GATEWAY_URL}/route",
             json={
                 "question": question,
                 "context": {"category": category}
