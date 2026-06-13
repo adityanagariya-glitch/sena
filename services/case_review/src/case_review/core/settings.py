@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -67,9 +68,52 @@ class CaseReviewSettings(BaseSettings):
     voice_silence_timeout_sec: int = 8
     voice_grounding_enabled: bool = False
 
+    # ── AWS Bedrock (transcript drafter — run_draft offloads to thread pool) ────
+    # SENA_AI_AWS_REGION — Sydney for AU data residency
+    aws_region: str = "ap-southeast-2"
+    # Leave blank to use IAM instance role on EC2 (recommended for prod)
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    # SENA_AI_BEDROCK_MODEL_ID
+    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
     # ── Auth ──────────────────────────────────────────────────────────────────
     # SENA_AI_AUTH_MODE: "dev_header" | "jwt"
     auth_mode: str = "dev_header"
+
+    # ── Pipeline LLM models (LangGraph 5-step triage → RAG → eval → BSP → verdict) ──
+    # SENA_AI_TRIAGE_MODEL — Haiku: cheap YES/NO gate (Bedrock converse, maxTokens=512)
+    triage_model: str = "anthropic.claude-haiku-4-5-20251001-v1:0"
+    # SENA_AI_EVALUATOR_MODEL — Sonnet: structured verdict + drafter (maxTokens=8192)
+    evaluator_model: str = "anthropic.claude-sonnet-4-6-v1:0"
+
+    # ── RAG / Embeddings (pgvector HNSW, Cohere Embed English v3, 1024-dim) ──
+    # SENA_AI_EMBEDDING_MODEL — must match at ingest AND query time; re-ingest if changed
+    embedding_model: str = "cohere.embed-english-v3"
+    chunk_size: int = 1200
+    chunk_overlap: int = 120
+    rag_top_k: int = 5
+
+    # ── S3 / Amazon Transcribe (audio drafting — POST /draft/audio) ───────────
+    # Read WITHOUT SENA_AI_ prefix — standard boto3/AWS env vars, override per role
+    s3_region: str = Field(default="", validation_alias="S3_REGION")
+    s3_access_key_id: str = Field(default="", validation_alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: str = Field(default="", validation_alias="S3_SECRET_ACCESS_KEY")
+    s3_bucket: str = Field(default="", validation_alias="S3_BUCKET")
+    s3_public_base_url: str = Field(default="", validation_alias="S3_PUBLIC_BASE_URL")
+    # SENA_AI_TRANSCRIPTION_BUCKET — required for POST /draft/audio; returns 503 if blank
+    transcription_bucket: str = ""
+    transcription_language: str = "en-AU"
+    transcription_vocab_name: str = ""
+
+    # ── Restrictive practices alert webhook ───────────────────────────────────
+    # SENA_AI_RP_WEBHOOK_URL / SECRET — fires only on UNAUTHORISED verdict (alert_required=True)
+    rp_webhook_url: str = ""
+    rp_webhook_secret: str = ""
+
+    # ── Voice resumption ──────────────────────────────────────────────────────
+    # SENA_AI_RESUMPTION_HANDLE_TTL_SEC
+    resumption_handle_ttl_sec: int = 600
 
 
 settings = CaseReviewSettings()

@@ -17,6 +17,10 @@ dependencies = [
   "google-genai>=1.0.0",
   "redis[hiredis]==5.2.1",
   "sena-common",
+  "boto3==1.35.80",
+  "langgraph>=0.4.0",
+  "langchain-text-splitters>=0.3.0",
+  "pymupdf>=1.24.0",
 ]
 
 [project.optional-dependencies]
