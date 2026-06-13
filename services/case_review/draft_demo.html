@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SENA — Case Note Drafter</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: #7c3aed;
+      letter-spacing: -0.5px;
+    }
+
+    header .badge {
+      font-size: 11px;
+      background: #7c3aed22;
+      color: #a78bfa;
+      border: 1px solid #7c3aed44;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-weight: 600;
+    }
+
+    header .endpoint {
+      margin-left: auto;
+      font-size: 12px;
+      color: #64748b;
+      font-family: monospace;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── LEFT PANEL ── */
+    .left {
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 53px);
+      overflow-y: auto;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      padding: 16px 20px 8px;
+    }
+
+    .field-group {
+      padding: 0 20px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    label {
+      font-size: 12px;
+      color: #94a3b8;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: #7c3aed;
+    }
+
+    select option { background: #1e293b; }
+
+    textarea {
+      resize: vertical;
+      min-height: 220px;
+      line-height: 1.5;
+    }
+
+    .uuid-row { display: flex; gap: 6px; }
+    .uuid-row input { flex: 1; font-family: monospace; font-size: 11px; }
+    .uuid-row button {
+      background: #334155;
+      border: 1px solid #475569;
+      color: #94a3b8;
+      border-radius: 6px;
+      padding: 0 10px;
+      cursor: pointer;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .uuid-row button:hover { background: #475569; color: #e2e8f0; }
+
+    .divider { height: 1px; background: #334155; margin: 4px 0; }
+
+    .submit-area { padding: 16px 20px; }
+
+    .btn-submit {
+      width: 100%;
+      background: #7c3aed;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-submit:hover { background: #6d28d9; }
+    .btn-submit:active { transform: scale(0.99); }
+    .btn-submit:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid #ffffff44;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    .btn-submit.loading .spinner { display: block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── RIGHT PANEL ── */
+    .right {
+      height: calc(100vh - 53px);
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #334155;
+      gap: 12px;
+    }
+
+    .placeholder svg { width: 48px; height: 48px; color: #334155; }
+    .placeholder p { font-size: 14px; }
+
+    /* Result layout */
+    .result-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .quality-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pill {
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .pill-premium  { background: #14532d22; color: #4ade80; border: 1px solid #14532d; }
+    .pill-average  { background: #78350f22; color: #fbbf24; border: 1px solid #78350f; }
+    .pill-poor     { background: #7f1d1d22; color: #f87171; border: 1px solid #7f1d1d; }
+
+    .score-bar-wrap { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #64748b; }
+    .score-bar {
+      width: 80px; height: 6px;
+      background: #334155;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .score-bar-fill { height: 100%; background: #7c3aed; border-radius: 3px; transition: width 0.4s; }
+
+    .cards { display: grid; gap: 12px; }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #162032;
+      border-bottom: 1px solid #334155;
+    }
+
+    .card-header .num {
+      width: 20px; height: 20px;
+      background: #7c3aed22;
+      border: 1px solid #7c3aed44;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #a78bfa;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .card-header h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+
+    .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+    .field { display: flex; flex-direction: column; gap: 3px; }
+    .field-label { font-size: 11px; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+    .field-value { font-size: 13px; color: #e2e8f0; line-height: 1.5; }
+    .field-value.null { color: #475569; font-style: italic; }
+    .field-value.bool-true  { color: #4ade80; }
+    .field-value.bool-false { color: #64748b; }
+
+    /* Draft note / gaps */
+    .gap-card {
+      background: #1c1505;
+      border: 1px solid #78350f;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .gap-card .gap-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #fbbf24;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .gap-card .gap-body {
+      font-size: 13px;
+      color: #fde68a;
+      line-height: 1.6;
+    }
+
+    .quality-gaps-card {
+      background: #0c1b2e;
+      border: 1px solid #1e3a5f;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .quality-gaps-card .gap-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .quality-gaps-card ul {
+      padding-left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .quality-gaps-card li {
+      font-size: 12px;
+      color: #93c5fd;
+      line-height: 1.5;
+    }
+
+    /* Error */
+    .error-card {
+      background: #1c0505;
+      border: 1px solid #7f1d1d;
+      border-radius: 10px;
+      padding: 16px;
+      color: #fca5a5;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .error-card strong { color: #f87171; display: block; margin-bottom: 6px; }
+
+    /* Timing */
+    .timing { font-size: 11px; color: #475569; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">SENA</span>
+  <span class="badge">Case Note Drafter</span>
+  <span class="endpoint">POST http://localhost:8084/v1/restrictive-practices/draft</span>
+</header>
+
+<main>
+  <!-- ── LEFT: INPUT FORM ── -->
+  <div class="left">
+    <div class="section-title">Shift Metadata</div>
+    <div class="field-group">
+      <div class="row-2">
+        <div>
+          <label>Worker ID</label>
+          <input id="worker_id" value="worker-001" />
+        </div>
+        <div>
+          <label>Client ID</label>
+          <input id="client_id" value="mel-001" />
+        </div>
+      </div>
+      <div class="row-2">
+        <div>
+          <label>Shift Date</label>
+          <input id="shift_date" type="date" value="2026-06-14" />
+        </div>
+        <div>
+          <label>Shift Time</label>
+          <input id="shift_time" type="time" value="09:00" />
+        </div>
+      </div>
+      <div>
+        <label>Worker Position</label>
+        <select id="worker_position">
+          <option value="Support Worker" selected>Support Worker</option>
+          <option value="Senior Support Worker">Senior Support Worker</option>
+          <option value="Team Leader">Team Leader</option>
+          <option value="Behaviour Support Practitioner">Behaviour Support Practitioner</option>
+        </select>
+      </div>
+      <div>
+        <label>Case Note ID</label>
+        <div class="uuid-row">
+          <input id="case_note_id" value="00000000-0000-0000-0000-000000000001" readonly />
+          <button onclick="genUUID()">New UUID</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">Transcript</div>
+    <div class="field-group">
+      <div>
+        <label>Voice / text transcript</label>
+        <textarea id="transcript">I had my shift with Mel today from 9 00am to 3 00pm. When I first arrived, his family mentioned he had been pretty frustrated all morning. I noticed right away that he was a bit more withdrawn and speaking a lot quieter than he usually does. He let me know that he was feeling upset after getting into an argument with his sibling earlier about his gaming. Even though he was frustrated, he did a great job staying calm, was very receptive to support, and was still happy to go ahead with the activities we had planned. We spent a good portion of the morning focussing on emotional processing. I made sure to actively listen and offer reassurance, and we had some really open discussions about how to express emotions and handle it when family members have differing opinions. Mel responded really well to this and visibly relaxed as the day went on. For our activities, I supported him with transport out into the community. We went to a cafe, and he was incredibly independent. He had already handled all his personal care before leaving home, and at the cafe, he ordered his own food and drinks without needing my help. Afterward, we headed over to the Inspiring Disability and Youth Services office for some social engagement. I was really impressed with his progress today, especially with his emotional regulation and communication. Even when he was talking about the family conflict, he kept an appropriate tone, stayed regulated, and reflected on his feelings without escalating. He also showed a lot more confidence in group settings than I have seen on previous community access shifts. He was initiating conversations with peers and staff with very little prompting. Once we got on to the topic of anime and gaming, his mood completely lifted. He got animated, held great eye contact, and was laughing and engaging positively with the group all afternoon. There were no incidents, safety hazards, or escalated behaviours at all during the shift. When we wrapped up, his family actually commented on how much his mood had improved since the morning. Mel even told me, it helped talking about it today, and I liked hanging out at the office. Overall, it was a highly successful shift. Moving forward, we just need to keep working on those emotional regulation strategies, particularly around building his resilience to perceived criticism and processing family frustrations.</textarea>
+      </div>
+    </div>
+
+    <div class="submit-area">
+      <button class="btn-submit" id="submitBtn" onclick="submitDraft()">
+        <div class="spinner" id="spinner"></div>
+        <span id="btnLabel">Generate Case Note Draft</span>
+      </button>
+      <div class="timing" id="timing"></div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: RESULTS ── -->
+  <div class="right" id="right">
+    <div class="placeholder" id="placeholder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />
+      </svg>
+      <p>Submit a transcript to generate the case note draft</p>
+    </div>
+    <div id="results" style="display:none;"></div>
+  </div>
+</main>
+
+<script>
+  const API = '/v1/restrictive-practices/draft';
+
+  function genUUID() {
+    const u = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+    document.getElementById('case_note_id').value = u;
+  }
+
+  async function submitDraft() {
+    const btn = document.getElementById('submitBtn');
+    const spinner = document.getElementById('spinner');
+    const label = document.getElementById('btnLabel');
+    const timing = document.getElementById('timing');
+
+    const payload = {
+      case_note_id: document.getElementById('case_note_id').value.trim(),
+      worker_id:    document.getElementById('worker_id').value.trim(),
+      client_id:    document.getElementById('client_id').value.trim(),
+      transcript:   document.getElementById('transcript').value.trim(),
+      shift_date:   document.getElementById('shift_date').value || null,
+      shift_time:   document.getElementById('shift_time').value || null,
+      worker_position: document.getElementById('worker_position').value,
+    };
+
+    if (!payload.transcript) { alert('Transcript is required.'); return; }
+
+    btn.disabled = true;
+    spinner.style.display = 'block';
+    label.textContent = 'Drafting…';
+    timing.textContent = '';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('results').style.display = 'none';
+
+    const t0 = Date.now();
+
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        renderError(err.detail || 'Unknown error', elapsed);
+        return;
+      }
+
+      const data = await res.json();
+      renderResult(data, elapsed);
+    } catch (e) {
+      renderError(e.message, ((Date.now() - t0) / 1000).toFixed(1));
+    } finally {
+      btn.disabled = false;
+      spinner.style.display = 'none';
+      label.textContent = 'Generate Case Note Draft';
+    }
+  }
+
+  function pill(label) {
+    const cls = label === 'Premium' ? 'pill-premium' : label === 'Poor' ? 'pill-poor' : 'pill-average';
+    return `<span class="pill ${cls}">${label}</span>`;
+  }
+
+  function val(v, nullLabel = '—') {
+    if (v === null || v === undefined || v === '') return `<span class="field-value null">${nullLabel}</span>`;
+    if (v === true)  return `<span class="field-value bool-true">Yes</span>`;
+    if (v === false) return `<span class="field-value bool-false">No</span>`;
+    return `<span class="field-value">${escHtml(String(v))}</span>`;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function field(label, value) {
+    return `<div class="field"><div class="field-label">${label}</div>${val(value)}</div>`;
+  }
+
+  function renderResult(d, elapsed) {
+    const score = d.note_quality_score ?? 0;
+    const pct = Math.round(score * 100);
+
+    let html = `
+      <div class="result-header">
+        <div class="quality-badge">
+          ${pill(d.note_quality_label)}
+          <div class="score-bar-wrap">
+            <div class="score-bar"><div class="score-bar-fill" id="scoreBar" style="width:0%"></div></div>
+            <span>${pct}%</span>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#475569">${elapsed}s</div>
+      </div>
+      <div class="cards">
+    `;
+
+    // Gap detection note (top priority)
+    if (d.draft_note) {
+      html += `<div class="gap-card">
+        <div class="gap-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          Worker action required
+        </div>
+        <div class="gap-body">${escHtml(d.draft_note)}</div>
+      </div>`;
+    }
+
+    // Section 1 — Summary
+    html += `<div class="card">
+      <div class="card-header"><div class="num">1</div><h3>Summary of Shift</h3></div>
+      <div class="card-body">${field('Shift Description', d.describe)}</div>
+    </div>`;
+
+    // Section 2 — Activities
+    html += `<div class="card">
+      <div class="card-header"><div class="num">2</div><h3>Activities &amp; Skill-Building</h3></div>
+      <div class="card-body">
+        ${field('Assisted with', d.assisted)}
+        ${field('Skill practised', d.practised_skill)}
+        ${field('Level of independence', d.participants_level_of_independence)}
+        ${field('Observations', d.observations)}
+      </div>
+    </div>`;
+
+    // Section 3 — Wellbeing
+    html += `<div class="card">
+      <div class="card-header"><div class="num">3</div><h3>Well-being &amp; Behaviour</h3></div>
+      <div class="card-body">
+        ${field('Mood', d.mood)}
+        ${field('Behavioural events', d.behavioural_events)}
+        ${field('Any concerns', d.any_concerns)}
+      </div>
+    </div>`;
+
+    // Section 4 — Outcomes
+    html += `<div class="card">
+      <div class="card-header"><div class="num">4</div><h3>Outcomes &amp; Progress</h3></div>
+      <div class="card-body">
+        ${field('What went well', d.what_went_well)}
+        ${field('Needs further support', d.what_needs_further_support)}
+        ${field('Participant comments', d.participant_comments)}
+      </div>
+    </div>`;
+
+    // Section 5 — Safety
+    html += `<div class="card">
+      <div class="card-header"><div class="num">5</div><h3>Safety / Health Monitoring</h3></div>
+      <div class="card-body">
+        ${field('Medication reminders given', d.medication_reminders_given)}
+        ${field('Safety hazards observed', d.safety_hazards_observed)}
+        ${field('Any injuries', d.any_injuries)}
+        ${d.any_injuries ? field('Injury description', d.injury_description) : ''}
+      </div>
+    </div>`;
+
+    // Section 6 — Notes
+    html += `<div class="card">
+      <div class="card-header"><div class="num">6</div><h3>Notes / Additional Comments</h3></div>
+      <div class="card-body">
+        ${field('Carer feedback', d.carer_feedback)}
+        ${field('Incident occurred', d.incident_occurred)}
+      </div>
+    </div>`;
+
+    // Quality gaps
+    if (d.quality_gaps && d.quality_gaps.length > 0) {
+      const items = d.quality_gaps.map(g => `<li>${escHtml(g)}</li>`).join('');
+      html += `<div class="quality-gaps-card">
+        <div class="gap-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+          Quality improvement suggestions
+        </div>
+        <ul>${items}</ul>
+      </div>`;
+    }
+
+    html += `</div>`; // close .cards
+
+    const el = document.getElementById('results');
+    el.innerHTML = html;
+    el.style.display = 'block';
+
+    // Animate score bar
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const bar = document.getElementById('scoreBar');
+        if (bar) bar.style.width = pct + '%';
+      });
+    });
+  }
+
+  function renderError(msg, elapsed) {
+    const el = document.getElementById('results');
+    el.innerHTML = `<div class="error-card">
+      <strong>Error (${elapsed}s)</strong>
+      ${escHtml(typeof msg === 'object' ? JSON.stringify(msg, null, 2) : String(msg))}
+    </div>`;
+    el.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+  }
+</script>
+</body>
+</html>

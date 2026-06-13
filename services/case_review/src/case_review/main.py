@@ -43,4 +43,12 @@ def create_app() -> FastAPI:
             media_type="text/html",
         )
 
+    # Case note drafter manual test UI — served same-origin so fetch works without CORS.
+    @app.get("/draft-demo", include_in_schema=False)
+    async def draft_demo() -> FileResponse:
+        return FileResponse(
+            Path(__file__).resolve().parents[2] / "draft_demo.html",
+            media_type="text/html",
+        )
+
     return app
