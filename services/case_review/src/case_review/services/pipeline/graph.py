@@ -140,7 +140,7 @@ async def _run_incident_draft_timed(
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-async def run_pipeline(note: CaseNoteInput, db: AsyncSession) -> PipelineResult:
+async def run_pipeline(note: CaseNoteInput, db: AsyncSession, tenant_id: str) -> PipelineResult:
     """Execute the full detection pipeline and persist an audit record.
 
     Parallelism:
@@ -207,6 +207,7 @@ async def run_pipeline(note: CaseNoteInput, db: AsyncSession) -> PipelineResult:
 
     # Persist audit record — DB session is open until get_db() context exits after return
     run = CaseNoteRun(
+        tenant_id=tenant_id,
         case_note_id=str(note.case_note_id),
         client_id=note.client_id,
         worker_id=note.worker_id,

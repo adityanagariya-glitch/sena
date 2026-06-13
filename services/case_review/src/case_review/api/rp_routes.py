@@ -316,13 +316,14 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
 async def evaluate_case_note(
     payload: CaseNoteInput,
     response: Response,
+    auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> EvaluateResponse:
     """Run a case note through the full restrictive practice detection pipeline."""
     response.headers["X-Privacy-Classification"] = "Sensitive-Health-Information-APP3"
     response.headers["X-Data-Retention"] = "No-Retention-Session-Only"
     try:
-        result = await run_pipeline(payload, db)
+        result = await run_pipeline(payload, db, tenant_id=str(auth.tenant_id))
         return _build_response(result, worker_id=payload.worker_id)
     except Exception as exc:
         logger.error(
