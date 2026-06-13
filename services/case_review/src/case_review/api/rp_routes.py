@@ -1,17 +1,43 @@
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import uuid
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel
+from sena_common.voice import (
+    FormStateRepo,
+    GeminiLiveSession,
+    MobileBridge,
+    ToolDispatcher,
+    VoiceEngineConfig,
+    build_system_prompt,
+)
+from sena_common.voice.form_state import FieldSource, FormState
+from sena_common.voice.gemini_live import UsageFeature
+from sena_common.voice.turn_payload import Participant, StepInfo, TurnPayload
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from case_review.api.deps import get_auth_context, get_db
+from case_review.api.deps import get_auth_context, get_db, voice_redis_client
 from case_review.core.settings import settings
 from case_review.models.db import BehaviourSupportPlan
 from case_review.models.schemas import (
@@ -39,6 +65,8 @@ from case_review.models.schemas import (
 from case_review.services.pipeline.drafter import run_drafter
 from case_review.services.pipeline.graph import run_pipeline
 from case_review.services.pipeline.transcription import resolve_media_format, run_transcription
+from case_review.voice.casenote_schema import CASE_NOTE_SCHEMA
+from case_review.voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
 
 logger = logging.getLogger(__name__)
 rp_router = APIRouter(prefix="/v1/restrictive-practices", tags=["restrictive-practices"])
@@ -46,7 +74,7 @@ rp_router = APIRouter(prefix="/v1/restrictive-practices", tags=["restrictive-pra
 _security = HTTPBasic(auto_error=False)
 
 
-def _require_auth(credentials: Optional[HTTPBasicCredentials] = Depends(_security)) -> None:
+def _require_auth(credentials: HTTPBasicCredentials | None = Depends(_security)) -> None:
     expected_user = settings.basic_auth_user
     expected_pass = settings.basic_auth_password
     if not expected_user or not expected_pass:
@@ -495,6 +523,220 @@ async def draft_case_note_audio(
 
     logger.info("draft/audio: done job=%s case_note_id=%s", job_name, resolved_id)
     return result
+
+
+# ── RP voice assistant (session create + Gemini Live WebSocket bridge) ─────────
+# Uses sena_common.voice (FormStateRepo, GeminiLiveSession, ToolDispatcher).
+# Distinct Redis key prefix keeps RP sessions isolated from case-review voice.
+# Tenant-id is derived from SENA auth (get_auth_context) — not from request body.
+
+_RP_VOICE_KEY_PREFIX = "sena:rp_voice"
+_RP_STEP_ID = "rp_case_note"
+_RP_STEP_LABEL = "Case Note"
+# Path to the same prompts dir used by the general case-review voice session.
+_RP_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "voice" / "prompts"
+_RP_STAFF_ROLES = {"worker", "staff", "support_worker", "admin"}
+
+
+def _rp_is_staff(roles: list[str]) -> bool:
+    return any(r.strip().lower() in _RP_STAFF_ROLES for r in roles)
+
+
+def _rp_voice_repo(tenant_id: str) -> FormStateRepo:
+    return FormStateRepo(voice_redis_client, key_prefix=_RP_VOICE_KEY_PREFIX, tenant_id=tenant_id)
+
+
+def _rp_voice_config() -> VoiceEngineConfig:
+    return VoiceEngineConfig(
+        gemini_api_key=settings.gemini_api_key,
+        gemini_live_model_id=settings.gemini_live_model_id,
+        prompts_dir=_RP_PROMPTS_DIR,
+        grounding_enabled=settings.voice_grounding_enabled,
+        screen_state_max_bytes=settings.screen_state_max_bytes,
+        session_max_sec=settings.voice_session_max_sec,
+        silence_timeout_sec=settings.voice_silence_timeout_sec,
+        tool_state_channel=True,
+        debug=settings.debug,
+    )
+
+
+async def _rp_close_ws(ws: WebSocket, code_str: str, message: str, ws_code: int) -> None:
+    try:
+        await ws.send_text(json.dumps({"type": "error", "code": code_str, "message": message}))
+        await ws.close(code=ws_code)
+    except Exception:
+        pass
+
+
+class RPVoiceSessionRequest(BaseModel):
+    client_id: str
+    worker_id: str
+    case_note_id: str = ""
+    initial_values: dict[str, dict[str, Any]] = {}
+    readonly_paths: list[str] = []
+    worker_display_name: str | None = None
+
+
+class RPVoiceSessionResponse(BaseModel):
+    session_id: str
+    ws_url: str
+    expires_at: str
+
+
+@rp_router.post(
+    "/voice/session",
+    response_model=RPVoiceSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_rp_voice_session(
+    body: RPVoiceSessionRequest,
+    auth: AuthContext = Depends(get_auth_context),
+) -> RPVoiceSessionResponse:
+    """Create a tenant-scoped RP voice session for case-note dictation.
+
+    Pass ``initial_values`` from ``POST /draft`` to pre-fill already-extracted
+    fields; the voice assistant fills the remaining gaps interactively.
+    """
+    if not _rp_is_staff(auth.roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "not_staff", "message": "Voice case notes are staff-only"},
+        )
+    tenant_id = str(auth.tenant_id)
+    session_id = uuid.uuid4().hex
+    state = FormState(
+        session_id=session_id,
+        step_id=_RP_STEP_ID,
+        participant_id=body.client_id,
+        tenant_id=tenant_id,
+    )
+    for section_id, fields in body.initial_values.items():
+        for field_id, value in fields.items():
+            if value is not None:
+                state.set_field(
+                    section_id,
+                    field_id,
+                    value,
+                    source=FieldSource.system,
+                    confidence=0.9,
+                )
+    await _rp_voice_repo(tenant_id).save_state(state, ttl_sec=settings.voice_session_max_sec)
+    logger.info(
+        "rp_voice_session_created session=%s tenant=%s client=%s worker=%s",
+        session_id,
+        tenant_id,
+        body.client_id,
+        body.worker_id,
+    )
+    expires_at = (
+        datetime.now(UTC) + timedelta(seconds=settings.voice_session_max_sec)
+    ).isoformat()
+    return RPVoiceSessionResponse(
+        session_id=session_id,
+        ws_url=f"/v1/restrictive-practices/voice/ws/{session_id}",
+        expires_at=expires_at,
+    )
+
+
+@rp_router.websocket("/voice/ws/{session_id}")
+async def rp_voice_websocket(websocket: WebSocket, session_id: str) -> None:
+    await websocket.accept()
+
+    qp = websocket.query_params
+    tenant_id = websocket.headers.get("x-tenant-id") or qp.get("tenant_id")
+    participant_id = websocket.headers.get("x-participant-id") or qp.get("participant_id")
+    _roles_raw = websocket.headers.get("x-user-roles") or qp.get("roles", "")
+    roles = [r for r in _roles_raw.split(",") if r.strip()]
+
+    if not tenant_id:
+        await _rp_close_ws(websocket, "unauthenticated", "Missing X-Tenant-Id", 4401)
+        return
+    if not _rp_is_staff(roles):
+        await _rp_close_ws(websocket, "not_staff", "Voice case notes are staff-only", 4403)
+        return
+
+    repo = _rp_voice_repo(tenant_id)
+    state = await repo.get_state(session_id)
+    if state is None:
+        await _rp_close_ws(websocket, "session_not_found", "Session not found or expired", 4004)
+        return
+
+    try:
+        await repo.assert_session_owner(
+            session_id, tenant_id, participant_id or state.participant_id
+        )
+    except HTTPException:
+        await _rp_close_ws(websocket, "forbidden", "Session does not belong to caller", 4403)
+        return
+
+    if not await repo.acquire_ws_lock(session_id, ttl_sec=settings.voice_session_max_sec):
+        await _rp_close_ws(websocket, "session_locked", "Another voice connection is active", 4009)
+        return
+
+    try:
+        try:
+            hello = json.loads(await websocket.receive_text())
+        except WebSocketDisconnect:
+            return
+        except json.JSONDecodeError:
+            await _rp_close_ws(websocket, "protocol_error", 'Expected {"type":"hello"} first', 4008)
+            return
+        if hello.get("type") not in ("hello", "start"):
+            await _rp_close_ws(websocket, "protocol_error", 'Expected {"type":"hello"} first', 4008)
+            return
+
+        await websocket.send_text(json.dumps({
+            "type": "ready",
+            "state": json.loads(state.model_dump_json()),
+            "prompt_version": "v2",
+            "coverage": CASE_NOTE_SCHEMA.voice_coverage,
+        }))
+
+        cfg = _rp_voice_config()
+        initial_turn = TurnPayload(
+            participant=Participant(first_name="", display_name=""),
+            step=StepInfo(id=_RP_STEP_ID, label=_RP_STEP_LABEL, number=1),
+            bootstrap_mode="new_user",
+            prior_steps={},
+            visible_fields=[],
+            next_target=None,
+        )
+        system_instruction = build_system_prompt(
+            initial_turn,
+            grounding_enabled=cfg.grounding_enabled,
+            voice_coverage=CASE_NOTE_SCHEMA.voice_coverage,
+            prompts_dir=cfg.prompts_dir,
+            tool_state_channel=cfg.tool_state_channel,
+            template_name="case_note_system.md",
+        )
+
+        bridge = MobileBridge(websocket, timeout_sec=5.0)
+        dispatcher = ToolDispatcher(
+            bridge=bridge,
+            known_tools=CASE_NOTE_KNOWN_TOOLS,
+            submit_tool_name="finalize_note",
+        )
+        live = GeminiLiveSession(
+            websocket=websocket,
+            session_id=session_id,
+            system_instruction=system_instruction,
+            repo=repo,
+            tool_dispatcher=dispatcher,
+            mobile_bridge=bridge,
+            config=cfg,
+            usage_feature=UsageFeature.CASE_NOTE_DRAFTING,
+            function_decls=CASE_NOTE_FUNCTION_DECLS,
+            tenant_id=tenant_id,
+            participant_id=state.participant_id,
+        )
+        await live.run()
+    except WebSocketDisconnect:
+        logger.info("rp_voice_ws_disconnect session=%s", session_id)
+    except Exception:
+        logger.exception("rp_voice_ws_error session=%s", session_id)
+        await _rp_close_ws(websocket, "internal_error", "Internal server error", 1011)
+    finally:
+        await repo.release_ws_lock(session_id)
 
 
 @rp_router.get("/health")

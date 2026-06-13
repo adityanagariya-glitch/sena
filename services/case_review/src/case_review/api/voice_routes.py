@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 
 import case_review
 import structlog
@@ -27,6 +28,7 @@ from case_review.api.deps import get_auth_context, voice_redis_client
 from case_review.core.settings import settings
 from case_review.models.schemas import AuthContext
 from case_review.voice.casenote_schema import CASE_NOTE_SCHEMA
+from case_review.voice.drafter import run_draft
 from case_review.voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
 from sena_common.voice import (
     FormStateRepo,
@@ -36,7 +38,7 @@ from sena_common.voice import (
     VoiceEngineConfig,
     build_system_prompt,
 )
-from sena_common.voice.form_state import FormState
+from sena_common.voice.form_state import FieldSource, FormState
 from sena_common.voice.gemini_live import UsageFeature
 from sena_common.voice.turn_payload import Participant, StepInfo, TurnPayload
 
@@ -79,6 +81,7 @@ def _repo_for(tenant_id: str) -> FormStateRepo:
 class CreateVoiceSessionRequest(BaseModel):
     client_id: str
     shift_id: str
+    initial_values: dict[str, dict[str, Any]] = {}
 
 
 class CreateVoiceSessionResponse(BaseModel):
@@ -109,6 +112,10 @@ async def create_voice_session(
         participant_id=body.client_id,
         tenant_id=tenant_id,
     )
+    for section_id, fields in body.initial_values.items():
+        for field_id, value in fields.items():
+            if value is not None:
+                state.set_field(section_id, field_id, value, source=FieldSource.system, confidence=0.9)
     await _repo_for(tenant_id).save_state(state, ttl_sec=settings.voice_session_max_sec)
     log.info(
         "voice_session_created",
@@ -120,6 +127,48 @@ async def create_voice_session(
     return CreateVoiceSessionResponse(
         session_id=session_id,
         ws_url=f"/ws/case-review/voice/{session_id}",
+    )
+
+
+# ── Transcript draft (Bedrock extraction → initial_values for voice session) ──
+
+
+class DraftTranscriptRequest(BaseModel):
+    transcript: str
+
+
+class DraftTranscriptResponse(BaseModel):
+    initial_values: dict[str, dict[str, Any]]
+    gaps_note: str | None = None
+    filled_count: int
+
+
+@voice_router.post(
+    "/v1/case-review/voice/draft",
+    response_model=DraftTranscriptResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def draft_from_transcript(
+    body: DraftTranscriptRequest,
+    auth: AuthContext = Depends(get_auth_context),
+) -> DraftTranscriptResponse:
+    """Extract case note fields from a shift transcript via Bedrock Claude Sonnet."""
+    if not _is_staff(auth.roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "not_staff", "message": "Voice case notes are staff-only"},
+        )
+    initial_values, gaps_note = await run_draft(body.transcript)
+    filled_count = sum(len(fields) for fields in initial_values.values())
+    log.info(
+        "voice_draft_done",
+        tenant_id=str(auth.tenant_id),
+        filled_count=filled_count,
+    )
+    return DraftTranscriptResponse(
+        initial_values=initial_values,
+        gaps_note=gaps_note,
+        filled_count=filled_count,
     )
 
 
@@ -138,10 +187,15 @@ async def _close(ws: WebSocket, code_str: str, message: str, ws_code: int) -> No
 async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
     await websocket.accept()
 
-    # ── Auth from headers (dev_header mode) — validate BEFORE any data access ──
-    tenant_id = websocket.headers.get("x-tenant-id")
-    participant_id = websocket.headers.get("x-participant-id")
-    roles = [r for r in (websocket.headers.get("x-user-roles", "")).split(",") if r.strip()]
+    # ── Auth (dev_header mode) — validate BEFORE any data access. Headers are
+    # the primary channel (the Flutter client sets them); browsers CANNOT set
+    # headers on a WS upgrade, so fall back to query params for the in-browser
+    # demo harness (?tenant_id=&participant_id=&roles=worker). ──
+    qp = websocket.query_params
+    tenant_id = websocket.headers.get("x-tenant-id") or qp.get("tenant_id")
+    participant_id = websocket.headers.get("x-participant-id") or qp.get("participant_id")
+    _roles_raw = websocket.headers.get("x-user-roles") or qp.get("roles", "")
+    roles = [r for r in _roles_raw.split(",") if r.strip()]
     if not tenant_id:
         await _close(websocket, "unauthenticated", "Missing X-Tenant-Id", 4401)
         return

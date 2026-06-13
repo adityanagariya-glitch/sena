@@ -228,13 +228,12 @@ class GeminiLiveSession:
         # leak source. SHA-only — full prompt never hits the log.
         _instruction_sha8 = hashlib.sha256(system_instruction.encode("utf-8")).hexdigest()[:8]
         log.info(
-            "gemini_bridge_constructed session=%s system_instruction_sha8=%s "
-            "instruction_chars=%d tools_count=%d replay_context=%s",
-            session_id,
-            _instruction_sha8,
-            len(system_instruction),
-            (len(self._function_decls) if tool_dispatcher else 0),
-            ("yes" if replay_context else "no"),
+            "gemini_bridge_constructed",
+            session=session_id,
+            system_instruction_sha8=_instruction_sha8,
+            instruction_chars=len(system_instruction),
+            tools_count=(len(self._function_decls) if tool_dispatcher else 0),
+            replay_context=("yes" if replay_context else "no"),
         )
 
     # ── Public ────────────────────────────────────────────────────────────────
@@ -323,21 +322,21 @@ class GeminiLiveSession:
             model=self._cfg.gemini_live_model_id, config=config
         ) as session:
             log.info(
-                "gemini_connected session=%s model=%s",
-                self._session_id,
-                self._cfg.gemini_live_model_id,
+                "gemini_connected",
+                session=self._session_id,
+                model=self._cfg.gemini_live_model_id,
             )
             # Phase E — inject replay context so model continues without reintroducing
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
-                log.debug("replay_context_injected session=%s", self._session_id)
+                log.debug("replay_context_injected", session=self._session_id)
             # Seed the live screen state as a hidden context turn so the model's
             # FIRST greeting already knows which fields are filled — no
             # get_current_state round-trip, no "these are already filled"
             # reminder from the participant.
             if self._initial_state_text:
                 await session.send_realtime_input(text=self._initial_state_text)
-                log.info("initial_state_seeded session=%s", self._session_id)
+                log.info("initial_state_seeded", session=self._session_id)
             else:
                 # gemini-3.1-flash-live-preview does NOT speak proactively, so
                 # without a kickoff turn the agent stays silent until the
@@ -348,7 +347,7 @@ class GeminiLiveSession:
                     text="[BEGIN] Greet the participant warmly per your system "
                     "prompt and ask the first required field."
                 )
-                log.info("kickoff_greeting_injected session=%s", self._session_id)
+                log.info("kickoff_greeting_injected", session=self._session_id)
             self._last_audio_at = time.monotonic()
             # Hard cap on the kickoff shield: if the opener never produces a
             # turn_complete (e.g. silent / model stalls), lift the shield after
@@ -373,14 +372,15 @@ class GeminiLiveSession:
                 try:
                     self._flush_pending_usage(reason="session_end")
                 except Exception:
-                    log.exception("usage_flush_failed session=%s", self._session_id)
-        log.info("gemini_disconnected session=%s", self._session_id)
+                    log.exception("usage_flush_failed", session=self._session_id)
+        log.info("gemini_disconnected", session=self._session_id)
 
     # ── Private: client → Gemini ──────────────────────────────────────────────
 
     async def _browser_to_gemini(self, session: genai.live.AsyncSession) -> None:
         """Forward browser audio + control messages → Gemini."""
         total_chunks = 0
+        print("We are here in sena_common")
         try:
             while True:
                 msg = await self._ws.receive()
@@ -434,8 +434,10 @@ class GeminiLiveSession:
 
         except (WebSocketDisconnect, asyncio.CancelledError):
             pass
-        except Exception:
-            log.exception("b2g_error session=%s", self._session_id)
+        except Exception as e:
+            log.exception(e)
+
+            log.exception("b2g_error", session=self._session_id)
 
     async def _handle_control(self, session: genai.live.AsyncSession, raw_text: str) -> bool:
         """
@@ -445,7 +447,7 @@ class GeminiLiveSession:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            log.warning("invalid_json_from_client session=%s", self._session_id)
+            log.warning("invalid_json_from_client", session=self._session_id)
             return False
 
         msg_type = data.get("type")
@@ -494,7 +496,7 @@ class GeminiLiveSession:
             await self._handle_validation_cleared(data)
 
         elif msg_type == "stop":
-            log.info("client_stop session=%s", self._session_id)
+            log.info("client_stop", session=self._session_id)
             return True
 
         # "start" arrives before run() — safe to ignore here if it slips through
@@ -874,7 +876,7 @@ class GeminiLiveSession:
                         # ── Input transcription (user speech → text) ───────────
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = sc.input_transcription.text
-                            log.info("USER_SAID %r session=%s", txt, self._session_id)
+                            log.info("user_said_transcript", text=txt, session=self._session_id)
                             await self._ws.send_text(json.dumps({"type": "user_said", "text": txt}))
                             await self._repo.append_transcript(
                                 self._session_id,
@@ -1148,9 +1150,9 @@ class GeminiLiveSession:
             pass
         except Exception as exc:
             if _is_client_disconnect(exc):
-                log.info("g2b_client_disconnected session=%s", self._session_id)
+                log.info("g2b_client_disconnected", session=self._session_id)
             else:
-                log.exception("g2b_error session=%s", self._session_id)
+                log.exception("g2b_error", session=self._session_id)
 
     # ── Private: silence monitor ──────────────────────────────────────────────
 
@@ -1236,7 +1238,7 @@ class GeminiLiveSession:
         except asyncio.CancelledError:
             pass
         except Exception:
-            log.exception("silence_monitor_error session=%s", self._session_id)
+            log.exception("silence_monitor_error", session=self._session_id)
 
     async def _collect_pending_required_labels(self) -> list[str]:
         """Best-effort: read the live FormState + schema and return the labels
@@ -1266,7 +1268,7 @@ class GeminiLiveSession:
                             pending.append(label)
             return pending
         except Exception:
-            log.exception("collect_pending_labels_failed session=%s", self._session_id)
+            log.exception("collect_pending_labels_failed", session=self._session_id)
             return []
 
     # ── Private: tool_call handling (Phase C) ────────────────────────────────
