@@ -52,14 +52,11 @@ def upgrade() -> None:
     )
     op.create_index("ix_rp_ndis_chunks_category", "rp_ndis_policy_chunks", ["category"])
 
-    # Replace placeholder Text column with proper HALFVEC type
+    # Replace placeholder Text column with proper HALFVEC type.
+    # No DEFAULT needed — table is empty at migration time so NOT NULL is valid.
     op.execute("ALTER TABLE rp_ndis_policy_chunks DROP COLUMN embedding;")
     op.execute(
-        "ALTER TABLE rp_ndis_policy_chunks ADD COLUMN embedding HALFVEC(1024) NOT NULL"
-        " DEFAULT '{}'::HALFVEC;"
-    )
-    op.execute(
-        "ALTER TABLE rp_ndis_policy_chunks ALTER COLUMN embedding DROP DEFAULT;"
+        "ALTER TABLE rp_ndis_policy_chunks ADD COLUMN embedding HALFVEC(1024) NOT NULL;"
     )
 
     # HNSW index — works on empty tables; IVFFlat requires pre-existing rows
