@@ -21,6 +21,7 @@ import time
 
 import boto3
 import httpx
+from botocore.config import Config
 
 from case_review.core.settings import settings
 
@@ -57,11 +58,14 @@ _EXT_TO_FORMAT: dict[str, str] = {
 _POLL_INTERVAL_SEC = 2
 _POLL_TIMEOUT_SEC = 120
 
+_S3_CONFIG = Config(connect_timeout=10, read_timeout=60, retries={"max_attempts": 2, "mode": "standard"})
+_TRANSCRIBE_CONFIG = Config(connect_timeout=10, read_timeout=30, retries={"max_attempts": 2, "mode": "standard"})
+
 
 def _make_s3_client() -> "boto3.client":
     # Use S3-specific credentials when provided; fall back to Bedrock creds.
     region = settings.s3_region or settings.aws_region
-    kwargs: dict = {"region_name": region}
+    kwargs: dict = {"region_name": region, "config": _S3_CONFIG}
     key_id = settings.s3_access_key_id or settings.aws_access_key_id
     secret = settings.s3_secret_access_key or settings.aws_secret_access_key
     if key_id:
@@ -73,7 +77,7 @@ def _make_s3_client() -> "boto3.client":
 def _make_transcribe_client() -> "boto3.client":
     # Transcribe must be in the same account as the S3 bucket it reads from.
     region = settings.s3_region or settings.aws_region
-    kwargs: dict = {"region_name": region}
+    kwargs: dict = {"region_name": region, "config": _TRANSCRIBE_CONFIG}
     key_id = settings.s3_access_key_id or settings.aws_access_key_id
     secret = settings.s3_secret_access_key or settings.aws_secret_access_key
     if key_id:

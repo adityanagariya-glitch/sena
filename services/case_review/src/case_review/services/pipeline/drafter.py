@@ -10,6 +10,7 @@ import json
 import logging
 
 import boto3
+from botocore.config import Config
 from pydantic import BaseModel
 
 from case_review.core.settings import settings
@@ -113,8 +114,15 @@ def _extract_json(text: str) -> dict:
     return obj
 
 
+_BEDROCK_CONFIG = Config(
+    connect_timeout=10,
+    read_timeout=120,
+    retries={"max_attempts": 2, "mode": "standard"},
+)
+
+
 def _make_client():
-    kwargs: dict = {"region_name": settings.aws_region}
+    kwargs: dict = {"region_name": settings.aws_region, "config": _BEDROCK_CONFIG}
     if settings.aws_access_key_id and settings.aws_secret_access_key:
         kwargs["aws_access_key_id"] = settings.aws_access_key_id
         kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
