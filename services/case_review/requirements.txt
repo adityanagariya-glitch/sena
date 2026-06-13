@@ -1,6 +1,8 @@
 boto3==1.35.80
 fastapi==0.136.3
+fitz==0.0.1.dev2
 httpx==0.28.1
+langchain_text_splitters==1.1.2
 langgraph==1.2.5
 pgvector==0.4.2
 protobuf==7.35.1
