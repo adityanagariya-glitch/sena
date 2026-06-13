@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from case_review.core.settings import settings
-from case_review.services.ingestion.embedder import embed_query
 from case_review.models.db import NDISPolicyChunk
 from case_review.models.schemas import CaseNoteInput, PolicyChunk, TriageResult
 
@@ -26,6 +25,8 @@ async def retrieve_policy_chunks(
     """Embed the query and retrieve top-K relevant NDIS policy chunks."""
     # Prefer the focused action_summary over the full transcript —
     # it's a clean 1-sentence description of the suspected practice.
+    from case_review.services.ingestion.embedder import embed_query  # deferred: Phase 6
+
     query_text = triage.action_summary or note.to_text()
 
     logger.info(
@@ -78,6 +79,8 @@ async def retrieve_style_chunks(
     Adds a WHERE document_type = :doc_type clause on top of the cosine search
     so style references don't bleed into policy chunk retrieval.
     """
+    from case_review.services.ingestion.embedder import embed_query  # deferred: Phase 6
+
     logger.info(
         "rag style retrieve document_type=%r query=%r",
         document_type,

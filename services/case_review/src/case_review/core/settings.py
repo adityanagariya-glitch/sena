@@ -111,6 +111,11 @@ class CaseReviewSettings(BaseSettings):
     rp_webhook_url: str = ""
     rp_webhook_secret: str = ""
 
+    # ── Restrictive practices API basic auth (optional — leave blank for local dev) ──
+    # SENA_AI_BASIC_AUTH_USER / SENA_AI_BASIC_AUTH_PASSWORD
+    basic_auth_user: str = ""
+    basic_auth_password: str = ""
+
     # ── Voice resumption ──────────────────────────────────────────────────────
     # SENA_AI_RESUMPTION_HANDLE_TTL_SEC
     resumption_handle_ttl_sec: int = 600
