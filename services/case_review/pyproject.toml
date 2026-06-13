@@ -15,6 +15,7 @@ dependencies = [
   "structlog==25.5.0",
   "orjson==3.10.12",
   "google-genai>=1.0.0",
+  "python-multipart>=0.0.9",
   "redis[hiredis]==5.2.1",
   "sena-common",
   "boto3==1.35.80",
@@ -33,6 +34,7 @@ dev = [
   "ruff==0.8.4",
   "mypy==1.13.0",
   "aiosqlite==0.20.0",
+  "fakeredis==2.26.2",
 ]
 
 [build-system]
