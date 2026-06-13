@@ -911,9 +911,10 @@
   let voiceStream = null;
   let lastDraft = null;
 
-  // dev_header auth defaults — adjust if your local server uses different values
-  const DEV_TENANT_ID    = 't1';
-  const DEV_PARTICIPANT_ID = 'worker-001';
+  // dev_header auth defaults — must match deps.py UUID defaults
+  const DEV_TENANT_ID    = 'aaaaaaaa-0000-0000-0000-000000000001';
+  const DEV_USER_ID      = 'bbbbbbbb-0000-0000-0000-000000000002';
+  const DEV_PARTICIPANT_ID = DEV_USER_ID;
   const DEV_ROLES        = 'staff';
 
   function draftToInitialValues(d) {
@@ -980,7 +981,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Id': document.getElementById('worker_id').value.trim() || DEV_PARTICIPANT_ID,
+          'X-User-Id': DEV_USER_ID,
           'X-User-Roles': DEV_ROLES,
           'X-Tenant-Id': DEV_TENANT_ID,
         },
