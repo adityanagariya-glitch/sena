@@ -75,7 +75,7 @@ class CaseReviewSettings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     # SENA_AI_BEDROCK_MODEL_ID
-    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    bedrock_model_id: str = "au.anthropic.claude-sonnet-4-6"
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     # SENA_AI_AUTH_MODE: "dev_header" | "jwt"
@@ -83,9 +83,9 @@ class CaseReviewSettings(BaseSettings):
 
     # ── Pipeline LLM models (LangGraph 5-step triage → RAG → eval → BSP → verdict) ──
     # SENA_AI_TRIAGE_MODEL — Haiku: cheap YES/NO gate (Bedrock converse, maxTokens=512)
-    triage_model: str = "anthropic.claude-haiku-4-5-20251001-v1:0"
+    triage_model: str = "au.anthropic.claude-haiku-4-5-20251001-v1:0"
     # SENA_AI_EVALUATOR_MODEL — Sonnet: structured verdict + drafter (maxTokens=8192)
-    evaluator_model: str = "anthropic.claude-sonnet-4-6-v1:0"
+    evaluator_model: str = "au.anthropic.claude-sonnet-4-6"
 
     # ── RAG / Embeddings (pgvector HNSW, Cohere Embed English v3, 1024-dim) ──
     # SENA_AI_EMBEDDING_MODEL — must match at ingest AND query time; re-ingest if changed
