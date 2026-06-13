@@ -78,7 +78,9 @@ def _require_auth(credentials: HTTPBasicCredentials | None = Depends(_security))
     expected_user = settings.basic_auth_user
     expected_pass = settings.basic_auth_password
     if not expected_user or not expected_pass:
-        return  # auth not configured — allow through (local dev)
+        if settings.debug:
+            return  # debug mode only — fail closed in production
+        raise HTTPException(status_code=503, detail="Authentication not configured")
     if credentials is None:
         raise HTTPException(status_code=401, detail="Unauthorized",
                             headers={"WWW-Authenticate": "Basic"})
@@ -639,18 +641,17 @@ async def create_rp_voice_session(
 
 
 @rp_router.websocket("/voice/ws/{session_id}")
-async def rp_voice_websocket(websocket: WebSocket, session_id: str) -> None:
+async def rp_voice_websocket(
+    websocket: WebSocket,
+    session_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+) -> None:
     await websocket.accept()
 
-    qp = websocket.query_params
-    tenant_id = websocket.headers.get("x-tenant-id") or qp.get("tenant_id")
-    participant_id = websocket.headers.get("x-participant-id") or qp.get("participant_id")
-    _roles_raw = websocket.headers.get("x-user-roles") or qp.get("roles", "")
-    roles = [r for r in _roles_raw.split(",") if r.strip()]
+    tenant_id = str(auth.tenant_id)
+    roles = auth.roles
+    participant_id = websocket.query_params.get("participant_id")
 
-    if not tenant_id:
-        await _rp_close_ws(websocket, "unauthenticated", "Missing X-Tenant-Id", 4401)
-        return
     if not _rp_is_staff(roles):
         await _rp_close_ws(websocket, "not_staff", "Voice case notes are staff-only", 4403)
         return
