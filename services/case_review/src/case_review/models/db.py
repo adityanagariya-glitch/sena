@@ -3,17 +3,19 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+from pgvector.sqlalchemy import HALFVEC
 from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -140,3 +142,79 @@ class ReviewAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class NDISPolicyChunk(Base):
+    """
+    NDIS policy document chunks for RAG retrieval.
+    Global reference data — shared across all tenants, no RLS needed.
+    HALFVEC(1024) matches Cohere Embed English v3 output dimensions.
+    """
+
+    __tablename__ = "rp_ndis_policy_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chunk_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    document_source: Mapped[str] = mapped_column(String(200), nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(50), nullable=False)
+    document_type: Mapped[str] = mapped_column(
+        String(100), nullable=False, server_default="Regulatory"
+    )
+    embedding: Mapped[list[float]] = mapped_column(HALFVEC(1024), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class BehaviourSupportPlan(Base):
+    """
+    Authorised restrictive practice entries from the BSP.
+    Scoped by tenant_id — each provider manages their own client BSPs.
+    """
+
+    __tablename__ = "behaviour_support_plans"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    practice_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Active")
+    approved_dosage: Mapped[str | None] = mapped_column(String(200))
+    approved_conditions: Mapped[str | None] = mapped_column(Text)
+    authorised_by: Mapped[str | None] = mapped_column(String(200))
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class CaseNoteRun(Base):
+    """
+    Audit log of every LangGraph pipeline run.
+    Per-tenant — tenant_id scopes the row; RLS enforced.
+    Timing columns (triage_ms, rag_ms, etc.) feed performance dashboards.
+    """
+
+    __tablename__ = "rp_case_note_runs"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    case_note_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    worker_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    triage_flagged: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    evaluator_output: Mapped[dict | None] = mapped_column(JSONB)
+    authorisation_status: Mapped[str | None] = mapped_column(String(100))
+    alert_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    processing_time_ms: Mapped[int | None] = mapped_column(Integer)
+    triage_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rag_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    evaluator_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cross_check_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    incident_draft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    evaluator_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
