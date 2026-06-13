@@ -337,6 +337,101 @@
     /* Timing */
     .timing { font-size: 11px; color: #475569; margin-top: 8px; }
 
+    /* ── VOICE PANEL ── */
+    .voice-overlay {
+      display: none;
+      position: fixed;
+      bottom: 0; right: 0;
+      width: 380px;
+      max-height: 60vh;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-bottom: none;
+      border-radius: 12px 12px 0 0;
+      box-shadow: 0 -8px 32px #00000055;
+      flex-direction: column;
+      z-index: 100;
+    }
+    .voice-overlay.open { display: flex; }
+
+    .vo-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #334155;
+    }
+    .vo-title { font-size: 13px; font-weight: 600; color: #e2e8f0; flex: 1; }
+    .vo-status {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #334155;
+      color: #64748b;
+    }
+    .vo-status.connecting { background: #1e3a5f; color: #60a5fa; }
+    .vo-status.ready      { background: #14532d22; color: #4ade80; }
+    .vo-status.speaking   { background: #7c3aed22; color: #a78bfa; animation: pulse 1.2s infinite; }
+    .vo-status.listening  { background: #14532d22; color: #4ade80; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+    .vo-close {
+      background: none; border: none; color: #475569;
+      font-size: 18px; cursor: pointer; line-height: 1;
+    }
+    .vo-close:hover { color: #94a3b8; }
+
+    .vo-transcript {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 80px;
+    }
+    .vo-line { font-size: 12px; line-height: 1.5; }
+    .vo-line.agent { color: #a78bfa; }
+    .vo-line.user  { color: #94a3b8; }
+    .vo-line.system { color: #475569; font-style: italic; }
+    .vo-line.update { color: #4ade80; font-size: 11px; }
+
+    .vo-footer {
+      padding: 10px 16px;
+      border-top: 1px solid #334155;
+      display: flex;
+      gap: 8px;
+    }
+    .btn-stop-voice {
+      flex: 1;
+      background: #7f1d1d;
+      border: none;
+      border-radius: 6px;
+      color: #fca5a5;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px;
+      cursor: pointer;
+    }
+    .btn-stop-voice:hover { background: #991b1b; }
+
+    /* voice review trigger button (in result header) */
+    .btn-voice-review {
+      background: #7c3aed;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-voice-review:hover { background: #6d28d9; }
+
     /* ── TABS ── */
     .tabs {
       display: flex;
@@ -683,6 +778,7 @@
   }
 
   function renderResult(d, elapsed) {
+    lastDraft = d;
     const score = d.note_quality_score ?? 0;
     const pct = Math.round(score * 100);
 
@@ -695,7 +791,10 @@
             <span>${pct}%</span>
           </div>
         </div>
-        <div style="font-size:12px;color:#475569">${elapsed}s</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn-voice-review" onclick="startVoiceReview()">🎙️ Voice Review</button>
+          <div style="font-size:12px;color:#475569">${elapsed}s</div>
+        </div>
       </div>
       <div class="cards">
     `;
@@ -804,6 +903,214 @@
     el.style.display = 'block';
     document.getElementById('placeholder').style.display = 'none';
   }
+
+  // ── VOICE REVIEW ──────────────────────────────────────────────────────────
+
+  let voiceWs = null;
+  let voiceRecorder = null;
+  let voiceStream = null;
+  let lastDraft = null;
+
+  // dev_header auth defaults — adjust if your local server uses different values
+  const DEV_TENANT_ID    = 't1';
+  const DEV_PARTICIPANT_ID = 'worker-001';
+  const DEV_ROLES        = 'staff';
+
+  function draftToInitialValues(d) {
+    return {
+      summary:              { summaryOfShift: d.describe },
+      activitiesAndSkill:   {
+        assisted: d.assisted,
+        practisedSkill: d.practised_skill,
+        participantsLevelOfIndependence: d.participants_level_of_independence,
+        observation: d.observations,
+      },
+      wellbeingAndBehaviour: {
+        mood: d.mood,
+        behaviouralEvents: d.behavioural_events,
+        anyConcerns: d.any_concerns,
+      },
+      outcomesAndProgress:  {
+        whatWentWell: d.what_went_well,
+        furtherSupport: d.what_needs_further_support,
+        participantsComments: d.participant_comments,
+      },
+      safetyAndHealth: {
+        medicationReminderGiven: d.medication_reminders_given,
+        safetyHazardObserved: d.safety_hazards_observed,
+        anyInjuries: d.any_injuries,
+        injuryDetails: d.injury_description,
+      },
+      feedback: {
+        careFeedback: d.carer_feedback,
+        anyIncident: d.incident_occurred,
+      },
+    };
+  }
+
+  function voLog(text, cls = 'system') {
+    const el = document.getElementById('voTranscript');
+    const line = document.createElement('div');
+    line.className = `vo-line ${cls}`;
+    line.textContent = text;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function voSetStatus(label, cls) {
+    const el = document.getElementById('voStatus');
+    el.textContent = label;
+    el.className = `vo-status ${cls}`;
+  }
+
+  async function startVoiceReview() {
+    if (!lastDraft) return;
+    if (voiceWs) { stopVoiceReview(); return; }
+
+    // open overlay
+    document.getElementById('voiceOverlay').classList.add('open');
+    document.getElementById('voTranscript').innerHTML = '';
+    voSetStatus('Connecting…', 'connecting');
+    voLog('Creating voice session…');
+
+    // 1 — create session, seeding the agent with the current draft fields
+    let sessionId, wsPath;
+    try {
+      const res = await fetch('/v1/case-review/voice/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': document.getElementById('worker_id').value.trim() || DEV_PARTICIPANT_ID,
+          'X-User-Roles': DEV_ROLES,
+          'X-Tenant-Id': DEV_TENANT_ID,
+        },
+        body: JSON.stringify({
+          client_id: document.getElementById('client_id').value.trim(),
+          shift_id:  document.getElementById('case_note_id').value.trim() || 'shift-demo',
+          initial_values: draftToInitialValues(lastDraft),
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: res.statusText }));
+        voLog(`Session error: ${JSON.stringify(e.detail)}`, 'system');
+        voSetStatus('Error', '');
+        return;
+      }
+      ({ session_id: sessionId, ws_url: wsPath } = await res.json());
+      voLog(`Session ready (${sessionId.slice(0,8)}…)`);
+    } catch (e) {
+      voLog(`Network error: ${e.message}`, 'system');
+      voSetStatus('Error', '');
+      return;
+    }
+
+    // 2 — open WebSocket (query params for browser auth — headers blocked by spec)
+    const wsUrl = `ws://${location.host}${wsPath}?tenant_id=${DEV_TENANT_ID}&participant_id=${DEV_PARTICIPANT_ID}&roles=${DEV_ROLES}`;
+    voiceWs = new WebSocket(wsUrl);
+    voiceWs.binaryType = 'arraybuffer';
+
+    voiceWs.onopen = () => {
+      voSetStatus('Ready', 'ready');
+      voLog('Connected — say anything to start');
+      voiceWs.send(JSON.stringify({ type: 'hello' }));
+      startMic();
+    };
+
+    voiceWs.onmessage = (evt) => {
+      if (typeof evt.data !== 'string') return;
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch { return; }
+      handleVoiceMsg(msg);
+    };
+
+    voiceWs.onclose = (evt) => {
+      voLog(`Session ended (${evt.code})`, 'system');
+      voSetStatus('Ended', '');
+      cleanupMic();
+      voiceWs = null;
+    };
+
+    voiceWs.onerror = () => {
+      voLog('WebSocket error', 'system');
+      voSetStatus('Error', '');
+    };
+  }
+
+  function handleVoiceMsg(msg) {
+    switch (msg.type) {
+      case 'ready':
+        voSetStatus('Listening', 'listening');
+        break;
+      case 'turn_start':
+        voSetStatus('Speaking', 'speaking');
+        break;
+      case 'turn_complete':
+      case 'interrupted':
+        voSetStatus('Listening', 'listening');
+        break;
+      case 'agent_said':
+        voLog(`Agent: ${msg.text}`, 'agent');
+        break;
+      case 'user_said':
+        voLog(`You: ${msg.text}`, 'user');
+        break;
+      case 'field_updated':
+        voLog(`✓ ${msg.section}.${msg.field} = ${JSON.stringify(msg.value)}`, 'update');
+        break;
+      case 'step_completed':
+        voLog('✓ Case note complete', 'update');
+        voSetStatus('Done', 'ready');
+        break;
+      case 'error':
+        voLog(`Error: ${msg.message}`, 'system');
+        break;
+    }
+  }
+
+  async function startMic() {
+    try {
+      voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceRecorder = new MediaRecorder(voiceStream);
+      voiceRecorder.ondataavailable = async (e) => {
+        if (e.data.size > 0 && voiceWs && voiceWs.readyState === WebSocket.OPEN) {
+          const buf = await e.data.arrayBuffer();
+          voiceWs.send(buf);
+        }
+      };
+      voiceRecorder.start(100); // 100ms chunks
+    } catch (e) {
+      voLog(`Mic error: ${e.message}`, 'system');
+    }
+  }
+
+  function cleanupMic() {
+    if (voiceRecorder && voiceRecorder.state !== 'inactive') voiceRecorder.stop();
+    if (voiceStream) voiceStream.getTracks().forEach(t => t.stop());
+    voiceRecorder = null;
+    voiceStream = null;
+  }
+
+  function stopVoiceReview() {
+    cleanupMic();
+    if (voiceWs) { voiceWs.close(); voiceWs = null; }
+    document.getElementById('voiceOverlay').classList.remove('open');
+  }
 </script>
+<!-- ── VOICE REVIEW OVERLAY ── -->
+<div class="voice-overlay" id="voiceOverlay">
+  <div class="vo-header">
+    <span style="font-size:16px">🎙️</span>
+    <span class="vo-title">Voice Review Assistant</span>
+    <span class="vo-status connecting" id="voStatus">Connecting…</span>
+    <button class="vo-close" onclick="stopVoiceReview()" title="End session">✕</button>
+  </div>
+  <div class="vo-transcript" id="voTranscript">
+    <div class="vo-line system">Starting session…</div>
+  </div>
+  <div class="vo-footer">
+    <button class="btn-stop-voice" onclick="stopVoiceReview()">⏹ End Voice Review</button>
+  </div>
+</div>
+
 </body>
 </html>
