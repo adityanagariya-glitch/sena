@@ -907,9 +907,15 @@
   // ── VOICE REVIEW ──────────────────────────────────────────────────────────
 
   let voiceWs = null;
-  let voiceRecorder = null;
   let voiceStream = null;
   let lastDraft = null;
+  // mic capture (AudioContext → raw PCM 16kHz)
+  let voiceMicCtx = null;
+  let voiceMicSource = null;
+  let voiceMicProcessor = null;
+  // audio playback (24 kHz PCM from Gemini)
+  let voicePlayCtx = null;
+  let voicePlayNext = 0;
 
   // dev_header auth defaults — must match deps.py UUID defaults
   const DEV_TENANT_ID    = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -968,6 +974,10 @@
     if (!lastDraft) return;
     if (voiceWs) { stopVoiceReview(); return; }
 
+    // Create playback AudioContext inside user-gesture handler (browser autoplay policy)
+    voicePlayCtx = new AudioContext({ sampleRate: 24000 });
+    voicePlayNext = 0;
+
     // open overlay
     document.getElementById('voiceOverlay').classList.add('open');
     document.getElementById('voTranscript').innerHTML = '';
@@ -1020,6 +1030,7 @@
     };
 
     voiceWs.onmessage = (evt) => {
+      if (evt.data instanceof ArrayBuffer) { playPCM(evt.data); return; }
       if (typeof evt.data !== 'string') return;
       let msg;
       try { msg = JSON.parse(evt.data); } catch { return; }
@@ -1046,9 +1057,13 @@
         break;
       case 'turn_start':
         voSetStatus('Speaking', 'speaking');
+        if (voicePlayCtx) voicePlayNext = voicePlayCtx.currentTime + 0.05;
         break;
       case 'turn_complete':
+        voSetStatus('Listening', 'listening');
+        break;
       case 'interrupted':
+        if (voicePlayCtx) voicePlayNext = voicePlayCtx.currentTime;
         voSetStatus('Listening', 'listening');
         break;
       case 'agent_said':
@@ -1072,29 +1087,54 @@
 
   async function startMic() {
     try {
-      voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      voiceRecorder = new MediaRecorder(voiceStream);
-      voiceRecorder.ondataavailable = async (e) => {
-        if (e.data.size > 0 && voiceWs && voiceWs.readyState === WebSocket.OPEN) {
-          const buf = await e.data.arrayBuffer();
-          voiceWs.send(buf);
+      voiceStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+      // AudioContext at 16 kHz — Chrome resamples native mic rate automatically
+      voiceMicCtx = new AudioContext({ sampleRate: 16000 });
+      voiceMicSource = voiceMicCtx.createMediaStreamSource(voiceStream);
+      voiceMicProcessor = voiceMicCtx.createScriptProcessor(4096, 1, 1);
+      voiceMicProcessor.onaudioprocess = (e) => {
+        if (!voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
+        const f32 = e.inputBuffer.getChannelData(0);
+        const i16 = new Int16Array(f32.length);
+        for (let i = 0; i < f32.length; i++) {
+          i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32767 | 0));
         }
+        voiceWs.send(i16.buffer);
       };
-      voiceRecorder.start(100); // 100ms chunks
+      voiceMicSource.connect(voiceMicProcessor);
+      voiceMicProcessor.connect(voiceMicCtx.destination);
     } catch (e) {
       voLog(`Mic error: ${e.message}`, 'system');
     }
   }
 
   function cleanupMic() {
-    if (voiceRecorder && voiceRecorder.state !== 'inactive') voiceRecorder.stop();
-    if (voiceStream) voiceStream.getTracks().forEach(t => t.stop());
-    voiceRecorder = null;
-    voiceStream = null;
+    if (voiceMicSource) { voiceMicSource.disconnect(); voiceMicSource = null; }
+    if (voiceMicProcessor) { voiceMicProcessor.disconnect(); voiceMicProcessor = null; }
+    if (voiceMicCtx) { voiceMicCtx.close(); voiceMicCtx = null; }
+    if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+  }
+
+  function playPCM(buf) {
+    if (!voicePlayCtx) return;
+    const i16 = new Int16Array(buf);
+    const f32 = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+    const ab = voicePlayCtx.createBuffer(1, f32.length, 24000);
+    ab.copyToChannel(f32, 0);
+    const src = voicePlayCtx.createBufferSource();
+    src.buffer = ab;
+    src.connect(voicePlayCtx.destination);
+    const when = Math.max(voicePlayNext, voicePlayCtx.currentTime + 0.02);
+    src.start(when);
+    voicePlayNext = when + ab.duration;
   }
 
   function stopVoiceReview() {
     cleanupMic();
+    if (voicePlayCtx) { voicePlayCtx.close(); voicePlayCtx = null; voicePlayNext = 0; }
     if (voiceWs) { voiceWs.close(); voiceWs = null; }
     document.getElementById('voiceOverlay').classList.remove('open');
   }
