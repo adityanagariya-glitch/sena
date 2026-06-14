@@ -262,9 +262,8 @@ class GeminiLiveSession:
         except (AttributeError, TypeError):
             # SDK older than the compression types — keep going without it.
             log.warning(
-                "context_window_compression unavailable in this SDK version "
-                "session=%s — long sessions may hit token limits",
-                self._session_id,
+                "context_window_compression_unavailable",
+                session=self._session_id,
             )
 
         config = types.LiveConnectConfig(
@@ -380,7 +379,6 @@ class GeminiLiveSession:
     async def _browser_to_gemini(self, session: genai.live.AsyncSession) -> None:
         """Forward browser audio + control messages → Gemini."""
         total_chunks = 0
-        print("We are here in sena_common")
         try:
             while True:
                 msg = await self._ws.receive()
@@ -408,8 +406,9 @@ class GeminiLiveSession:
                         if time.monotonic() >= self._kickoff_grace_until:
                             self._kickoff_shield_active = False
                             log.info(
-                                "kickoff_shield_lifted reason=grace session=%s",
-                                self._session_id,
+                                "kickoff_shield_lifted",
+                                reason="grace",
+                                session=self._session_id,
                             )
                         else:
                             continue
@@ -422,9 +421,9 @@ class GeminiLiveSession:
                     total_chunks += 1
                     if total_chunks % 50 == 0:
                         log.info(
-                            "audio_streaming chunks=%d session=%s",
-                            total_chunks,
-                            self._session_id,
+                            "audio_streaming",
+                            chunks=total_chunks,
+                            session=self._session_id,
                         )
 
                 elif raw_text:
@@ -435,9 +434,7 @@ class GeminiLiveSession:
         except (WebSocketDisconnect, asyncio.CancelledError):
             pass
         except Exception as e:
-            log.exception(e)
-
-            log.exception("b2g_error", session=self._session_id)
+            log.exception("b2g_error", session=self._session_id, exc=repr(e))
 
     async def _handle_control(self, session: genai.live.AsyncSession, raw_text: str) -> bool:
         """
@@ -513,8 +510,8 @@ class GeminiLiveSession:
 
         if not section_id or not field_id:
             log.warning(
-                "validation_failed missing section/field session=%s",
-                self._session_id,
+                "validation_failed_missing_section_field",
+                session=self._session_id,
             )
             return
 
@@ -557,10 +554,10 @@ class GeminiLiveSession:
         await session.send_realtime_input(audio_stream_end=True)
         await session.send_realtime_input(text=injection)
         log.info(
-            "validation_failed_injected session=%s loc=%s code=%s",
-            self._session_id,
-            loc,
-            code,
+            "validation_failed_injected",
+            session=self._session_id,
+            loc=loc,
+            code=code,
         )
 
     async def _handle_validation_cleared(self, data: dict) -> None:
@@ -589,10 +586,10 @@ class GeminiLiveSession:
         ]
         await self._repo.save_state(state, ttl_sec=self._cfg.session_max_sec)
         log.info(
-            "validation_cleared session=%s section=%s field=%s",
-            self._session_id,
-            section_id,
-            field_id,
+            "validation_cleared",
+            session=self._session_id,
+            section=section_id,
+            field=field_id,
         )
 
     async def _handle_screen_state_v2_turn(
@@ -644,9 +641,9 @@ class GeminiLiveSession:
         h = payload_hash(raw_data)
         if h == self._last_screen_hash:
             log.debug(
-                "screen_state_duplicate_dropped session=%s version=%d",
-                self._session_id,
-                version,
+                "screen_state_duplicate_dropped",
+                session=self._session_id,
+                version=version,
             )
             return
 
@@ -659,10 +656,10 @@ class GeminiLiveSession:
                 state_v2 = from_v1(v1_msg, session_step_id=None)
         except ValidationError as exc:
             log.warning(
-                "screen_state_invalid session=%s version=%d error=%s",
-                self._session_id,
-                version,
-                exc,
+                "screen_state_invalid",
+                session=self._session_id,
+                version=version,
+                error=str(exc),
             )
             await self._ws.send_text(
                 json.dumps(
@@ -678,9 +675,9 @@ class GeminiLiveSession:
         self._last_screen_hash = h
         injection = render_injection_text(state_v2)
         log.debug(
-            "screen_state_inject session=%s version=%d",
-            self._session_id,
-            version,
+            "screen_state_inject",
+            session=self._session_id,
+            version=version,
         )
         await session.send_realtime_input(text=injection)
 
@@ -740,9 +737,9 @@ class GeminiLiveSession:
                         )
                     )
                     log.info(
-                        "screen_state_validation_injected session=%s count=%d",
-                        self._session_id,
-                        len(newly_rejected),
+                        "screen_state_validation_injected",
+                        session=self._session_id,
+                        count=len(newly_rejected),
                     )
 
         if self._cfg.debug:
@@ -806,12 +803,12 @@ class GeminiLiveSession:
         self._usage_emitted_prompt_audio = self._usage_cum_prompt_audio
         self._usage_emitted_response_audio = self._usage_cum_response_audio
         log.info(
-            "usage_flushed reason=%s prompt=%d response=%d turn=%d session=%s",
-            reason,
-            d_prompt,
-            d_response,
-            self._turn_id,
-            self._session_id,
+            "usage_flushed",
+            reason=reason,
+            prompt=d_prompt,
+            response=d_response,
+            turn=self._turn_id,
+            session=self._session_id,
         )
 
     # ── Private: Gemini → client ──────────────────────────────────────────────
@@ -909,19 +906,19 @@ class GeminiLiveSession:
                         # ── Interruption (user spoke over the agent) ───────────
                         if sc.interrupted:
                             log.info(
-                                "interrupted turn=%d chunks_before=%d session=%s",
-                                self._turn_id,
-                                chunk_count,
-                                self._session_id,
+                                "interrupted",
+                                turn=self._turn_id,
+                                chunks_before=chunk_count,
+                                session=self._session_id,
                             )
                             interrupted_intent: str | None = None
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
                                 interrupted_intent = full_text.strip() or None
                                 log.info(
-                                    "AGENT_SAID(interrupted) %r session=%s",
-                                    full_text,
-                                    self._session_id,
+                                    "AGENT_SAID_interrupted",
+                                    text=full_text,
+                                    session=self._session_id,
                                 )
                                 await self._ws.send_text(
                                     json.dumps(
@@ -967,14 +964,14 @@ class GeminiLiveSession:
                                         )
                                     )
                                     log.info(
-                                        "interrupt_intent preserved chars=%d session=%s",
-                                        len(interrupted_intent),
-                                        self._session_id,
+                                        "interrupt_intent_preserved",
+                                        chars=len(interrupted_intent),
+                                        session=self._session_id,
                                     )
                                 except Exception:
                                     log.exception(
-                                        "interrupt_intent_inject_failed session=%s",
-                                        self._session_id,
+                                        "interrupt_intent_inject_failed",
+                                        session=self._session_id,
                                     )
 
                         # ── Turn complete ──────────────────────────────────────
@@ -982,9 +979,9 @@ class GeminiLiveSession:
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
                                 log.info(
-                                    "AGENT_SAID %r session=%s",
-                                    full_text,
-                                    self._session_id,
+                                    "AGENT_SAID",
+                                    text=full_text,
+                                    session=self._session_id,
                                 )
                                 await self._ws.send_text(
                                     json.dumps(
@@ -1006,10 +1003,10 @@ class GeminiLiveSession:
                                 agent_transcript_buf.clear()
                             await self._ws.send_text(json.dumps({"type": "turn_complete"}))
                             log.info(
-                                "turn_complete chunks=%d turn=%d session=%s",
-                                chunk_count,
-                                self._turn_id,
-                                self._session_id,
+                                "turn_complete",
+                                chunks=chunk_count,
+                                turn=self._turn_id,
+                                session=self._session_id,
                             )
                             # Lift the kickoff shield once the opening turn has
                             # actually SPOKEN (chunks > 0). A zero-chunk turn_
@@ -1019,9 +1016,10 @@ class GeminiLiveSession:
                             if self._kickoff_shield_active and chunk_count > 0:
                                 self._kickoff_shield_active = False
                                 log.info(
-                                    "kickoff_shield_lifted reason=opener_spoke turn=%d session=%s",
-                                    self._turn_id,
-                                    self._session_id,
+                                    "kickoff_shield_lifted",
+                                    reason="opener_spoke",
+                                    turn=self._turn_id,
+                                    session=self._session_id,
                                 )
 
                             # ── Phase 1 usage emit — per turn delta ──────────
@@ -1042,38 +1040,47 @@ class GeminiLiveSession:
                                 - self._usage_emitted_response_audio,
                             )
                             if d_prompt or d_response or d_cached or chunk_count or self._tool_calls_in_turn:
-                                emit_usage(
-                                    tenant_id=self._tenant_id or "unknown",
-                                    user_id=self._user_id,
-                                    feature=self._usage_feature,
-                                    model=self._cfg.gemini_live_model_id,
-                                    session_id=self._session_id,
-                                    prompt_tokens=d_prompt,
-                                    response_tokens=d_response,
-                                    cached_tokens=d_cached,
-                                    prompt_audio_tokens=d_prompt_audio,
-                                    response_audio_tokens=d_response_audio,
-                                    tool_call_count=self._tool_calls_in_turn,
-                                    success=True,
-                                    turn_id=self._turn_id,
-                                    audio_chunks_out=chunk_count,
-                                    participant_id=self._participant_id,
-                                    # Per-screen cost attribution. One WS session
-                                    # = one onboarding step, but the step id only
-                                    # exists once a screen_state_v2/TurnPayload has
-                                    # arrived; None-safe until then (aggregator
-                                    # buckets missing ids under "(no-step)").
-                                    step_id=(
-                                        self._current_turn.step.id
-                                        if self._current_turn
-                                        else None
-                                    ),
-                                    step_number=(
-                                        self._current_turn.step.number
-                                        if self._current_turn
-                                        else None
-                                    ),
-                                )
+                                # Telemetry MUST NOT crash the critical path — guard every call site.
+                                try:
+                                    emit_usage(
+                                        tenant_id=self._tenant_id or "unknown",
+                                        user_id=self._user_id,
+                                        feature=self._usage_feature,
+                                        model=self._cfg.gemini_live_model_id,
+                                        session_id=self._session_id,
+                                        prompt_tokens=d_prompt,
+                                        response_tokens=d_response,
+                                        cached_tokens=d_cached,
+                                        prompt_audio_tokens=d_prompt_audio,
+                                        response_audio_tokens=d_response_audio,
+                                        tool_call_count=self._tool_calls_in_turn,
+                                        success=True,
+                                        turn_id=self._turn_id,
+                                        audio_chunks_out=chunk_count,
+                                        participant_id=self._participant_id,
+                                        # Per-screen cost attribution. One WS session
+                                        # = one onboarding step, but the step id only
+                                        # exists once a screen_state_v2/TurnPayload has
+                                        # arrived; None-safe until then (aggregator
+                                        # buckets missing ids under "(no-step)").
+                                        step_id=(
+                                            self._current_turn.step.id
+                                            if self._current_turn
+                                            else None
+                                        ),
+                                        step_number=(
+                                            self._current_turn.step.number
+                                            if self._current_turn
+                                            else None
+                                        ),
+                                    )
+                                except Exception as _ue:
+                                    log.warning(
+                                        "usage_emit_failed",
+                                        turn=self._turn_id,
+                                        session=self._session_id,
+                                        exc=repr(_ue),
+                                    )
                                 self._usage_emitted_prompt = self._usage_cum_prompt
                                 self._usage_emitted_response = self._usage_cum_response
                                 self._usage_emitted_cached = self._usage_cum_cached
@@ -1106,9 +1113,9 @@ class GeminiLiveSession:
                         gemini_handle = getattr(resumption_update, "resumable_session_handle", None)
                         if gemini_handle:
                             log.debug(
-                                "gemini_session_handle_updated session=%s handle=%.12s…",
-                                self._session_id,
-                                gemini_handle,
+                                "gemini_session_handle_updated",
+                                session=self._session_id,
+                                handle=f"{gemini_handle[:12]}…",
                             )
 
                     # ── GoAway — Gemini about to close the connection ──────────
@@ -1116,12 +1123,12 @@ class GeminiLiveSession:
                     # call the resume endpoint before the drop becomes a hard
                     # disconnect.  Without this the client sees a silent audio
                     # gap with no indication a reconnect is needed.
-                    if msg.go_away:
+                    if getattr(msg, "go_away", None):
                         time_left = msg.go_away.time_left
                         log.warning(
-                            "go_away time_left=%s session=%s",
-                            time_left,
-                            self._session_id,
+                            "go_away",
+                            time_left=str(time_left),
+                            session=self._session_id,
                         )
                         with contextlib.suppress(Exception):
                             ms: int = 0
@@ -1139,9 +1146,9 @@ class GeminiLiveSession:
 
                 # receive() iterator exhausted — re-enter for next turn
                 log.debug(
-                    "g2b_recv_iter_end loop=%d session=%s",
-                    loop_iter,
-                    self._session_id,
+                    "g2b_recv_iter_end",
+                    loop=loop_iter,
+                    session=self._session_id,
                 )
                 await asyncio.sleep(0.01)
                 continue
@@ -1152,7 +1159,7 @@ class GeminiLiveSession:
             if _is_client_disconnect(exc):
                 log.info("g2b_client_disconnected", session=self._session_id)
             else:
-                log.exception("g2b_error", session=self._session_id)
+                log.exception("g2b_error", session=self._session_id, exc=repr(exc))
 
     # ── Private: silence monitor ──────────────────────────────────────────────
 
@@ -1191,9 +1198,10 @@ class GeminiLiveSession:
                 if not self._silence_warned:
                     # First fire — gentle "are you still there?" cue.
                     log.info(
-                        "silence_watchdog fired threshold=%.0fs step=warn session=%s",
-                        elapsed,
-                        self._session_id,
+                        "silence_watchdog_fired",
+                        threshold_sec=round(elapsed),
+                        step="warn",
+                        session=self._session_id,
                     )
                     cue = (
                         "[SILENCE TIMEOUT] The participant has been silent. "
@@ -1207,11 +1215,11 @@ class GeminiLiveSession:
                     # so the cue mentions only what's still missing.
                     pending_labels = await self._collect_pending_required_labels()
                     log.info(
-                        "silence_watchdog fired threshold=%.0fs step=summary "
-                        "pending=%d session=%s",
-                        elapsed,
-                        len(pending_labels),
-                        self._session_id,
+                        "silence_watchdog_fired",
+                        threshold_sec=round(elapsed),
+                        step="summary",
+                        pending=len(pending_labels),
+                        session=self._session_id,
                     )
                     if pending_labels:
                         joined = ", ".join(pending_labels[:6])
@@ -1299,15 +1307,15 @@ class GeminiLiveSession:
                     # Client WS dropped mid-dispatch — abort the batch quietly;
                     # the b2g/g2b loops handle teardown. No traceback.
                     log.info(
-                        "tool_dispatch_client_disconnected tool=%s session=%s",
-                        call.name,
-                        self._session_id,
+                        "tool_dispatch_client_disconnected",
+                        tool=call.name,
+                        session=self._session_id,
                     )
                     return
                 log.exception(
-                    "tool_dispatch_error tool=%s session=%s",
-                    call.name,
-                    self._session_id,
+                    "tool_dispatch_error",
+                    tool=call.name,
+                    session=self._session_id,
                 )
                 result = {
                     "ok": False,

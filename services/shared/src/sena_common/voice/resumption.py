@@ -33,7 +33,7 @@ async def issue_handle(
     """
     handle = str(uuid.uuid4())
     await repo.save_resumption_handle(handle, session_id, ttl_sec=ttl_sec)
-    log.debug("resumption_handle_issued session=%s handle=%.8s…", session_id, handle)
+    log.debug("resumption_handle_issued", session=session_id, handle=f"{handle[:8]}…")
     return handle
 
 
@@ -54,17 +54,17 @@ async def redeem_handle(
     """
     stored = await repo.redeem_resumption_handle(handle)
     if stored is None:
-        log.debug("resumption_handle_missing handle=%.8s…", handle)
+        log.debug("resumption_handle_missing", handle=f"{handle[:8]}…")
         return False
     if stored != expected_session_id:
         log.warning(
-            "resumption_handle_mismatch handle=%.8s… expected_session=%s stored_session=%s",
-            handle,
-            expected_session_id,
-            stored,
+            "resumption_handle_mismatch",
+            handle=f"{handle[:8]}…",
+            expected_session=expected_session_id,
+            stored_session=stored,
         )
         return False
-    log.info("resumption_handle_redeemed session=%s handle=%.8s…", expected_session_id, handle)
+    log.info("resumption_handle_redeemed", session=expected_session_id, handle=f"{handle[:8]}…")
     return True
 
 
