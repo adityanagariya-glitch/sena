@@ -83,6 +83,12 @@ class JWTConfig:
         default_factory=lambda: os.environ.get("JWT_ALGORITHM", "HS256")
     )
 
+    # Set JWT_ENABLED=false to skip validation in local development.
+    # Always keep true in staging/production.
+    enabled: bool = field(
+        default_factory=lambda: os.environ.get("JWT_ENABLED", "false").lower() != "false"
+    )
+
 
 @dataclass(frozen=True)
 class AppConfig:

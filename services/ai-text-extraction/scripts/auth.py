@@ -38,7 +38,13 @@ def verify_jwt(
 
     Returns the decoded token payload on success.
     Raises HTTP 401 on any failure (missing header, bad signature, expired, etc.).
+
+    Set JWT_ENABLED=false in .env to bypass validation during local development.
     """
+    if not config.jwt.enabled:
+        logger.warning("JWT validation is DISABLED (JWT_ENABLED=false). Do not use in production.")
+        return {}
+
     if credentials is None:
         raise HTTPException(status_code=401, detail="Authorization header missing.")
 
@@ -46,7 +52,6 @@ def verify_jwt(
 
     secret = config.jwt.secret_key
     if not secret:
-        # Server is misconfigured — JWT_SECRET_KEY not set in environment.
         logger.error("JWT_SECRET_KEY is not configured. Cannot validate tokens.")
         raise HTTPException(status_code=500, detail="Server authentication is not configured.")
 
