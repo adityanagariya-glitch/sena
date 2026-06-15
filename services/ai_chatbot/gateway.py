@@ -20,8 +20,9 @@ import time
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 import config
 from gateway_extensions import ServiceOrchestrator, health_check_services
@@ -270,50 +271,71 @@ async def healthz():
     return JSONResponse({"gateway": True, "children": children})
 
 
+# HTTP Bearer security scheme — makes Swagger render the 🔒 "Authorize" button and a
+# lock icon on this endpoint, so it's obvious a JWT MUST be sent. auto_error=False so
+# our own explicit 401 below stays the source of truth (and the docs render cleanly).
+bearer_scheme = HTTPBearer(
+    auto_error=False,
+    scheme_name="ISENA JWT",
+    description="The ISENA access token from `POST /auth/ai/login`. Sent as `Authorization: Bearer <JWT>`.",
+)
+
+
 @app.post(
     "/ai-chatbot/route",
     tags=["Routing"],
-    summary="Route a chip-selected message and stream the answer (SSE)",
-    response_description="text/event-stream of meta → token → done (or error).",
+    summary="Ask a question (JWT required) → streams the answer as SSE",
+    response_description="Server-Sent Events: meta → token → usage → done (or error).",
     responses={
         200: {
-            "description": "SSE stream. Each line is `data: <json>`.",
+            "description": (
+                "**Server-Sent Events stream** (`Content-Type: text/event-stream`). Each "
+                "line is `data: <json>`. **Four** event types are emitted, in this order:\n\n"
+                "1. **`meta`** — routing decided (+ `session_id`):\n"
+                "   `{\"type\":\"meta\",\"session_id\":\"sess-abc123\",\"routing\":{\"target_services\":[\"staff\"],\"routing_reason\":\"...\"}}`\n"
+                "2. **`token`** — the answer text (one or more of these):\n"
+                "   `{\"type\":\"token\",\"text\":\"You have 2 shifts this week...\"}`\n"
+                "3. **`usage`** — Bedrock token counts for this question:\n"
+                "   `{\"type\":\"usage\",\"input_tokens\":2496,\"output_tokens\":320}`\n"
+                "4. **`done`** — stream finished:\n"
+                "   `{\"type\":\"done\"}`\n\n"
+                "On failure a single **`error`** event is sent instead of the above: "
+                "`{\"type\":\"error\",\"text\":\"...\"}`."
+            ),
             "content": {"text/event-stream": {"example": (
-                'data: {"type": "meta", "routing": {"target_services": ["staff"], '
+                'data: {"type": "meta", "session_id": "sess-abc123", "routing": {"target_services": ["staff"], '
                 '"routing_reason": "Category \'shifts\' routed to staff."}}\n\n'
-                'data: {"type": "token", "text": "Here are your shifts this week: ..."}\n\n'
+                'data: {"type": "token", "text": "You have 2 shifts this week: ..."}\n\n'
                 'data: {"type": "usage", "input_tokens": 2496, "output_tokens": 320}\n\n'
                 'data: {"type": "done"}\n\n'
             )}},
         },
-        401: {"description": "Missing or invalid Authorization bearer token."},
+        401: {"description": "Missing or invalid JWT — no `Authorization: Bearer <token>` header."},
     },
 )
 async def route_query(
     req: RouteRequest,
-    authorization: str = Header(None, description="Bearer <JWT> — the ISENA token from POST /auth/ai/login."),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ):
     """Route one chip-selected message to the right backend section and stream the reply.
 
-    **Auth:** `Authorization: Bearer <JWT>` (the ISENA token). The gateway forwards
-    it to the backend, which validates it.
+    ### Auth — REQUIRED
+    Send the ISENA JWT as **`Authorization: Bearer <JWT>`** (obtain it from
+    `POST /auth/ai/login`). In Swagger, click **Authorize 🔒** and paste the token once.
+    The gateway forwards it to the backend, which validates it. No token → **401**.
 
-    **Routing:** decided by `context.category` (shifts / client / policy /
-    procedure). No category → out of scope (the stream returns a single guidance
-    message). Sections are independent — a `shifts` message cannot return client data.
+    ### Routing
+    Decided by `context.category` (shifts / client / policy / procedure). No category →
+    out of scope (the stream returns a single guidance message). Sections are
+    independent — a `shifts` message cannot return client data.
 
-    **Example**
-
-    ```
-    POST /ai-chatbot/route
-    Authorization: Bearer <JWT>
-    {"question": "What are my shifts this week?", "context": {"category": "shifts"}}
-    ```
+    ### Response — SSE, 4 event types
+    `meta` (routing) → `token` (answer, ×N) → `usage` (input/output tokens) → `done`.
+    On error, a single `error` event instead. See the **200** response for each shape.
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-
-    jwt_token = authorization.removeprefix("Bearer ")
+    jwt_token = credentials.credentials if credentials else None
+    if not jwt_token:
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization bearer token (JWT)")
     orchestrator: ServiceOrchestrator = app.state.orchestrator
 
     async def event_stream():
