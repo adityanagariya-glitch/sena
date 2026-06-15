@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import sys
 from logging.config import fileConfig
-
-script_dir = os.path.dirname(__file__)
-sys.path.insert(0, os.path.abspath(os.path.join(script_dir, "..")))
 
 from alembic import context
 from sqlalchemy import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from core.settings import settings
-from models.db import Base
+from case_review.core.settings import settings
+from case_review.models.db import Base
 
 config = context.config
 if config.config_file_name is not None:
