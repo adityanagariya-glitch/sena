@@ -203,6 +203,10 @@ app = FastAPI(
     description=(
         "Single production entry point for the SENA assistant (Flutter mobile / "
         "React web).\n\n"
+        "**The frontend integrates with THIS gateway only — never the staff or "
+        "policy-proc services directly.** Those are internal, reachable solely over "
+        "the private docker network; the gateway is the trust boundary that validates "
+        "the JWT and routes each request.\n\n"
         "**One endpoint, chip-driven routing.** The frontend sends every message to "
         "`POST /ai-chatbot/route` with the tapped chip in `context.category`; the gateway "
         "routes it to the right backend section and streams the answer back as "
@@ -217,6 +221,13 @@ app = FastAPI(
         {"name": "Routing", "description": "Chip-driven query routing with SSE streaming."},
         {"name": "Health", "description": "Gateway + child-service health."},
     ],
+    # nginx forwards /ai-chatbot/* to this app WITHOUT stripping the prefix, so the
+    # docs / redoc / openapi must live under that same prefix to be reachable at
+    # http://<host>/ai-chatbot/docs (etc.). The absolute prefixed openapi_url is
+    # NOT touched by nginx's sub_filter (which only rewrites the bare /openapi.json).
+    docs_url="/ai-chatbot/docs",
+    redoc_url="/ai-chatbot/redoc",
+    openapi_url="/ai-chatbot/openapi.json",
 )
 
 
@@ -242,15 +253,19 @@ async def healthz():
     # Primary: orchestrator-aware health check (uses actual routing origins)
     children = await health_check_services(app.state.orchestrator)
 
-    # Supplement: probe any config-declared children not already covered
-    client: httpx.AsyncClient = app.state.client
-    for spec in config.child_specs():
-        if spec["name"] not in children:
-            try:
-                r = await client.get(spec["health_url"], timeout=2)
-                children[spec["name"]] = r.status_code < 400
-            except Exception:
-                children[spec["name"]] = False
+    # Supplement: ONLY in subprocess mode (MANAGE_CHILDREN=true) also probe the
+    # in-process children. In network mode the real backends are the staff/policy
+    # origins already checked above, so skip the child_specs probes — otherwise they
+    # always report false (no localhost children exist) and clutter the response.
+    if config.MANAGE_CHILDREN:
+        client: httpx.AsyncClient = app.state.client
+        for spec in config.child_specs():
+            if spec["name"] not in children:
+                try:
+                    r = await client.get(spec["health_url"], timeout=2)
+                    children[spec["name"]] = r.status_code < 400
+                except Exception:
+                    children[spec["name"]] = False
 
     return JSONResponse({"gateway": True, "children": children})
 

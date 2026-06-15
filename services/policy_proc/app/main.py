@@ -133,7 +133,17 @@ def get_user_role(user_id: str, token: str, jwt_role: str = "support_worker") ->
         logger.error(f"Failed to get user type from backend: {e}")
         return jwt_role
 
-app = FastAPI(title="SENA RAG API", version="2.0.0")
+app = FastAPI(
+    title="SENA RAG API",
+    version="2.0.0",
+    description=(
+        "⚠️ INTERNAL SERVICE — the frontend must NOT call this directly. All client "
+        "traffic goes through the **ai-chatbot gateway** (`POST /ai-chatbot/route` with "
+        "category `policy` or `procedure`); the gateway validates the JWT and forwards "
+        "the request here over the private docker network. These endpoints are "
+        "documented for backend/ops reference only."
+    ),
+)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,0 +1,35 @@
+# systemd unit — AI Chatbot GATEWAY on the host (no docker).
+# The gateway spawns + health-gates the staff (:8601) and policy (:8000) children
+# itself (MANAGE_CHILDREN defaults to true), so this ONE service brings up all
+# three backends. Caddy then fronts it on :8080.
+#
+# INSTALL (on the server, as root):
+#   cp services/ai_chatbot/sena-chatbot-gateway.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now sena-chatbot-gateway
+#   systemctl status sena-chatbot-gateway
+#
+# Logs:    journalctl -u sena-chatbot-gateway -f
+# Restart: systemctl restart sena-chatbot-gateway
+
+[Unit]
+Description=SENA AI Chatbot — gateway + staff + policy (host, spawns children)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/test/SENA/services/ai_chatbot
+# MANAGE_CHILDREN is left at its default (true) so the gateway spawns staff +
+# policy as child processes. (The docker deploy sets it false; the host/Caddy
+# deploy does NOT.) AWS creds come from the EC2 instance role.
+Environment=GATEWAY_HOST=0.0.0.0
+Environment=GATEWAY_PORT=9000
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/root/test/SENA/ai-sena/bin/uvicorn gateway:app --host 0.0.0.0 --port 9000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

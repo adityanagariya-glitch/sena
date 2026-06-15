@@ -19,7 +19,17 @@ from auth import (
     get_last_error,
 )
 
-GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:9000")
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
+
+# Two independent logins, picked per chip:
+#   • Staff & Client  → the ISENA email login (nexaxody@…), entered on the sign-in screen.
+#   • Policy & Proc   → the policy service's own fake_users.json login, because that
+#                       org scoping (e.g. org_sunrise) is what has policy docs ingested.
+# The UI therefore holds TWO bearer tokens and sends the right one to the gateway.
+POLICY_LOGIN_URL = os.getenv("POLICY_LOGIN_URL", "http://localhost:8080/policy/auth/login")
+POLICY_FAKE_LOGIN_ID = os.getenv("POLICY_FAKE_LOGIN_ID", "sunrise\\alice.walker")
+POLICY_FAKE_PASSWORD = os.getenv("POLICY_FAKE_PASSWORD", "Test@1234")
+POLICY_CATEGORIES = {"policy", "procedure"}
 
 # Chip label → category key the gateway understands
 CHIPS = [
@@ -55,16 +65,58 @@ if "active_chip" not in st.session_state:
     st.session_state.active_chip = None
 
 
+def get_policy_token():
+    """Lazily sign in to the policy service with fake_users.json creds; cache in session."""
+    tok = st.session_state.get("policy_token")
+    if tok:
+        return tok
+    try:
+        resp = httpx.post(
+            POLICY_LOGIN_URL,
+            json={"login_id": POLICY_FAKE_LOGIN_ID, "password": POLICY_FAKE_PASSWORD},
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            tok = (data.get("token") or data.get("access_token")) if isinstance(data, dict) else data
+            if tok:
+                st.session_state.policy_token = tok
+                return tok
+            st.session_state.policy_login_error = f"no token in response: {data}"
+        else:
+            st.session_state.policy_login_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+    except Exception as e:
+        st.session_state.policy_login_error = f"{type(e).__name__}: {e}"
+    return None
+
+
 def ask_gateway(question, category=None):
-    """POST to the gateway, consume the SSE stream."""
+    """POST to the gateway, consume the SSE stream.
+
+    Token is chosen by chip: policy/procedure use the fake_users token, everything
+    else (staff/client) uses the ISENA email-login token.
+    """
     answer, classification, routing = [], {}, {}
     context = {"category": category} if category else {}
+
+    if category in POLICY_CATEGORIES:
+        token = get_policy_token()
+        if not token:
+            err = st.session_state.get("policy_login_error", "unknown error")
+            return (
+                f"Couldn't sign in to the policy service as {POLICY_FAKE_LOGIN_ID} "
+                f"via {POLICY_LOGIN_URL} — {err}",
+                {}, {},
+            )
+    else:
+        token = get_token()
+
     try:
         with httpx.stream(
             "POST",
             f"{GATEWAY_URL}/ai-chatbot/route",
             json={"question": question or "", "context": context},
-            headers={"Authorization": f"Bearer {get_token()}"},
+            headers={"Authorization": f"Bearer {token}"},
             timeout=120,
         ) as resp:
             if resp.status_code != 200:
@@ -143,8 +195,10 @@ if not st.session_state.authenticated:
     st.title("SENA Assistant")
     method = st.radio("Sign in with:", ["Email + Password", "JWT Token"], label_visibility="collapsed")
     if method == "Email + Password":
-        email = st.text_input("Email", placeholder="your@email.com")
-        password = st.text_input("Password", type="password")
+        st.caption("This logs in **Staff & Client**. **Policies & Procedures** auto-sign-in "
+                   "with the policy fake_users account in the background.")
+        email = st.text_input("Email", value="nexaxody@mailinator.com")
+        password = st.text_input("Password", type="password", value="Test@1234")
         if st.button("Sign In", type="primary", use_container_width=True):
             with st.spinner("Authenticating..."):
                 ok = login_user(email, password)

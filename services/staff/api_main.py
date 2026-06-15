@@ -1,5 +1,10 @@
 """FastAPI wrapper for the SENA Staff service.
 
+⚠️ INTERNAL SERVICE — the frontend must NOT call this directly. All client traffic
+goes through the **ai-chatbot gateway** (`POST /ai-chatbot/route` with the tapped chip
+category); the gateway validates the JWT and forwards the request here over the private
+docker network. These endpoints are documented for backend/ops reference only.
+
 Two INDEPENDENT sections, one per UI chip — they never share tools or data:
 
   • POST /staff/query/stream   → "Check Shifts" chip   (shifts, rosters, team)

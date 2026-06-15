@@ -1,0 +1,47 @@
+# systemd unit to keep the AI-Chatbot Streamlit test UI running on the HOST
+# (no container — nginx proxies /aichatbot/ to it via host.docker.internal:8502).
+#
+# Survives: terminal close, crashes (auto-restart), and reboots (auto-start).
+#
+# INSTALL (on the server, as root):
+#   1. Verify the paths below match your box:
+#        source ai-sena/bin/activate && which streamlit   # → ExecStart binary
+#        pwd                                                # → WorkingDirectory (services/ai_chatbot)
+#   2. Copy this file into place:
+#        cp services/ai_chatbot/sena-chatbot-ui.service /etc/systemd/system/sena-chatbot-ui.service
+#   3. Enable + start:
+#        systemctl daemon-reload
+#        systemctl enable --now sena-chatbot-ui
+#        systemctl status sena-chatbot-ui
+#
+# Logs:    journalctl -u sena-chatbot-ui -f
+# Restart: systemctl restart sena-chatbot-ui
+# Stop:    systemctl stop sena-chatbot-ui
+#
+# Open at: http://<host>:8080/aichatbot/   (e.g. http://3.111.109.14:8080/aichatbot/)
+
+[Unit]
+Description=SENA AI Chatbot — Streamlit test UI
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/test/SENA/services/ai_chatbot
+# GATEWAY_URL: the UI sends questions to the gateway through nginx (/ai-chatbot/route).
+# POLICY_LOGIN_URL: fake_users.json login for the Policy/Procedure chips (via nginx /policy/).
+Environment=GATEWAY_URL=http://localhost:8080
+Environment=POLICY_LOGIN_URL=http://localhost:8080/policy/auth/login
+# --server.headless true stops Streamlit asking for an email / opening a browser.
+# --server.baseUrlPath aichatbot lets it sit behind nginx at /aichatbot/.
+ExecStart=/root/test/SENA/ai-sena/bin/streamlit run test_classification_ui.py \
+    --server.address 0.0.0.0 \
+    --server.port 8502 \
+    --server.headless true \
+    --server.baseUrlPath aichatbot
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
