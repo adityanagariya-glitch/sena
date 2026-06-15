@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from case_review.models.db import IncidentDraft, ReviewAuditLog, ReviewSession, RollingSummary
-from case_review.repositories.review_repo import ReviewRepo
+from models.db import IncidentDraft, ReviewAuditLog, ReviewSession, RollingSummary
+from repositories.review_repo import ReviewRepo
 from tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
 
 
@@ -161,7 +161,7 @@ async def test_list_audit_returns_ordered() -> None:
 
 @pytest.mark.asyncio
 async def test_stub_client_returns_fixtures() -> None:
-    from case_review.clients.case_note_client import CaseNoteClient
+    from clients.case_note_client import CaseNoteClient
 
     client = CaseNoteClient(stub=True)
     # Pass non-matching IDs — stub returns all fixtures as dev convenience
@@ -176,7 +176,7 @@ async def test_stub_client_returns_fixtures() -> None:
 
 @pytest.mark.asyncio
 async def test_stub_client_respects_limit() -> None:
-    from case_review.clients.case_note_client import CaseNoteClient
+    from clients.case_note_client import CaseNoteClient
 
     client = CaseNoteClient(stub=True)
     notes = await client.get_notes("s", "c", limit=1)
@@ -185,7 +185,7 @@ async def test_stub_client_respects_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_stub_client_filters_by_staff_client() -> None:
-    from case_review.clients.case_note_client import CaseNoteClient
+    from clients.case_note_client import CaseNoteClient
 
     client = CaseNoteClient(stub=True)
     # Fixture has staff-uuid-001 / client-uuid-001

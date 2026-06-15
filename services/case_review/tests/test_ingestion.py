@@ -1,9 +1,9 @@
-"""Tests for case_review.services.ingestion.chunker (pure, no I/O)."""
+"""Tests for services.ingestion.chunker (pure, no I/O)."""
 from __future__ import annotations
 
 import pytest
 
-from case_review.services.ingestion.chunker import DocumentChunk, chunk_document, chunk_text
+from services.ingestion.chunker import DocumentChunk, chunk_document, chunk_text
 
 
 def test_chunk_document_splits_long_text() -> None:

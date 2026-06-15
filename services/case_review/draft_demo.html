@@ -1018,7 +1018,16 @@
     // 2 — open WebSocket (query params for browser auth — headers blocked by spec)
     // participant_id must match client_id used in session create (server stores body.client_id as state.participant_id)
     const sessionClientId = document.getElementById('client_id').value.trim();
-    const wsUrl = `ws://${location.host}${wsPath}?tenant_id=${DEV_TENANT_ID}&participant_id=${encodeURIComponent(sessionClientId)}&roles=${DEV_ROLES}`;
+    // Build an ABSOLUTE ws(s):// URL that survives both serving modes:
+    //   • Embedded (Streamlit): API was rewritten to an absolute https URL — reuse its
+    //     origin + base path (e.g. https://host/case-review) so the WS keeps the
+    //     /case-review prefix and uses wss:// on HTTPS pages.
+    //   • Same-origin (FastAPI /draft-demo): API stays root-relative → fall back to the
+    //     current page's host + protocol.
+    const wsBase = /^https?:\/\//.test(API)
+      ? API.split('/v1/')[0].replace(/^http/, 'ws')                                  // ws(s)://host/<prefix>
+      : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;       // same-origin
+    const wsUrl = `${wsBase}${wsPath}?tenant_id=${DEV_TENANT_ID}&participant_id=${encodeURIComponent(sessionClientId)}&roles=${DEV_ROLES}`;
     voiceWs = new WebSocket(wsUrl);
     voiceWs.binaryType = 'arraybuffer';
 

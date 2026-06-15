@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from api.routes import router
@@ -27,6 +28,15 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
         openapi_url="/openapi.json",
         lifespan=lifespan,
+    )
+    # Demo UIs (the Streamlit-embedded draft_demo.html) call the API cross-origin.
+    # /draft has no auth, so a permissive CORS policy is fine; /evaluate keeps its
+    # own Basic-auth dependency regardless.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     app.include_router(router)
     app.include_router(rp_router)

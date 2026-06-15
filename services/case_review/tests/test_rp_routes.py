@@ -8,9 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from case_review.api.deps import get_auth_context, get_db
-from case_review.main import create_app
-from case_review.models.schemas import (
+from api.deps import get_auth_context, get_db
+from main import create_app
+from models.schemas import (
     AuthContext,
     PipelineResult,
     TriageResult,
@@ -69,7 +69,7 @@ def _flagged_pipeline_result() -> PipelineResult:
 def test_evaluate_clear_returns_200(rp_client: TestClient) -> None:
     # Route returns EvaluateResponse (has 'verdict' key), built from PipelineResult
     with patch(
-        "case_review.api.rp_routes.run_pipeline",
+        "api.rp_routes.run_pipeline",
         new=AsyncMock(return_value=_clear_pipeline_result()),
     ):
         resp = rp_client.post("/v1/restrictive-practices/evaluate", json=TEST_NOTE_PAYLOAD)
@@ -80,7 +80,7 @@ def test_evaluate_clear_returns_200(rp_client: TestClient) -> None:
 
 def test_evaluate_flagged_returns_200(rp_client: TestClient) -> None:
     with patch(
-        "case_review.api.rp_routes.run_pipeline",
+        "api.rp_routes.run_pipeline",
         new=AsyncMock(return_value=_flagged_pipeline_result()),
     ):
         resp = rp_client.post("/v1/restrictive-practices/evaluate", json=TEST_NOTE_PAYLOAD)
@@ -98,7 +98,7 @@ def test_evaluate_missing_case_note_id_returns_422(rp_client: TestClient) -> Non
 def test_evaluate_pipeline_mocked_returns_200(rp_client: TestClient) -> None:
     # Confirm the route wires run_pipeline → _build_response correctly when mocked
     with patch(
-        "case_review.api.rp_routes.run_pipeline",
+        "api.rp_routes.run_pipeline",
         new=AsyncMock(return_value=_clear_pipeline_result()),
     ):
         resp = rp_client.post("/v1/restrictive-practices/evaluate", json=TEST_NOTE_PAYLOAD)

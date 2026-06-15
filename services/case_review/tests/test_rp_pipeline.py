@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from case_review.services.pipeline.triage import _extract_json, _run_triage
+from services.pipeline.triage import _extract_json, _run_triage
 
 
 # ── _extract_json ──────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ def test_run_triage_flagged(monkeypatch) -> None:
         True, "Chemical restraint suspected"
     )
     monkeypatch.setattr(
-        "case_review.services.pipeline.triage._make_client",
+        "services.pipeline.triage._make_client",
         lambda: mock_client,
     )
     result = _run_triage("Worker gave medication to calm participant behaviour.")
@@ -72,7 +72,7 @@ def test_run_triage_clear(monkeypatch) -> None:
     mock_client = MagicMock()
     mock_client.converse.return_value = _mock_bedrock_response(False, None)
     monkeypatch.setattr(
-        "case_review.services.pipeline.triage._make_client",
+        "services.pipeline.triage._make_client",
         lambda: mock_client,
     )
     result = _run_triage("Assisted participant with morning routine. No incidents.")
@@ -84,7 +84,7 @@ def test_run_triage_empty_action_summary_normalised_to_none(monkeypatch) -> None
     mock_client = MagicMock()
     mock_client.converse.return_value = _mock_bedrock_response(False, "")
     monkeypatch.setattr(
-        "case_review.services.pipeline.triage._make_client",
+        "services.pipeline.triage._make_client",
         lambda: mock_client,
     )
     result = _run_triage("Normal shift notes.")

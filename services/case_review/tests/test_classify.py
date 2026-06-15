@@ -18,11 +18,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from case_review.models.case_note_field_schema import REQUIRED_FIELD_IDS
-from case_review.models.schemas import ClassifyRequest, ClassifyResponse, ReaskPrompt
-from case_review.repositories.review_repo import ReviewRepo
-from case_review.services.classify_service import classify_paragraph
-from case_review.services.llm.classifier import ClassifyResult
+from models.case_note_field_schema import REQUIRED_FIELD_IDS
+from models.schemas import ClassifyRequest, ClassifyResponse, ReaskPrompt
+from repositories.review_repo import ReviewRepo
+from services.classify_service import classify_paragraph
+from services.llm.classifier import ClassifyResult
 from tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID, USER_ID
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ async def test_full_paragraph_no_reask() -> None:
     repo.update_review_session = AsyncMock(return_value=_make_session())
     repo.append_audit = AsyncMock()
 
-    with patch("case_review.services.classify_service.classify", AsyncMock(return_value=_full_classify_result())):
+    with patch("services.classify_service.classify", AsyncMock(return_value=_full_classify_result())):
         result = await classify_paragraph(
             repo=repo,
             tenant_id=TENANT_ID,
@@ -128,7 +128,7 @@ async def test_thin_paragraph_returns_reask() -> None:
     repo.update_review_session = AsyncMock(return_value=_make_session())
     repo.append_audit = AsyncMock()
 
-    with patch("case_review.services.classify_service.classify", AsyncMock(return_value=_thin_classify_result())):
+    with patch("services.classify_service.classify", AsyncMock(return_value=_thin_classify_result())):
         result = await classify_paragraph(
             repo=repo,
             tenant_id=TENANT_ID,
@@ -154,7 +154,7 @@ async def test_existing_session_uses_update_path() -> None:
     repo.update_review_session = AsyncMock(return_value=_make_session())
     repo.append_audit = AsyncMock()
 
-    with patch("case_review.services.classify_service.classify", AsyncMock(return_value=_full_classify_result())):
+    with patch("services.classify_service.classify", AsyncMock(return_value=_full_classify_result())):
         result = await classify_paragraph(
             repo=repo,
             tenant_id=TENANT_ID,
@@ -175,7 +175,7 @@ async def test_audit_appended_on_classify() -> None:
     repo.update_review_session = AsyncMock(return_value=_make_session())
     repo.append_audit = AsyncMock()
 
-    with patch("case_review.services.classify_service.classify", AsyncMock(return_value=_full_classify_result())):
+    with patch("services.classify_service.classify", AsyncMock(return_value=_full_classify_result())):
         await classify_paragraph(
             repo=repo,
             tenant_id=TENANT_ID,
@@ -202,7 +202,7 @@ async def test_classify_route_returns_200(client: TestClient) -> None:
         status="classified",
     )
 
-    with patch("case_review.api.routes.svc_classify_paragraph", AsyncMock(return_value=mock_response)):
+    with patch("api.routes.svc_classify_paragraph", AsyncMock(return_value=mock_response)):
         resp = client.post(
             "/v1/case-review/classify",
             json={
@@ -248,7 +248,7 @@ async def test_classify_route_reask_response_shape(client: TestClient) -> None:
         status="classified",
     )
 
-    with patch("case_review.api.routes.svc_classify_paragraph", AsyncMock(return_value=mock_response)):
+    with patch("api.routes.svc_classify_paragraph", AsyncMock(return_value=mock_response)):
         resp = client.post(
             "/v1/case-review/classify",
             json={

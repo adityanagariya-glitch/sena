@@ -7,11 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from case_review.api.deps import get_auth_context, get_case_note_client, get_db, get_repo
-from case_review.clients.case_note_client import CaseNoteClient
-from case_review.main import create_app
-from case_review.models.schemas import AuthContext
-from case_review.repositories.review_repo import ReviewRepo
+from api.deps import get_auth_context, get_case_note_client, get_db, get_repo
+from clients.case_note_client import CaseNoteClient
+from main import create_app
+from models.schemas import AuthContext
+from repositories.review_repo import ReviewRepo
 
 # ── Shared test IDs ───────────────────────────────────────────────────────────
 

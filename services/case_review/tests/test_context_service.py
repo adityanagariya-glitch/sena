@@ -16,10 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from case_review.clients.case_note_client import CaseNoteClient
-from case_review.models.schemas import CaseNoteDTO, ContextResponse
-from case_review.repositories.review_repo import ReviewRepo
-from case_review.services.context_service import get_context
+from clients.case_note_client import CaseNoteClient
+from models.schemas import CaseNoteDTO, ContextResponse
+from repositories.review_repo import ReviewRepo
+from services.context_service import get_context
 from tests.conftest import CLIENT_ID, STAFF_ID, TENANT_ID
 
 
@@ -37,7 +37,7 @@ def _make_note(note_id: str, date: str = "2026-04-10") -> CaseNoteDTO:
 
 
 def _mock_summary_result():
-    from case_review.services.llm.summarizer import SummaryResult
+    from services.llm.summarizer import SummaryResult
     return SummaryResult(
         summary_text="Participant has been progressing with daily living skills over the past 3 sessions.",
         metadata={"note_count": 2, "last_dates": ["2026-04-10"], "incident_count": 0, "risk_flags": []},
@@ -77,7 +77,7 @@ async def test_cold_start_calls_llm_and_upserts() -> None:
 
     mock_result = _mock_summary_result()
 
-    with patch("case_review.services.context_service.summarise", AsyncMock(return_value=mock_result)):
+    with patch("services.context_service.summarise", AsyncMock(return_value=mock_result)):
         result = await get_context(
             repo=repo, client=client,
             tenant_id=TENANT_ID, staff_id=STAFF_ID, client_id=CLIENT_ID,
@@ -99,7 +99,7 @@ async def test_replay_guard_skips_llm() -> None:
     # Returns same notes already in processed_note_ids
     client.get_notes = AsyncMock(return_value=[_make_note("note-001"), _make_note("note-002")])
 
-    with patch("case_review.services.context_service.summarise", AsyncMock()) as mock_llm:
+    with patch("services.context_service.summarise", AsyncMock()) as mock_llm:
         result = await get_context(
             repo=repo, client=client,
             tenant_id=TENANT_ID, staff_id=STAFF_ID, client_id=CLIENT_ID,
@@ -128,7 +128,7 @@ async def test_incremental_update_only_passes_new_notes() -> None:
         captured_new_notes.extend(new_notes)
         return _mock_summary_result()
 
-    with patch("case_review.services.context_service.summarise", _capture_summarise):
+    with patch("services.context_service.summarise", _capture_summarise):
         result = await get_context(
             repo=repo, client=client,
             tenant_id=TENANT_ID, staff_id=STAFF_ID, client_id=CLIENT_ID,
@@ -152,7 +152,7 @@ async def test_processed_ids_merged_correctly() -> None:
     client = MagicMock(spec=CaseNoteClient)
     client.get_notes = AsyncMock(return_value=[_make_note("note-001"), _make_note("note-002")])
 
-    with patch("case_review.services.context_service.summarise", AsyncMock(return_value=_mock_summary_result())):
+    with patch("services.context_service.summarise", AsyncMock(return_value=_mock_summary_result())):
         await get_context(
             repo=repo, client=client,
             tenant_id=TENANT_ID, staff_id=STAFF_ID, client_id=CLIENT_ID,
@@ -176,7 +176,7 @@ async def test_context_route_returns_200(client: TestClient) -> None:
         rolling_summary_id=uuid.uuid4(),
     )
 
-    with patch("case_review.api.routes.svc_get_context", AsyncMock(return_value=mock_response)):
+    with patch("api.routes.svc_get_context", AsyncMock(return_value=mock_response)):
         resp = client.post(
             "/v1/case-review/context",
             json={"staff_id": str(STAFF_ID), "client_id": str(CLIENT_ID), "limit": 5},

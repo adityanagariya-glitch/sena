@@ -94,7 +94,7 @@ def test_submit_stub_501(client: TestClient) -> None:
 
 def test_missing_auth_headers_returns_422(client: TestClient) -> None:
     """Without overriding auth dep, missing headers → 422 Unprocessable."""
-    from case_review.main import create_app
+    from main import create_app
 
     bare_app = create_app()
     bare_client = TestClient(bare_app, raise_server_exceptions=False)
