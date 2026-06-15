@@ -10,7 +10,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.case_review.core.settings import settings
+from core.settings import settings
 from case_review.models.db import NDISPolicyChunk
 from case_review.models.schemas import CaseNoteInput, PolicyChunk, TriageResult
 

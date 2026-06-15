@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from services.case_review.core.settings import settings
+from core.settings import settings
 from case_review.models.schemas import PipelineResult
 
 logger = logging.getLogger(__name__)

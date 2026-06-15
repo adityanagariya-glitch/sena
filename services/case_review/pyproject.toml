@@ -47,6 +47,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Mirrors the Docker runtime roots (PYTHONPATH=/app:/app/case_review) so `pytest`
+# run from this dir resolves bare imports (api, core, …), the case_review.* /
+# shared.* prefixes (..), and the sena_common package (../shared/src).
+pythonpath = [".", "..", "../shared/src"]
 
 [tool.ruff]
 line-length = 100

@@ -23,7 +23,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
 
-from deps import get_auth_context, voice_redis_client
+from api.deps import get_auth_context, voice_redis_client
 from core.settings import settings
 from models.schemas import AuthContext
 from voice.casenote_schema import CASE_NOTE_SCHEMA
@@ -48,7 +48,7 @@ voice_router = APIRouter()
 _KEY_PREFIX = "sena:case_review"
 _STEP_ID = "staff_case_note"
 _STEP_LABEL = "Case Note"
-_PROMPTS_DIR = Path(next(iter(__path__))).resolve() / "voice" / "prompts"
+_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "voice" / "prompts"
 _STAFF_ROLES = {"worker", "staff", "support_worker", "admin"}
 
 

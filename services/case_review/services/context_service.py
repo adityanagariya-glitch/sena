@@ -19,7 +19,7 @@ from clients.case_note_client import CaseNoteClient
 from core.settings import settings
 from models.schemas import ContextResponse
 from repositories.review_repo import ReviewRepo
-from llm.summarizer import summarise
+from services.llm.summarizer import summarise
 
 log = structlog.get_logger(__name__)
 

@@ -23,7 +23,7 @@ import boto3
 import httpx
 from botocore.config import Config
 
-from services.case_review.core.settings import settings
+from core.settings import settings
 
 logger = logging.getLogger(__name__)
 

@@ -37,7 +37,7 @@ from shared.src.sena_common.voice.turn_payload import Participant, StepInfo, Tur
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.case_review.api.deps import get_auth_context, get_db, voice_redis_client
+from api.deps import get_auth_context, get_db, voice_redis_client
 from case_review.core.settings import settings
 from case_review.models.db import BehaviourSupportPlan
 from case_review.models.schemas import (

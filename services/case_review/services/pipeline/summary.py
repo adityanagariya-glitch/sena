@@ -12,7 +12,7 @@ import logging
 import boto3
 from pydantic import BaseModel
 
-from services.case_review.core.settings import settings
+from core.settings import settings
 from case_review.models.schemas import CaseNoteInput, SummaryOutput
 from case_review.services.pipeline.quality_score import score_note
 from case_review.services.pipeline.style_examples import FEW_SHOT_SUMMARY, STYLE_GUIDE

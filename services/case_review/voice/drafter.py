@@ -15,7 +15,7 @@ import boto3
 import structlog
 from pydantic import BaseModel
 
-from services.case_review.core.settings import settings
+from core.settings import settings
 
 log = structlog.get_logger(__name__)
 

@@ -12,7 +12,7 @@ import logging
 import boto3
 from pydantic import BaseModel
 
-from services.case_review.core.settings import settings
+from core.settings import settings
 from case_review.models.schemas import (
     CaseNoteInput,
     ConfidenceLevel,

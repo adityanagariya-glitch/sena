@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deps import get_auth_context, get_case_note_client, get_db, get_repo
+from api.deps import get_auth_context, get_case_note_client, get_db, get_repo
 from clients.case_note_client import CaseNoteClient
 from services.classify_service import classify_paragraph as svc_classify_paragraph
 from services.context_service import get_context as svc_get_context

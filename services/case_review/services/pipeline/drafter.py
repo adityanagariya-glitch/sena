@@ -13,7 +13,7 @@ import boto3
 from botocore.config import Config
 from pydantic import BaseModel
 
-from services.case_review.core.settings import settings
+from core.settings import settings
 from case_review.models.schemas import CaseDraftResponse, CaseNoteInput, DraftInput
 from case_review.services.pipeline.quality_score import score_note
 from case_review.services.pipeline.style_examples import FEW_SHOT_DRAFTER, STYLE_GUIDE
