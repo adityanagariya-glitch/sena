@@ -882,7 +882,7 @@ function clearErr(id) { document.getElementById(id).classList.remove('on'); }
 // Set today's date
 document.getElementById('d-date').value = new Date().toISOString().split('T')[0];
 // Default API base to current origin so deployed environments work without manual config
-document.getElementById('api-base').value = window.location.origin;
+document.getElementById('api-base').value = 'http://3.111.109.14:8080/case-review';
 </script>
 </body>
 </html>
