@@ -5,7 +5,7 @@
 # to sena-network so nginx can proxy /practices/ to it:
 #   docker network connect sena-network restrictive_practices-api-1
 
-name: sena-ai
+name: sena-ai-internal
 
 services:
 
