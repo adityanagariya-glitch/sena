@@ -10,14 +10,6 @@
 #   cp sena-caddy.service                               /etc/systemd/system/
 #   systemctl daemon-reload
 #   systemctl enable --now sena-chatbot-gateway sena-chatbot-ui sena-caddy
-#
-#   sena-chatbot-gateway → gateway :9000 (spawns staff :8601 + policy :8000)
-#   sena-chatbot-ui      → Streamlit UI  :8502  (baseUrlPath=aichatbot)
-#   sena-caddy           → this proxy    :8080
-#
-#   Open:  http://<host>:8080/aichatbot/
-#
-# Validate this file first:  caddy validate --config Caddyfile
 :8080 {
 	# ── AI Chatbot stack ────────────────────────────────────────────────────
 	# Streamlit UI. Runs with --server.baseUrlPath=aichatbot, so the /aichatbot/
@@ -66,3 +58,5 @@
 		respond "SENA local backend (Caddy). Open the chatbot UI at /aichatbot/" 200
 	}
 }
+
+
