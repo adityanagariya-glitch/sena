@@ -31,7 +31,7 @@ def build_envelope(
     """
     confidence = max(0.0, min(1.0, float(confidence)))
     if enforced and not is_eligible(section_id, field_id, schema):
-        log.debug("field_apply_blocked section=%s field=%s", section_id, field_id)
+        log.debug("field_apply_blocked", section=section_id, field=field_id)
         return None
     envelope: dict = {
         "type": "field_apply",

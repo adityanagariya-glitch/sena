@@ -4,17 +4,37 @@ version = "0.1.0"
 description = "NDIS Restrictive Practice Detection Pipeline"
 requires-python = ">=3.12"
 dependencies = [
-    "google-genai>=1.74.0",
-    "redis>=5.0.0",
-    "structlog>=24.0.0",
-    "websockets>=12.0",
+  "fastapi==0.136.3",
+  "uvicorn[standard]==0.32.1",
+  "pydantic==2.13.4",
+  "pydantic-settings==2.14.1",
+  "sqlalchemy[asyncio]==2.0.36",
+  "asyncpg==0.30.0",
+  "alembic==1.14.0",
+  "httpx==0.28.1",
+  "structlog==25.5.0",
+  "orjson==3.10.12",
+  "google-genai>=1.10.0",
+  "python-multipart>=0.0.9",
+  "redis[hiredis]==5.2.1",
+  "sena-common",
+  "boto3==1.35.80",
+  "langgraph>=0.4.0",
+  "langchain-text-splitters>=0.3.0",
+  "pymupdf>=1.24.0",
+  "pgvector>=0.3.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "fakeredis[lua]>=2.20.0",
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
+  "pytest==8.3.4",
+  "pytest-asyncio==0.24.0",
+  "pytest-cov==6.0.0",
+  "anyio==4.7.0",
+  "ruff==0.8.4",
+  "mypy==1.13.0",
+  "aiosqlite==0.20.0",
+  "fakeredis==2.26.2",
 ]
 
 [tool.ruff]
