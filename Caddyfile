@@ -53,6 +53,9 @@
 	handle /v1/case-review* {
 		reverse_proxy 127.0.0.1:8084
 	}
+	handle /case-review* {
+		reverse_proxy 127.0.0.1:8084
+	}
 
 	handle {
 		respond "SENA local backend (Caddy). Open the chatbot UI at /aichatbot/" 200
