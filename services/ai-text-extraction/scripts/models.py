@@ -28,8 +28,8 @@ class ExtractionResult(BaseModel):
     Fields:
         document_no  — Passport/licence/ID number. Null if not found.
         name         — Full name as printed on the document.
-        issue_date   — Normalised to DD/MM/YYYY. Null if not found.
-        expiry_date  — Normalised to DD/MM/YYYY. Null if not found.
+        issue_date   — Normalised to YYYY-MM-DD. Null if not found.
+        expiry_date  — Normalised to YYYY-MM-DD. Null if not found.
         address      — Full address as printed. Null if not found.
     """
 
@@ -47,15 +47,15 @@ class ExtractionResult(BaseModel):
     @classmethod
     def validate_date_format(cls, v: Optional[str]) -> Optional[str]:
         """
-        Ensure dates conform to DD/MM/YYYY.
+        Ensure dates conform to YYYY-MM-DD.
         Accepts None — returns None unchanged.
         Raises ValueError if a non-null value does not match the pattern.
         """
         if v is None:
             return None
-        if not re.match(r"^\d{2}/\d{2}/\d{4}$", str(v).strip()):
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", str(v).strip()):
             raise ValueError(
-                f"Date '{v}' does not match required format DD/MM/YYYY. "
+                f"Date '{v}' does not match required format YYYY-MM-DD. "
                 "The extractor must normalise dates before constructing this model."
             )
         return v.strip()

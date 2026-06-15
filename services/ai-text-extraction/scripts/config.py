@@ -65,7 +65,23 @@ class ExtractionConfig:
     )
 
     # Date format all dates are normalised to
-    date_format: str = "DD/MM/YYYY"
+    date_format: str = "YYYY-MM-DD"
+
+
+@dataclass(frozen=True)
+class JWTConfig:
+    """JWT validation settings — we verify tokens, we do NOT issue them."""
+
+    # Secret shared with the auth server (HS256) OR path to public key (RS256).
+    # Must be set via JWT_SECRET_KEY environment variable before starting the server.
+    secret_key: str = field(
+        default_factory=lambda: os.environ.get("JWT_SECRET_KEY", "")
+    )
+
+    # Signing algorithm used by the auth server. Override with JWT_ALGORITHM env var.
+    algorithm: str = field(
+        default_factory=lambda: os.environ.get("JWT_ALGORITHM", "HS256")
+    )
 
 
 @dataclass(frozen=True)
@@ -76,6 +92,7 @@ class AppConfig:
     s3:         S3Config         = field(default_factory=S3Config)
     document:   DocumentConfig   = field(default_factory=DocumentConfig)
     extraction: ExtractionConfig = field(default_factory=ExtractionConfig)
+    jwt:        JWTConfig        = field(default_factory=JWTConfig)
 
 
 # ---------------------------------------------------------------------------
