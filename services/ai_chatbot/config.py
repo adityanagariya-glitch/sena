@@ -67,7 +67,9 @@ STAFF_WS_ORIGIN = f"ws://{CHILD_HOST}:{STAFF_PORT}"
 POLICY_WS_ORIGIN = f"ws://{CHILD_HOST}:{POLICY_PORT}"
 
 # ---- Platform conversation store (optional webhook persistence) ----
-PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", "https://dev-api.isena.org/api")
+# NOTE: signature-authed webhook routes live at /ai-chat/... (NO /api prefix).
+# The /api prefix is only for the JWT-authed user-facing routes, which we don't call.
+PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", "https://dev-api.isena.org")
 AI_WEBHOOK_PRIVATE_KEY_PEM = os.getenv("AI_WEBHOOK_PRIVATE_KEY_PEM", "")
 CONVERSATION_STORE_ENABLED = os.getenv("CONVERSATION_STORE_ENABLED", "false").lower() == "true"
 
