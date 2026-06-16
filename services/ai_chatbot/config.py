@@ -8,6 +8,23 @@ import os
 import sys
 from pathlib import Path
 
+# Load .env file if it exists (for development)
+_env_file = Path(__file__).parent.parent.parent / ".env"
+if _env_file.exists():
+    with open(_env_file) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if not _line or _line.startswith("#"):
+                continue
+            if "=" in _line:
+                _key, _value = _line.split("=", 1)
+                _key = _key.strip()
+                _value = _value.strip()
+                # Handle escaped newlines in .env
+                _value = _value.replace("\\n", "\n")
+                if _key not in os.environ:
+                    os.environ[_key] = _value
+
 # ---- Paths ----
 # this file lives in services/ai_chatbot/, so services/ is one level up.
 _THIS_DIR = Path(__file__).resolve().parent
@@ -48,6 +65,14 @@ STAFF_ORIGIN = f"http://{CHILD_HOST}:{STAFF_PORT}"
 POLICY_ORIGIN = f"http://{CHILD_HOST}:{POLICY_PORT}"
 STAFF_WS_ORIGIN = f"ws://{CHILD_HOST}:{STAFF_PORT}"
 POLICY_WS_ORIGIN = f"ws://{CHILD_HOST}:{POLICY_PORT}"
+
+# ---- Platform conversation store (optional webhook persistence) ----
+# Canonical platform base (keeps /api — matches the JWT-authed user-facing routes).
+# NOTE: the signature-authed webhook routes do NOT use /api; conversation_store.py
+# strips it off this base when building webhook URLs.
+PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", "https://dev-api.isena.org/api")
+AI_WEBHOOK_PRIVATE_KEY_PEM = os.getenv("AI_WEBHOOK_PRIVATE_KEY_PEM", "")
+CONVERSATION_STORE_ENABLED = os.getenv("CONVERSATION_STORE_ENABLED", "false").lower() == "true"
 
 
 def _streamlit_cmd(entry: str, port: int, base_url_path: str) -> list[str]:

@@ -1,0 +1,247 @@
+[
+  {
+    "method": "POST",
+    "path": "/ai-chat/conversations",
+    "description": "Create a new AI conversation",
+    "parameters": [],
+    "responseExample": "{\n  \"conversationId\": \"uuid\",\n  \"title\": null,\n  \"feature\": \"shift\",\n  \"lastMessage\": null,\n  \"createdAt\": \"2026-06-15T10:00:00Z\",\n  \"updatedAt\": \"2026-06-15T10:00:00Z\"\n}"
+  },
+  {
+    "method": "GET",
+    "path": "/ai-chat/conversations",
+    "description": "List AI conversations for the authenticated user",
+    "parameters": [
+      {
+        "name": "page",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 1"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Default value : 20"
+      },
+      {
+        "name": "search",
+        "type": "string",
+        "required": false,
+        "description": "Case-insensitive partial match on conversation title"
+      }
+    ],
+    "responseExample": "{\n  \"data\": [\n    {\n      \"conversationId\": \"uuid\",\n      \"title\": \"What is the capital of France?\",\n      \"lastMessage\": {\n        \"role\": \"assistant\",\n        \"message\": \"The capital of France is Paris.\",\n        \"createdAt\": \"2026-06-15T10:00:02Z\"\n      },\n      \"createdAt\": \"2026-06-15T10:00:00Z\",\n      \"updatedAt\": \"2026-06-15T10:00:02Z\"\n    }\n  ],\n  \"pagination\": {\n    \"page\": 1,\n    \"limit\": 20,\n    \"total\": 5,\n    \"totalPages\": 1,\n    \"hasNext\": false,\n    \"hasPrev\": false\n  }\n}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/ai-chat/conversations/{id}",
+    "description": "Rename an AI conversation",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true
+      }
+    ],
+    "responseExample": null
+  },
+  {
+    "method": "DELETE",
+    "path": "/ai-chat/conversations/{id}",
+    "description": "Delete an AI conversation",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true
+      }
+    ],
+    "responseExample": "{\n  \"message\": \"Conversation deleted successfully\"\n}"
+  },
+  {
+    "method": "GET",
+    "path": "/ai-chat/conversations/{id}/messages",
+    "description": "Get AI chat message history (cursor-based)",
+    "parameters": [
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true
+      },
+      {
+        "name": "cursor",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Message UUID to paginate from. Omit for initial open."
+      },
+      {
+        "name": "before",
+        "type": "integer",
+        "required": false,
+        "description": "Messages to load before cursor (max 50, default 20 on initial open)"
+      },
+      {
+        "name": "after",
+        "type": "integer",
+        "required": false,
+        "description": "Messages to load after cursor (max 50)"
+      }
+    ],
+    "responseExample": "{\n  \"messages\": [],\n  \"hasBefore\": false,\n  \"hasAfter\": false\n}"
+  },
+  {
+    "method": "POST",
+    "path": "/ai-chat/documents/presigned-url",
+    "description": "Get presigned URL for AI document upload",
+    "parameters": [],
+    "responseExample": "{\n  \"documentName\": \"report.pdf\",\n  \"presignedUrl\": {\n    \"uploadUrl\": \"https://bucket.s3.amazonaws.com/ai-chat/documents/userId/uuid.pdf?...\",\n    \"fileKey\": \"ai-chat/documents/userId/uuid.pdf\",\n    \"publicUrl\": \"https://bucket.s3.amazonaws.com/ai-chat/documents/userId/uuid.pdf\",\n    \"mimeType\": \"application/pdf\",\n    \"maxFileSize\": 52428800\n  }\n}"
+  },
+  {
+    "method": "POST",
+    "path": "/ai-chat/webhook/user-message",
+    "description": "[Webhook] Store user query",
+    "parameters": [
+      {
+        "name": "X-AI-Timestamp",
+        "type": "integer",
+        "required": true,
+        "description": "Unix timestamp in seconds (request rejected if > 5 min old)"
+      },
+      {
+        "name": "X-AI-Signature",
+        "type": "string",
+        "required": true,
+        "description": "base64 RSA-SHA256 signature of ${timestamp}.${rawBody}"
+      }
+    ],
+    "responseExample": "{\n  \"messageId\": \"uuid\",\n  \"conversationId\": \"uuid\",\n  \"createdAt\": \"2026-06-15T10:00:00Z\"\n}"
+  },
+  {
+    "method": "POST",
+    "path": "/ai-chat/webhook/ai-response",
+    "description": "[Webhook] Store AI response",
+    "parameters": [
+      {
+        "name": "X-AI-Timestamp",
+        "type": "integer",
+        "required": true
+      },
+      {
+        "name": "X-AI-Signature",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "responseExample": "{\n  \"messageId\": \"uuid\",\n  \"conversationId\": \"uuid\",\n  \"createdAt\": \"2026-06-15T10:00:02Z\"\n}"
+  },
+  {
+    "method": "GET",
+    "path": "/ai-chat/conversations/{id}/recent-messages",
+    "description": "[Webhook] Get recent messages for a conversation",
+    "parameters": [
+      {
+        "name": "X-AI-Timestamp",
+        "type": "integer",
+        "required": true
+      },
+      {
+        "name": "X-AI-Signature",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Conversation UUID"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Number of messages to return (default 10, max 50)"
+      },
+      {
+        "name": "messageId",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Anchor message UUID. Returns messages older than this (not including it)."
+      }
+    ],
+    "responseExample": "{\n  \"data\": {\n    \"messages\": [\n      {\n        \"id\": \"uuid\",\n        \"role\": \"user\",\n        \"message\": \"How many leave days am I entitled to?\",\n        \"status\": \"completed\",\n        \"externalMessageId\": null,\n        \"documents\": null,\n        \"metadata\": null,\n        \"createdAt\": \"2026-06-15T10:00:00Z\"\n      }\n    ],\n    \"hasMore\": false\n  }\n}"
+  },
+  {
+    "method": "POST",
+    "path": "/ai-chat/webhook/user-message",
+    "description": "[Webhook] Store user query",
+    "parameters": [
+      {
+        "name": "X-AI-Timestamp",
+        "type": "integer",
+        "required": true,
+        "description": "Unix timestamp in seconds (request rejected if > 5 min old)"
+      },
+      {
+        "name": "X-AI-Signature",
+        "type": "string",
+        "required": true,
+        "description": "base64 RSA-SHA256 signature of ${timestamp}.${rawBody}"
+      }
+    ],
+    "responseExample": "{\n  \"messageId\": \"uuid\",\n  \"conversationId\": \"uuid\",\n  \"createdAt\": \"2026-06-15T10:00:00Z\"\n}"
+  },
+  {
+    "method": "POST",
+    "path": "/ai-chat/webhook/ai-response",
+    "description": "[Webhook] Store AI response",
+    "parameters": [
+      {
+        "name": "X-AI-Timestamp",
+        "type": "integer",
+        "required": true
+      },
+      {
+        "name": "X-AI-Signature",
+        "type": "string",
+        "required": true
+      }
+    ],
+    "responseExample": "{\n  \"messageId\": \"uuid\",\n  \"conversationId\": \"uuid\",\n  \"createdAt\": \"2026-06-15T10:00:02Z\"\n}"
+  },
+  {
+    "method": "GET",
+    "path": "/ai-chat/conversations/{id}/recent-messages",
+    "description": "[Webhook] Get recent messages for a conversation",
+    "parameters": [
+      {
+        "name": "X-AI-Timestamp",
+        "type": "integer",
+        "required": true
+      },
+      {
+        "name": "X-AI-Signature",
+        "type": "string",
+        "required": true
+      },
+      {
+        "name": "id",
+        "type": "string($uuid)",
+        "required": true,
+        "description": "Conversation UUID"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Number of messages to return (default 10, max 50)"
+      },
+      {
+        "name": "messageId",
+        "type": "string($uuid)",
+        "required": false,
+        "description": "Anchor message UUID. Returns messages older than this (not including it)."
+      }
+    ],
+    "responseExample": "{\n  \"data\": {\n    \"messages\": [\n      {\n        \"id\": \"uuid\",\n        \"role\": \"user\",\n        \"message\": \"How many leave days am I entitled to?\",\n        \"status\": \"completed\",\n        \"externalMessageId\": null,\n        \"documents\": null,\n        \"metadata\": null,\n        \"createdAt\": \"2026-06-15T10:00:00Z\"\n      }\n    ],\n    \"hasMore\": false\n  }\n}"
+  }
+]

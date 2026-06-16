@@ -93,10 +93,10 @@ address:
 ───────────────────────────────────────────────────────────
 DATE FORMAT
 ───────────────────────────────────────────────────────────
-Normalise ALL extracted dates to DD/MM/YYYY.
-  "04 MAY 1991"  →  "04/05/1991"
-  "2025-06-21"   →  "21/06/2025"
-  "21 Jun 25"    →  "21/06/2025"
+Normalise ALL extracted dates to YYYY-MM-DD.
+  "04 MAY 1991"  →  "1991-05-04"
+  "21/06/2025"   →  "2025-06-21"
+  "21 Jun 25"    →  "2025-06-21"
 Apply this normalisation to issue_date and expiry_date only.
 Never extract date of birth under any field name.
 
@@ -113,8 +113,8 @@ Expected output shape:
 {
   "document_no": "P1234567",
   "name": "Jane Citizen",
-  "issue_date": "21/06/2022",
-  "expiry_date": "21/06/2025",
+  "issue_date": "2022-06-21",
+  "expiry_date": "2025-06-21",
   "address": null
 }
 """
@@ -306,9 +306,9 @@ def _parse_response(raw_text: str) -> dict:
     text = raw_text.strip()
 
     if text.startswith("```"):
-        lines = text.splitlines()
-        inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-        text = "\n".join(inner).strip()
+        import re
+        text = re.sub(r'^```\w*\n?', '', text)
+        text = re.sub(r'\n?```$', '', text).strip()
 
     try:
         parsed = json.loads(text)
@@ -361,7 +361,7 @@ def _sanity_check_dates(mapped: dict) -> None:
         if not date_str:
             return None
         try:
-            return datetime.strptime(date_str, "%d/%m/%Y")
+            return datetime.strptime(date_str, "%Y-%m-%d")
         except ValueError:
             return None
 

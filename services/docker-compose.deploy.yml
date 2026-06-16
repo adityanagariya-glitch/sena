@@ -5,7 +5,7 @@
 # to sena-network so nginx can proxy /practices/ to it:
 #   docker network connect sena-network restrictive_practices-api-1
 
-name: sena-ai
+name: sena-ai-internal
 
 services:
 
@@ -225,12 +225,6 @@ services:
     container_name: sena-ai-text-extraction-internal
     env_file:
       - ../.env
-    environment:
-      # Code reads S3_BUCKET_NAME / AWS_REGION; .env provides S3_BUCKET / S3_REGION.
-      # Interpolated from repo-root .env at compose time (run from repo root).
-      # AWS creds come from the EC2 instance role (same as the other Bedrock services).
-      S3_BUCKET_NAME: "${S3_BUCKET:-}"
-      AWS_REGION: "${S3_REGION:-ap-southeast-2}"
     expose:
       - "8007"
     networks:

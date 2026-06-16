@@ -19,10 +19,15 @@ Environment variables required for production:
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from dotenv import load_dotenv
+# Loads .env for local development. In Docker, env vars are injected by Docker itself.
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from scripts.auth import verify_jwt
 from scripts.pipeline import run, run_from_s3
 
 logger = logging.getLogger(__name__)
@@ -39,32 +44,22 @@ app = FastAPI(
 
 # ---------------------------------------------------------------------------
 # CORS
+# TODO: Replace the wildcard origin with your actual frontend domain(s) before
 #       deploying to production.
 #       Example: allow_origins=["https://your-frontend.com"]
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          
+    allow_origins=["*"],          # TODO: restrict to frontend origin in production
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------------
-# The backend team should add API key / JWT verification before this API is
-# exposed beyond the internal network.
-#
-# Example with a simple API key header check:
-#
-#   from fastapi import Security
-#   from fastapi.security.api_key import APIKeyHeader
-#
-#   API_KEY_HEADER = APIKeyHeader(name="X-API-Key")
-#
-#   async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
-#       if api_key != os.environ["EXTRACTION_API_KEY"]:
-#           raise HTTPException(status_code=403, detail="Invalid API key")
-#
-# Then add `dependencies=[Depends(verify_api_key)]` to each protected route.
+# Authentication
+# POST /extract is protected by JWT Bearer token validation (see scripts/auth.py).
+# The token is issued by the auth server and passed here by the mobile client.
+# GET /health and POST /extract/local are intentionally unprotected.
 # ---------------------------------------------------------------------------
 
 
@@ -97,14 +92,18 @@ def health():
 
 
 @app.post("/extract", tags=["Extraction"])
-def extract_from_s3(req: ExtractionRequest):
+def extract_from_s3(
+    req: ExtractionRequest,
+    _token_payload: dict = Depends(verify_jwt),
+):
     """
     Download a document from S3 by object key and extract identity fields.
 
-    The caller (backend) must have already uploaded the document to S3 and
-    obtained the object key before calling this endpoint.
+    Requires a valid JWT in the Authorization header:
+      Authorization: Bearer <token>
 
-    Returns a JSON object with 7 fields — see ExtractionResult.to_api_response().
+    The token is issued by the auth server (mobile team) and validated here.
+    Returns a JSON object with the extracted identity fields.
     """
     logger.info("POST /extract — s3_key=%s", req.s3_key)
 

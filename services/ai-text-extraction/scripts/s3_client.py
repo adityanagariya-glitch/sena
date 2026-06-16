@@ -10,11 +10,20 @@ Usage:
 """
 
 import logging
+from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
 
 from scripts.config import config
+
+_CONTENT_TYPE_EXT = {
+    "application/pdf":                                                          ".pdf",
+    "image/jpeg":                                                               ".jpg",
+    "image/png":                                                                ".png",
+    "image/webp":                                                               ".webp",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +60,16 @@ def download(s3_key: str) -> tuple[bytes, str]:
     try:
         response = client.get_object(Bucket=bucket, Key=s3_key)
         raw_bytes = response["Body"].read()
+
+        if not Path(filename).suffix:
+            content_type = response.get("ContentType", "").split(";")[0].strip()
+            ext = _CONTENT_TYPE_EXT.get(content_type, "")
+            if ext:
+                filename = filename + ext
+                logger.info("No extension in key — derived '%s' from ContentType '%s'", ext, content_type)
+            else:
+                logger.warning("No extension in key and unrecognised ContentType '%s'", content_type)
+
     except ClientError as exc:
         error_code = exc.response["Error"]["Code"]
         if error_code in ("NoSuchKey", "404"):

@@ -20,10 +20,12 @@ import time
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 import config
+from conversation_store import store_user_message, store_ai_response, get_recent_messages
 from gateway_extensions import ServiceOrchestrator, health_check_services
 from pydantic import BaseModel, Field
 
@@ -50,6 +52,10 @@ class RouteRequest(BaseModel):
       • "client"    → staff service, CLIENT section (participant info)
       • "policy"    → policy service                (organisational policy)
       • "procedure" → policy service                (compliance procedures)
+
+    Multi-turn conversations (Phase 2):
+      • `conversation_id` (UUID): Platform conversation ID. Pass same ID for follow-up turns.
+      • `is_new_chat` (bool): Set `true` on first turn only. Gateway loads prior messages on follow-ups.
     """
 
     question: str = Field(
@@ -60,20 +66,48 @@ class RouteRequest(BaseModel):
     )
     context: dict = Field(
         default_factory=dict,
-        description="UI context. Must include `category` (the tapped chip). May also "
-                    "carry session_id / session_title / is_new_chat.",
-        examples=[{"category": "shifts", "is_new_chat": True}],
+        description="UI context. REQUIRED fields:\n"
+                    "• `category` (str): The tapped chip (shifts/client/policy/procedure)\n"
+                    "• `conversation_id` (UUID): Platform conversation ID (create via POST /conversations)\n"
+                    "\nOptional fields:\n"
+                    "• `is_new_chat` (bool): Set true on first turn only, false/omit on follow-ups\n"
+                    "• `session_id` (str): Session tracking\n"
+                    "• `session_title` (str): Display name",
+        examples=[
+            {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000", "is_new_chat": True},
+            {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000", "is_new_chat": False},
+        ],
     )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
-                {"question": "What are my shifts this week?",
-                 "context": {"category": "shifts", "is_new_chat": True}},
-                {"question": "Who are my clients?",
-                 "context": {"category": "client", "is_new_chat": True}},
-                {"question": "What is the leave policy?",
-                 "context": {"category": "policy", "is_new_chat": True}},
+                {
+                    "description": "Turn 1: New conversation (create via POST /conversations first)",
+                    "question": "What are my shifts this week?",
+                    "context": {
+                        "category": "shifts",
+                        "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "is_new_chat": True
+                    }
+                },
+                {
+                    "description": "Turn 2: Follow-up (prior messages auto-loaded)",
+                    "question": "Who will be working Monday?",
+                    "context": {
+                        "category": "shifts",
+                        "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "is_new_chat": False
+                    }
+                },
+                {
+                    "description": "Turn 3: Another follow-up (full context available)",
+                    "question": "How many shifts do I have total?",
+                    "context": {
+                        "category": "shifts",
+                        "conversation_id": "550e8400-e29b-41d4-a716-446655440000"
+                    }
+                },
             ]
         }
     }
@@ -270,59 +304,120 @@ async def healthz():
     return JSONResponse({"gateway": True, "children": children})
 
 
+# HTTP Bearer security scheme — makes Swagger render the 🔒 "Authorize" button and a
+# lock icon on this endpoint, so it's obvious a JWT MUST be sent. auto_error=False so
+# our own explicit 401 below stays the source of truth (and the docs render cleanly).
+bearer_scheme = HTTPBearer(
+    auto_error=False,
+    scheme_name="ISENA JWT",
+    description="The ISENA access token from `POST /auth/ai/login`. Sent as `Authorization: Bearer <JWT>`.",
+)
+
+
 @app.post(
     "/ai-chatbot/route",
     tags=["Routing"],
-    summary="Route a chip-selected message and stream the answer (SSE)",
-    response_description="text/event-stream of meta → token → done (or error).",
+    summary="Ask a question (JWT required) → streams the answer as SSE",
+    response_description="Server-Sent Events: meta → token → usage → done (or error).",
     responses={
         200: {
-            "description": "SSE stream. Each line is `data: <json>`.",
+            "description": (
+                "**Server-Sent Events stream** (`Content-Type: text/event-stream`). Each "
+                "line is `data: <json>`. **Four** event types are emitted, in this order:\n\n"
+                "1. **`meta`** — routing decided (+ `session_id`, `conversation_id` if multi-turn):\n"
+                "   `{\"type\":\"meta\",\"session_id\":\"sess-abc123\",\"conversation_id\":\"uuid\",\"routing\":{\"target_services\":[\"staff\"],\"routing_reason\":\"...\"}}`\n"
+                "2. **`token`** — the answer text (one or more of these):\n"
+                "   `{\"type\":\"token\",\"text\":\"You have 2 shifts this week...\"}`\n"
+                "3. **`usage`** — Bedrock token counts for this question:\n"
+                "   `{\"type\":\"usage\",\"input_tokens\":2496,\"output_tokens\":320}`\n"
+                "4. **`done`** — stream finished:\n"
+                "   `{\"type\":\"done\"}`\n\n"
+                "On failure a single **`error`** event is sent instead of the above: "
+                "`{\"type\":\"error\",\"text\":\"...\"}`."
+            ),
             "content": {"text/event-stream": {"example": (
-                'data: {"type": "meta", "routing": {"target_services": ["staff"], '
+                'data: {"type": "meta", "session_id": "sess-abc123", "routing": {"target_services": ["staff"], '
                 '"routing_reason": "Category \'shifts\' routed to staff."}}\n\n'
-                'data: {"type": "token", "text": "Here are your shifts this week: ..."}\n\n'
+                'data: {"type": "token", "text": "You have 2 shifts this week: ..."}\n\n'
                 'data: {"type": "usage", "input_tokens": 2496, "output_tokens": 320}\n\n'
                 'data: {"type": "done"}\n\n'
             )}},
         },
-        401: {"description": "Missing or invalid Authorization bearer token."},
+        401: {"description": "Missing or invalid JWT — no `Authorization: Bearer <token>` header."},
     },
 )
 async def route_query(
     req: RouteRequest,
-    authorization: str = Header(None, description="Bearer <JWT> — the ISENA token from POST /auth/ai/login."),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ):
     """Route one chip-selected message to the right backend section and stream the reply.
 
-    **Auth:** `Authorization: Bearer <JWT>` (the ISENA token). The gateway forwards
-    it to the backend, which validates it.
+    ### Auth — REQUIRED
+    Send the ISENA JWT as **`Authorization: Bearer <JWT>`** (obtain it from
+    `POST /auth/ai/login`). In Swagger, click **Authorize 🔒** and paste the token once.
+    The gateway forwards it to the backend, which validates it. No token → **401**.
 
-    **Routing:** decided by `context.category` (shifts / client / policy /
-    procedure). No category → out of scope (the stream returns a single guidance
-    message). Sections are independent — a `shifts` message cannot return client data.
+    ### Routing
+    Decided by `context.category` (shifts / client / policy / procedure). No category →
+    out of scope (the stream returns a single guidance message). Sections are
+    independent — a `shifts` message cannot return client data.
 
-    **Example**
-
-    ```
-    POST /ai-chatbot/route
-    Authorization: Bearer <JWT>
-    {"question": "What are my shifts this week?", "context": {"category": "shifts"}}
-    ```
+    ### Response — SSE, 4 event types
+    `meta` (routing) → `token` (answer, ×N) → `usage` (input/output tokens) → `done`.
+    On error, a single `error` event instead. See the **200** response for each shape.
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-
-    jwt_token = authorization.removeprefix("Bearer ")
+    jwt_token = credentials.credentials if credentials else None
+    if not jwt_token:
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization bearer token (JWT)")
     orchestrator: ServiceOrchestrator = app.state.orchestrator
 
     async def event_stream():
         try:
+            full_answer = []
+            usage = {}
+            conv_id = (req.context or {}).get("conversation_id")
+            client: httpx.AsyncClient = app.state.client
+            enriched_context = dict(req.context or {})
+
+            # Validate conversation_id is provided (required for message storage and context)
+            if not conv_id:
+                raise ValueError(
+                    "conversation_id is required in context. "
+                    "Create one via POST /conversations, then pass it in all requests."
+                )
+
+            # Load prior messages for context injection (if follow-up turn)
+            if conv_id and not enriched_context.get("is_new_chat"):
+                prior_messages = await get_recent_messages(
+                    conv_id, limit=5, jwt_token=jwt_token, client=client
+                )
+                if prior_messages:
+                    enriched_context["message_history"] = prior_messages
+                    logger.debug(f"Enriched context with {len(prior_messages)} prior messages")
+
+            # Store user message (fire-and-forget, non-blocking)
+            if conv_id:
+                asyncio.create_task(
+                    store_user_message(conv_id, req.question, jwt_token, client)
+                )
+
             async for event in orchestrator.route_and_stream(
                 question=req.question,
                 jwt_token=jwt_token,
-                context=req.context or {},
+                context=enriched_context,
             ):
+                if event.get("type") == "token":
+                    full_answer.append(event.get("text", ""))
+                elif event.get("type") == "usage":
+                    usage = event
+                elif event.get("type") == "done" and conv_id and full_answer:
+                    # Store AI response (fire-and-forget, non-blocking)
+                    asyncio.create_task(
+                        store_ai_response(
+                            conv_id, "".join(full_answer), usage, jwt_token, client
+                        )
+                    )
+
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             logger.exception("Error in route_and_stream")

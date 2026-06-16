@@ -13,8 +13,10 @@ from dataclasses import dataclass, field
 class BedrockConfig:
     """AWS Bedrock / Nova Lite settings."""
 
-    region: str = "ap-southeast-2"
-    model_id: str = "amazon.nova-lite-v1:0" #amazon.nova-lite-v1:0
+    region: str = field(
+        default_factory=lambda: os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-2")
+    )
+    model_id: str = "amazon.nova-lite-v1:0"
 
     # How many times to retry the Bedrock call on timeout or throttle
     max_retries: int = 2
@@ -39,7 +41,7 @@ class S3Config:
 
     # S3 region — defaults to same region as Bedrock
     region: str = field(
-        default_factory=lambda: os.environ.get("AWS_REGION", "ap-southeast-2")
+        default_factory=lambda: os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-2")
     )
 
 
@@ -65,7 +67,29 @@ class ExtractionConfig:
     )
 
     # Date format all dates are normalised to
-    date_format: str = "DD/MM/YYYY"
+    date_format: str = "YYYY-MM-DD"
+
+
+@dataclass(frozen=True)
+class JWTConfig:
+    """JWT validation settings — we verify tokens, we do NOT issue them."""
+
+    # Secret shared with the auth server (HS256) OR path to public key (RS256).
+    # Must be set via JWT_SECRET_KEY environment variable before starting the server.
+    secret_key: str = field(
+        default_factory=lambda: os.environ.get("JWT_SECRET_KEY", "")
+    )
+
+    # Signing algorithm used by the auth server. Override with JWT_ALGORITHM env var.
+    algorithm: str = field(
+        default_factory=lambda: os.environ.get("JWT_ALGORITHM", "HS256")
+    )
+
+    # Set JWT_ENABLED=false to skip validation in local development.
+    # Always keep true in staging/production.
+    enabled: bool = field(
+        default_factory=lambda: os.environ.get("JWT_ENABLED", "false").lower() != "false"
+    )
 
 
 @dataclass(frozen=True)
@@ -76,6 +100,7 @@ class AppConfig:
     s3:         S3Config         = field(default_factory=S3Config)
     document:   DocumentConfig   = field(default_factory=DocumentConfig)
     extraction: ExtractionConfig = field(default_factory=ExtractionConfig)
+    jwt:        JWTConfig        = field(default_factory=JWTConfig)
 
 
 # ---------------------------------------------------------------------------
