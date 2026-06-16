@@ -1,0 +1,30 @@
+version: "3.9"
+
+# Minimal stack for restrictive-practices module only.
+# If running full sena-ai stack (cd sena-ai && docker-compose up -d),
+# skip this — sena-ai-db on port 5433 is already started there.
+
+services:
+  ai-db:
+    image: pgvector/pgvector:pg16
+    container_name: sena-ai-db
+    environment:
+      POSTGRES_USER: sena_ai
+      POSTGRES_PASSWORD: sena_ai
+      POSTGRES_DB: sena_ai
+    ports:
+      - "5433:5432"
+    volumes:
+      - ai-db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: sena-rp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  ai-db-data:
+  redis-data:

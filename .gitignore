@@ -101,6 +101,7 @@ Figma/
 # Generated PDFs and HTML reports
 *.pdf
 *.html
+!services/case_review/draft_demo.html
 *.md
 *.txt
 

@@ -1,96 +1,63 @@
-import logging
-import os
-import traceback
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-import redis.asyncio as aioredis
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
-from api.routes import _require_auth, router
-from api.voice_routes import set_voice_repo, voice_router
-from config import settings
-from db.session import create_tables
-from voice.state_repo import VoiceStateRepo
+from api.routes import router
+from api.rp_routes import rp_router
+from api.voice_routes import voice_router
+from core.logging import configure_logging
+from core.settings import settings
 
-_DEMO_HTML       = Path(__file__).parent / "demo_ui.html"
-_VOICE_DEMO_HTML = Path(__file__).parent / "voice_demo.html"
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    configure_logging(settings.log_level)
+    yield
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="NDIS Restrictive Practice Detection",
-        description="AI pipeline to detect regulated restrictive practices from NDIS case notes.",
-        version="0.1.0",
+        title="SENA Case Note Review API",
+        version=settings.service_version,
+        docs_url="/docs" if settings.debug else None,
+        redoc_url="/redoc" if settings.debug else None,
+        openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
-
-    demo_host = os.getenv("SENA_AI_DEMO_HOST", "")
-    origins = [demo_host] if demo_host else ["*"]
+    # Demo UIs (the Streamlit-embedded draft_demo.html) call the API cross-origin.
+    # /draft has no auth, so a permissive CORS policy is fine; /evaluate keeps its
+    # own Basic-auth dependency regardless.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
+        allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
     app.include_router(router)
+    app.include_router(rp_router)
     app.include_router(voice_router)
 
-    @app.get("/demo", include_in_schema=False, dependencies=[Depends(_require_auth)])
-    async def demo_ui() -> FileResponse:
-        return FileResponse(_DEMO_HTML, media_type="text/html")
-
-    @app.get("/voice-demo", include_in_schema=False)
-    async def voice_demo_ui() -> FileResponse:
-        return FileResponse(_VOICE_DEMO_HTML, media_type="text/html")
-
-    @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        tb = traceback.format_exc()
-        logger.error("Unhandled exception on %s %s:\n%s", request.method, request.url.path, tb)
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"{type(exc).__name__}: {exc}", "traceback": tb},
+    # Browser voice demo harness (case_review voice dictation). Served
+    # same-origin so its relative fetch + WS work without CORS. voice_demo.html
+    # sits alongside main.py at services/case_review/.
+    @app.get("/demo", include_in_schema=False)
+    async def voice_demo() -> FileResponse:
+        return FileResponse(
+            Path(__file__).resolve().parent / "voice_demo.html",
+            media_type="text/html",
         )
 
-    @app.on_event("startup")
-    async def on_startup() -> None:
-        logger.info("Creating DB tables...")
-        try:
-            await create_tables()
-            logger.info("DB tables ready.")
-        except Exception as exc:
-            logger.warning(
-                "DB not reachable at startup — start PostgreSQL before using pipeline endpoints. (%s)",
-                exc,
-            )
-        try:
-            redis_client = aioredis.from_url(settings.redis_url, decode_responses=False)
-            await redis_client.ping()
-            repo = VoiceStateRepo(redis_client)
-            set_voice_repo(repo)
-            logger.info("Voice Redis connected: %s", settings.redis_url)
-        except Exception as exc:
-            logger.warning(
-                "Redis not reachable at startup — voice endpoints unavailable. (%s)", exc
-            )
-        logger.info("Startup complete.")
-
-    @app.on_event("shutdown")
-    async def on_shutdown() -> None:
-        from api.voice_routes import _repo as voice_repo_instance
-        try:
-            if voice_repo_instance is not None:
-                await voice_repo_instance._r.aclose()
-        except Exception:
-            pass
+    # Case note drafter manual test UI — served same-origin so fetch works without CORS.
+    @app.get("/draft-demo", include_in_schema=False)
+    async def draft_demo() -> FileResponse:
+        return FileResponse(
+            Path(__file__).resolve().parent / "draft_demo.html",
+            media_type="text/html",
+        )
 
     return app
-
-
-app = create_app()

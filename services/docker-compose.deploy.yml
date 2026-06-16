@@ -94,19 +94,8 @@ services:
     env_file:
       - ../.env
     environment:
-      # New RP-detection config (config.py, env_prefix SENA_AI_):
-      #  - rp_database_url → the pgvector DB (ai-db-internal:5432)
-      #  - redis_url → override ../.env's SENA_AI_REDIS_URL (Upstash) to the local container
-      SENA_AI_RP_DATABASE_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
-      SENA_AI_REDIS_URL: redis://redis-internal:6979/0
-      # External-access knobs — set these in ../.env (loaded via env_file above):
-      #  - SENA_AI_BASIC_AUTH_USER / SENA_AI_BASIC_AUTH_PASSWORD → HTTP Basic auth on every
-      #    endpoint (read via os.getenv in api/routes.py + api/voice_routes.py). Leave unset
-      #    for open access in dev; set both to lock the public URL down.
-      #  - SENA_AI_DEMO_HOST → CORS allow-origin for the frontend (e.g. https://app.isena.org).
-      #    Unset → CORS "*" (browsers reject "*" on credentialed requests, so set the exact
-      #    origin once a real frontend sends Basic-auth / cookies).
-      # (Not redeclared here so env_file values aren't overridden with empty strings.)
+      SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
+      SENA_AI_CASE_REVIEW_REDIS_URL: redis://redis-internal:6979/1
     expose:
       - "8002"
     depends_on:

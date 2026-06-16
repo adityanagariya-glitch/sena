@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import uuid
 from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
@@ -5,7 +8,145 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, model_validator
 
 
-# ── Verdict outcome labels ────────────────────────────────────────────────────
+# ── Shared ────────────────────────────────────────────────────────────────────
+
+class AuthContext(BaseModel):
+    """Extracted from dev-header or JWT middleware."""
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
+    roles: list[str] = Field(default_factory=list)
+
+
+# ── Case note (from other engineer's API / stub) ──────────────────────────────
+
+class CaseNoteDTO(BaseModel):
+    """Shape returned by the other engineer's GET /case-notes API."""
+    note_id: str
+    date: str
+    staff_id: str
+    client_id: str
+    transcript: str
+    drafted_note: str
+
+
+# ── POST /v1/case-review/context ──────────────────────────────────────────────
+
+class ContextRequest(BaseModel):
+    staff_id: uuid.UUID = uuid.UUID("cccccccc-0000-0000-0000-000000000003")
+    client_id: uuid.UUID = uuid.UUID("dddddddd-0000-0000-0000-000000000004")
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+class ContextResponse(BaseModel):
+    summary_text: str
+    metadata: dict
+    notes_included: int
+    rolling_summary_id: uuid.UUID
+
+
+# ── POST /v1/case-review/classify ─────────────────────────────────────────────
+
+class ClassifyRequest(BaseModel):
+    staff_id: uuid.UUID
+    client_id: uuid.UUID
+    raw_paragraph: str
+    drafted_case_note_id: str | None = None
+    review_session_id: uuid.UUID | None = Field(default=None, description="Pass to re-classify an existing session. Omit to create a new one.")
+
+
+class ReaskPrompt(BaseModel):
+    field_id: str
+    label: str
+    reason: str
+    suggested_question: str
+
+
+class ClassifyResponse(BaseModel):
+    review_session_id: uuid.UUID
+    classified_fields: dict
+    missing_fields: list[dict]
+    reask_prompts: list[ReaskPrompt]
+    status: str
+
+
+# ── POST /v1/case-review/review ───────────────────────────────────────────────
+
+class ReviewRequest(BaseModel):
+    review_session_id: uuid.UUID
+
+
+class FlagItem(BaseModel):
+    category: str
+    description: str
+    severity: str  # low | medium | high | critical
+    ndis_reference: str | None = None
+
+
+class ReviewResponse(BaseModel):
+    review_session_id: uuid.UUID
+    risks: list[FlagItem]
+    restrictive_practices: list[FlagItem]
+    anomalies: list[FlagItem]
+    improvements: list[FlagItem]
+    status: str
+
+
+# ── POST /v1/case-review/incident/detect ──────────────────────────────────────
+
+class IncidentDetectRequest(BaseModel):
+    review_session_id: uuid.UUID
+
+
+class IncidentDetectResponse(BaseModel):
+    review_session_id: uuid.UUID
+    incident_detected: bool
+    incident_draft_id: uuid.UUID | None = None
+    markers: list[str]  # extracted evidence phrases
+
+
+# ── POST /v1/case-review/incident/draft ───────────────────────────────────────
+
+class IncidentDraftRequest(BaseModel):
+    review_session_id: uuid.UUID
+
+
+class IncidentDraftResponse(BaseModel):
+    incident_draft_id: uuid.UUID
+    draft_fields: dict
+    autofill_source: dict
+    status: str
+
+
+# ── PATCH /v1/case-review/incident/{id}/confirm ───────────────────────────────
+
+class IncidentConfirmResponse(BaseModel):
+    incident_draft_id: uuid.UUID
+    status: str
+    staff_confirmed: bool
+
+
+# ── POST /v1/case-review/submit ───────────────────────────────────────────────
+
+class SubmitRequest(BaseModel):
+    review_session_id: uuid.UUID
+    actor_user_id: uuid.UUID
+
+
+class SubmitResponse(BaseModel):
+    review_session_id: uuid.UUID
+    status: str
+    submitted_at: datetime
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str = "case-review"
+    version: str
+
+
+# ── RP Pipeline schemas (ported from restrictive_practices/models/schemas.py) ─
 
 class VerdictOutcome(str, Enum):
     CLEAR = "CLEAR"
@@ -34,8 +175,6 @@ class AuthorisationStatus(str, Enum):
     AUTHORISED_REVIEW = "Authorised Use (Review Required)"
     NO_INCIDENT = "No Incident Detected"
 
-
-# ── BSP management ───────────────────────────────────────────────────────────
 
 class BSPCreate(BaseModel):
     client_id: str = Field(..., description="Platform client/participant ID")
@@ -73,50 +212,35 @@ class BSPUpdateStatus(BaseModel):
     status: str = Field(..., description="Active | Expired | Revoked")
 
 
-# ── Pipeline input ────────────────────────────────────────────────────────────
-
 class CaseNoteInput(BaseModel):
     case_note_id: UUID
     client_id: str
     worker_id: str
 
-    # Optional voice transcript — present only when voice capture was used
     transcript: str | None = None
 
-    # Form header metadata
     shift_date: str | None = Field(None, description="e.g. '22 Nov 2025'")
     shift_time: str | None = Field(None, description="e.g. '5:00 PM - 1:00 AM'")
     worker_position: str | None = Field(None, description="e.g. 'Support Worker'")
 
-    # Section 1 — Summary of Shift
-    # Form sub-field: "Describe"
     describe: str | None = Field(
         None,
         description="What activities and community access opportunities did you and the participant engage in together?",
     )
 
-    # Section 2 — Activities Completed & Skill-Building
-    # Form sub-fields: Assisted | Practised skill | Participant's level of independence | Observations
     assisted: str | None = None
     practised_skill: str | None = None
     participants_level_of_independence: str | None = None
     observations: str | None = None
 
-    # Section 3 — Well-being & Behaviour
-    # Form sub-fields: Mood | Behavioural events | Any concerns (Yes/No)
     mood: str | None = None
     behavioural_events: str | None = None
     any_concerns: bool = False
 
-    # Section 4 — Outcomes & Progress
-    # Form sub-fields: What went well | What needs further support | Participant's comments
     what_went_well: str | None = None
     what_needs_further_support: str | None = None
     participant_comments: str | None = None
 
-    # Section 5 — Safety / Health Monitoring
-    # Form sub-fields: Medication reminders given | Safety hazards observed |
-    #                  Any injuries | Text Box (injury description) | Image / Documents
     medication_reminders_given: bool = False
     safety_hazards_observed: bool = False
     any_injuries: bool = False
@@ -125,8 +249,6 @@ class CaseNoteInput(BaseModel):
         None, description="Document IDs or URLs from the Image / Documents upload"
     )
 
-    # Section 6 — Notes / Additional Comments
-    # Form sub-fields: Carer feedback | Did Any Incident Occurred? (Yes/No)
     carer_feedback: str | None = None
     incident_occurred: bool = False
 
@@ -145,11 +267,6 @@ class CaseNoteInput(BaseModel):
         return self
 
     def to_text(self) -> str:
-        """Flatten form fields to plain text for LLM consumption.
-
-        Uses transcript directly if provided; otherwise builds a structured
-        narrative from the form sections in the order they appear on screen.
-        """
         if self.transcript:
             return self.transcript
 
@@ -160,11 +277,9 @@ class CaseNoteInput(BaseModel):
         if self.worker_position:
             parts.append(f"Worker Position: {self.worker_position}")
 
-        # Section 1
         if self.describe:
             parts.append(f"Summary of Shift:\n{self.describe}")
 
-        # Section 2
         activity_lines = []
         if self.assisted:
             activity_lines.append(f"Assisted: {self.assisted}")
@@ -177,7 +292,6 @@ class CaseNoteInput(BaseModel):
         if activity_lines:
             parts.append("Activities Completed & Skill-Building:\n" + "\n".join(activity_lines))
 
-        # Section 3
         behaviour_lines = []
         if self.mood:
             behaviour_lines.append(f"Mood: {self.mood}")
@@ -188,7 +302,6 @@ class CaseNoteInput(BaseModel):
         if behaviour_lines:
             parts.append("Well-being & Behaviour:\n" + "\n".join(behaviour_lines))
 
-        # Section 4
         outcome_lines = []
         if self.what_went_well:
             outcome_lines.append(f"What Went Well: {self.what_went_well}")
@@ -199,7 +312,6 @@ class CaseNoteInput(BaseModel):
         if outcome_lines:
             parts.append("Outcomes & Progress:\n" + "\n".join(outcome_lines))
 
-        # Section 5
         safety_lines = [
             f"Medication Reminders Given: {'Yes' if self.medication_reminders_given else 'No'}",
             f"Safety Hazards Observed: {'Yes' if self.safety_hazards_observed else 'No'}",
@@ -209,7 +321,6 @@ class CaseNoteInput(BaseModel):
             safety_lines.append(f"Injury Description: {self.injury_description}")
         parts.append("Safety / Health Monitoring:\n" + "\n".join(safety_lines))
 
-        # Section 6
         notes_lines = []
         if self.carer_feedback:
             notes_lines.append(f"Carer Feedback: {self.carer_feedback}")
@@ -219,14 +330,10 @@ class CaseNoteInput(BaseModel):
         return "\n\n".join(parts)
 
 
-# ── Triage ────────────────────────────────────────────────────────────────────
-
 class TriageResult(BaseModel):
     flagged: bool
-    action_summary: str | None = None  # 1-sentence extraction when flagged=True
+    action_summary: str | None = None
 
-
-# ── RAG ──────────────────────────────────────────────────────────────────────
 
 class PolicyChunk(BaseModel):
     chunk_id: str
@@ -236,8 +343,6 @@ class PolicyChunk(BaseModel):
     risk_level: str
     document_type: str = "Regulatory"
 
-
-# ── Evaluator ─────────────────────────────────────────────────────────────────
 
 class EvaluatorOutput(BaseModel):
     incident_detected: bool
@@ -251,10 +356,8 @@ class EvaluatorOutput(BaseModel):
     bsp_mentioned_in_note: bool = False
     bsp_mention_excerpt: str | None = None
     reporting_required: bool = False
-    notification_timeframe: str | None = None  # "5 business days" | "24 hours" | None
+    notification_timeframe: str | None = None
 
-
-# ── Cross-check ───────────────────────────────────────────────────────────────
 
 class CrossCheckResult(BaseModel):
     authorisation_status: AuthorisationStatus
@@ -263,21 +366,16 @@ class CrossCheckResult(BaseModel):
     notes: str = ""
 
 
-# ── Summary output (internal pipeline model) ─────────────────────────────────
-
 class SummaryOutput(BaseModel):
     ai_confidence: float = Field(0.0, ge=0.0, le=1.0)
     progress_identified: list[str] = []
     potential_risks: list[str] = []
     patterns_detected: list[str] = []
     flagged_highlights: list[str] = []
-    # Quality scoring fields (populated by quality_score.score_note heuristic)
     note_quality_score: float = Field(0.0, ge=0.0, le=1.0)
-    note_quality_label: str = "Average"   # "Premium" | "Average" | "Poor"
-    quality_gaps: list[str] = []          # Actionable suggestions for the worker
+    note_quality_label: str = "Average"
+    quality_gaps: list[str] = []
 
-
-# ── Incident draft output (internal pipeline model) ───────────────────────────
 
 class IncidentDraftOutput(BaseModel):
     incident_type: str
@@ -296,16 +394,13 @@ class IncidentDraftOutput(BaseModel):
     reportable: bool = False
     notification_timeframe: str | None = None
     notification_authority: str = "NDIS Quality and Safeguards Commission"
-    # Phase 1 priority fields (from client incident-form feedback)
-    severity: str = "Low"                        # "Low" | "Medium" | "High" | "Critical"
-    incident_categories: list[str] = []          # multi-select from canonical list
+    severity: str = "Low"
+    incident_categories: list[str] = []
     ongoing_risk_present: bool = False
     participant_currently_safe: bool = True
     staff_currently_safe: bool = True
     emergency_services_required: bool = False
 
-
-# ── Final pipeline output (internal — used by graph, DB audit, webhook) ───────
 
 class PipelineResult(BaseModel):
     case_note_id: UUID
@@ -321,8 +416,6 @@ class PipelineResult(BaseModel):
     summary: SummaryOutput | None = None
     incident_draft: IncidentDraftOutput | None = None
 
-
-# ── API response models (human-readable, returned by POST /evaluate) ──────────
 
 class _VerdictSection(BaseModel):
     outcome: VerdictOutcome
@@ -374,7 +467,6 @@ class _SummarySection(BaseModel):
     flagged_highlights: list[str] = Field(
         default=[], description="Verbatim excerpts from the case note that warranted attention"
     )
-    # Quality scoring
     note_quality_score: float = Field(0.0, description="Heuristic quality score 0.0–1.0")
     note_quality_label: str = Field("Average", description="'Premium' | 'Average' | 'Poor'")
     quality_gaps: list[str] = Field(default=[], description="Actionable suggestions for improving the note")
@@ -397,7 +489,6 @@ class _IncidentReportSection(BaseModel):
     reportable: bool
     notification_timeframe: str | None = None
     notification_authority: str = "NDIS Quality and Safeguards Commission"
-    # Phase 1 priority fields
     severity: str = "Low"
     incident_categories: list[str] = []
     ongoing_risk_present: bool = False
@@ -407,7 +498,6 @@ class _IncidentReportSection(BaseModel):
 
 
 class EvaluateResponse(BaseModel):
-    """Human-readable API response returned by POST /v1/restrictive-practices/evaluate."""
     verdict: _VerdictSection
     detected_practice: _DetectedPracticeSection | None = Field(
         None, description="Present only when a restrictive practice was detected"
@@ -427,10 +517,7 @@ class EvaluateResponse(BaseModel):
     privacy: str
 
 
-# ── Case note drafting ────────────────────────────────────────────────────────
-
 class DraftInput(BaseModel):
-    """Input for POST /draft — voice transcript + shift metadata."""
     transcript: str = Field(..., description="Full voice transcript from the support worker's post-shift recording")
     worker_id: str
     client_id: str
@@ -441,8 +528,6 @@ class DraftInput(BaseModel):
 
 
 class CaseDraftResponse(BaseModel):
-    """Pre-filled case note form returned by POST /draft. All form fields are AI-extracted from the transcript.
-    Worker reviews, edits, and approves before submission."""
     case_note_id: UUID
     client_id: str
     worker_id: str
@@ -450,47 +535,36 @@ class CaseDraftResponse(BaseModel):
     shift_time: str | None
     worker_position: str | None
 
-    # Section 1 — Summary of Shift
     describe: str | None = None
-
-    # Section 2 — Activities Completed & Skill-Building
     assisted: str | None = None
     practised_skill: str | None = None
     participants_level_of_independence: str | None = None
     observations: str | None = None
 
-    # Section 3 — Well-being & Behaviour
     mood: str | None = None
     behavioural_events: str | None = None
     any_concerns: bool = False
 
-    # Section 4 — Outcomes & Progress
     what_went_well: str | None = None
     what_needs_further_support: str | None = None
     participant_comments: str | None = None
 
-    # Section 5 — Safety / Health Monitoring
     medication_reminders_given: bool = False
     safety_hazards_observed: bool = False
     any_injuries: bool = False
     injury_description: str | None = None
 
-    # Section 6 — Notes / Additional Comments
     carer_feedback: str | None = None
     incident_occurred: bool = False
 
-    # Pass-through — original transcript so UI can re-attach it to /evaluate
     transcript: str | None = None
-    # Shape compatibility with CaseNoteInput.uploaded_documents; /draft always returns None
     uploaded_documents: list[str] | None = None
 
-    # Draft metadata
     draft_note: str | None = Field(
         None,
         description="AI-generated note on extraction quality, gaps, or ambiguities the worker should review",
     )
 
-    # Quality scoring (heuristic — populated on return from /draft)
     note_quality_score: float = Field(0.0, ge=0.0, le=1.0)
     note_quality_label: str = "Average"
     quality_gaps: list[str] = []

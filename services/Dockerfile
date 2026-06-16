@@ -83,22 +83,23 @@ CMD ["uvicorn", "onboarding.main:create_app", "--factory", "--host", "0.0.0.0", 
 # ── Case Review — RP-detection + voice pipeline (port 8002) ───────────────
 FROM base AS case-review
 
-# New layout uses BARE imports (from api..., from config, from db..., from voice...)
-# and a module-level `app = create_app()`. Run from INSIDE the package dir so the
-# top-level modules resolve.
+# Two import roots:
+#   • /app/case_review — the service's own BARE imports (api, core, voice, pipeline…)
+#   • /app             — the SHARED voice engine, imported as `shared.src.sena_common.voice`
+#                        (the base stage already copied shared/ to /app/shared)
 COPY case_review/ /app/case_review/
 
 WORKDIR /app/case_review
-ENV PYTHONPATH=/app/case_review
+ENV PYTHONPATH=/app:/app/case_review
 
 EXPOSE 8002
 
 # Health route is router-prefixed: /v1/restrictive-practices/health
-# Longer start-period: startup creates DB tables + connects Redis.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/v1/restrictive-practices/health').status==200 else 1)"
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+# main.py exposes a create_app() factory (no module-level `app`) → --factory.
+CMD ["uvicorn", "main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8002"]
 
 
 # ── Casenote Monthly — NDIS report generator via Bedrock (port 8004) ──────
@@ -250,12 +251,17 @@ CMD ["uvicorn", "scripts.api:app", "--host", "0.0.0.0", "--port", "8007"]
 # docker network; served publicly via nginx under /case-review-ui/.
 FROM base AS case-review-ui
 
+# The wrapper EMBEDS draft_demo.html (rewriting its root-relative API paths to an
+# absolute, browser-reachable base), so both files are needed in the image.
 COPY case_review/streamlit_app.py /app/streamlit_app.py
+COPY case_review/draft_demo.html  /app/draft_demo.html
 
 WORKDIR /app
 
-# In-cluster API target (the app appends /v1/restrictive-practices itself).
-ENV SENA_TEST_BASE_URL=http://sena-case-review-internal:8002
+# Browser-reachable case-review API base — the embedded demo's fetch() runs in the
+# USER's browser, so this must be a PUBLIC URL (not a docker-internal hostname).
+# Overridden in compose / editable in the sidebar.
+ENV SENA_PUBLIC_API_BASE=https://dev-api.isena.org/case-review
 
 EXPOSE 8501
 
