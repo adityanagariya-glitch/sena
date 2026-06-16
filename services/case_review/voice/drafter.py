@@ -168,6 +168,12 @@ def _run_sync(transcript: str) -> _Extracted:
         data = _extract_json(text)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Drafter not valid JSON: {exc}. Raw: {text[:200]}") from exc
+    # LLM sometimes nests a field one level too deep when section and field share the same
+    # name (e.g. handover: {handover: "..."} instead of handover: "..."). Flatten those.
+    for key in list(data.keys()):
+        v = data[key]
+        if isinstance(v, dict) and len(v) == 1 and key in v:
+            data[key] = v[key]
     return _Extracted(**data)
 
 
