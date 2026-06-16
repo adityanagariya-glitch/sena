@@ -66,14 +66,16 @@ class RouteRequest(BaseModel):
     )
     context: dict = Field(
         default_factory=dict,
-        description="UI context. Must include `category` (the tapped chip). Optional fields:\n"
+        description="UI context. REQUIRED fields:\n"
+                    "• `category` (str): The tapped chip (shifts/client/policy/procedure)\n"
+                    "• `conversation_id` (UUID): Platform conversation ID (create via POST /conversations)\n"
+                    "\nOptional fields:\n"
+                    "• `is_new_chat` (bool): Set true on first turn only, false/omit on follow-ups\n"
                     "• `session_id` (str): Session tracking\n"
-                    "• `conversation_id` (UUID): For multi-turn; gateway auto-loads prior messages if set\n"
-                    "• `is_new_chat` (bool): Set true on first turn, false/omit on follow-ups\n"
                     "• `session_title` (str): Display name",
         examples=[
-            {"category": "shifts", "is_new_chat": True},
-            {"category": "shifts", "conversation_id": "uuid-here", "is_new_chat": False},
+            {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000", "is_new_chat": True},
+            {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000", "is_new_chat": False},
         ],
     )
 
@@ -81,24 +83,30 @@ class RouteRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "description": "New conversation (first turn)",
+                    "description": "Turn 1: New conversation (create via POST /conversations first)",
                     "question": "What are my shifts this week?",
-                    "context": {"category": "shifts", "is_new_chat": True}
+                    "context": {
+                        "category": "shifts",
+                        "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "is_new_chat": True
+                    }
                 },
                 {
-                    "description": "Follow-up turn (context auto-loaded)",
+                    "description": "Turn 2: Follow-up (prior messages auto-loaded)",
                     "question": "Who will be working Monday?",
-                    "context": {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000", "is_new_chat": False}
+                    "context": {
+                        "category": "shifts",
+                        "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "is_new_chat": False
+                    }
                 },
                 {
-                    "description": "Another follow-up (full conversation history available)",
+                    "description": "Turn 3: Another follow-up (full context available)",
                     "question": "How many shifts do I have total?",
-                    "context": {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000"}
-                },
-                {
-                    "description": "Different question type (new conversation)",
-                    "question": "What is the leave policy?",
-                    "context": {"category": "policy", "is_new_chat": True}
+                    "context": {
+                        "category": "shifts",
+                        "conversation_id": "550e8400-e29b-41d4-a716-446655440000"
+                    }
                 },
             ]
         }
@@ -370,6 +378,13 @@ async def route_query(
             conv_id = (req.context or {}).get("conversation_id")
             client: httpx.AsyncClient = app.state.client
             enriched_context = dict(req.context or {})
+
+            # Validate conversation_id is provided (required for message storage and context)
+            if not conv_id:
+                raise ValueError(
+                    "conversation_id is required in context. "
+                    "Create one via POST /conversations, then pass it in all requests."
+                )
 
             # Load prior messages for context injection (if follow-up turn)
             if conv_id and not enriched_context.get("is_new_chat"):
