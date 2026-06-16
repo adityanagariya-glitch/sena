@@ -21,7 +21,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 # Loads .env for local development. In Docker, env vars are injected by Docker itself.
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=False)
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
