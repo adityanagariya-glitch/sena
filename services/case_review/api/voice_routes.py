@@ -39,7 +39,7 @@ from shared.src.sena_common.voice import (
 )
 from shared.src.sena_common.voice.form_state import FieldSource, FormState
 from shared.src.sena_common.voice.gemini_live import UsageFeature
-from shared.src.sena_common.voice.turn_payload import Participant, StepInfo, TurnPayload
+from shared.src.sena_common.voice.turn_payload import NextTarget, Participant, StepInfo, TurnPayload, VisibleField
 
 log = structlog.get_logger(__name__)
 
@@ -72,6 +72,44 @@ def _voice_config() -> VoiceEngineConfig:
 
 def _repo_for(tenant_id: str) -> FormStateRepo:
     return FormStateRepo(voice_redis_client, key_prefix=_KEY_PREFIX, tenant_id=tenant_id)
+
+
+def _build_initial_turn(state: FormState) -> TurnPayload:
+    """Build TurnPayload from actual Redis state so Gemini gets the real form context."""
+    visible_fields: list[VisibleField] = []
+    has_any_value = False
+    for section in CASE_NOTE_SCHEMA.sections:
+        if not section.fields:
+            continue
+        section_values = state.values.get(section.id, {})
+        for field_spec in section.fields:
+            field_val = section_values.get(field_spec.id)
+            value = field_val.value if field_val else None
+            if value not in (None, "", [], {}):
+                has_any_value = True
+            visible_fields.append(
+                VisibleField(
+                    path=f"{section.id}.{field_spec.id}",
+                    label=field_spec.label or field_spec.id,
+                    type=str(field_spec.type),
+                    required=field_spec.required is not False,
+                    readonly=False,
+                    value=value,
+                )
+            )
+    next_target: NextTarget | None = None
+    for vf in visible_fields:
+        if vf.required and not vf.readonly and vf.value in (None, "", [], {}):
+            next_target = NextTarget(path=vf.path, label=vf.label, reason="next_required")
+            break
+    return TurnPayload(
+        participant=Participant(first_name="", display_name=""),
+        step=StepInfo(id=_STEP_ID, label=_STEP_LABEL, number=1),
+        bootstrap_mode="returning_same_page" if has_any_value else "new_user",
+        prior_steps={},
+        visible_fields=visible_fields,
+        next_target=next_target,
+    )
 
 
 # ── Session create (staff-only) ───────────────────────────────────────────────
@@ -243,14 +281,7 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
         }))
 
         cfg = _voice_config()
-        initial_turn = TurnPayload(
-            participant=Participant(first_name="", display_name=""),
-            step=StepInfo(id=_STEP_ID, label=_STEP_LABEL, number=1),
-            bootstrap_mode="new_user",
-            prior_steps={},
-            visible_fields=[],
-            next_target=None,
-        )
+        initial_turn = _build_initial_turn(state)
         system_instruction = build_system_prompt(
             initial_turn,
             grounding_enabled=cfg.grounding_enabled,
