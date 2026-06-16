@@ -19,6 +19,9 @@ Environment variables required for production:
 import logging
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel

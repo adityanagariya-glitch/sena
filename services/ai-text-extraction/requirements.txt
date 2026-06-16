@@ -25,3 +25,6 @@ uvicorn[standard]
 
 # JWT validation — verifies Bearer tokens issued by the auth server
 PyJWT
+
+# Load .env file into environment variables
+python-dotenv
