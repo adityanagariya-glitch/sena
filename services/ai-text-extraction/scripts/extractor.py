@@ -306,9 +306,9 @@ def _parse_response(raw_text: str) -> dict:
     text = raw_text.strip()
 
     if text.startswith("```"):
-        lines = text.splitlines()
-        inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-        text = "\n".join(inner).strip()
+        import re
+        text = re.sub(r'^```\w*\n?', '', text)
+        text = re.sub(r'\n?```$', '', text).strip()
 
     try:
         parsed = json.loads(text)
