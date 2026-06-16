@@ -67,9 +67,10 @@ STAFF_WS_ORIGIN = f"ws://{CHILD_HOST}:{STAFF_PORT}"
 POLICY_WS_ORIGIN = f"ws://{CHILD_HOST}:{POLICY_PORT}"
 
 # ---- Platform conversation store (optional webhook persistence) ----
-# NOTE: signature-authed webhook routes live at /ai-chat/... (NO /api prefix).
-# The /api prefix is only for the JWT-authed user-facing routes, which we don't call.
-PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", "https://dev-api.isena.org")
+# Canonical platform base (keeps /api — matches the JWT-authed user-facing routes).
+# NOTE: the signature-authed webhook routes do NOT use /api; conversation_store.py
+# strips it off this base when building webhook URLs.
+PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", "https://dev-api.isena.org/api")
 AI_WEBHOOK_PRIVATE_KEY_PEM = os.getenv("AI_WEBHOOK_PRIVATE_KEY_PEM", "")
 CONVERSATION_STORE_ENABLED = os.getenv("CONVERSATION_STORE_ENABLED", "false").lower() == "true"
 

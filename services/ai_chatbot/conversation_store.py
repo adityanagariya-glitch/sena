@@ -19,6 +19,11 @@ import config
 
 logger = logging.getLogger(__name__)
 
+# Webhook routes live at the host root (/ai-chat/...), NOT under /api like the
+# JWT-authed user routes. Strip a trailing /api off the canonical platform base
+# so PLATFORM_BASE_URL can stay ".../api" for the rest of the platform.
+_WEBHOOK_BASE_URL = config.PLATFORM_BASE_URL.rstrip("/").removesuffix("/api")
+
 # Load private key at import time.
 # Normalize escaped newlines: docker-compose `env_file` passes "\n" as literal
 # backslash-n, but load_pem_private_key needs real newlines. This handles both
@@ -63,7 +68,7 @@ async def store_user_message(
         return None
 
     try:
-        url = f"{config.PLATFORM_BASE_URL}/ai-chat/webhook/user-message"
+        url = f"{_WEBHOOK_BASE_URL}/ai-chat/webhook/user-message"
         body = json.dumps({
             "conversationId": conversation_id,
             "message": question,
@@ -117,7 +122,7 @@ async def store_ai_response(
         return False
 
     try:
-        url = f"{config.PLATFORM_BASE_URL}/ai-chat/webhook/ai-response"
+        url = f"{_WEBHOOK_BASE_URL}/ai-chat/webhook/ai-response"
         body = json.dumps({
             "conversationId": conversation_id,
             "message": answer,
@@ -171,7 +176,7 @@ async def get_recent_messages(
         return []
 
     try:
-        url = f"{config.PLATFORM_BASE_URL}/ai-chat/conversations/{conversation_id}/recent-messages"
+        url = f"{_WEBHOOK_BASE_URL}/ai-chat/conversations/{conversation_id}/recent-messages"
         params = {"limit": min(limit, 50)}
         if message_id:
             params["messageId"] = message_id
