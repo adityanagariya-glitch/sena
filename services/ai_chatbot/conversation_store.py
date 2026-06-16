@@ -19,12 +19,16 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# Load private key at import time
+# Load private key at import time.
+# Normalize escaped newlines: docker-compose `env_file` passes "\n" as literal
+# backslash-n, but load_pem_private_key needs real newlines. This handles both
+# the Docker case (literal \n) and the local .env case (already real newlines).
 _PRIVATE_KEY = None
 if config.AI_WEBHOOK_PRIVATE_KEY_PEM:
+    _pem = config.AI_WEBHOOK_PRIVATE_KEY_PEM.replace("\\n", "\n").strip()
     try:
         _PRIVATE_KEY = serialization.load_pem_private_key(
-            config.AI_WEBHOOK_PRIVATE_KEY_PEM.encode(),
+            _pem.encode(),
             password=None,
         )
     except Exception as e:
