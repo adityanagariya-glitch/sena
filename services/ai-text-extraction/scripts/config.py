@@ -13,8 +13,10 @@ from dataclasses import dataclass, field
 class BedrockConfig:
     """AWS Bedrock / Nova Lite settings."""
 
-    region: str = "ap-southeast-2"
-    model_id: str = "amazon.nova-lite-v1:0" #amazon.nova-lite-v1:0
+    region: str = field(
+        default_factory=lambda: os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-2")
+    )
+    model_id: str = "amazon.nova-lite-v1:0"
 
     # How many times to retry the Bedrock call on timeout or throttle
     max_retries: int = 2
@@ -39,7 +41,7 @@ class S3Config:
 
     # S3 region — defaults to same region as Bedrock
     region: str = field(
-        default_factory=lambda: os.environ.get("AWS_REGION", "ap-southeast-2")
+        default_factory=lambda: os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-2")
     )
 
 
