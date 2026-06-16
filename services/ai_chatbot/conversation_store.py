@@ -69,11 +69,12 @@ async def store_user_message(
 
     try:
         url = f"{_WEBHOOK_BASE_URL}/ai-chat/webhook/user-message"
-        body = json.dumps({
-            "conversationId": conversation_id,
-            "message": question,
-            "role": "user",
-        })
+        # Compact JSON (no spaces) per the backend guide; fields exactly match the
+        # spec (conversationId + message). No `role` — the endpoint implies "user".
+        body = json.dumps(
+            {"conversationId": conversation_id, "message": question},
+            separators=(",", ":"),
+        )
         raw_body = body.encode()
 
         ts, sig = _sign(raw_body)
@@ -123,14 +124,24 @@ async def store_ai_response(
 
     try:
         url = f"{_WEBHOOK_BASE_URL}/ai-chat/webhook/ai-response"
-        body = json.dumps({
+        # Token usage goes inside `metadata` (the spec has no top-level `usage`
+        # field — sending it there means the backend drops it). Keys match the
+        # guide's documented metadata example (inputTokens / outputTokens).
+        metadata = {}
+        if usage:
+            if usage.get("input_tokens") is not None:
+                metadata["inputTokens"] = usage["input_tokens"]
+            if usage.get("output_tokens") is not None:
+                metadata["outputTokens"] = usage["output_tokens"]
+
+        payload = {
             "conversationId": conversation_id,
             "message": answer,
-            "role": "assistant",
-            "usage": usage,
-            "messageId": message_id,
             "status": "completed",
-        })
+        }
+        if metadata:
+            payload["metadata"] = metadata
+        body = json.dumps(payload, separators=(",", ":"))
         raw_body = body.encode()
 
         ts, sig = _sign(raw_body)
