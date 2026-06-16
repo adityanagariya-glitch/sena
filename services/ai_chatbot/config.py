@@ -49,6 +49,11 @@ POLICY_ORIGIN = f"http://{CHILD_HOST}:{POLICY_PORT}"
 STAFF_WS_ORIGIN = f"ws://{CHILD_HOST}:{STAFF_PORT}"
 POLICY_WS_ORIGIN = f"ws://{CHILD_HOST}:{POLICY_PORT}"
 
+# ---- Platform conversation store (optional webhook persistence) ----
+PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", "https://dev-api.isena.org/api")
+AI_WEBHOOK_PRIVATE_KEY_PEM = os.getenv("AI_WEBHOOK_PRIVATE_KEY_PEM", "")
+CONVERSATION_STORE_ENABLED = os.getenv("CONVERSATION_STORE_ENABLED", "false").lower() == "true"
+
 
 def _streamlit_cmd(entry: str, port: int, base_url_path: str) -> list[str]:
     """Build a Streamlit launch command tuned for same-origin iframe embedding."""

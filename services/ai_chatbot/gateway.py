@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 import config
+from conversation_store import store_user_message, store_ai_response, get_recent_messages
 from gateway_extensions import ServiceOrchestrator, health_check_services
 from pydantic import BaseModel, Field
 
@@ -51,6 +52,10 @@ class RouteRequest(BaseModel):
       • "client"    → staff service, CLIENT section (participant info)
       • "policy"    → policy service                (organisational policy)
       • "procedure" → policy service                (compliance procedures)
+
+    Multi-turn conversations (Phase 2):
+      • `conversation_id` (UUID): Platform conversation ID. Pass same ID for follow-up turns.
+      • `is_new_chat` (bool): Set `true` on first turn only. Gateway loads prior messages on follow-ups.
     """
 
     question: str = Field(
@@ -61,20 +66,40 @@ class RouteRequest(BaseModel):
     )
     context: dict = Field(
         default_factory=dict,
-        description="UI context. Must include `category` (the tapped chip). May also "
-                    "carry session_id / session_title / is_new_chat.",
-        examples=[{"category": "shifts", "is_new_chat": True}],
+        description="UI context. Must include `category` (the tapped chip). Optional fields:\n"
+                    "• `session_id` (str): Session tracking\n"
+                    "• `conversation_id` (UUID): For multi-turn; gateway auto-loads prior messages if set\n"
+                    "• `is_new_chat` (bool): Set true on first turn, false/omit on follow-ups\n"
+                    "• `session_title` (str): Display name",
+        examples=[
+            {"category": "shifts", "is_new_chat": True},
+            {"category": "shifts", "conversation_id": "uuid-here", "is_new_chat": False},
+        ],
     )
 
     model_config = {
         "json_schema_extra": {
             "examples": [
-                {"question": "What are my shifts this week?",
-                 "context": {"category": "shifts", "is_new_chat": True}},
-                {"question": "Who are my clients?",
-                 "context": {"category": "client", "is_new_chat": True}},
-                {"question": "What is the leave policy?",
-                 "context": {"category": "policy", "is_new_chat": True}},
+                {
+                    "description": "New conversation (first turn)",
+                    "question": "What are my shifts this week?",
+                    "context": {"category": "shifts", "is_new_chat": True}
+                },
+                {
+                    "description": "Follow-up turn (context auto-loaded)",
+                    "question": "Who will be working Monday?",
+                    "context": {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000", "is_new_chat": False}
+                },
+                {
+                    "description": "Another follow-up (full conversation history available)",
+                    "question": "How many shifts do I have total?",
+                    "context": {"category": "shifts", "conversation_id": "550e8400-e29b-41d4-a716-446655440000"}
+                },
+                {
+                    "description": "Different question type (new conversation)",
+                    "question": "What is the leave policy?",
+                    "context": {"category": "policy", "is_new_chat": True}
+                },
             ]
         }
     }
@@ -291,8 +316,8 @@ bearer_scheme = HTTPBearer(
             "description": (
                 "**Server-Sent Events stream** (`Content-Type: text/event-stream`). Each "
                 "line is `data: <json>`. **Four** event types are emitted, in this order:\n\n"
-                "1. **`meta`** — routing decided (+ `session_id`):\n"
-                "   `{\"type\":\"meta\",\"session_id\":\"sess-abc123\",\"routing\":{\"target_services\":[\"staff\"],\"routing_reason\":\"...\"}}`\n"
+                "1. **`meta`** — routing decided (+ `session_id`, `conversation_id` if multi-turn):\n"
+                "   `{\"type\":\"meta\",\"session_id\":\"sess-abc123\",\"conversation_id\":\"uuid\",\"routing\":{\"target_services\":[\"staff\"],\"routing_reason\":\"...\"}}`\n"
                 "2. **`token`** — the answer text (one or more of these):\n"
                 "   `{\"type\":\"token\",\"text\":\"You have 2 shifts this week...\"}`\n"
                 "3. **`usage`** — Bedrock token counts for this question:\n"
@@ -340,11 +365,44 @@ async def route_query(
 
     async def event_stream():
         try:
+            full_answer = []
+            usage = {}
+            conv_id = (req.context or {}).get("conversation_id")
+            client: httpx.AsyncClient = app.state.client
+            enriched_context = dict(req.context or {})
+
+            # Load prior messages for context injection (if follow-up turn)
+            if conv_id and not enriched_context.get("is_new_chat"):
+                prior_messages = await get_recent_messages(
+                    conv_id, limit=5, jwt_token=jwt_token, client=client
+                )
+                if prior_messages:
+                    enriched_context["message_history"] = prior_messages
+                    logger.debug(f"Enriched context with {len(prior_messages)} prior messages")
+
+            # Store user message (fire-and-forget, non-blocking)
+            if conv_id:
+                asyncio.create_task(
+                    store_user_message(conv_id, req.question, jwt_token, client)
+                )
+
             async for event in orchestrator.route_and_stream(
                 question=req.question,
                 jwt_token=jwt_token,
-                context=req.context or {},
+                context=enriched_context,
             ):
+                if event.get("type") == "token":
+                    full_answer.append(event.get("text", ""))
+                elif event.get("type") == "usage":
+                    usage = event
+                elif event.get("type") == "done" and conv_id and full_answer:
+                    # Store AI response (fire-and-forget, non-blocking)
+                    asyncio.create_task(
+                        store_ai_response(
+                            conv_id, "".join(full_answer), usage, jwt_token, client
+                        )
+                    )
+
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             logger.exception("Error in route_and_stream")
