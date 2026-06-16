@@ -88,7 +88,7 @@ async def store_user_message(
             return None
 
         data = response.json()
-        message_id = data.get("messageId")
+        message_id = data.get("data", {}).get("messageId")
         logger.debug(f"Stored user message {message_id} to conversation {conversation_id}")
         return message_id
 
@@ -120,6 +120,7 @@ async def store_ai_response(
             "role": "assistant",
             "usage": usage,
             "messageId": message_id,
+            "status": "completed",
         })
         raw_body = body.encode()
 
@@ -157,7 +158,7 @@ async def get_recent_messages(
     message_id: Optional[str] = None,
     jwt_token: Optional[str] = None,
     client: Optional[httpx.AsyncClient] = None,
-) -> Optional[list]:
+) -> list:
     """Load recent messages from a conversation for context injection.
 
     Returns: list of prior messages (role, message, createdAt), or empty list on error.
@@ -175,7 +176,6 @@ async def get_recent_messages(
         if jwt_token:
             headers["Authorization"] = f"Bearer {jwt_token}"
 
-        # Get recent messages requires signing (webhook pattern)
         ts, sig = _sign(b"")
         headers["X-AI-Timestamp"] = ts
         headers["X-AI-Signature"] = sig
