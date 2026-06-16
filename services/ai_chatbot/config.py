@@ -8,6 +8,23 @@ import os
 import sys
 from pathlib import Path
 
+# Load .env file if it exists (for development)
+_env_file = Path(__file__).parent.parent.parent / ".env"
+if _env_file.exists():
+    with open(_env_file) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if not _line or _line.startswith("#"):
+                continue
+            if "=" in _line:
+                _key, _value = _line.split("=", 1)
+                _key = _key.strip()
+                _value = _value.strip()
+                # Handle escaped newlines in .env
+                _value = _value.replace("\\n", "\n")
+                if _key not in os.environ:
+                    os.environ[_key] = _value
+
 # ---- Paths ----
 # this file lives in services/ai_chatbot/, so services/ is one level up.
 _THIS_DIR = Path(__file__).resolve().parent
