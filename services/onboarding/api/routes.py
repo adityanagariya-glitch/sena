@@ -27,6 +27,8 @@ router = APIRouter()
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class CreateSessionRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     participant_id: str
     step: str
     schema: StepSchema
