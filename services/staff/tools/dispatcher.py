@@ -13,6 +13,7 @@ from typing import Any, Dict
 
 from tools.base import ToolResult
 from tools.registry import TOOLS_BY_NAME
+from tools._common import error_hint_for_status
 
 
 # Terminal-direct — bypasses any redirect_stderr() context manager,
@@ -87,6 +88,15 @@ def run_tool(
             return ToolResult(
                 error=f"Tool '{name}' returned non-ToolResult ({type(result).__name__})",
             )
+
+        # Safety net: when a tool errors, attach status-appropriate framing so the
+        # agent never mislabels a permanent failure (403/404/400…) as a temporary
+        # glitch — or mislabels a real 5xx as permanent. Covers every tool that
+        # surfaces the backend status code in meta.
+        if result.error:
+            hint = error_hint_for_status(result.meta.get("status_code"))
+            if hint:
+                result.next_hint = hint
 
         elapsed_ms = int((time.time() - t0) * 1000)
         status = "X ERR " if result.error else "✓ OK  "

@@ -16,6 +16,7 @@ from core.settings import settings
 from case_review.models.schemas import CaseNoteInput, SummaryOutput
 from case_review.services.pipeline.quality_score import score_note
 from case_review.services.pipeline.style_examples import FEW_SHOT_SUMMARY, STYLE_GUIDE
+from case_review.services.usage import record_converse
 
 logger = logging.getLogger(__name__)
 
@@ -86,22 +87,30 @@ def _run_summary(text: str) -> SummaryOutput:
     """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
 
-    prompt = _SUMMARY_PROMPT.format(
+    # Prompt caching: cache the static prefix (style guide + few-shot) before
+    # the cachePoint; only the transcript varies per request.
+    prefix_tmpl, suffix_tmpl = _SUMMARY_PROMPT.split("{transcript}", 1)
+    static_prefix = prefix_tmpl.format(
         style_guide=STYLE_GUIDE,
         few_shot_summary=FEW_SHOT_SUMMARY,
-        transcript=text,
     )
+    dynamic_suffix = text + suffix_tmpl
 
     response = client.converse(
         modelId=settings.triage_model,
         messages=[
             {
                 "role": "user",
-                "content": [{"text": prompt}],
+                "content": [
+                    {"text": static_prefix},
+                    {"cachePoint": {"type": "default"}},
+                    {"text": dynamic_suffix},
+                ],
             }
         ],
         inferenceConfig={"maxTokens": 1024, "temperature": 0.0},
     )
+    record_converse(response)
 
     raw_text = response["output"]["message"]["content"][0]["text"]
     if not raw_text:

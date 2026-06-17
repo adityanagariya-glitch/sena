@@ -105,7 +105,32 @@ check("off-topic: pure math", lambda: (_ for _ in ()).throw(AssertionError) if _
 check("off-topic: code block", lambda: (_ for _ in ()).throw(AssertionError) if _off_topic_pattern("```\nprint(1)\n```") != "code" else None)
 check("off-topic: shift question passes", lambda: (_ for _ in ()).throw(AssertionError) if _off_topic_pattern("do I have 2 shifts on 3/06?") else None)
 
-print("== 6. Output leak filter ==")
+print("== 6. HTTP error framing (no 'temporary glitch' for permanent failures) ==")
+from tools._common import error_hint_for_status, access_denied_code
+
+
+def _no_naked_retry(code):
+    h = (error_hint_for_status(code) or "").lower()
+    # A 4xx hint may mention "try again" only to FORBID it ("do NOT ... try again")
+    if "try again in a few minutes" in h and not ("do not" in h or "don't" in h):
+        raise AssertionError(f"{code} suggests a naked retry")
+
+
+# 4xx permanent — must carry framing and must not naively suggest retry
+for c in (400, 401, 403, 404, 422):
+    check(f"{c} has framing", lambda c=c: (_ for _ in ()).throw(AssertionError) if not error_hint_for_status(c) else None)
+    check(f"{c} forbids naked retry", lambda c=c: _no_naked_retry(c))
+# transient — retry allowed
+check("429 framed transient", lambda: (_ for _ in ()).throw(AssertionError) if "temporary" not in (error_hint_for_status(429) or "") else None)
+check("503 framed transient", lambda: (_ for _ in ()).throw(AssertionError) if "temporary" not in (error_hint_for_status(503) or "") else None)
+# success/unknown → no hint
+check("200 no hint", lambda: (_ for _ in ()).throw(AssertionError) if error_hint_for_status(200) is not None else None)
+check("None no hint", lambda: (_ for _ in ()).throw(AssertionError) if error_hint_for_status(None) is not None else None)
+# envelope detection
+check("access_denied_code finds 403", lambda: (_ for _ in ()).throw(AssertionError) if access_denied_code({"status_code": 403}) != 403 else None)
+check("access_denied_code ignores 500", lambda: (_ for _ in ()).throw(AssertionError) if access_denied_code({"status_code": 500}) is not None else None)
+
+print("== 7. Output leak filter ==")
 from style_guide import sanitize_output
 
 check("blocks AWS key", lambda: (_ for _ in ()).throw(AssertionError) if not sanitize_output("key is AKIAIOSFODNN7EXAMPLE")[1] else None)

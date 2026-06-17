@@ -61,7 +61,9 @@ from case_review.models.schemas import (
     _SubmissionSection,
     _SummarySection,
     _VerdictSection,
+    TokenUsage,
 )
+from case_review.services.usage import get_usage, start_usage
 from case_review.services.pipeline.drafter import run_drafter
 from case_review.services.pipeline.graph import run_pipeline
 from case_review.services.pipeline.transcription import resolve_media_format, run_transcription
@@ -322,9 +324,12 @@ async def evaluate_case_note(
     """Run a case note through the full restrictive practice detection pipeline."""
     response.headers["X-Privacy-Classification"] = "Sensitive-Health-Information-APP3"
     response.headers["X-Data-Retention"] = "No-Retention-Session-Only"
+    start_usage()
     try:
         result = await run_pipeline(payload, db, tenant_id=str(auth.tenant_id))
-        return _build_response(result, worker_id=payload.worker_id)
+        resp = _build_response(result, worker_id=payload.worker_id)
+        resp.token_usage = TokenUsage(**get_usage())
+        return resp
     except Exception as exc:
         logger.error(
             "Pipeline error case_note_id=%s: %s",
@@ -445,8 +450,9 @@ async def draft_case_note(payload: DraftInput) -> CaseDraftResponse:
     The worker reviews and edits the returned fields before submitting.
     No data is stored — this is a stateless AI extraction call.
     """
+    start_usage()
     try:
-        return await run_drafter(payload)
+        result = await run_drafter(payload)
     except Exception as exc:
         logger.error(
             "Drafter error case_note_id=%s worker=%s: %s",
@@ -456,6 +462,8 @@ async def draft_case_note(payload: DraftInput) -> CaseDraftResponse:
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
+    result.token_usage = TokenUsage(**get_usage())
+    return result
 
 
 @rp_router.post("/draft/audio", response_model=CaseDraftResponse)
@@ -505,6 +513,9 @@ async def draft_case_note_audio(
         logger.error("draft/audio: transcription failed job=%s: %s", job_name, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
+    if not transcript or not transcript.strip():
+        raise HTTPException(status_code=422, detail="No speech detected in audio. Please try again with clear audio.")
+
     resolved_id = case_note_id.strip() or str(uuid4())
     payload = DraftInput(
         transcript=transcript,
@@ -516,6 +527,7 @@ async def draft_case_note_audio(
         worker_position=worker_position or None,
     )
 
+    start_usage()
     try:
         result = await run_drafter(payload)
     except Exception as exc:
@@ -524,6 +536,7 @@ async def draft_case_note_audio(
         )
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
+    result.token_usage = TokenUsage(**get_usage())
     logger.info("draft/audio: done job=%s case_note_id=%s", job_name, resolved_id)
     return result
 
@@ -734,8 +747,8 @@ async def rp_voice_websocket(
         await live.run()
     except WebSocketDisconnect:
         logger.info("rp_voice_ws_disconnect session=%s", session_id)
-    except Exception:
-        logger.exception("rp_voice_ws_error session=%s", session_id)
+    except Exception as exc:
+        logger.exception("rp_voice_ws_error session=%s error_type=%s error_msg=%s", session_id, type(exc).__name__, str(exc))
         await _rp_close_ws(websocket, "internal_error", "Internal server error", 1011)
     finally:
         await repo.release_ws_lock(session_id)

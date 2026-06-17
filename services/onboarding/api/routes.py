@@ -18,6 +18,15 @@ from voice.webhook import fire_webhook
 from onboarding.repositories.user_context_repo import UserContextRepo
 from onboarding.services.cross_screen_context import build_summary
 
+
+class TokenUsage(BaseModel):
+    """LLM token usage metrics including cache metrics for Claude."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+
 log = structlog.get_logger(__name__)
 
 
@@ -27,9 +36,15 @@ router = APIRouter()
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class CreateSessionRequest(BaseModel):
+    # populate_by_name lets callers construct with the Python name (step_schema)
+    # while the wire/JSON contract stays "schema" via the alias below.
+    model_config = ConfigDict(protected_namespaces=(), populate_by_name=True)
+
     participant_id: str
     step: str
-    schema: StepSchema
+    # Renamed from `schema` to avoid shadowing Pydantic's BaseModel.schema();
+    # alias keeps the request body field name as "schema" for clients.
+    step_schema: StepSchema = Field(alias="schema")
     initial_state: dict | None = None
     # Rule 1 / Rule 2 hygiene contract. When provided, it is the authoritative
     # source for what state the agent inherits and which fields are read-only.
@@ -45,10 +60,27 @@ class CreateSessionResponse(BaseModel):
     ws_url: str
     expires_at: datetime
     resumption_handle: str | None = None
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class UpdateStateRequest(BaseModel):
     values: dict
+
+
+class StateResponse(BaseModel):
+    state: FormState
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+
+class DiagBucketResponse(BaseModel):
+    tenant_id: str
+    participant_id: str
+    bucket_empty: bool
+    summary_count: int
+    step_numbers: list[int]
+    step_labels: list[str]
+    cross_screen_enabled: bool
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class ClientValidationErrorRequest(BaseModel):
@@ -309,10 +341,10 @@ async def create_session(
         locale=req.locale,
         values=_build_initial_values(seed_values),
     )
-    state.recompute_completion(req.schema)
+    state.recompute_completion(req.step_schema)
 
     await repo.create_session(
-        state, req.schema, ttl_sec=settings.session_max_sec, bootstrap=bootstrap,
+        state, req.step_schema, ttl_sec=settings.session_max_sec, bootstrap=bootstrap,
     )
 
     # Track this session in the per-participant index so on-call tooling can
@@ -332,13 +364,13 @@ async def create_session(
     )
 
 
-@router.get("/v1/onboarding/session/{session_id}/state", response_model=FormState)
+@router.get("/v1/onboarding/session/{session_id}/state", response_model=StateResponse)
 async def get_state(
     session_id: str,
     repo: FormStateRepo = Depends(get_repo),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
-) -> FormState:
+) -> StateResponse:
     state = await repo.get_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
@@ -349,17 +381,17 @@ async def get_state(
     if x_participant_id is not None:
         await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
 
-    return state
+    return StateResponse(state=state)
 
 
-@router.put("/v1/onboarding/session/{session_id}/state", response_model=FormState)
+@router.put("/v1/onboarding/session/{session_id}/state", response_model=StateResponse)
 async def update_state(
     session_id: str,
     req: UpdateStateRequest,
     repo: FormStateRepo = Depends(get_repo),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
-) -> FormState:
+) -> StateResponse:
     if x_participant_id is not None:
         await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
     if await repo.is_ws_locked(session_id):
@@ -398,14 +430,21 @@ async def update_state(
         state.recompute_completion(schema)
     state.touch()
     await repo.save_state(state, ttl_sec=settings.session_max_sec)
-    return state
+    return StateResponse(state=state)
 
 
-@router.post("/v1/onboarding/session/{session_id}/complete", status_code=200)
+class CompleteSessionResponse(BaseModel):
+    session_id: str
+    completed: bool
+    webhook_delivered: bool
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+
+@router.post("/v1/onboarding/session/{session_id}/complete", status_code=200, response_model=CompleteSessionResponse)
 async def complete_session(
     session_id: str,
     repo: FormStateRepo = Depends(get_repo),
-) -> dict:
+) -> CompleteSessionResponse:
     state = await repo.get_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
@@ -476,11 +515,11 @@ async def complete_session(
         max_retries=settings.onboarding_webhook_max_retries,
     )
 
-    return {
-        "session_id": session_id,
-        "completed": True,
-        "webhook_delivered": delivered,
-    }
+    return CompleteSessionResponse(
+        session_id=session_id,
+        completed=True,
+        webhook_delivered=delivered,
+    )
 
 
 # ── Client validation error reporting (telemetry) ─────────────────────────────
@@ -531,12 +570,12 @@ async def report_client_validation_error(
 
 # ── Diagnostic (non-production only) ──────────────────────────────────────────
 
-@router.get("/v1/onboarding/_diag/bucket")
+@router.get("/v1/onboarding/_diag/bucket", response_model=DiagBucketResponse)
 async def diag_bucket(
     repo: FormStateRepo = Depends(get_repo),
     tenant_id: str = Query(..., min_length=1),
     participant_id: str = Query(..., min_length=1),
-) -> dict:
+) -> DiagBucketResponse:
     """Inspect the cross-screen bucket for a (tenant_id, participant_id) pair.
 
     Dev-only — returns 404 in production. Lets the test harness or on-call
@@ -547,15 +586,15 @@ async def diag_bucket(
         raise HTTPException(status_code=404, detail="Not found")
     ctx_repo = UserContextRepo(repo._r)
     bucket = await ctx_repo.get_bucket(tenant_id, participant_id)
-    return {
-        "tenant_id": tenant_id,
-        "participant_id": participant_id,
-        "bucket_empty": bucket.is_empty(),
-        "summary_count": len(bucket.summaries),
-        "step_numbers": [s.step_number for s in bucket.summaries],
-        "step_labels": [s.step_label for s in bucket.summaries],
-        "cross_screen_enabled": settings.onboarding_cross_screen_context_enabled,
-    }
+    return DiagBucketResponse(
+        tenant_id=tenant_id,
+        participant_id=participant_id,
+        bucket_empty=bucket.is_empty(),
+        summary_count=len(bucket.summaries),
+        step_numbers=[s.step_number for s in bucket.summaries],
+        step_labels=[s.step_label for s in bucket.summaries],
+        cross_screen_enabled=settings.onboarding_cross_screen_context_enabled,
+    )
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

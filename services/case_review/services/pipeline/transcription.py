@@ -149,17 +149,36 @@ def _delete_s3_key(bucket: str, key: str) -> None:
         logger.warning("transcription: failed to delete s3://%s/%s: %s", bucket, key, exc)
 
 
-async def _fetch_transcript(uri: str) -> str:
-    """Fetch the Transcribe JSON result and extract the transcript text."""
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(uri)
-        resp.raise_for_status()
-    data = resp.json()
-    # Transcribe result shape: {"results": {"transcripts": [{"transcript": "..."}], ...}}
-    transcripts = data.get("results", {}).get("transcripts", [])
-    if not transcripts:
-        raise RuntimeError("Transcribe result contained no transcript text")
-    return transcripts[0]["transcript"]
+async def _fetch_transcript(uri: str, max_retries: int = 3) -> str:
+    """Fetch the Transcribe JSON result and extract the transcript text.
+
+    Retries on signature errors (credential expiration or clock skew).
+    """
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(uri)
+                if resp.status_code == 403 and "SignatureDoesNotMatch" in resp.text:
+                    if attempt < max_retries - 1:
+                        wait_sec = 2 ** attempt  # exponential backoff: 1, 2, 4 seconds
+                        logger.warning("transcription: S3 signature error, retrying in %ds (attempt %d/%d)", wait_sec, attempt + 1, max_retries)
+                        await asyncio.sleep(wait_sec)
+                        continue
+                    raise RuntimeError(f"S3 signature validation failed after {max_retries} attempts — check clock sync and credentials")
+                resp.raise_for_status()
+            data = resp.json()
+            # Transcribe result shape: {"results": {"transcripts": [{"transcript": "..."}], ...}}
+            transcripts = data.get("results", {}).get("transcripts", [])
+            if not transcripts:
+                raise RuntimeError("Transcribe result contained no transcript text")
+            return transcripts[0]["transcript"]
+        except httpx.HTTPError as exc:
+            if attempt < max_retries - 1:
+                wait_sec = 2 ** attempt
+                logger.warning("transcription: fetch failed (%s), retrying in %ds (attempt %d/%d)", exc, wait_sec, attempt + 1, max_retries)
+                await asyncio.sleep(wait_sec)
+                continue
+            raise RuntimeError(f"Failed to fetch transcript after {max_retries} attempts: {exc}") from exc
 
 
 async def run_transcription(

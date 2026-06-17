@@ -17,6 +17,20 @@ class AuthContext(BaseModel):
     roles: list[str] = Field(default_factory=list)
 
 
+class TokenUsage(BaseModel):
+    """Aggregated LLM token usage for a request (Gemini + Bedrock stages).
+
+    cache_read_tokens / cache_creation_tokens surface prompt-caching activity:
+    Bedrock Converse reports both; Gemini reports cache reads only (implicit
+    caching, no separate creation cost).
+    """
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+
+
 # ── Case note (from other engineer's API / stub) ──────────────────────────────
 
 class CaseNoteDTO(BaseModel):
@@ -42,6 +56,7 @@ class ContextResponse(BaseModel):
     metadata: dict
     notes_included: int
     rolling_summary_id: uuid.UUID
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 # ── POST /v1/case-review/classify ─────────────────────────────────────────────
@@ -67,6 +82,7 @@ class ClassifyResponse(BaseModel):
     missing_fields: list[dict]
     reask_prompts: list[ReaskPrompt]
     status: str
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 # ── POST /v1/case-review/review ───────────────────────────────────────────────
@@ -415,6 +431,7 @@ class PipelineResult(BaseModel):
     )
     summary: SummaryOutput | None = None
     incident_draft: IncidentDraftOutput | None = None
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class _VerdictSection(BaseModel):
@@ -515,6 +532,7 @@ class EvaluateResponse(BaseModel):
         ),
     )
     privacy: str
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class DraftInput(BaseModel):
@@ -568,3 +586,5 @@ class CaseDraftResponse(BaseModel):
     note_quality_score: float = Field(0.0, ge=0.0, le=1.0)
     note_quality_label: str = "Average"
     quality_gaps: list[str] = []
+
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)

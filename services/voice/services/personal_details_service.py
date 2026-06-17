@@ -125,7 +125,7 @@ class PersonalDetailsService:
         missing_fields = state.get("missing_fields", list(REQUIRED_FIELDS))
         history = state.get("history", [])[-5:]
 
-        ai_out, latency_ms = self.gemini.run_personal_details_turn(
+        ai_out, latency_ms, token_usage = self.gemini.run_personal_details_turn(
             transcript=normalized.text,
             current_fields=current_fields,
             missing_fields=missing_fields,
@@ -189,6 +189,7 @@ class PersonalDetailsService:
             "missing_fields": new_missing,
             "completeness_score": score,
             "latency_ms": latency_ms,
+            "token_usage": token_usage,
         }
 
     async def end_session(

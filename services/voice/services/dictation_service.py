@@ -84,7 +84,7 @@ class DictationService:
             "missing_topics": state.get("missing_topics", list(DEFAULT_SECTIONS.keys())),
         }
 
-        ai_out, latency_ms = self.bedrock.run_dictation_turn(
+        ai_out, latency_ms, token_usage = self.bedrock.run_dictation_turn(
             normalized.text,
             model_input_snapshot,
             history,
@@ -144,4 +144,5 @@ class DictationService:
             "completeness_score": score,
             "missing_topics": missing_topics,
             "latency_ms": latency_ms,
+            "token_usage": token_usage,
         }

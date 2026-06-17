@@ -16,6 +16,7 @@ import structlog
 from pydantic import BaseModel
 
 from core.settings import settings
+from case_review.services.usage import record_converse
 
 log = structlog.get_logger(__name__)
 
@@ -153,12 +154,26 @@ def _make_client() -> Any:
 def _run_sync(transcript: str) -> _Extracted:
     """Synchronous Bedrock call — offloaded via asyncio.to_thread."""
     client = _make_client()
-    prompt = _DRAFT_PROMPT.format(style_guide=_STYLE_GUIDE, transcript=transcript)
+    # Prompt caching: static prefix (style guide + instructions) cached before
+    # the cachePoint; only the transcript varies per request.
+    prefix_tmpl, suffix_tmpl = _DRAFT_PROMPT.split("{transcript}", 1)
+    static_prefix = prefix_tmpl.format(style_guide=_STYLE_GUIDE)
+    dynamic_suffix = transcript + suffix_tmpl
     response = client.converse(
         modelId=settings.bedrock_model_id,
-        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"text": static_prefix},
+                    {"cachePoint": {"type": "default"}},
+                    {"text": dynamic_suffix},
+                ],
+            }
+        ],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )
+    record_converse(response)
     text = response["output"]["message"]["content"][0]["text"]
     if not text:
         raise ValueError(

@@ -37,6 +37,7 @@ def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
     return None
 
 from case_review.models.case_note_field_schema import schema_as_text
+from case_review.services.usage import record_gemini
 
 log = structlog.get_logger(__name__)
 
@@ -136,6 +137,8 @@ async def classify(
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     um = getattr(response, "usage_metadata", None)
+    # Accumulate into the request-scoped usage total surfaced on the API response.
+    record_gemini(response)
     emit_usage(
         tenant_id=tenant_id,
         user_id=user_id,

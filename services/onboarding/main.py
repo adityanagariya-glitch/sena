@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+
+# Add parent directory (services/) to path so imports work from any directory
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from onboarding.api.routes import router
 from onboarding.api.ws_routes import ws_router
@@ -67,3 +71,15 @@ def create_app() -> FastAPI:
         return FileResponse(p, media_type="application/json")
 
     return app
+
+
+app = create_app()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.onboarding_port,
+        log_level=settings.log_level.lower(),
+    )

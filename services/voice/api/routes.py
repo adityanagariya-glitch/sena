@@ -20,6 +20,7 @@ from voice.models.schemas import (
     StartPersonalDetailsResponse,
     StartSessionRequest,
     StartSessionResponse,
+    TokenUsage,
     TurnRequest,
     TurnResponse,
 )
@@ -162,6 +163,7 @@ async def process_turn(
     )
     await ai_db.commit()
 
+    token_usage = result.get("token_usage", {})
     return TurnResponse(
         session_id=req.session_id,
         sequence_number=req.sequence_number,
@@ -171,6 +173,7 @@ async def process_turn(
         missing_topics=result["missing_topics"],
         model=settings.bedrock_model_id,
         latency_ms=result["latency_ms"],
+        token_usage=token_usage,
     )
 
 
@@ -354,6 +357,7 @@ async def process_personal_details_turn(
     )
     await ai_db.commit()
 
+    token_usage = result.get("token_usage", {})
     return PersonalDetailsTurnResponse(
         session_id=req.session_id,
         sequence_number=req.sequence_number,
@@ -363,6 +367,7 @@ async def process_personal_details_turn(
         completeness_score=result["completeness_score"],
         model=settings.gemini_model_id,
         latency_ms=result["latency_ms"],
+        token_usage=token_usage,
     )
 
 
