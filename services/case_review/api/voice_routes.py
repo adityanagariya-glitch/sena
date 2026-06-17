@@ -313,8 +313,8 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
         await live.run()
     except WebSocketDisconnect:
         log.info("voice_ws_disconnect", session_id=session_id)
-    except Exception:
-        log.exception("voice_ws_error", session_id=session_id)
+    except Exception as exc:
+        log.exception("voice_ws_error", session_id=session_id, error_type=type(exc).__name__, error_msg=str(exc))
         await _close(websocket, "internal_error", "Internal server error", 1011)
     finally:
         await repo.release_ws_lock(session_id)

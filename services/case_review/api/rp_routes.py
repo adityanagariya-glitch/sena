@@ -505,6 +505,9 @@ async def draft_case_note_audio(
         logger.error("draft/audio: transcription failed job=%s: %s", job_name, exc, exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
+    if not transcript or not transcript.strip():
+        raise HTTPException(status_code=422, detail="No speech detected in audio. Please try again with clear audio.")
+
     resolved_id = case_note_id.strip() or str(uuid4())
     payload = DraftInput(
         transcript=transcript,
@@ -734,8 +737,8 @@ async def rp_voice_websocket(
         await live.run()
     except WebSocketDisconnect:
         logger.info("rp_voice_ws_disconnect session=%s", session_id)
-    except Exception:
-        logger.exception("rp_voice_ws_error session=%s", session_id)
+    except Exception as exc:
+        logger.exception("rp_voice_ws_error session=%s error_type=%s error_msg=%s", session_id, type(exc).__name__, str(exc))
         await _rp_close_ws(websocket, "internal_error", "Internal server error", 1011)
     finally:
         await repo.release_ws_lock(session_id)
