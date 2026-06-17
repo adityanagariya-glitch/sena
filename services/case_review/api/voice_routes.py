@@ -84,7 +84,7 @@ def _build_initial_turn(state: FormState) -> TurnPayload:
         section_values = state.values.get(section.id, {})
         for field_spec in section.fields:
             field_val = section_values.get(field_spec.id)
-            value = field_val.value if field_val else None
+            value = field_val.get("value") if isinstance(field_val, dict) else None
             if value not in (None, "", [], {}):
                 has_any_value = True
             visible_fields.append(
