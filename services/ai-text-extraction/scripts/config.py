@@ -17,7 +17,7 @@ class BedrockConfig:
         default_factory=lambda: os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-2")
     )
     model_id: str = field(
-        default_factory=lambda: os.environ.get("BEDROCK_MODEL_ID", "ap.amazon.nova-lite-v1:0")
+        default_factory=lambda: os.environ.get("BEDROCK_MODEL_ID", "us.meta.llama3-2-90b-instruct-v1:0")
     )
 
     # How many times to retry the Bedrock call on timeout or throttle
