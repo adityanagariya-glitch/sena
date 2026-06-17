@@ -85,10 +85,10 @@ def _sum_audio_tokens(details: object) -> int:
 
 
 if TYPE_CHECKING:
-    from turn_payload import TurnPayload
-    from state_repo import FormStateRepo
-    from mobile_bridge import MobileBridge
-    from tools import ToolDispatcher
+    from .turn_payload import TurnPayload
+    from .state_repo import FormStateRepo
+    from .mobile_bridge import MobileBridge
+    from .tools import ToolDispatcher
 
 import structlog
 
@@ -600,7 +600,7 @@ class GeminiLiveSession:
         falls through to the legacy screen-state injection for Gemini context."""
         from pydantic import ValidationError
 
-        from turn_payload import TurnPayload
+        from .turn_payload import TurnPayload
 
         turn_json = data.get("turn")
         if turn_json is not None:
