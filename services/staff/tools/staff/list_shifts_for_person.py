@@ -30,6 +30,7 @@ from config import VERBOSE
 from state import user_context
 from api_router import call_target_api, construct_api_url
 from tools.base import ToolSpec, ToolResult
+from tools._common import access_denied_code
 
 # Reuse the DST-aware date helpers from list_my_shifts. Single source of truth
 # for "what UTC range matches this Aussie timeframe?".
@@ -117,13 +118,22 @@ def _run(inputs: dict | None) -> ToolResult:
     staff_failed = isinstance(raw_staff, dict) and raw_staff.get("error")
     part_failed = isinstance(raw_part, dict) and raw_part.get("error")
     if staff_failed and part_failed:
+        # Preserve the backend status code so the dispatcher's access-denial
+        # safety net can fire (a 403 here must not read as a temporary glitch).
+        denied = access_denied_code(raw_staff, raw_part)
         return ToolResult(
-            error=f"Both calendar lookups failed: {raw_staff.get('error')}",
+            error=(
+                f"Access denied ({denied}) — not authorised to view this person's shifts."
+                if denied else
+                f"Both calendar lookups failed: {raw_staff.get('error')}"
+            ),
             meta={
                 "path": _CALENDAR_PATH,
                 "name": name,
                 "from": from_iso,
                 "to": to_iso,
+                "status_code": (raw_staff.get("status_code")
+                                if isinstance(raw_staff, dict) else None),
             },
         )
 

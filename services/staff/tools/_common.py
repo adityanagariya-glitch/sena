@@ -16,6 +16,82 @@ from api_router import call_target_api
 _TERMINAL = sys.__stderr__
 
 
+# ---- HTTP error framing ----
+# The agent kept telling users "temporary glitch, try again in a few minutes"
+# for failures that are PERMANENT (a 403 never clears by waiting). The fix is to
+# hand the model the right framing per status class instead of letting it guess:
+#   4xx (except 429) → permanent, do NOT promise a retry will work
+#   429 / 5xx        → genuinely transient, a retry IS reasonable
+ACCESS_DENIED_CODES = (401, 403)
+
+ACCESS_DENIED_HINT = (
+    "This is a PERMISSION denial (the signed-in user isn't authorised for this "
+    "data), NOT a temporary outage. Tell the user plainly that they don't have "
+    "access and may need an admin to grant it. Do NOT call it a glitch, do NOT "
+    "say it's temporary, and do NOT suggest trying again in a few minutes — "
+    "retrying will not help."
+)
+
+
+def access_denied_code(*responses: Any) -> int | None:
+    """Return 401/403 if any raw API envelope carries an auth-denial status code.
+
+    Accepts the dicts returned by `call_target_api` (or anything else, which is
+    ignored). Returns the first matching code, or None when no envelope denied.
+    """
+    for r in responses:
+        if isinstance(r, dict) and r.get("status_code") in ACCESS_DENIED_CODES:
+            return r["status_code"]
+    return None
+
+
+def error_hint_for_status(code: int | None) -> str | None:
+    """Map a backend HTTP error code → instruction for HOW the agent explains it.
+
+    Returns None for success/unknown codes (agent uses its default handling).
+    Only error codes get a hint; the framing is the whole point of this helper.
+    """
+    if code is None or code < 400:
+        return None
+    if code == 401:
+        return (
+            "The user's session is no longer valid — this is NOT a glitch. Tell "
+            "them they may need to sign in again. Do NOT say it's temporary or "
+            "that retrying in a few minutes will fix it."
+        )
+    if code == 403:
+        return ACCESS_DENIED_HINT
+    if code == 404:
+        return (
+            "The requested record doesn't exist. Tell the user it couldn't be "
+            "found. Do NOT call it an outage and do NOT suggest retrying — the "
+            "record isn't there. If an id/name/date might be wrong, ask them to confirm it."
+        )
+    if code in (400, 422):
+        return (
+            "The request was rejected as invalid (a problem with how the lookup "
+            "was built, not a temporary outage). Tell the user you couldn't "
+            "complete that request. Do NOT tell them to try again in a few "
+            "minutes — the same request will fail again. If a detail (name, "
+            "date, id) might be off, ask them to confirm it."
+        )
+    if code == 429:
+        return (
+            "Rate limited — this one IS temporary. It's fine to tell the user the "
+            "system is busy and to try again shortly."
+        )
+    if 500 <= code <= 599:
+        return (
+            "Genuine server-side error. This is temporary — it's fine to tell the "
+            "user there was a hiccup and to try again in a little while."
+        )
+    # Other 4xx: treat as permanent client errors, don't promise a retry.
+    return (
+        "The request failed and won't succeed if simply repeated. Tell the user "
+        "you couldn't complete it; do NOT say it's a temporary glitch."
+    )
+
+
 def parallel_fetch(
     fetchers: list[dict[str, Any]],
     max_workers: int | None = None,
