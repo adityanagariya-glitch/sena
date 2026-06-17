@@ -240,7 +240,7 @@ Returns `503` if Redis is unavailable.
 | `SENA_AI_APP_WEBHOOK_URL` | Yes (prod) | `https://mock.example.com/webhooks/sena` | Backend webhook URL for completion events |
 | `SENA_AI_APP_WEBHOOK_SECRET` | No | — | HMAC-SHA256 signing secret for webhook |
 | `SENA_AI_ONBOARDING_PORT` | No | `8083` | Service port |
-| `SENA_AI_GEMINI_LIVE_MODEL_ID` | No | `gemini-3.1-flash-live-preview` | Gemini Live model ID |
+| `SENA_AI_GEMINI_LIVE_MODEL_ID` | No | `gemini-3.5-flash` | Gemini Live model ID |
 | `SENA_AI_ONBOARDING_SESSION_MAX_MIN` | No | `60` | Hard session cap in minutes |
 | `SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC` | No | `8` | Seconds of silence before check-in prompt |
 | `SENA_AI_ONBOARDING_CROSS_SCREEN_CONTEXT_ENABLED` | No | `true` | Share context across steps |

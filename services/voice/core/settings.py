@@ -34,7 +34,7 @@ class VoiceSettings(BaseSettings):
 
     aws_region: str = Field(default="ap-southeast-2", alias="AWS_REGION")
     bedrock_model_id: str = Field(
-        default="anthropic.claude-3-5-sonnet-20240620-v1:0", alias="BEDROCK_MODEL_ID"
+        default="au.anthropic.claude-sonnet-4-6", alias="BEDROCK_MODEL_ID"
     )
     bedrock_max_tokens: int = Field(default=1200, alias="BEDROCK_MAX_TOKENS")
     bedrock_temperature: float = Field(default=0.2, alias="BEDROCK_TEMPERATURE")
@@ -52,7 +52,7 @@ class VoiceSettings(BaseSettings):
     provider_max_retries: int = Field(default=2, alias="PROVIDER_MAX_RETRIES")
 
     gemini_api_key: str = Field(alias="GEMINI_API_KEY")
-    gemini_model_id: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL_ID")
+    gemini_model_id: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL_ID")
     gemini_live_model_id: str = Field(
         default="gemini-2.5-flash-native-audio-latest", alias="GEMINI_LIVE_MODEL_ID"
     )

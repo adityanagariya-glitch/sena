@@ -53,12 +53,19 @@ class BedrockService:
 
         raw_payload carries Anthropic's `usage` block (input_tokens,
         output_tokens, cache_*). Callers emit_usage with it.
+        Uses prompt caching on system prompt to reduce token usage and latency.
         """
         body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": settings.bedrock_max_tokens,
             "temperature": settings.bedrock_temperature,
-            "system": system_prompt,
+            "system": [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
             "messages": [{"role": "user", "content": [{"type": "text", "text": user_prompt}]}],
         }
         response = self.client.invoke_model(
@@ -77,7 +84,7 @@ class BedrockService:
         tenant_id: str = "phase1_tbd",
         user_id: str | None = None,
         session_id: str | None = None,
-    ) -> tuple[dict, int]:
+    ) -> tuple[dict, int, dict]:
         prompt = build_user_prompt(
             transcript=transcript, session_snapshot=session_snapshot, history=history
         )
@@ -89,23 +96,32 @@ class BedrockService:
                 data, payload = self._invoke_once(prompt)
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 usage = payload.get("usage", {}) or {}
+                input_tokens = int(usage.get("input_tokens", 0) or 0)
+                output_tokens = int(usage.get("output_tokens", 0) or 0)
+                cache_read_tokens = int(usage.get("cache_read_input_tokens", 0) or 0)
+                cache_creation_tokens = int(usage.get("cache_creation_input_tokens", 0) or 0)
+                cached_tokens = cache_read_tokens + cache_creation_tokens
                 emit_usage(
                     tenant_id=tenant_id,
                     user_id=user_id,
                     feature=UsageFeature.CASE_NOTE_DRAFTING,
                     model=settings.bedrock_model_id,
                     session_id=session_id,
-                    prompt_tokens=int(usage.get("input_tokens", 0) or 0),
-                    response_tokens=int(usage.get("output_tokens", 0) or 0),
-                    cached_tokens=int(
-                        (usage.get("cache_read_input_tokens", 0) or 0)
-                        + (usage.get("cache_creation_input_tokens", 0) or 0)
-                    ),
+                    prompt_tokens=input_tokens,
+                    response_tokens=output_tokens,
+                    cached_tokens=cached_tokens,
                     latency_ms=latency_ms,
                     success=True,
                     history_turns=len(history),
                 )
-                return data, latency_ms
+                token_usage = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                    "cache_read_tokens": cache_read_tokens,
+                    "cache_creation_tokens": cache_creation_tokens,
+                }
+                return data, latency_ms, token_usage
             except (ValueError, KeyError, BotoCoreError, ClientError) as exc:
                 last_error = exc
         emit_usage(
@@ -138,7 +154,7 @@ class BedrockService:
         tenant_id: str = "phase1_tbd",
         user_id: str | None = None,
         session_id: str | None = None,
-    ) -> tuple[dict, int]:
+    ) -> tuple[dict, int, dict]:
         prompt = build_personal_details_user_prompt(
             transcript=transcript,
             current_fields=current_fields,
@@ -153,6 +169,11 @@ class BedrockService:
                 data, payload = self._invoke_once(prompt, system_prompt=PERSONAL_DETAILS_SYSTEM_PROMPT)
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 usage = payload.get("usage", {}) or {}
+                input_tokens = int(usage.get("input_tokens", 0) or 0)
+                output_tokens = int(usage.get("output_tokens", 0) or 0)
+                cache_read_tokens = int(usage.get("cache_read_input_tokens", 0) or 0)
+                cache_creation_tokens = int(usage.get("cache_creation_input_tokens", 0) or 0)
+                cached_tokens = cache_read_tokens + cache_creation_tokens
                 emit_usage(
                     tenant_id=tenant_id,
                     user_id=user_id,
@@ -162,18 +183,22 @@ class BedrockService:
                     feature=UsageFeature.VOICE_ONBOARDING,
                     model=settings.bedrock_model_id,
                     session_id=session_id,
-                    prompt_tokens=int(usage.get("input_tokens", 0) or 0),
-                    response_tokens=int(usage.get("output_tokens", 0) or 0),
-                    cached_tokens=int(
-                        (usage.get("cache_read_input_tokens", 0) or 0)
-                        + (usage.get("cache_creation_input_tokens", 0) or 0)
-                    ),
+                    prompt_tokens=input_tokens,
+                    response_tokens=output_tokens,
+                    cached_tokens=cached_tokens,
                     latency_ms=latency_ms,
                     success=True,
                     history_turns=len(history),
                     missing_field_count=len(missing_fields),
                 )
-                return data, latency_ms
+                token_usage = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                    "cache_read_tokens": cache_read_tokens,
+                    "cache_creation_tokens": cache_creation_tokens,
+                }
+                return data, latency_ms, token_usage
             except (ValueError, KeyError, BotoCoreError, ClientError) as exc:
                 last_error = exc
         emit_usage(

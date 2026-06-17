@@ -44,7 +44,7 @@ class CaseReviewSettings(BaseSettings):
     # SENA_AI_GEMINI_MODEL_ID — standard generate_content model (NOT Live API)
     # gemini-3-flash-preview is the current standard model; gemini-3.1-flash-live-preview
     # is Live API only (BidiGenerateContent WebSocket) and cannot be used here.
-    gemini_model_id: str = "gemini-3-flash-preview"
+    gemini_model_id: str = "gemini-3.5-flash"
     # SENA_AI_GEMINI_REGION — Australian data residency requirement
     gemini_region: str = "australia-southeast1"
 

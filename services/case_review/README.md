@@ -253,7 +253,7 @@ Real-time bidirectional voice session.
 | `SENA_AI_BASIC_AUTH_PASSWORD` | No | HTTP Basic Auth password |
 | `SENA_AI_TRANSCRIPTION_BUCKET` | Yes (audio) | S3 bucket for temporary audio file storage |
 | `SENA_AI_GEMINI_API_KEY` | Yes (voice) | Google Generative AI API key |
-| `SENA_AI_GEMINI_LIVE_MODEL_ID` | No | Gemini Live model (default: `gemini-3.1-flash-live-preview`) |
+| `SENA_AI_GEMINI_LIVE_MODEL_ID` | No | Gemini Live model (default: `gemini-3.5-flash`) |
 | `SENA_AI_CASE_REVIEW_REDIS_URL` | Yes (voice) | Redis URL for voice session state (e.g. `redis://localhost:6380/0`) |
 | `SENA_AI_VOICE_SESSION_MAX_SEC` | No | Voice session TTL in seconds (default: 3600) |
 | `SENA_AI_VOICE_SILENCE_TIMEOUT_SEC` | No | Silence before "are you still there?" (default: 8) |

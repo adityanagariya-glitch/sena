@@ -6,6 +6,15 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 
+class TokenUsage(BaseModel):
+    """LLM token usage metrics including cache metrics for Claude."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+
+
 class StartSessionRequest(BaseModel):
     objective: Literal["CASE_NOTE"]
     participant_id: UUID
@@ -21,6 +30,7 @@ class StartSessionResponse(BaseModel):
     objective: str
     lock_acquired: bool
     livekit: dict
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class TurnRequest(BaseModel):
@@ -41,6 +51,7 @@ class TurnResponse(BaseModel):
     missing_topics: list[str]
     model: str
     latency_ms: int
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class EndSessionRequest(BaseModel):
@@ -56,6 +67,7 @@ class EndSessionResponse(BaseModel):
     event_id: UUID
     status: str
     case_note: dict
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class ApprovalDecisionRequest(BaseModel):
@@ -79,6 +91,7 @@ class ApprovalDecisionResponse(BaseModel):
     status: str
     shared_case_note_id: UUID | None = None
     delivered_at: datetime | None = None
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class SessionStatusResponse(BaseModel):
@@ -88,6 +101,7 @@ class SessionStatusResponse(BaseModel):
     turn_count: int
     completeness_score: float
     missing_topics: list[str]
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class StartPersonalDetailsRequest(BaseModel):
@@ -103,6 +117,7 @@ class StartPersonalDetailsResponse(BaseModel):
     objective: str
     lock_acquired: bool
     livekit: dict
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class PersonalDetailsTurnRequest(BaseModel):
@@ -123,6 +138,7 @@ class PersonalDetailsTurnResponse(BaseModel):
     completeness_score: float
     model: str
     latency_ms: int
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class EndPersonalDetailsRequest(BaseModel):
@@ -137,6 +153,7 @@ class EndPersonalDetailsResponse(BaseModel):
     completeness_score: float
     missing_fields: list[str]
     status: str
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class ErrorResponse(BaseModel):
