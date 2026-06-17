@@ -36,7 +36,7 @@ class VoiceSettings(BaseSettings):
     bedrock_model_id: str = Field(
         default="au.anthropic.claude-sonnet-4-6", alias="BEDROCK_MODEL_ID"
     )
-    bedrock_max_tokens: int = Field(default=1200, alias="BEDROCK_MAX_TOKENS")
+    bedrock_max_tokens: int = Field(default=3800, alias="BEDROCK_MAX_TOKENS")
     bedrock_temperature: float = Field(default=0.2, alias="BEDROCK_TEMPERATURE")
 
     livekit_api_key: str = Field(alias="LIVEKIT_API_KEY")
