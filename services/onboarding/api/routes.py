@@ -36,11 +36,15 @@ router = APIRouter()
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class CreateSessionRequest(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
+    # populate_by_name lets callers construct with the Python name (step_schema)
+    # while the wire/JSON contract stays "schema" via the alias below.
+    model_config = ConfigDict(protected_namespaces=(), populate_by_name=True)
 
     participant_id: str
     step: str
-    schema: StepSchema
+    # Renamed from `schema` to avoid shadowing Pydantic's BaseModel.schema();
+    # alias keeps the request body field name as "schema" for clients.
+    step_schema: StepSchema = Field(alias="schema")
     initial_state: dict | None = None
     # Rule 1 / Rule 2 hygiene contract. When provided, it is the authoritative
     # source for what state the agent inherits and which fields are read-only.
@@ -337,10 +341,10 @@ async def create_session(
         locale=req.locale,
         values=_build_initial_values(seed_values),
     )
-    state.recompute_completion(req.schema)
+    state.recompute_completion(req.step_schema)
 
     await repo.create_session(
-        state, req.schema, ttl_sec=settings.session_max_sec, bootstrap=bootstrap,
+        state, req.step_schema, ttl_sec=settings.session_max_sec, bootstrap=bootstrap,
     )
 
     # Track this session in the per-participant index so on-call tooling can
