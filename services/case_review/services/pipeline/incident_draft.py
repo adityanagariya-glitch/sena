@@ -20,6 +20,7 @@ from case_review.models.schemas import (
     IncidentDraftOutput,
 )
 from case_review.services.pipeline.style_examples import FEW_SHOT_INCIDENT, STYLE_GUIDE
+from case_review.services.usage import record_converse
 
 logger = logging.getLogger(__name__)
 
@@ -159,18 +160,34 @@ def _run_incident_draft(
     """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
 
-    prompt = _INCIDENT_DRAFT_PROMPT.format(
+    # Prompt caching: cache the static prefix (style guide + few-shot) before the
+    # cachePoint; case_note_text + evaluator_findings vary per request. Split at
+    # the first dynamic placeholder so the prefix holds only the static vars.
+    prefix_tmpl, rest_tmpl = _INCIDENT_DRAFT_PROMPT.split("{case_note_text}", 1)
+    static_prefix = prefix_tmpl.format(
         style_guide=STYLE_GUIDE,
         few_shot_incident=FEW_SHOT_INCIDENT,
+    )
+    dynamic_suffix = ("{case_note_text}" + rest_tmpl).format(
         case_note_text=case_note_text,
         evaluator_findings=evaluator_findings,
     )
 
     response = client.converse(
         modelId=settings.evaluator_model,
-        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"text": static_prefix},
+                    {"cachePoint": {"type": "default"}},
+                    {"text": dynamic_suffix},
+                ],
+            }
+        ],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )
+    record_converse(response)
 
     text = response["output"]["message"]["content"][0]["text"]
     if not text:

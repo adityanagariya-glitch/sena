@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from core.settings import settings
 from case_review.models.schemas import CaseNoteInput, TriageResult
 from case_review.services.pipeline.style_examples import FEW_SHOT_TRIAGE
+from case_review.services.usage import record_converse
 
 logger = logging.getLogger(__name__)
 
@@ -71,23 +72,27 @@ def _run_triage(transcript: str) -> TriageResult:
     """Synchronous Bedrock call — runs in a thread via asyncio.to_thread."""
     client = _make_client()
 
+    # Prompt caching: cache the static few-shot prefix before the cachePoint;
+    # only the transcript varies per request.
+    prefix_tmpl, suffix_tmpl = _TRIAGE_PROMPT.split("{transcript}", 1)
+    static_prefix = prefix_tmpl.format(few_shot_triage=FEW_SHOT_TRIAGE)
+    dynamic_suffix = transcript + suffix_tmpl
+
     response = client.converse(
         modelId=settings.triage_model,
         messages=[
             {
                 "role": "user",
                 "content": [
-                    {
-                        "text": _TRIAGE_PROMPT.format(
-                            few_shot_triage=FEW_SHOT_TRIAGE,
-                            transcript=transcript,
-                        )
-                    }
+                    {"text": static_prefix},
+                    {"cachePoint": {"type": "default"}},
+                    {"text": dynamic_suffix},
                 ],
             }
         ],
         inferenceConfig={"maxTokens": 512, "temperature": 0.0},
     )
+    record_converse(response)
 
     text = response["output"]["message"]["content"][0]["text"]
     if not text:

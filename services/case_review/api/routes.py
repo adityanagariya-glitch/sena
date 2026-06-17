@@ -26,9 +26,12 @@ from models.schemas import (
     ReviewResponse,
     SubmitRequest,
     SubmitResponse,
+    TokenUsage,
 )
 from repositories.review_repo import ReviewRepo
 from core.settings import settings
+# Canonical import path (must match every other accumulator import — see usage.py).
+from case_review.services.usage import get_usage, start_usage
 
 router = APIRouter()
 
@@ -61,7 +64,8 @@ async def get_context(
     Adding new notes updates and compresses the rolling summary.
     """
     repo = get_repo(db)
-    return await svc_get_context(
+    start_usage()
+    result = await svc_get_context(
         repo=repo,
         client=client,
         tenant_id=auth.tenant_id,
@@ -69,6 +73,8 @@ async def get_context(
         client_id=req.client_id,
         limit=req.limit,
     )
+    result.token_usage = TokenUsage(**get_usage())
+    return result
 
 
 # ── Classify (Phase C) ────────────────────────────────────────────────────────
@@ -84,8 +90,9 @@ async def classify_paragraph(
     Returns missing required fields and re-ask prompts if paragraph is thin.
     """
     repo = get_repo(db)
+    start_usage()
     try:
-        return await svc_classify_paragraph(
+        result = await svc_classify_paragraph(
             repo=repo,
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
@@ -93,6 +100,8 @@ async def classify_paragraph(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    result.token_usage = TokenUsage(**get_usage())
+    return result
 
 
 # ── Review (Phase D) ──────────────────────────────────────────────────────────

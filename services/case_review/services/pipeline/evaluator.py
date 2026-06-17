@@ -22,6 +22,7 @@ from case_review.models.schemas import (
     TriageResult,
 )
 from case_review.services.pipeline.style_examples import FEW_SHOT_EVAL_REASONING, STYLE_GUIDE
+from case_review.services.usage import record_converse
 
 logger = logging.getLogger(__name__)
 
@@ -159,19 +160,31 @@ def _run_evaluator(
     """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
 
-    prompt = _EVALUATOR_PROMPT.format(
+    # Prompt caching: cache the static prefix (style guide + few-shot + policy
+    # context) before the cachePoint; transcript + action_summary vary per call.
+    prefix_tmpl, suffix_tmpl = _EVALUATOR_PROMPT.split("{transcript}", 1)
+    static_prefix = prefix_tmpl.format(
         style_guide=STYLE_GUIDE,
         few_shot_eval_reasoning=FEW_SHOT_EVAL_REASONING,
         policy_context=policy_context,
-        transcript=transcript,
-        action_summary=action_summary,
     )
+    dynamic_suffix = transcript + suffix_tmpl.format(action_summary=action_summary)
 
     response = client.converse(
         modelId=settings.evaluator_model,
-        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"text": static_prefix},
+                    {"cachePoint": {"type": "default"}},
+                    {"text": dynamic_suffix},
+                ],
+            }
+        ],
         inferenceConfig={"maxTokens": 8192, "temperature": 0.0},
     )
+    record_converse(response)
 
     text = response["output"]["message"]["content"][0]["text"]
     if not text:

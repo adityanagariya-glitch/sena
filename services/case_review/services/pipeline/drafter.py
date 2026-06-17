@@ -17,6 +17,7 @@ from core.settings import settings
 from case_review.models.schemas import CaseDraftResponse, CaseNoteInput, DraftInput
 from case_review.services.pipeline.quality_score import score_note
 from case_review.services.pipeline.style_examples import FEW_SHOT_DRAFTER, STYLE_GUIDE
+from case_review.services.usage import record_converse
 
 logger = logging.getLogger(__name__)
 
@@ -133,17 +134,31 @@ def _run_drafter(transcript: str) -> _DrafterResponse:
     """Synchronous Bedrock call — runs in a thread via asyncio.to_thread."""
     client = _make_client()
 
-    prompt = _DRAFT_PROMPT.format(
+    # Prompt caching: split at the transcript boundary so the large static prefix
+    # (style guide + few-shot examples + form spec + instructions) sits before a
+    # cachePoint and is reused across requests; only the transcript varies.
+    prefix_tmpl, suffix_tmpl = _DRAFT_PROMPT.split("{transcript}", 1)
+    static_prefix = prefix_tmpl.format(
         style_guide=STYLE_GUIDE,
         few_shot_drafter=FEW_SHOT_DRAFTER,
-        transcript=transcript,
     )
+    dynamic_suffix = transcript + suffix_tmpl
 
     response = client.converse(
         modelId=settings.evaluator_model,
-        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"text": static_prefix},
+                    {"cachePoint": {"type": "default"}},
+                    {"text": dynamic_suffix},
+                ],
+            }
+        ],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )
+    record_converse(response)
 
     text = response["output"]["message"]["content"][0]["text"]
     if not text:
