@@ -13,11 +13,9 @@ from dataclasses import dataclass, field
 class BedrockConfig:
     """AWS Bedrock / Nova Lite settings."""
 
-    region: str = field(
-        default_factory=lambda: os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-2")
-    )
+    region: str = "ap-south-1"
     model_id: str = field(
-        default_factory=lambda: os.environ.get("BEDROCK_MODEL_ID", "us.meta.llama3-2-90b-instruct-v1:0")
+        default_factory=lambda: os.environ.get("BEDROCK_MODEL_ID", "apac.amazon.nova-lite-v1:0")
     )
 
     # How many times to retry the Bedrock call on timeout or throttle
@@ -41,10 +39,8 @@ class S3Config:
         default_factory=lambda: os.environ.get("S3_BUCKET_NAME", "")
     )
 
-    # S3 region — defaults to same region as Bedrock
-    region: str = field(
-        default_factory=lambda: os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "ap-southeast-2")
-    )
+    # S3 region — always ap-south-1 to match Bedrock
+    region: str = "ap-south-1"
 
 
 @dataclass(frozen=True)
