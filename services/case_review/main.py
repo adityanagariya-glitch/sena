@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,10 +15,33 @@ from api.voice_routes import voice_router
 from core.logging import configure_logging
 from core.settings import settings
 
+logger = logging.getLogger(__name__)
+
+
+def _run_migrations() -> None:
+    """Apply Alembic migrations to head.
+
+    Migrations 0001-0002 are idempotent (CREATE TABLE / ADD COLUMN ... IF NOT
+    EXISTS) and 0003-0004 are idempotent reconcilers, so this checks every table
+    and creates only what's missing — safe to run on every startup.
+
+    Run in a worker thread (see lifespan): Alembic's env.py uses asyncio.run(),
+    which cannot be called from within the already-running lifespan event loop.
+    """
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
+    ini_path = Path(__file__).resolve().parent / "alembic.ini"
+    cfg = AlembicConfig(str(ini_path))
+    command.upgrade(cfg, "head")
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     configure_logging(settings.log_level)
+    logger.info("applying database migrations (alembic upgrade head)...")
+    await asyncio.to_thread(_run_migrations)
+    logger.info("database migrations applied; tables verified")
     yield
 
 

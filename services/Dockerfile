@@ -99,6 +99,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/v1/restrictive-practices/health').status==200 else 1)"
 
 # main.py exposes a create_app() factory (no module-level `app`) → --factory.
+# DB migrations run automatically on startup (see lifespan in main.py).
 CMD ["uvicorn", "main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8002"]
 
 

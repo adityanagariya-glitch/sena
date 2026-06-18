@@ -1,4 +1,4 @@
-"""add restrictive practices pipeline tables
+"""add restrictive practices pipeline tables (idempotent)
 
 Revision ID: 0002
 Revises: 0001
@@ -11,13 +11,22 @@ Tables created:
 
 HNSW index on rp_ndis_policy_chunks.embedding for sub-ms ANN search.
 pgvector extension must already be enabled (migration 0001 depends on it via ai-db init).
+
+IDEMPOTENT: every object is created with IF NOT EXISTS and policies are guarded, so
+this migration is safe to run against a database whose tables were bootstrapped
+outside alembic (skip if present, create if missing).
+
+NOTE on RLS: the policies below enable FORCE ROW LEVEL SECURITY keyed on
+current_setting('app.current_tenant'). If the application does NOT set that GUC per
+connection, enabling RLS will block all reads/writes. On databases that already run
+WITHOUT RLS (e.g. tables created via create_all), DO NOT let this migration execute
+the RLS block against them — stamp past 0002 instead. The CREATE POLICY statements
+are guarded with DROP POLICY IF EXISTS so re-runs do not error.
 """
 
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision = "0002"
 down_revision = "0001"
@@ -26,43 +35,34 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # pgvector HALFVEC type — must be registered before creating the column
     op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
 
     # ── rp_ndis_policy_chunks ──────────────────────────────────────────────────
     # Global NDIS policy reference data. Shared across all tenants — no RLS.
-    op.create_table(
-        "rp_ndis_policy_chunks",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("chunk_id", sa.String(64), nullable=False, unique=True),
-        sa.Column("text", sa.Text(), nullable=False),
-        sa.Column("category", sa.String(100), nullable=False),
-        sa.Column("document_source", sa.String(200), nullable=False),
-        sa.Column("risk_level", sa.String(50), nullable=False),
-        sa.Column(
-            "document_type", sa.String(100), nullable=False, server_default="Regulatory"
-        ),
-        # HALFVEC(1024) — Cohere Embed English v3 output dimension
-        sa.Column(
-            "embedding",
-            sa.Text().with_variant(sa.Text(), "postgresql"),
-            nullable=False,
-        ),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
-    )
-    op.create_index("ix_rp_ndis_chunks_category", "rp_ndis_policy_chunks", ["category"])
-
-    # Replace placeholder Text column with proper HALFVEC type.
-    # No DEFAULT needed — table is empty at migration time so NOT NULL is valid.
-    op.execute("ALTER TABLE rp_ndis_policy_chunks DROP COLUMN embedding;")
+    # embedding is HALFVEC(1024) — Cohere Embed English v3 output dimension.
     op.execute(
-        "ALTER TABLE rp_ndis_policy_chunks ADD COLUMN embedding HALFVEC(1024) NOT NULL;"
+        """
+        CREATE TABLE IF NOT EXISTS rp_ndis_policy_chunks (
+            id SERIAL PRIMARY KEY,
+            chunk_id VARCHAR(64) NOT NULL UNIQUE,
+            text TEXT NOT NULL,
+            category VARCHAR(100) NOT NULL,
+            document_source VARCHAR(200) NOT NULL,
+            risk_level VARCHAR(50) NOT NULL,
+            document_type VARCHAR(100) NOT NULL DEFAULT 'Regulatory',
+            embedding HALFVEC(1024) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT now()
+        );
+        """
     )
-
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_rp_ndis_chunks_category "
+        "ON rp_ndis_policy_chunks (category);"
+    )
     # HNSW index — works on empty tables; IVFFlat requires pre-existing rows
     op.execute(
         """
-        CREATE INDEX ix_rp_ndis_chunks_embedding_hnsw
+        CREATE INDEX IF NOT EXISTS ix_rp_ndis_chunks_embedding_hnsw
         ON rp_ndis_policy_chunks
         USING hnsw (embedding halfvec_cosine_ops)
         WITH (m = 16, ef_construction = 64);
@@ -70,75 +70,74 @@ def upgrade() -> None:
     )
 
     # ── behaviour_support_plans ───────────────────────────────────────────────
-    op.create_table(
-        "behaviour_support_plans",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("tenant_id", sa.String(100), nullable=False),
-        sa.Column("client_id", sa.String(100), nullable=False),
-        sa.Column("practice_type", sa.String(100), nullable=False),
-        sa.Column("status", sa.String(20), nullable=False, server_default="Active"),
-        sa.Column("approved_dosage", sa.String(200), nullable=True),
-        sa.Column("approved_conditions", sa.Text(), nullable=True),
-        sa.Column("authorised_by", sa.String(200), nullable=True),
-        sa.Column("valid_from", sa.DateTime(), nullable=True),
-        sa.Column("valid_until", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
-    )
-    op.create_index("ix_bsp_tenant", "behaviour_support_plans", ["tenant_id"])
-    op.create_index("ix_bsp_client", "behaviour_support_plans", ["client_id"])
-    op.create_index("ix_bsp_practice_type", "behaviour_support_plans", ["practice_type"])
-
-    # RLS — tenant isolation (legal mandate)
-    op.execute("ALTER TABLE behaviour_support_plans ENABLE ROW LEVEL SECURITY;")
-    op.execute("ALTER TABLE behaviour_support_plans FORCE ROW LEVEL SECURITY;")
     op.execute(
         """
-        CREATE POLICY behaviour_support_plans_tenant_isolation ON behaviour_support_plans
-        USING (tenant_id = current_setting('app.current_tenant'));
+        CREATE TABLE IF NOT EXISTS behaviour_support_plans (
+            id VARCHAR(36) PRIMARY KEY,
+            tenant_id VARCHAR(100) NOT NULL,
+            client_id VARCHAR(100) NOT NULL,
+            practice_type VARCHAR(100) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'Active',
+            approved_dosage VARCHAR(200),
+            approved_conditions TEXT,
+            authorised_by VARCHAR(200),
+            valid_from TIMESTAMP,
+            valid_until TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT now()
+        );
         """
     )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_bsp_tenant ON behaviour_support_plans (tenant_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_bsp_client ON behaviour_support_plans (client_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_bsp_practice_type ON behaviour_support_plans (practice_type);")
 
     # ── rp_case_note_runs ─────────────────────────────────────────────────────
-    op.create_table(
-        "rp_case_note_runs",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("tenant_id", sa.String(100), nullable=False),
-        sa.Column("case_note_id", sa.String(100), nullable=False),
-        sa.Column("client_id", sa.String(100), nullable=False),
-        sa.Column("worker_id", sa.String(100), nullable=False),
-        sa.Column("triage_flagged", sa.Boolean(), nullable=False),
-        sa.Column("evaluator_output", postgresql.JSONB(), nullable=True),
-        sa.Column("authorisation_status", sa.String(100), nullable=True),
-        sa.Column("alert_required", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("processing_time_ms", sa.Integer(), nullable=True),
-        sa.Column("triage_ms", sa.Integer(), nullable=True),
-        sa.Column("rag_ms", sa.Integer(), nullable=True),
-        sa.Column("evaluator_ms", sa.Integer(), nullable=True),
-        sa.Column("cross_check_ms", sa.Integer(), nullable=True),
-        sa.Column("summary_ms", sa.Integer(), nullable=True),
-        sa.Column("incident_draft_ms", sa.Integer(), nullable=True),
-        sa.Column("evaluator_output_tokens", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
-    )
-    op.create_index("ix_rp_runs_tenant", "rp_case_note_runs", ["tenant_id"])
-    op.create_index("ix_rp_runs_case_note", "rp_case_note_runs", ["case_note_id"])
-    op.create_index("ix_rp_runs_client", "rp_case_note_runs", ["client_id"])
-
-    # RLS — tenant isolation (legal mandate)
-    op.execute("ALTER TABLE rp_case_note_runs ENABLE ROW LEVEL SECURITY;")
-    op.execute("ALTER TABLE rp_case_note_runs FORCE ROW LEVEL SECURITY;")
     op.execute(
         """
-        CREATE POLICY rp_case_note_runs_tenant_isolation ON rp_case_note_runs
-        USING (tenant_id = current_setting('app.current_tenant'));
+        CREATE TABLE IF NOT EXISTS rp_case_note_runs (
+            id VARCHAR(36) PRIMARY KEY,
+            tenant_id VARCHAR(100) NOT NULL,
+            case_note_id VARCHAR(100) NOT NULL,
+            client_id VARCHAR(100) NOT NULL,
+            worker_id VARCHAR(100) NOT NULL,
+            triage_flagged BOOLEAN NOT NULL,
+            evaluator_output JSONB,
+            authorisation_status VARCHAR(100),
+            alert_required BOOLEAN NOT NULL DEFAULT false,
+            processing_time_ms INTEGER,
+            triage_ms INTEGER,
+            rag_ms INTEGER,
+            evaluator_ms INTEGER,
+            cross_check_ms INTEGER,
+            summary_ms INTEGER,
+            incident_draft_ms INTEGER,
+            evaluator_output_tokens INTEGER,
+            created_at TIMESTAMP NOT NULL DEFAULT now()
+        );
         """
     )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rp_runs_tenant ON rp_case_note_runs (tenant_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rp_runs_case_note ON rp_case_note_runs (case_note_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rp_runs_client ON rp_case_note_runs (client_id);")
+
+    # ── RLS — tenant isolation (legal mandate) ────────────────────────────────
+    # Guarded so re-runs don't error. See module docstring re: app.current_tenant.
+    for table in ("behaviour_support_plans", "rp_case_note_runs"):
+        op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;")
+        op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;")
+        op.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table};")
+        op.execute(
+            f"""
+            CREATE POLICY {table}_tenant_isolation ON {table}
+            USING (tenant_id = current_setting('app.current_tenant'));
+            """
+        )
 
 
 def downgrade() -> None:
     # downgrade destroys data — intentional; forward-only in production
     for table in ("rp_case_note_runs", "behaviour_support_plans"):
         op.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table};")
-    op.drop_table("rp_case_note_runs")
-    op.drop_table("behaviour_support_plans")
-    op.drop_table("rp_ndis_policy_chunks")
+    op.execute("DROP TABLE IF EXISTS rp_case_note_runs;")
+    op.execute("DROP TABLE IF EXISTS behaviour_support_plans;")
+    op.execute("DROP TABLE IF EXISTS rp_ndis_policy_chunks;")

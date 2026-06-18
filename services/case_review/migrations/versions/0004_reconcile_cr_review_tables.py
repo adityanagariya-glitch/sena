@@ -1,35 +1,39 @@
-"""create case review tables (idempotent)
+"""reconcile missing cr_* review tables (idempotent drift repair)
 
-Revision ID: 0001
-Revises:
-Create Date: 2026-04-23
+Revision ID: 0004
+Revises: 0003
+Create Date: 2026-06-18
 
-Tables created:
-  - cr_rolling_summary  (UNIQUE tenant+staff+client)
-  - cr_review_session
-  - cr_incident_draft
-  - cr_review_audit_log
+Background:
+  Migration 0001 creates the four cr_* review tables. However, some deployed
+  databases never had 0001 applied (the schema was bootstrapped outside alembic,
+  e.g. a partial manual run / create_all), so these tables are simply ABSENT:
+      cr_rolling_summary, cr_review_session, cr_incident_draft, cr_review_audit_log
+  Any review-session / rolling-summary / incident-draft endpoint then 500s with
+  asyncpg UndefinedTableError.
 
-IDEMPOTENT: every object is created with IF NOT EXISTS and policies are guarded, so
-this migration is safe to run against a database whose tables were bootstrapped
-outside alembic (skip if present, create if missing).
+  This migration reconciles that drift. It is intentionally IDEMPOTENT
+  (CREATE TABLE / CREATE INDEX ... IF NOT EXISTS) so it is a no-op on databases
+  that already have these tables from 0001, and a repair on drifted ones.
 
-NOTE on RLS: the policies below enable FORCE ROW LEVEL SECURITY keyed on
-current_setting('app.current_tenant'). If the application does NOT set that GUC per
-connection, enabling RLS will block all reads/writes. On databases that already run
-WITHOUT RLS, stamp past 0001 rather than letting the RLS block execute. CREATE POLICY
-is guarded with DROP POLICY IF EXISTS so re-runs do not error.
+  RLS is deliberately NOT enabled here. 0001 enables FORCE ROW LEVEL SECURITY with
+  a policy keyed on current_setting('app.current_tenant'), but the application code
+  never sets that GUC — on the drifted production DB the existing rp_* tables run
+  WITHOUT RLS for exactly this reason. Enabling FORCE RLS here would block every
+  read/write. Tenant isolation is enforced in application code. Re-enabling RLS is
+  a separate, deliberate change that must land together with app code that sets
+  app.current_tenant per connection.
 
-Order matters: cr_review_session is created before cr_incident_draft and
-cr_review_audit_log, which carry FKs to it.
+  Order matters: cr_review_session is created before cr_incident_draft and
+  cr_review_audit_log, which carry FKs to it.
 """
 
 from __future__ import annotations
 
 from alembic import op
 
-revision = "0001"
-down_revision = None
+revision = "0004"
+down_revision = "0003"
 branch_labels = None
 depends_on = None
 
@@ -116,31 +120,8 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS ix_cr_audit_log_tenant  ON cr_review_audit_log (tenant_id);")
     op.execute("CREATE INDEX IF NOT EXISTS ix_cr_audit_log_session ON cr_review_audit_log (review_session_id);")
 
-    # ── RLS policies (tenant isolation — legal requirement) ───────────────────
-    # Guarded so re-runs don't error. See module docstring re: app.current_tenant.
-    for table in (
-        "cr_rolling_summary",
-        "cr_review_session",
-        "cr_incident_draft",
-        "cr_review_audit_log",
-    ):
-        op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;")
-        op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;")
-        op.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table};")
-        op.execute(
-            f"""
-            CREATE POLICY {table}_tenant_isolation ON {table}
-            USING (tenant_id = (current_setting('app.current_tenant'))::uuid);
-            """
-        )
-
 
 def downgrade() -> None:
-    for table in (
-        "cr_review_audit_log",
-        "cr_incident_draft",
-        "cr_review_session",
-        "cr_rolling_summary",
-    ):
-        op.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table};")
-        op.execute(f"DROP TABLE IF EXISTS {table};")
+    # Forward-only reconcile; do not drop tables on downgrade since 0001 (an
+    # ancestor revision) also expects these tables to exist.
+    pass
