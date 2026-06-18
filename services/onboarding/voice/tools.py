@@ -28,6 +28,7 @@ _KNOWN_TOOLS = frozenset(
         "delete_row",
         "submit_step",
         "get_current_state",
+        "confirm_dialog",
     }
 )
 
@@ -169,6 +170,31 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+    },
+    {
+        "name": "confirm_dialog",
+        "description": (
+            "Answer a yes/no confirmation dialog that is CURRENTLY shown on the "
+            "screen — e.g. the 'Are you sure you want to continue?' popup raised "
+            "after Continue on the consent sharing screen. decision='yes' taps "
+            "the affirmative button and proceeds; decision='no' taps the negative "
+            "button and dismisses the dialog, staying on the current screen. Only "
+            "call this when such a dialog is actually visible — do NOT use it to "
+            "advance a normal step (use submit_step for that). Mobile returns "
+            "{ok:true} once the dialog is resolved, or {ok:false, reason} if no "
+            "dialog was open."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string",
+                    "enum": ["yes", "no"],
+                    "description": "yes taps confirm/continue; no taps cancel/dismiss.",
+                },
+            },
+            "required": ["decision"],
         },
     },
     {
@@ -316,4 +342,6 @@ def _preflight_validate(name: str, args: dict[str, Any]) -> str | None:
                 "confirmation_transcript must be the participant's exact words "
                 "confirming submission."
             )
+    if name == "confirm_dialog" and args.get("decision") not in ("yes", "no"):
+        return "decision must be 'yes' or 'no'."
     return None

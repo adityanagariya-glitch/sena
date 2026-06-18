@@ -33,6 +33,7 @@ def test_function_decls_lists_exactly_six_tools() -> None:
         "submit_step",
         "escalate_incident",
         "get_current_state",
+        "confirm_dialog",
     }
     assert {
         "update_field",
@@ -41,6 +42,7 @@ def test_function_decls_lists_exactly_six_tools() -> None:
         "delete_row",
         "submit_step",
         "get_current_state",
+        "confirm_dialog",
     } == _KNOWN_TOOLS
 
 
@@ -54,6 +56,35 @@ def test_function_decl_update_field_required_args() -> None:
 def test_function_decl_submit_step_requires_transcript() -> None:
     decl = next(d for d in FUNCTION_DECLS if d["name"] == "submit_step")
     assert decl["parameters"]["required"] == ["confirmation_transcript"]
+
+
+def test_function_decl_confirm_dialog_decision_enum() -> None:
+    decl = next(d for d in FUNCTION_DECLS if d["name"] == "confirm_dialog")
+    decision = decl["parameters"]["properties"]["decision"]
+    assert decision["enum"] == ["yes", "no"]
+    assert decl["parameters"]["required"] == ["decision"]
+
+
+@pytest.mark.parametrize("decision", ["yes", "no"])
+def test_preflight_confirm_dialog_accepts_yes_no(decision: str) -> None:
+    assert _preflight_validate("confirm_dialog", {"decision": decision}) is None
+
+
+@pytest.mark.parametrize("decision", ["Yes", "maybe", "", None, True])
+def test_preflight_confirm_dialog_rejects_bad_decision(decision: Any) -> None:
+    err = _preflight_validate("confirm_dialog", {"decision": decision})
+    assert err == "decision must be 'yes' or 'no'."
+
+
+@pytest.mark.asyncio
+async def test_dispatch_confirm_dialog_forwards_to_bridge() -> None:
+    bridge = _FakeBridge({"ok": True})
+    disp = ToolDispatcher(bridge=bridge)
+    out = await disp.dispatch("confirm_dialog", {"decision": "yes"})
+    assert out == {"ok": True}
+    assert bridge.calls == [("confirm_dialog", {"decision": "yes"})]
+    # confirm_dialog is not the submit tool — must not end the session.
+    assert disp.step_completed is False
 
 
 @pytest.mark.asyncio
