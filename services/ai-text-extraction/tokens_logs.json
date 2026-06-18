@@ -19,5 +19,185 @@
     "output_tokens": 73,
     "total_tokens": 2773,
     "latency_ms": 1830
+  },
+  {
+    "timestamp": "2026-06-15T09:17:27.480065+00:00",
+    "source": "local",
+    "document": "Top-Notch_Australia_blog_1477_im_6.pdf",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2701,
+    "output_tokens": 73,
+    "total_tokens": 2774,
+    "latency_ms": 1826
+  },
+  {
+    "timestamp": "2026-06-16T11:34:38.397457+00:00",
+    "source": "local",
+    "document": "passport_clean.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2699,
+    "output_tokens": 86,
+    "total_tokens": 2785,
+    "latency_ms": 797
+  },
+  {
+    "timestamp": "2026-06-16T11:34:39.438582+00:00",
+    "source": "local",
+    "document": "passport_rgba.png",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2699,
+    "output_tokens": 87,
+    "total_tokens": 2786,
+    "latency_ms": 802
+  },
+  {
+    "timestamp": "2026-06-16T11:34:40.297741+00:00",
+    "source": "local",
+    "document": "passport_lowq.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 1416,
+    "output_tokens": 78,
+    "total_tokens": 1494,
+    "latency_ms": 571
+  },
+  {
+    "timestamp": "2026-06-16T11:34:42.071843+00:00",
+    "source": "local",
+    "document": "passport_rotated.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2699,
+    "output_tokens": 81,
+    "total_tokens": 2780,
+    "latency_ms": 717
+  },
+  {
+    "timestamp": "2026-06-16T11:34:42.987390+00:00",
+    "source": "local",
+    "document": "licence_partial.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 1757,
+    "output_tokens": 67,
+    "total_tokens": 1824,
+    "latency_ms": 580
+  },
+  {
+    "timestamp": "2026-06-16T11:34:43.764834+00:00",
+    "source": "local",
+    "document": "blank_form.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 1757,
+    "output_tokens": 39,
+    "total_tokens": 1796,
+    "latency_ms": 451
+  },
+  {
+    "timestamp": "2026-06-16T11:34:44.729662+00:00",
+    "source": "local",
+    "document": "passport_dates.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 1693,
+    "output_tokens": 77,
+    "total_tokens": 1770,
+    "latency_ms": 639
+  },
+  {
+    "timestamp": "2026-06-16T11:34:45.620784+00:00",
+    "source": "local",
+    "document": "passport_india.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 1693,
+    "output_tokens": 87,
+    "total_tokens": 1780,
+    "latency_ms": 655
+  },
+  {
+    "timestamp": "2026-06-16T11:34:47.660890+00:00",
+    "source": "local",
+    "document": "passport_clean.pdf",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2714,
+    "output_tokens": 87,
+    "total_tokens": 2801,
+    "latency_ms": 1724
+  },
+  {
+    "timestamp": "2026-06-16T11:34:50.653489+00:00",
+    "source": "local",
+    "document": "passport_multipage.pdf",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 4456,
+    "output_tokens": 74,
+    "total_tokens": 4530,
+    "latency_ms": 2769
+  },
+  {
+    "timestamp": "2026-06-16T11:38:21.127717+00:00",
+    "source": "local",
+    "document": "front-of-Victorian-Proof-of-Age-card.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2650,
+    "output_tokens": 76,
+    "total_tokens": 2726,
+    "latency_ms": 803
+  },
+  {
+    "timestamp": "2026-06-16T11:42:59.707236+00:00",
+    "source": "local",
+    "document": "front-of-Victorian-Proof-of-Age-card.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2650,
+    "output_tokens": 76,
+    "total_tokens": 2726,
+    "latency_ms": 784
+  },
+  {
+    "timestamp": "2026-06-16T11:43:33.204284+00:00",
+    "source": "local",
+    "document": "Top-Notch_Australia_blog_1477_im_6.pdf",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2701,
+    "output_tokens": 73,
+    "total_tokens": 2774,
+    "latency_ms": 1980
+  },
+  {
+    "timestamp": "2026-06-16T11:55:49.755556+00:00",
+    "source": "local",
+    "document": "Top-Notch_Australia_blog_1477_im_6.pdf",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2701,
+    "output_tokens": 73,
+    "total_tokens": 2774,
+    "latency_ms": 1853
+  },
+  {
+    "timestamp": "2026-06-16T11:56:19.967508+00:00",
+    "source": "local",
+    "document": "front-of-Victorian-Proof-of-Age-card.jpg",
+    "model_id": "amazon.nova-lite-v1:0",
+    "input_tokens": 2650,
+    "output_tokens": 76,
+    "total_tokens": 2726,
+    "latency_ms": 723
+  },
+  {
+    "timestamp": "2026-06-17T05:56:59.030749+00:00",
+    "source": "local",
+    "document": "Top-Notch_Australia_blog_1477_im_6.pdf",
+    "model_id": "us.amazon.nova-lite-v1:0",
+    "input_tokens": 2701,
+    "output_tokens": 73,
+    "total_tokens": 2774,
+    "latency_ms": 2880
+  },
+  {
+    "timestamp": "2026-06-17T11:43:26.081155+00:00",
+    "source": "local",
+    "document": "Top-Notch_Australia_blog_1477_im_6.pdf",
+    "model_id": "apac.amazon.nova-lite-v1:0",
+    "input_tokens": 2701,
+    "output_tokens": 73,
+    "total_tokens": 2774,
+    "latency_ms": 2886
   }
 ]

@@ -16,6 +16,16 @@ from pydantic import BaseModel, field_validator
 
 
 # ---------------------------------------------------------------------------
+# Token usage
+# ---------------------------------------------------------------------------
+
+class TokenUsage(BaseModel):
+    input_tokens:  int = 0
+    output_tokens: int = 0
+    total_tokens:  int = 0
+
+
+# ---------------------------------------------------------------------------
 # Response contract
 # ---------------------------------------------------------------------------
 
@@ -38,6 +48,7 @@ class ExtractionResult(BaseModel):
     issue_date:   Optional[str] = None
     expiry_date:  Optional[str] = None
     address:      Optional[str] = None
+    token_usage:  TokenUsage = TokenUsage()
 
     # ------------------------------------------------------------------
     # Field validators
@@ -74,13 +85,18 @@ class ExtractionResult(BaseModel):
     # ------------------------------------------------------------------
 
     def to_api_response(self) -> dict:
-        """Serialise to the 5-field JSON response contract."""
+        """Serialise to the JSON response contract."""
         return {
             "document_no": self.document_no,
             "name":        self.name,
             "issue_date":  self.issue_date,
             "expiry_date": self.expiry_date,
             "address":     self.address,
+            "token_usage": {
+                "input_tokens":  self.token_usage.input_tokens,
+                "output_tokens": self.token_usage.output_tokens,
+                "total_tokens":  self.token_usage.total_tokens,
+            },
         }
 
     def missing_fields(self) -> list[str]:
