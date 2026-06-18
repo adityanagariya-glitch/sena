@@ -52,44 +52,22 @@
       ]
     },
     {
-      "id": "schedule_of_supports",
+      "id": "support_schedule",
       "label": "Schedule of Supports",
-      "repeatable": {"min": 1, "max": 20},
+      "repeatable": {"min": 1, "max": 5},
       "item_fields": [
-        {"id": "support_name", "type": "text", "label": "Support Name", "required": true},
-        {
-          "id": "support_category",
-          "type": "enum",
-          "label": "Support Category",
-          "required": true,
-          "options": [
-            "Personal Care",
-            "Core Supports",
-            "Capacity Building",
-            "Social & Community",
-            "Support Coordination",
-            "Improved Living Arrangements",
-            "Other"
-          ]
-        },
-        {"id": "description", "type": "textarea", "label": "Description", "required": false},
+        {"id": "support_purpose",  "type": "text",     "label": "Support Purpose",  "required": true},
+        {"id": "support_category", "type": "text",     "label": "Support Category", "required": true},
+        {"id": "support_item",     "type": "text",     "label": "Support Item",     "required": true},
+        {"id": "description",      "type": "textarea", "label": "Description",      "required": false},
         {
           "id": "frequency",
           "type": "enum",
           "label": "Frequency",
           "required": true,
-          "options": ["As Required", "Daily", "Weekly", "Fortnightly", "Monthly"]
+          "options": ["AS_REQUIRED", "DAILY", "WEEKLY", "FORTNIGHTLY", "MONTHLY", "ONCE_OFF"]
         },
-        {"id": "duration_hours", "type": "number", "label": "Duration (hours)", "required": false},
-        {
-          "id": "days",
-          "type": "multi_enum",
-          "label": "Days",
-          "required": true,
-          "options": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        },
-        {"id": "start_time", "type": "time", "label": "Start time", "required": false},
-        {"id": "end_time", "type": "time", "label": "End time", "required": false}
+        {"id": "preferred_schedule", "type": "text", "label": "Preferred Schedule", "required": true}
       ]
     }
   ]
