@@ -21,18 +21,7 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      - sena-voice
-      - sena-onboarding
-      - sena-case-review
-      - sena-casenote-monthly
-      - sena-ai-chatbot
-      - sena-policy-proc
-      - sena-staff
-      - sena-ai-communication-log
-      - sena-shift-summary
-      - sena-ai-text-extraction
-      - sena-case-review-ui
+    depends_on: []
     networks:
       - sena-network
     restart: unless-stopped
@@ -250,6 +239,22 @@ services:
       - sena-network
     restart: unless-stopped
 
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    volumes:
+      - uptime-kuma-data:/app/data
+    expose:
+      - "3001"
+    networks:
+      - sena-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # ── Infrastructure ─────────────────────────────────────────────────────────
   redis-internal:
     image: redis:7.4-alpine
@@ -321,3 +326,4 @@ volumes:
   shared-db-data:
   casenote-reports:
   casenote-trends:
+  uptime-kuma-data:

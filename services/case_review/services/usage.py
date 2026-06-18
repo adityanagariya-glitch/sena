@@ -35,12 +35,13 @@ _lock = threading.Lock()
 
 
 def _zero() -> dict[str, int]:
+    # Internally track cache metrics but don't expose in API response.
     return {
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_creation_tokens": 0,
+        "cache_read_tokens": 0,  # Internal only, not in API response
+        "cache_creation_tokens": 0,  # Internal only, not in API response
     }
 
 
@@ -95,6 +96,57 @@ def record_gemini(response: Any) -> None:
 
 
 def get_usage() -> dict[str, int]:
-    """Snapshot the running total for the current request (zeros if unstarted)."""
+    """Snapshot the running total for the current request (API response format: 3 fields only).
+
+    Cache metrics are tracked internally but NOT returned in API responses.
+    """
+    acc = _usage_var.get()
+    if acc is None:
+        acc = _zero()
+    # Return only the 3 fields exposed in API responses
+    return {
+        "input_tokens": acc["input_tokens"],
+        "output_tokens": acc["output_tokens"],
+        "total_tokens": acc["total_tokens"],
+    }
+
+
+def get_usage_full() -> dict[str, int]:
+    """Get full internal usage including cache metrics (for monitoring/analytics only)."""
     acc = _usage_var.get()
     return dict(acc) if acc is not None else _zero()
+
+
+# ── Session-level cumulative tracking ────────────────────────────────────────
+# Tracks total tokens across multiple requests in the same session.
+_session_totals: ContextVar[dict[str, dict[str, int]] | None] = ContextVar("session_totals", default=None)
+
+
+def start_session_tracking(session_id: str) -> None:
+    """Initialize session token tracking. Call once per session."""
+    totals = _session_totals.get() or {}
+    if session_id not in totals:
+        totals[session_id] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    _session_totals.set(totals)
+
+
+def accumulate_to_session(session_id: str) -> None:
+    """Add current request tokens to session total."""
+    request_usage = get_usage()
+    totals = _session_totals.get() or {}
+    if session_id not in totals:
+        totals[session_id] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+    with _lock:
+        totals[session_id]["input_tokens"] += request_usage["input_tokens"]
+        totals[session_id]["output_tokens"] += request_usage["output_tokens"]
+        totals[session_id]["total_tokens"] += request_usage["total_tokens"]
+    _session_totals.set(totals)
+
+
+def get_session_usage(session_id: str) -> dict[str, int]:
+    """Get cumulative token usage for a session."""
+    totals = _session_totals.get() or {}
+    if session_id not in totals:
+        return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    return dict(totals[session_id])

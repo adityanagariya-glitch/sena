@@ -7,12 +7,10 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class TokenUsage(BaseModel):
-    """LLM token usage metrics including cache metrics for Claude."""
+    """LLM token usage metrics."""
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
 
 
 class StartSessionRequest(BaseModel):
