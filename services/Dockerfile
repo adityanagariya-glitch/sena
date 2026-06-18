@@ -251,10 +251,10 @@ CMD ["uvicorn", "scripts.api:app", "--host", "0.0.0.0", "--port", "8007"]
 # docker network; served publicly via nginx under /case-review-ui/.
 FROM base AS case-review-ui
 
-# The wrapper EMBEDS draft_demo.html (rewriting its root-relative API paths to an
+# The wrapper EMBEDS demo_ui.html (rewriting its root-relative API paths to an
 # absolute, browser-reachable base), so both files are needed in the image.
 COPY case_review/streamlit_app.py /app/streamlit_app.py
-COPY case_review/draft_demo.html  /app/draft_demo.html
+COPY case_review/demo_ui.html     /app/demo_ui.html
 
 WORKDIR /app
 
