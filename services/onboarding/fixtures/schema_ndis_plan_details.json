@@ -48,8 +48,7 @@
       "fields": [
         {"id": "daily_living", "type": "currency", "label": "Daily Living ($)", "required": false},
         {"id": "social_community", "type": "currency", "label": "Social & Community ($)", "required": false},
-        {"id": "support_coordination", "type": "currency", "label": "Support Coordination ($)", "required": false},
-        {"id": "improved_daily_living", "type": "currency", "label": "Improved Daily Living ($)", "required": false}
+        {"id": "support_coordination", "type": "currency", "label": "Support Coordination ($)", "required": false}
       ]
     },
     {

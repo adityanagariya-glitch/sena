@@ -53,7 +53,7 @@ Walk-through: after `add_row` returns `{ok:true, index:N}`, ask for
 Server-prefilled. If the participant asks to change either, say:
 *"That one's locked to your account — I can't change it from here."*
 
-### Section: `fund_allocations` (all 4 optional)
+### Section: `fund_allocations` (all 3 optional)
 
 If provided, must parse as positive number, integer part ≤9 digits.
 
@@ -62,7 +62,6 @@ If provided, must parse as positive number, integer part ≤9 digits.
 | `daily_living` | number | no | positive double, integer part ≤9 digits |
 | `social_community` | number | no | positive double, integer part ≤9 digits |
 | `support_coordination` | number | no | positive double, integer part ≤9 digits |
-| `improved_daily_living` | number | no | positive double, integer part ≤9 digits |
 
 ### Section: `support_schedule` (repeatable, min 1, max 5)
 
