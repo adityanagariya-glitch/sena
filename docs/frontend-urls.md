@@ -10,7 +10,30 @@ X-User-Roles: worker
 
 ---
 
-## Local dev (direct service ports)
+## Exposing local machine to mobile (ngrok)
+
+Install once:
+```powershell
+# Windows — download from https://ngrok.com/download or:
+choco install ngrok        # if you have chocolatey
+# then authenticate:
+ngrok config add-authtoken <your_token>   # free account at ngrok.com
+```
+
+Start a tunnel per service you want to expose (one terminal each):
+```powershell
+ngrok http 8084   # case_review  → copy the https://<id>.ngrok-free.app URL
+ngrok http 8082   # voice
+ngrok http 8083   # onboarding
+```
+
+Each tunnel gives a URL like `https://abc123.ngrok-free.app`. Use that as the base URL in the Flutter app instead of `localhost:PORT`. The URL changes every restart on the free plan — use `--domain=<static>` on paid, or just update it each session.
+
+**WebSocket note:** ngrok tunnels support `wss://` automatically. Replace `ws://` with `wss://` and `http://` with `https://` when using ngrok URLs.
+
+---
+
+## Local dev (direct service ports — only works on same machine)
 
 | Service | Base URL | Health check |
 |---------|----------|--------------|
