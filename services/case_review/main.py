@@ -85,4 +85,14 @@ def create_app() -> FastAPI:
             media_type="text/html",
         )
 
+    # NDIS Compliance Suite UI (demo_ui.html) — standalone, no Streamlit needed.
+    # demo_ui.html calls the API via an absolute base, so it works served from
+    # any origin; behind nginx it's reachable at <host>/case-review/ui.
+    @app.get("/ui", include_in_schema=False)
+    async def demo_ui() -> FileResponse:
+        return FileResponse(
+            Path(__file__).resolve().parent / "demo_ui.html",
+            media_type="text/html",
+        )
+
     return app
