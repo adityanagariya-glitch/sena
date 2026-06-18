@@ -614,6 +614,34 @@
   let currentTab = 'transcript';
   let selectedFile = null;
 
+  // Polyfill: navigator.clipboard fallback for non-secure contexts (HTTP)
+  if (!navigator.clipboard) {
+    navigator.clipboard = {
+      writeText: function(text) {
+        return new Promise((resolve, reject) => {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          textarea.style.pointerEvents = 'none';
+          document.body.appendChild(textarea);
+          textarea.select();
+          try {
+            document.execCommand('copy');
+            console.log('Clipboard polyfill: Text copied using fallback method');
+            resolve();
+          } catch (err) {
+            console.error('Clipboard polyfill: Failed to copy', err);
+            reject(err);
+          } finally {
+            document.body.removeChild(textarea);
+          }
+        });
+      }
+    };
+    console.warn('Clipboard API unavailable (HTTP/non-secure context). Using fallback polyfill.');
+  }
+
   function switchTab(tab) {
     currentTab = tab;
     document.getElementById('tab-transcript').classList.toggle('active', tab === 'transcript');
@@ -968,6 +996,33 @@
     const el = document.getElementById('voStatus');
     el.textContent = label;
     el.className = `vo-status ${cls}`;
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(err => {
+        console.error('Clipboard copy failed:', err);
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      alert('Copied to clipboard (fallback method)');
+    } catch (err) {
+      alert('Could not copy to clipboard. Please copy manually:\n\n' + text.substring(0, 100) + '...');
+    }
+    document.body.removeChild(textarea);
   }
 
   async function startVoiceReview() {
