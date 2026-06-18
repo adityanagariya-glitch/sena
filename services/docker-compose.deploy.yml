@@ -246,6 +246,8 @@ services:
       - uptime-kuma-data:/app/data
     expose:
       - "3001"
+    environment:
+      UPTIME_KUMA_URL: http://3.111.109.14:8080/uptime/
     networks:
       - sena-network
     restart: unless-stopped
