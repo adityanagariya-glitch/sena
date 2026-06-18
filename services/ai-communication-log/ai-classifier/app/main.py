@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
-from app.api.classify import router as classify_router
+from app.api.sentiment_batch import router as sentiment_batch_router
 from app.models.schemas import HealthResponse
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -19,10 +19,10 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description=(
-        "AI communication log classifier for Sena platform. "
-        "Classifies support_worker ↔ client conversations as "
-        "emergency / inappropriate / normal using AWS Bedrock (Claude 3.5 Sonnet). "
-        "Built for NDIS compliance."
+        "AI batch sentiment analysis service for Sena platform. "
+        "Analyses support_worker ↔ client conversations for NDIS compliance — "
+        "returns full per-message sentiment, risk, breakdown, outcome, and recommended action. "
+        "Powered by AWS Bedrock (Claude Sonnet, Sydney region)."
     ),
     docs_url="/docs",
     redoc_url="/redoc",
@@ -50,7 +50,7 @@ async def api_key_middleware(request: Request, call_next):
     return await call_next(request)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-app.include_router(classify_router, prefix="/api/v1", tags=["Classification"])
+app.include_router(sentiment_batch_router, prefix="/api/v1", tags=["Sentiment Batch"])
 
 
 @app.get(
