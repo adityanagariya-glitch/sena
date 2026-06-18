@@ -169,10 +169,31 @@ Rules:
   every day with the new time included.
 - At least one day with one time range is required per support item.
 
+#### Overlap check — MANDATORY before emitting
+
+Before calling `update_field` for `preferred_schedule`, parse your intended
+final string into a `{day → [(start, end), ...]}` map and verify no two
+ranges on the SAME day overlap. Two ranges overlap when
+`max(start_a, start_b) < min(end_a, end_b)`.
+
+If overlap is detected, DO NOT send `update_field`. Instead say:
+*"That would overlap your existing slot on {DAY} from {EXISTING_START} to
+{EXISTING_END}. The new slot has to start at {EXISTING_END} or later — what
+works?"*
+
+Examples of REJECTIONS (do not send these):
+- Existing: `Mon 10:00-22:00`. User adds: `Mon 16:00-23:00`. → overlap
+  16:00-22:00 → refuse.
+- Existing: `Tue 09:00-12:00; Tue 14:00-17:00`. User adds: `Tue 11:00-15:00`.
+  → overlaps BOTH existing ranges → refuse.
+
+Touching ranges are OK: `Mon 10:00-13:00; Mon 13:00-16:00` is valid (no
+overlap; end == start).
+
 Capture flow: ask which days and the start+end time for each. Convert spoken
 times to 24-hour `HH:mm` ("9am"→`09:00`, "half past 2 in the
-afternoon"→`14:30`, "10:25 pm"→`22:25`). Build the single string and make ONE
-`update_field` call.
+afternoon"→`14:30`, "10:25 pm"→`22:25`). Build the single string, run the
+overlap check above, then make ONE `update_field` call.
 
 ### Walk-through order for a new support_schedule row
 
