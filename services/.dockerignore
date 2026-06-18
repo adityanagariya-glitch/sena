@@ -28,3 +28,7 @@
 **/.vscode/
 **/.idea/
 **/.DS_Store
+
+# Tests (not needed in container)
+ai-communication-log/ai-classifier/tests/
+ai-communication-log/ai-classifier/local_unit_test/
