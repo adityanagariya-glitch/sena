@@ -48,9 +48,12 @@ MOCK_CONSOLIDATED = "Overall, the company had a strong quarter with revenue grow
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _mock_bedrock_response(text: str) -> MagicMock:
+def _mock_bedrock_response(text: str, input_tokens: int = 100, output_tokens: int = 50) -> MagicMock:
     """Build a mock boto3 invoke_model response with Claude's message format."""
-    body_content = json.dumps({"content": [{"text": text}]}).encode()
+    body_content = json.dumps({
+        "content": [{"text": text}],
+        "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+    }).encode()
     mock_response = MagicMock()
     mock_response.__getitem__ = lambda self, key: BytesIO(body_content) if key == "body" else None
     return mock_response
@@ -176,6 +179,11 @@ class TestSummarize:
         data = resp.json()
         assert "consolidated_summary" in data
         assert data["consolidated_summary"] == MOCK_CONSOLIDATED
+        assert data["token_usage"]["input_tokens"] == 100
+        assert data["token_usage"]["output_tokens"] == 50
+        assert data["token_usage"]["total_tokens"] == 150
+        print("\n--- token_usage response ---")
+        print(data["token_usage"])
 
     @patch("bedrock._get_bedrock_client")
     def test_single_summary_is_accepted(self, mock_client_factory):

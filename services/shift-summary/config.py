@@ -5,10 +5,9 @@ from pydantic import Field, field_validator
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file="/home/main/SENA/.env",
+        env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",
     )
 
     # ── Application ──────────────────────────────────────────
@@ -17,11 +16,11 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development")
 
     # ── Security ─────────────────────────────────────────────
-    api_key: str = Field(default="dev-key", description="Secret key required in X-API-Key header")
+    api_key: str = Field(..., description="Secret key required in X-API-Key header")
 
     # ── AWS / Bedrock ─────────────────────────────────────────
-    aws_access_key_id: str = Field(default="", description="AWS access key - uses IAM role if empty")
-    aws_secret_access_key: str = Field(default="", description="AWS secret key - uses IAM role if empty")
+    aws_access_key_id: str = Field(...)
+    aws_secret_access_key: str = Field(...)
     aws_region: str = Field(default="ap-southeast-2")
 
     # ── Bedrock Model ─────────────────────────────────────────

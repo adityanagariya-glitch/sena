@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import require_api_key
 from bedrock import consolidate_summaries
 from config import get_settings
-from schemas import SummarizeRequest, SummarizeResponse, ErrorResponse
+from schemas import SummarizeRequest, SummarizeResponse, ErrorResponse, TokenUsage
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -61,9 +61,14 @@ async def health_check():
 )
 async def summarize(payload: SummarizeRequest) -> SummarizeResponse:
     logger.info("Received /summarize request with %d summaries.", len(payload.summaries))
-    consolidated, token_usage = await consolidate_summaries(payload.summaries)
+    consolidated, usage = await consolidate_summaries(payload.summaries)
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
     return SummarizeResponse(
         consolidated_summary=consolidated,
-        input_tokens=token_usage["input_tokens"],
-        output_tokens=token_usage["output_tokens"],
+        token_usage=TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+        ),
     )
