@@ -245,6 +245,7 @@ services:
     container_name: uptime-kuma
     volumes:
       - uptime-kuma-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
       - "3001"
     environment:
