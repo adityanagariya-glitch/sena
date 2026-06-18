@@ -1,9 +1,0 @@
-{
-    "document_no": "000 216 222",
-    "name": "Jane Citizen",
-    "issue_date": "28/08/1987",
-    "expiry_date": "30/08/2015",
-    "address": null,
-    "extraction_status": "partial",
-    "extraction_method": "nova_pro"
-}
