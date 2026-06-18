@@ -26,7 +26,7 @@ import httpx
 import streamlit as st
 
 # ── Defaults (same env vars as test.py) ───────────────────────────────────
-DEFAULT_BASE_URL = os.getenv("SENA_TEST_BASE_URL", "http://localhost:8080/case-review")
+DEFAULT_BASE_URL = os.getenv("SENA_TEST_BASE_URL", "http://3.111.109.14:8080/case-review")
 DEFAULT_USER = os.getenv("SENA_AI_BASIC_AUTH_USER", "")
 DEFAULT_PW = os.getenv("SENA_AI_BASIC_AUTH_PASSWORD", "")
 
