@@ -156,6 +156,7 @@ services:
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_POLICY_PROC_PORT: "8000"
+      AWS_REGION: "ap-southeast-2"
     expose:
       - "8000"
     networks:
