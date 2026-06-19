@@ -31,6 +31,22 @@ Each tunnel gives a URL like `https://abc123.ngrok-free.app`. Use that as the ba
 
 **WebSocket note:** ngrok tunnels support `wss://` automatically. Replace `ws://` with `wss://` and `http://` with `https://` when using ngrok URLs.
 
+### Current live tunnel (session 2026-06-18)
+
+| Service | ngrok URL |
+|---------|-----------|
+| Case Review (8084) | `https://require-psychic-disprove.ngrok-free.dev` |
+| Voice (8082) | _(not tunnelled — start separately if needed)_ |
+| Onboarding (8083) | _(not tunnelled — start separately if needed)_ |
+
+**Case Review via ngrok:**
+```
+REST:  https://require-psychic-disprove.ngrok-free.dev/v1/case-review/...
+WSS:   wss://require-psychic-disprove.ngrok-free.dev/ws/case-review/voice/<session_id>
+```
+
+> URL resets every `ngrok` restart on free plan — update this table when you restart.
+
 ---
 
 ## Local dev (direct service ports — only works on same machine)
