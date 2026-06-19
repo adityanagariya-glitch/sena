@@ -1,6 +1,9 @@
 # rewriter.py
 import boto3
 import logging
+from langfuse import observe, get_client
+
+langfuse = get_client()
 
 from config import REGION, REWRITER_MODEL
 
@@ -62,6 +65,7 @@ def _is_valid_rewrite(rewritten: str) -> bool:
         return False
     return True
 
+@observe(as_type="generation", name="rewrite-query", capture_input=False, capture_output=False)
 def rewrite_query(question: str, recent_turns: str = "") -> tuple:
     """
     Rewrites user question into optimised KB search query using Nova Lite.
@@ -93,11 +97,18 @@ Rewritten search query:"""
             "input_tokens":  raw_usage.get("inputTokens",  0),
             "output_tokens": raw_usage.get("outputTokens", 0),
         }
-        if not _is_valid_rewrite(rewritten):
+        final_query = question if not _is_valid_rewrite(rewritten) else rewritten
+        if final_query == question:
             logger.warning(f"Invalid rewrite produced, using original query: '{rewritten}'")
-            return question, usage_dict
-        logger.info(f"Query rewritten: '{question[:60]}' -> '{rewritten}'")
-        return rewritten, usage_dict
+        else:
+            logger.info(f"Query rewritten: '{question[:60]}' -> '{rewritten}'")
+        langfuse.update_current_generation(
+            model=REWRITER_MODEL,
+            input={"question": question, "recent_turns": recent_turns[:300] if recent_turns else None},
+            output=final_query,
+            usage_details={"input": usage_dict["input_tokens"], "output": usage_dict["output_tokens"]},
+        )
+        return final_query, usage_dict
     except Exception as e:
         logger.warning(f"Query rewriter error: {e} - using original query")
         return question, {"input_tokens": 0, "output_tokens": 0}

@@ -1,6 +1,12 @@
 # pipeline.py
 import logging
 import uuid
+from dotenv import load_dotenv
+load_dotenv()
+
+from langfuse import observe, get_client, propagate_attributes
+
+langfuse = get_client()
 from rewriter import rewrite_query
 from config import MESSAGES
 from classifier import classify, should_block
@@ -16,6 +22,7 @@ from memory import (
 logger = logging.getLogger(__name__)
 
 
+@observe(name="rag-pipeline-sync", capture_input=False, capture_output=False)
 def run_pipeline(
     question:   str,
     session_id: str  = None,
@@ -66,6 +73,9 @@ def run_pipeline(
     user_id    = user_id    or "anonymous"
 
     logger.info(f"Pipeline started — user: {user_id} | session: {session_id} | q: {question[:80]}")
+
+    with propagate_attributes(user_id=user_id, session_id=session_id):
+        langfuse.update_current_span(input=question)
 
     # Create new session in DynamoDB if new chat
     if is_new_chat:
@@ -211,6 +221,8 @@ def run_pipeline(
 
     logger.info(f"Pipeline complete — blocked: {result['blocked']}")
 
+    langfuse.update_current_span(output=result["answer"])
+
     return {
         "question":    question,
         "answer":      result["answer"],
@@ -222,6 +234,7 @@ def run_pipeline(
     }
 
 
+@observe(name="rag-pipeline", capture_input=False, capture_output=False)
 def run_pipeline_stream(
     question:    str,
     session_id:  str  = None,
@@ -261,6 +274,9 @@ def run_pipeline_stream(
     session_id = session_id or str(uuid.uuid4())
     user_id    = user_id    or "anonymous"
 
+    with propagate_attributes(user_id=user_id, session_id=session_id):
+        langfuse.update_current_span(input=question)
+
     logger.info(f"Stream pipeline — user: {user_id} | session: {session_id} | q: {question[:80]}")
 
     if is_new_chat:
@@ -289,10 +305,14 @@ def run_pipeline_stream(
 
     label = classification.get("label")
 
+    # Add intent + org to span metadata for filtering in Langfuse UI
+    langfuse.update_current_span(metadata={"intent": label, "org_id": org_id, "role": role})
+
     # ── Step 3: Block ───────────────────────────────────────────────────────────
     blocked, block_message = should_block(classification)
     if blocked:
         logger.info(f"Blocked — {label}")
+        langfuse.update_current_span(output=block_message)
         yield {"type": "meta",    "session_id": session_id, "label": label, "sources": []}
         yield {"type": "blocked", "text": block_message, "label": label}
         yield {"type": "usage",   "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
@@ -314,7 +334,9 @@ def run_pipeline_stream(
                 yield chunk
         yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
         try:
-            save_memory(user_id, session_id, question, "".join(full_answer).strip(), [])
+            greeting_answer = "".join(full_answer).strip()
+            langfuse.update_current_span(output=greeting_answer)
+            save_memory(user_id, session_id, question, greeting_answer, [])
         except Exception as e:
             logger.error(f"Memory save failed for greeting: {e}")
         return
@@ -332,6 +354,7 @@ def run_pipeline_stream(
         _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
     except Exception as e:
         logger.error(f"Retrieval failed: {e}")
+        langfuse.update_current_span(output=MESSAGES["ERROR"])
         yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
         yield {"type": "error", "text": MESSAGES["ERROR"]}
         return
@@ -339,6 +362,7 @@ def run_pipeline_stream(
     # ── Step 5: Empty context ───────────────────────────────────────────────────
     if is_context_empty(context):
         logger.info("Context empty — returning NOT_IN_KB")
+        langfuse.update_current_span(output=MESSAGES["NOT_IN_KB"])
         yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
         yield {"type": "token", "text": MESSAGES["NOT_IN_KB"]}
         yield {"type": "done",  "stop_reason": "end_turn"}
@@ -381,6 +405,7 @@ def run_pipeline_stream(
     # ── Step 7: Save memory (after all events are yielded) ──────────────────────
     try:
         final_answer = "".join(full_answer).strip()
+        langfuse.update_current_span(output=final_answer)
         if final_answer and not is_blocked:
             save_memory(user_id, session_id, question, final_answer, clean_sources)
     except Exception as e:
@@ -432,6 +457,7 @@ if __name__ == "__main__":
             continue
 
         if q.lower() == "quit":
+            langfuse.flush()
             print("\nGoodbye.\n")
             break
 
