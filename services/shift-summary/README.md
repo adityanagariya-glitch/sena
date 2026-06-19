@@ -93,8 +93,6 @@ All settings live in `.env`. Nothing is hardcoded.
 | Variable | Default | Description |
 |---|---|---|
 | `API_KEY` | **required** | Secret key clients send in `X-API-Key` |
-| `AWS_ACCESS_KEY_ID` | **required** | AWS credentials |
-| `AWS_SECRET_ACCESS_KEY` | **required** | AWS credentials |
 | `AWS_REGION` | `us-east-1` | Bedrock region |
 | `BEDROCK_MODEL_ID` | `anthropic.claude-3-5-sonnet-20241022-v2:0` | Claude model on Bedrock |
 | `BEDROCK_MAX_TOKENS` | `1024` | Max tokens in model response |

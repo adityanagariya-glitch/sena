@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     api_key: str = Field(..., description="Secret key required in X-API-Key header")
 
     # ── AWS / Bedrock ─────────────────────────────────────────
-    aws_access_key_id: str = Field(...)
-    aws_secret_access_key: str = Field(...)
+    # No access keys: credentials are resolved from the default AWS chain
+    # (the EC2 instance's attached IAM role / instance profile).
     aws_region: str = Field(default="ap-southeast-2")
 
     # ── Bedrock Model ─────────────────────────────────────────

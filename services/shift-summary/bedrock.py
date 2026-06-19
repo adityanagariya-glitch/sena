@@ -15,13 +15,17 @@ logger = logging.getLogger(__name__)
 
 @lru_cache
 def _get_bedrock_client():
-    """Cached boto3 Bedrock runtime client."""
+    """
+    Cached boto3 Bedrock runtime client.
+
+    Credentials are intentionally NOT passed here — boto3 resolves them from the
+    default credential chain (the EC2 instance's IAM role / instance profile on
+    the server). Only the region is supplied.
+    """
     settings = get_settings()
     return boto3.client(
         service_name="bedrock-runtime",
         region_name=settings.aws_region,
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
     )
 
 

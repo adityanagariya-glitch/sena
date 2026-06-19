@@ -15,15 +15,13 @@ from unittest.mock import MagicMock, patch
 from io import BytesIO
 
 # ── Point to a test env before any app imports ───────────────────────────────
-os.environ.setdefault("SHIFT_SUMMARY_API_KEY", "test-secret-key")
-os.environ.setdefault("SHIFT_SUMMARY_AWS_ACCESS_KEY_ID", "fake-key-id")
-os.environ.setdefault("SHIFT_SUMMARY_AWS_SECRET_ACCESS_KEY", "fake-secret")
-os.environ.setdefault("SHIFT_SUMMARY_AWS_REGION", "us-east-1")
-os.environ.setdefault("SHIFT_SUMMARY_APP_ENV", "test")
-os.environ.setdefault("SHIFT_SUMMARY_MIN_SUMMARIES", "1")
-os.environ.setdefault("SHIFT_SUMMARY_MAX_SUMMARIES", "10")
-os.environ.setdefault("SHIFT_SUMMARY_MIN_SUMMARY_LENGTH", "1")
-os.environ.setdefault("SHIFT_SUMMARY_MAX_SUMMARY_LENGTH", "5000")
+# os.environ.setdefault("SHIFT_SUMMARY_API_KEY", "test-secret-key")
+# os.environ.setdefault("SHIFT_SUMMARY_AWS_REGION", "us-east-1")
+# os.environ.setdefault("SHIFT_SUMMARY_APP_ENV", "test")
+# os.environ.setdefault("SHIFT_SUMMARY_MIN_SUMMARIES", "1")
+# os.environ.setdefault("SHIFT_SUMMARY_MAX_SUMMARIES", "10")
+# os.environ.setdefault("SHIFT_SUMMARY_MIN_SUMMARY_LENGTH", "1")
+# os.environ.setdefault("SHIFT_SUMMARY_MAX_SUMMARY_LENGTH", "5000")
 
 from fastapi.testclient import TestClient
 from config import get_settings
