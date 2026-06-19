@@ -1,461 +1,565 @@
 # Case Review Service
 
-> FastAPI service that automates NDIS restrictive practice detection via a 7-stage LangGraph pipeline. Combines Amazon Transcribe (audio), AWS Bedrock Claude (triage + evaluation), pgvector RAG (policy retrieval), and Google Gemini Live (real-time voice dictation) into a single compliance review workflow.
+> FastAPI + LangGraph service that automates NDIS restrictive practice detection. A support worker submits a case note (text or voice); the pipeline runs triage, retrieves NDIS policy via RAG, evaluates compliance, cross-checks the client's Behaviour Support Plan, and generates an incident report — all with full token tracking and prompt caching across AWS Bedrock Claude and Google Gemini.
 
 ---
 
 ## Table of Contents
-- [Overview](#overview)
-- [How It Works](#how-it-works)
-- [Tech Stack](#tech-stack)
+- [What This Service Does](#what-this-service-does)
+- [Architecture Overview](#architecture-overview)
+- [AI Models Used](#ai-models-used)
+- [7-Stage Pipeline (LangGraph)](#7-stage-pipeline-langgraph)
+- [RAG — How Policy Retrieval Works](#rag--how-policy-retrieval-works)
+- [Cost Optimisation — Everything We Built](#cost-optimisation--everything-we-built)
+- [Token Tracking](#token-tracking)
 - [API Reference](#api-reference)
 - [Environment Variables](#environment-variables)
 - [Running the Service](#running-the-service)
-- [Integration Guide](#integration-guide)
-- [QA & Testing](#qa--testing)
-- [Implementation Status](#implementation-status)
-- [Integration Requirements](#integration-requirements)
+- [Database](#database)
+- [Project Structure](#project-structure)
 
 ---
 
-## Overview
+## What This Service Does
 
-After a shift, a support worker may have recorded audio notes or completed a case note form. This service provides two paths:
+An NDIS support worker finishes a shift and either types or dictates their case note. This service:
 
-1. **Pipeline path** — Submit a completed (or draft) case note through the 7-stage evaluation pipeline that determines whether restrictive practices were used, cross-checks against the client's Behaviour Support Plan (BSP), and auto-generates an incident report draft if needed.
-2. **Voice path** — Open a Gemini Live WebSocket session to dictate case notes in real time via voice. The AI assistant guides the worker through the form fields conversationally.
+1. **Screens** the note for any of the 5 regulated restrictive practices (physical, chemical, mechanical, environmental restraint, seclusion)
+2. **Retrieves** the relevant NDIS policy chunks from a vector database
+3. **Evaluates** whether a violation occurred and at what risk level
+4. **Cross-checks** the client's Behaviour Support Plan (BSP) database — is this practice authorised?
+5. **Generates** an incident draft if reporting is required (within 5 business days or 24 hours depending on severity)
+6. **Summarises** the shift for the supervisor
 
-> **CRITICAL: This service currently cannot start.** `config.py` and `main.py` are missing from the repository. These must be created before the service is deployable. See [Implementation Status](#implementation-status).
-
----
-
-## How It Works
-
-### Pipeline (REST)
-
-```
-POST /v1/restrictive-practices/evaluate
-  ├─ Stage 1: Validate case note inputs
-  ├─ Stage 2 (Triage): Claude Haiku — cheap YES/NO: "Any restrictive practice signal?"
-  │     └─ NO → short-circuit, return "no_concern"
-  ├─ Stage 3 (RAG): pgvector cosine search — retrieve relevant NDIS policy chunks
-  ├─ Stage 4 (Evaluator): Claude Sonnet — detailed compliance analysis with policy context
-  ├─ Stage 5 (Cross-Check): BSP database lookup — is this practice authorised?
-  ├─ Stage 6 (Summary): AI quality score + progress summary
-  └─ Stage 7 (Incident Draft): If confirmed → auto-generate incident report sections (parallel)
-        │
-        ▼
-Return: verdict + incident draft + compliance details + quality score
-        │
-        ▼
-Webhook fires to external system (async, background)
-```
-
-### Voice Dictation (WebSocket)
-
-```
-POST /v1/restrictive-practices/voice/session  →  session_id + ws_url
-        │
-        ▼
-WSS /v1/restrictive-practices/voice/ws/{session_id}?token=<token>
-  ├─ Client streams PCM16 audio (16 kHz)
-  ├─ Gemini Live generates spoken responses (24 kHz)
-  ├─ Agent uses tool calls to update case note form fields
-  ├─ Session state persisted in Redis
-  └─ Worker finalises note when all fields are complete
-```
+If a case note is clean (no flags), the pipeline exits after stage 1 — no Sonnet calls, no RAG, minimal cost.
 
 ---
 
-## Tech Stack
+## Architecture Overview
 
-| Component | Technology |
-|-----------|-----------|
-| API Framework | FastAPI + Uvicorn |
-| Pipeline Orchestration | LangGraph |
-| Triage Model | AWS Bedrock — Claude Haiku |
-| Evaluation Model | AWS Bedrock — Claude Sonnet 3.5 |
-| Voice Agent | Google Gemini Live API |
-| Speech-to-Text | Amazon Transcribe (en-AU + custom vocabulary) |
-| Document Storage | Amazon S3 (temp audio) |
-| Vector Store | pgvector on PostgreSQL (HNSW index, cosine similarity) |
-| Relational DB | PostgreSQL (BSP, CaseNoteRun, NDISPolicyChunk) |
-| Session Cache | Redis (voice session state, TTL-based) |
-| Auth | HTTP Basic (REST, optional) + Token query param (voice WS) |
-| Port | 8084 |
+```
+Support Worker
+    │
+    ├─ POST /v1/restrictive-practices/evaluate   ← text case note
+    ├─ POST /v1/restrictive-practices/draft       ← voice transcript → form fields
+    └─ WS  /v1/voice/session                      ← real-time Gemini Live dictation
+
+LangGraph Pipeline (core path):
+  START
+    → [1] Triage (Haiku)          — YES/NO gate + confidence score
+    → [2] RAG (Cohere embeddings) — retrieve top-3 NDIS policy chunks
+    → [3] Evaluator (Sonnet)      — structured compliance verdict
+    → [4] Cross-check (SQL)       — BSP authorisation lookup
+  END
+
+Parallel (fire-and-forget):
+    → [5] Summary (Haiku)         — shift overview for supervisor
+    → [6] Incident Draft (Sonnet) — NDIS Commission report (if needed)
+
+Standalone:
+    → [7] Drafter (Sonnet)        — raw transcript → 6-section NDIS form
+```
+
+Clean notes (flagged=False) exit after step 1. Roughly 70% of notes never touch Sonnet.
+
+---
+
+## AI Models Used
+
+| Model | Provider | Where Used | Why |
+|-------|----------|-----------|-----|
+| `au.anthropic.claude-haiku-4-5-20251001-v1:0` | AWS Bedrock | Triage, Summary | Fast cheap gate — YES/NO decisions, shift summaries |
+| `au.anthropic.claude-sonnet-4-6` | AWS Bedrock | Evaluator, Incident Draft, Drafter | Complex structured reasoning, legal compliance output |
+| `cohere.embed-english-v3` | AWS Bedrock | RAG embeddings | 1024-dim asymmetric embeddings for policy chunk retrieval |
+| `gemini-3.5-flash` | Google AI | Context summariser, Classifier | Rolling context summaries across multiple case notes |
+| `gemini-3.1-flash-live-preview` | Google AI (Live API) | Voice dictation WebSocket | Real-time conversational case note collection |
+
+**Region**: All Bedrock calls use `ap-southeast-2` (Sydney) for Australian data residency.
+
+---
+
+## 7-Stage Pipeline (LangGraph)
+
+### Stage 1 — Triage (`services/pipeline/triage.py`)
+**Model**: Claude Haiku | **Max tokens out**: 512 | **Temperature**: 0.0
+
+Reads the full case note and returns a binary gate decision plus a confidence score.
+
+**Output schema**:
+```json
+{
+  "flagged": true,
+  "confidence": 0.92,
+  "action_summary": "Staff held participant's arms to prevent self-harm"
+}
+```
+
+- `flagged=False` → pipeline exits here. No RAG, no Sonnet. ~70% of notes.
+- `confidence` (0.0–1.0) is logged for monitoring. High confidence = explicit restriction language. Low = ambiguous wording.
+- Prompt caching: the static few-shot prefix is cached; only the transcript varies per call.
+
+**Five regulated restrictive practices screened**:
+1. Chemical Restraint — medication used to control behaviour (not for a diagnosed condition)
+2. Seclusion — involuntary confinement in a room the person cannot freely leave
+3. Physical Restraint — physical force restricting free movement
+4. Mechanical Restraint — device used to restrict movement
+5. Environmental Restraint — restricting access to parts of the environment
+
+---
+
+### Stage 2 — RAG (`services/pipeline/rag.py`)
+**Model**: Cohere Embed English v3 | **Vector DB**: PostgreSQL + pgvector (HNSW index)
+
+Retrieves the most relevant NDIS policy chunks to ground the evaluator. Uses the triage `action_summary` as the query (not the full transcript) — it is a clean 1-sentence description, far more semantically focused.
+
+**Smarter RAG algorithm** (not naïve top-5):
+
+```
+1. Embed query → 1024-dimensional vector (input_type="search_query")
+2. Fetch top-10 candidates from pgvector using cosine distance (<=>)
+3. Filter: keep only chunks where cosine_distance < 0.35 (similarity > 0.65)
+4. Cap at top-3 (not top-5)
+5. Compress each chunk: strip version headers, dates, deduplicate repeated sentences
+```
+
+**Why cosine distance?**
+```
+cosine_distance = 1 - (A · B) / (‖A‖ · ‖B‖)
+0.0 = identical vectors
+2.0 = opposite vectors
+< 0.35 ≈ strong semantic match (similarity > 0.65)
+```
+
+**Asymmetric embeddings**: chunks are indexed with `input_type="search_document"`, queries use `input_type="search_query"`. Cohere's v3 model is trained on asymmetric pairs — this meaningfully improves retrieval quality vs symmetric embeddings.
+
+**Chunk compression**: before sending chunks to the evaluator, boilerplate is stripped (version headers, date lines, page references, consecutive duplicate sentences). Reduces each ~1200-char chunk by 20–35% without losing regulatory content.
+
+**Result**: ~40% fewer evaluator input tokens on RAG context vs naïve top-5.
+
+**Corpus**: ~300 chunks from 5 official NDIS government PDFs:
+- Regulated Restrictive Practice Guide
+- NDIS Practice Standards and Quality Indicators
+- Code of Conduct — Provider Guidance
+- Code of Conduct — Worker Guidance
+- Incident Management Systems — Detailed Guidance
+
+---
+
+### Stage 3 — Evaluator (`services/pipeline/evaluator.py`)
+**Model**: Claude Sonnet | **Max tokens out**: 8192 | **Temperature**: 0.0
+
+Full compliance analysis grounded in the retrieved policy chunks.
+
+**Output** (structured JSON):
+```json
+{
+  "incident_detected": true,
+  "practice_category": "Physical Restraint",
+  "policy_violation_risk": "High",
+  "confidence": "High",
+  "reasoning": "The phrase 'held his arms' constitutes physical restraint under NDIS Rules 2018...",
+  "trigger_phrases": ["held his arms", "prevented from leaving"],
+  "suppression_factors": ["participant consented", "BSP referenced"],
+  "bsp_mentioned_in_note": false,
+  "reporting_required": true,
+  "notification_timeframe": "5 business days"
+}
+```
+
+**Confidence levels**:
+- `High` — explicit restriction language ("held him down", "locked the door")
+- `Medium` — implied or context-dependent restriction
+- `Low` — ambiguous; could be non-restrictive support
+
+**Risk levels**: Low → Medium → High → Critical
+
+**Reporting obligations** (NDIS Rules 2018):
+- Unauthorised restrictive practice → report within **5 business days**
+- Serious injury or death also present → report within **24 hours**
+
+**Prompt caching**: static prefix (style guide + few-shot examples + policy context) is cached. Only the transcript + action_summary vary per call. ~90% cost reduction on cached tokens for repeat calls within the 5-minute cache window.
+
+---
+
+### Stage 4 — Cross-Check (`services/pipeline/cross_check.py`)
+**Model**: None (pure SQL) | **Cost**: $0
+
+Deterministic BSP lookup — no LLM involved.
+
+Queries the `BehaviourSupportPlan` table for the client + practice type. Returns:
+- `AUTHORISED_USE` — BSP on file, practice matches, within validity window
+- `UNAUTHORISED` — no BSP, expired BSP, or wrong practice type
+- `NO_INCIDENT` — evaluator didn't detect an incident
+
+---
+
+### Stage 5 — Summary (`services/pipeline/summary.py`)
+**Model**: Claude Haiku | **Runs in parallel with stages 2–4**
+
+Generates a supervisor-facing shift overview regardless of whether a restrictive practice was detected. Includes progress observations, risk patterns, note quality score (0.0–1.0), and improvement suggestions.
+
+---
+
+### Stage 6 — Incident Draft (`services/pipeline/incident_draft.py`)
+**Model**: Claude Sonnet | **Only runs when alert_required=True**
+
+Generates a structured NDIS Commission incident report. Only fires when the evaluator detected an incident AND the cross-check confirmed unauthorised use. Skipped for authorised practices and clean notes.
+
+---
+
+### Stage 7 — Drafter (`services/pipeline/drafter.py`)
+**Model**: Claude Sonnet | **Standalone endpoint: POST /draft**
+
+Converts a raw voice transcript into the 6-section NDIS case note form. Completely separate from the evaluation pipeline — used post-dictation to structure what the worker said.
+
+---
+
+## RAG — How Policy Retrieval Works
+
+### Ingestion (one-time, `scripts/ingest_ndis_policies.py`)
+```
+PDF → text extraction → recursive character splitting (1200 chars, 120 overlap)
+    → Cohere embed (input_type="search_document") → store in NDISPolicyChunk table
+```
+
+### Query (every flagged case note)
+```
+triage.action_summary → Cohere embed (input_type="search_query")
+    → pgvector HNSW cosine search (fetch 10)
+    → distance filter (< 0.35)
+    → cap at 3 chunks
+    → compress (strip boilerplate)
+    → pass to Evaluator
+```
+
+### pgvector HNSW index
+- Algorithm: Hierarchical Navigable Small Worlds (approximate nearest neighbour)
+- Distance function: cosine
+- Why HNSW: O(log n) query time vs O(n) brute force. At 300 chunks the difference is negligible, but it scales cleanly to 300K chunks.
+
+---
+
+## Cost Optimisation — Everything We Built
+
+### 1. Prompt Caching (Bedrock — biggest win)
+**Savings: 40–60% on cached token cost**
+
+Bedrock's `cachePoint` splits a prompt into a static prefix and a dynamic suffix. On a cache hit (within 5-minute TTL), the static tokens are charged at ~10% of normal input token price.
+
+Applied to: triage, evaluator, summary, incident_draft, drafter.
+
+Pattern used:
+```python
+# Split prompt at first dynamic placeholder
+prefix_tmpl, suffix_tmpl = _PROMPT.split("{transcript}", 1)
+static_prefix = prefix_tmpl.format(style_guide=..., few_shot=...)  # cached
+dynamic_suffix = transcript + suffix_tmpl.format(...)               # varies
+
+response = client.converse(
+    messages=[{"role": "user", "content": [
+        {"text": static_prefix},
+        {"cachePoint": {"type": "default"}},   # cache boundary
+        {"text": dynamic_suffix},
+    ]}]
+)
+```
+
+**Important**: cache only hits when the same model is called with the same static prefix within 5 minutes. In low-traffic environments, cache hit rate will be low.
+
+### 2. Haiku Gate (triage early exit)
+**Savings: ~70% of notes never touch Sonnet**
+
+Haiku ($0.80/MTok) runs first. Only if `flagged=True` does Sonnet ($3/MTok) run. Most care notes are routine (no incident) — they cost Haiku price only.
+
+### 3. Smarter RAG (top-10 fetch → distance filter → top-3 compressed)
+**Savings: ~40% on evaluator RAG context tokens**
+
+- Was: always return 5 chunks × ~200 tokens = 1000 tokens of policy context
+- Now: fetch 10, keep only relevant ones (distance < 0.35), cap at 3 compressed = ~450 tokens
+- Also: chunk compression strips 20–35% of boilerplate from each chunk
+
+### 4. Gemini Implicit Caching
+**Savings: variable (automatic in Gemini 2.5+)**
+
+Gemini 2.5+ automatically caches repeated context. No code changes needed — the SDK handles it. Usage is tracked via `usage_metadata.cached_content_token_count`.
+
+### 5. triage_confidence Signal (future routing)
+**Current: logged only. Future: can gate incident draft.**
+
+Triage now returns a `confidence` float (0.0–1.0). Currently used for monitoring. Future use: if `flagged=True AND confidence > 0.90 AND evaluator.confidence == HIGH`, skip incident draft (already very certain — no need for a second expensive Sonnet call).
+
+**Why we did NOT add a Haiku evaluator path**: the evaluator requires the full transcript to extract `trigger_phrases`, `suppression_factors`, and `bsp_mention_excerpt`. Running Haiku on just the action_summary would produce fabricated phrases — unacceptable in a legal compliance context.
+
+### What we chose NOT to do (and why)
+| Approach | Why skipped |
+|----------|-------------|
+| Haiku evaluator for high-confidence cases | Evaluator needs full transcript for NDIS legal reporting — Haiku on 50 tokens would fabricate trigger phrases |
+| Knowledge distillation | Requires model training, $30K+ cost |
+| MoE routing | Too complex for ROI at current scale |
+| Speculative decoding | Requires inference infrastructure control (not available on Bedrock) |
+| LangSmith observability | $200-500/month — existing logs already capture all timing/token data |
+
+---
+
+## Token Tracking
+
+Every LLM-backed endpoint returns a `token_usage` block:
+
+```json
+{
+  "token_usage": {
+    "input_tokens": 3240,
+    "output_tokens": 412,
+    "total_tokens": 3652
+  }
+}
+```
+
+### How it works (`services/usage.py`)
+
+A `ContextVar`-based request-scoped accumulator. Each LLM call records its usage; the route reads the running total before returning.
+
+```python
+# At route entry
+start_usage()
+
+# After each LLM call (automatic — called inside triage, evaluator, etc.)
+record_converse(response)   # Bedrock Converse API
+record_gemini(response)     # Google Gemini
+
+# At route return
+token_usage = TokenUsage(**get_usage())
+```
+
+**Thread safety**: pipeline stages run via `asyncio.to_thread` (blocking Bedrock SDK calls offloaded to a thread pool). The accumulator uses in-place dict mutation so changes from worker threads are visible to the asyncio context. A `threading.Lock` guards concurrent stage writes.
+
+**Why ContextVar?**: each FastAPI request runs in its own asyncio task with its own context. ContextVar is automatically scoped per-request with no manual cleanup.
+
+**Internal cache tracking**: `get_usage_full()` returns 5 fields including `cache_read_tokens` and `cache_creation_tokens` for internal monitoring. The API only exposes 3 fields (input, output, total) — cache internals are not exposed to callers.
+
+**IMPORTANT import rule**: always import as `from case_review.services.usage import ...`. The Docker image puts both `/app` and `/app/case_review` on `PYTHONPATH`. Importing as `services.usage` creates a second module instance with a separate ContextVar — the totals would split silently.
+
+### Session-level tracking
+`services/usage.py` also has `start_session_tracking()`, `accumulate_to_session()`, `get_session_usage()` for cumulative token totals across multiple API calls in the same session. These are implemented but not yet wired to route handlers.
 
 ---
 
 ## API Reference
 
-### REST Endpoints
+### Restrictive Practices Pipeline
 
 #### `POST /v1/restrictive-practices/evaluate`
-Run a completed case note through the full detection pipeline.
+Submit a case note for full pipeline evaluation.
 
-**Request Body**
+**Request**:
 ```json
 {
-  "worker_id": "worker_321",
-  "client_id": "client_456",
-  "shift_id": "shift_789",
-  "shift_date": "2026-06-01",
-  "form_fields": {
-    "participant_state": "Client was agitated during morning routine.",
-    "support_actions": "Staff held client's arm to prevent them from leaving the room.",
-    "incidents_risks": "Physical restraint used for approximately 2 minutes.",
-    "medications_health": "No medication changes.",
-    "outcomes_followup": "Client calmed after 10 minutes. BSP reviewed.",
-    "handover_notes": "Incident documented. Coordinator notified."
-  }
+  "case_note_id": "uuid",
+  "client_id": "string",
+  "worker_id": "string",
+  "transcript": "Full case note text...",
+  "incident_occurred": false
 }
 ```
 
-**Response `200 OK`**
+**Response** (simplified):
 ```json
 {
-  "verdict": "restrictive_practice_confirmed",
-  "practice_type": "physical_restraint",
-  "authorised": false,
-  "bsp_status": "no_bsp_found",
-  "confidence": 0.94,
-  "policy_references": ["NDIS Code of Conduct 4.2", "Restrictive Practices Guidelines §3.1"],
-  "incident_draft": {
-    "incident_type": "Unauthorised Restrictive Practice",
-    "description": "...",
-    "immediate_actions": "...",
-    "notification_required": true
+  "verdict": {
+    "outcome": "UNAUTHORISED RESTRICTIVE PRACTICE DETECTED",
+    "risk_level": "High",
+    "alert_required": true
   },
-  "quality_score": "good",
-  "summary": "Case note documents a physical restraint incident..."
+  "detected_practice": {
+    "category": "Physical Restraint",
+    "trigger_phrases": ["held his arms"]
+  },
+  "reporting_obligations": {
+    "must_report": true,
+    "notify_within": "5 business days"
+  },
+  "token_usage": { "input_tokens": 3240, "output_tokens": 412, "total_tokens": 3652 }
 }
 ```
-
----
 
 #### `POST /v1/restrictive-practices/draft`
-Extract a voice transcript into pre-filled case note form fields (stateless).
-
-**Request Body**
-```json
-{
-  "transcript": "I helped Sarah with her morning routine. She became upset and I held her arm briefly to stop her from running into traffic.",
-  "worker_id": "worker_321",
-  "client_id": "client_456"
-}
-```
-
-**Response:** Structured form fields extracted from the transcript.
-
----
+Convert raw voice transcript to structured NDIS form fields.
 
 #### `POST /v1/restrictive-practices/draft/audio`
-Upload an audio file for transcription + form field extraction (multipart).
-
-**Request:** `multipart/form-data`
-- `audio` — audio file
-- `worker_id`, `client_id`, `shift_date` — form fields
-
-**Response:** Same as `/draft`.
-
----
+Upload audio file → Amazon Transcribe → structured form fields.
 
 #### `POST /v1/restrictive-practices/bsp`
-Register a Behaviour Support Plan for a client.
-
-```json
-{
-  "client_id": "client_456",
-  "practice_type": "physical_restraint",
-  "status": "Active",
-  "conditions": "Only when client is at immediate risk of self-harm",
-  "auth_by": "Dr Jane Smith (Behaviour Support Practitioner)",
-  "valid_from": "2026-01-01",
-  "valid_to": "2026-12-31"
-}
-```
+Create a Behaviour Support Plan record.
 
 #### `GET /v1/restrictive-practices/bsp/{client_id}`
 List all BSPs for a client.
 
-#### `PATCH /v1/restrictive-practices/bsp/{bsp_id}/status`
-Update BSP status: `Active` | `Expired` | `Revoked`.
+---
 
-#### `GET /v1/restrictive-practices/health`
-```json
-{ "status": "ok", "service": "case-review" }
-```
+### Case Review (Rolling Context)
+
+#### `POST /v1/case-review/context`
+Summarise recent case notes for a client (rolling context window).
+
+#### `POST /v1/case-review/classify`
+Classify a raw paragraph into NDIS case note fields.
 
 ---
 
-### Voice Session Endpoints
+### Voice Dictation
 
-#### `POST /v1/restrictive-practices/voice/session`
-Create a voice dictation session.
+#### `WebSocket /v1/voice/session`
+Real-time Gemini Live dictation session. Worker speaks; AI assistant guides them through form fields conversationally.
 
-**Headers:** `X-Tenant-Id`, `X-User-Id`, `X-User-Roles`, `X-Participant-Id`
-
-**Request Body**
-```json
-{
-  "case_note_id": "cn_001",
-  "worker_id": "worker_321",
-  "client_id": "client_456",
-  "initial_values": {},
-  "readonly_paths": []
-}
-```
-
-**Response**
-```json
-{
-  "session_id": "sess_abc123",
-  "ws_url": "wss://host/v1/restrictive-practices/voice/ws/sess_abc123?token=<token>",
-  "expires_at": "2026-06-01T11:00:00Z"
-}
-```
-
----
-
-#### `WSS /v1/restrictive-practices/voice/ws/{session_id}?token=<token>`
-Real-time bidirectional voice session.
-
-**Client → Server frames:**
-| Frame | Type | Description |
-|-------|------|-------------|
-| Binary | PCM16 16kHz mono | Continuous audio from user's microphone |
-| JSON | `{"type":"hello"}` | Must be first text frame |
-| JSON | `{"type":"tool_response","id":"...","result":{...}}` | App confirms field update |
-| JSON | `{"type":"screen_state_v2","data":{...}}` | Visible form state update |
-| JSON | `{"type":"stop"}` | Graceful close |
-
-**Server → Client frames:**
-| Frame | Type | Description |
-|-------|------|-------------|
-| Binary | PCM16 24kHz mono | Agent voice output — play immediately |
-| JSON | `{"type":"ready","state":{...}}` | Session accepted, initial form state |
-| JSON | `{"type":"tool_request","tool":"update_field","args":{...}}` | Agent wants to update a field |
-| JSON | `{"type":"turn_complete"}` | Agent finished speaking this turn |
-| JSON | `{"type":"user_said","text":"..."}` | Transcription of what user said |
-| JSON | `{"type":"go_away","time_left_ms":30000}` | Session about to expire |
-| JSON | `{"type":"error","code":"...","message":"..."}` | Error |
+#### `POST /v1/voice/finalize`
+Close a voice session and retrieve the collected note.
 
 ---
 
 ## Environment Variables
 
-> **These env vars are expected by the code but `config.py` is missing from the repo. You must create `config.py` before the service will start.**
+All prefixed `SENA_AI_` except where noted.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SENA_AI_RP_DATABASE_URL` | Yes | PostgreSQL async URL (e.g. `postgresql+asyncpg://user:pass@host:5432/sena_case_review`) |
-| `SENA_AI_BASIC_AUTH_USER` | No | HTTP Basic Auth username (if not set, auth is disabled) |
-| `SENA_AI_BASIC_AUTH_PASSWORD` | No | HTTP Basic Auth password |
-| `SENA_AI_TRANSCRIPTION_BUCKET` | Yes (audio) | S3 bucket for temporary audio file storage |
-| `SENA_AI_GEMINI_API_KEY` | Yes (voice) | Google Generative AI API key |
-| `SENA_AI_GEMINI_LIVE_MODEL_ID` | No | Gemini Live model (default: `gemini-3.5-flash`) |
-| `SENA_AI_CASE_REVIEW_REDIS_URL` | Yes (voice) | Redis URL for voice session state (e.g. `redis://localhost:6380/0`) |
-| `SENA_AI_VOICE_SESSION_MAX_SEC` | No | Voice session TTL in seconds (default: 3600) |
-| `SENA_AI_VOICE_SILENCE_TIMEOUT_SEC` | No | Silence before "are you still there?" (default: 8) |
-| `AWS_REGION` | No | AWS region (default: `ap-southeast-2`) |
+```env
+# Service
+SENA_AI_CASE_REVIEW_PORT=8084
+SENA_AI_ENVIRONMENT=development
 
-**AWS IAM permissions required:**
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "bedrock:InvokeModel",
-    "bedrock:InvokeModelWithResponseStream",
-    "transcribe:StartTranscriptionJob",
-    "transcribe:GetTranscriptionJob",
-    "s3:PutObject",
-    "s3:GetObject"
-  ],
-  "Resource": "*"
-}
+# Database (pgvector, port 5433)
+SENA_AI_AI_DB_URL=postgresql+asyncpg://sena_ai:sena_ai@localhost:5433/sena_ai
+
+# AWS Bedrock (Sydney — AU data residency)
+SENA_AI_AWS_REGION=ap-southeast-2
+SENA_AI_AWS_ACCESS_KEY_ID=
+SENA_AI_AWS_SECRET_ACCESS_KEY=
+
+# Models
+SENA_AI_TRIAGE_MODEL=au.anthropic.claude-haiku-4-5-20251001-v1:0
+SENA_AI_EVALUATOR_MODEL=au.anthropic.claude-sonnet-4-6
+SENA_AI_EMBEDDING_MODEL=cohere.embed-english-v3
+
+# RAG tuning
+SENA_AI_RAG_TOP_K_FETCH=10          # fetch this many candidates
+SENA_AI_RAG_MAX_CHUNKS=3            # keep at most this many after filtering
+SENA_AI_RAG_SIMILARITY_THRESHOLD=0.35  # cosine distance cut-off
+
+# Tiered routing
+SENA_AI_TRIAGE_CONFIDENCE_THRESHOLD=0.85
+
+# Gemini
+SENA_AI_GEMINI_API_KEY=
+SENA_AI_GEMINI_MODEL_ID=gemini-3.5-flash
+SENA_AI_GEMINI_LIVE_MODEL_ID=gemini-3.1-flash-live-preview
+
+# Redis (dedicated instance, separate from onboarding)
+SENA_AI_CASE_REVIEW_REDIS_URL=redis://localhost:6380/0
+
+# S3 / Transcribe (audio drafting)
+S3_REGION=
+S3_BUCKET=
+SENA_AI_TRANSCRIPTION_BUCKET=
+
+# Webhooks
+SENA_AI_RP_WEBHOOK_URL=
+SENA_AI_RP_WEBHOOK_SECRET=
+
+# Auth
+SENA_AI_AUTH_MODE=dev_header   # or jwt
 ```
 
 ---
 
 ## Running the Service
 
-**Prerequisites:**
-- PostgreSQL with `pgvector` extension enabled
-- Redis instance running
-- Policy documents ingested into pgvector (see below)
-
-**NDIS policy ingestion (must run before first use):**
 ```bash
-cd case_review
+# From repo root
+source ai-sena/bin/activate
+
+cd services/case_review
+uvicorn main:create_app --factory --host 0.0.0.0 --port 8084 --reload
+```
+
+Or via Docker Compose (always use `docker-compose.deploy.yml`, not `docker-compose.yml`):
+```bash
+docker compose -f docker-compose.deploy.yml up case-review
+```
+
+### Ingest NDIS policies (run once, or when PDFs change)
+```bash
+cd services/case_review
 python scripts/ingest_ndis_policies.py
-python scripts/ingest_style_standards.py
 ```
 
-**Docker (recommended):**
-```bash
-docker-compose -f docker-compose_db.yml up -d   # starts PostgreSQL + Redis
-docker-compose -f docker-compose.prod.yml up     # starts API service
-```
+This chunks the 5 NDIS PDFs, embeds each chunk via Cohere, and stores them in the `ndis_policy_chunks` pgvector table.
 
-**Manual (after creating config.py and main.py):**
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8084
+---
+
+## Database
+
+**Host**: `ai-db` (PostgreSQL + pgvector extension), port 5433 (separate from main app DB on 5432).
+
+**Key tables**:
+
+| Table | Purpose |
+|-------|---------|
+| `ndis_policy_chunks` | NDIS policy text chunks with 1024-dim embeddings (HNSW cosine index) |
+| `behaviour_support_plans` | Client BSP records for cross-check (Stage 4) |
+| `case_note_runs` | Audit log of every pipeline run (timing, verdict, alert status) |
+
+**Migrations**: tables are created via SQLAlchemy `create_all()` on startup (no Alembic for the AI DB). If a column is missing in production, add it with an idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — do not run `alembic upgrade`.
+
+---
+
+## Project Structure
+
+```
+services/case_review/
+├── main.py                          # FastAPI app factory
+├── core/
+│   └── settings.py                  # All env vars (pydantic-settings)
+├── api/
+│   ├── routes.py                    # /context, /classify endpoints
+│   └── rp_routes.py                 # /evaluate, /draft, /bsp endpoints
+├── models/
+│   ├── schemas.py                   # All Pydantic request/response models
+│   └── db.py                        # SQLAlchemy ORM (NDISPolicyChunk, BSP, CaseNoteRun)
+├── services/
+│   ├── usage.py                     # ★ Token accumulator (ContextVar, thread-safe)
+│   ├── pipeline/
+│   │   ├── graph.py                 # LangGraph wiring + run_pipeline()
+│   │   ├── triage.py                # Stage 1: Haiku YES/NO gate + confidence
+│   │   ├── rag.py                   # Stage 2: Smarter RAG (top-10→filter→top-3)
+│   │   ├── evaluator.py             # Stage 3: Sonnet compliance verdict
+│   │   ├── cross_check.py           # Stage 4: SQL BSP lookup
+│   │   ├── summary.py               # Stage 5: Haiku supervisor summary
+│   │   ├── incident_draft.py        # Stage 6: Sonnet NDIS incident report
+│   │   ├── drafter.py               # Stage 7: Sonnet form extraction
+│   │   ├── style_examples.py        # Few-shot examples + style guides (cached)
+│   │   └── webhook.py               # Alert delivery (detached task)
+│   ├── ingestion/
+│   │   ├── embedder.py              # Cohere embed calls (async-safe via to_thread)
+│   │   └── chunker.py               # Recursive character splitter (1200 chars, 120 overlap)
+│   └── llm/
+│       ├── classifier.py            # Gemini classifier (record_gemini called)
+│       └── summarizer.py            # Gemini summariser (record_gemini called)
+├── voice/
+│   └── drafter.py                   # Gemini Live WebSocket handler
+└── scripts/
+    └── ingest_ndis_policies.py      # One-time PDF → pgvector ingest
 ```
 
 ---
 
-## Integration Guide
+## Realistic Cost Reduction Estimates
 
-### For Backend Teams
+Based on what is actually implemented (not marketing numbers):
 
-The backend orchestrates two integration flows:
+| Optimisation | When it saves | Estimated reduction |
+|-------------|---------------|-------------------|
+| Haiku triage gate | Every call | 70% of notes skip Sonnet entirely |
+| Prompt caching | Cache hit within 5-min window | 40–60% on cached token cost |
+| Smarter RAG (top-3 compressed) | Every flagged note | ~40% on RAG context tokens |
+| Gemini implicit caching | Automatic (Gemini 2.5+) | Variable, uncontrolled |
+| **Combined (busy system)** | | **~35–50% overall cost reduction** |
 
-**Flow 1 — Evaluation (synchronous, 10–30s):**
-```
-Worker submits case note form
-→ Backend calls POST /v1/restrictive-practices/evaluate
-→ Backend receives verdict + incident draft
-→ Backend stores result, triggers supervisor alert if confirmed
-→ Webhook fires to external compliance system (async)
-```
-
-**Flow 2 — Voice Dictation:**
-```
-Worker opens voice dictation UI
-→ Backend calls POST /v1/restrictive-practices/voice/session
-→ Backend returns ws_url to frontend
-→ Frontend opens WebSocket directly to this service
-→ Agent collects form fields via voice
-→ Backend receives tool_request frames and updates form state
-→ On completion, backend saves the collected form data
-```
-
-**Example evaluation call (Python/httpx):**
-```python
-response = httpx.post(
-    "http://case-review:8084/v1/restrictive-practices/evaluate",
-    auth=(BASIC_AUTH_USER, BASIC_AUTH_PASSWORD),  # optional
-    json={"worker_id": ..., "client_id": ..., "shift_id": ..., "form_fields": {...}},
-    timeout=60.0  # pipeline can take up to 30s
-)
-```
-
-### For Frontend Teams
-
-Frontend interacts with this service **only** for the voice WebSocket. All REST calls go through the backend.
-
-**Voice integration pattern:**
-1. Backend calls POST /voice/session → receives `ws_url`
-2. Backend passes `ws_url` to frontend
-3. Frontend opens WebSocket to `ws_url`
-4. Frontend streams PCM16 audio from microphone
-5. Frontend plays back binary PCM16 audio received from server
-6. Frontend handles `tool_request` frames — applies field updates to the form UI and sends `tool_response` to confirm
-7. Frontend sends `screen_state_v2` updates when the user navigates between form sections
-
-**Audio requirements:**
-- Input: PCM16, 16 kHz, mono — no compression
-- Output: PCM16, 24 kHz, mono — play via Web Audio API or similar
-
----
-
-### Pre-Integration Checklist
-
-- [ ] `config.py` created with all required settings (BLOCKER — service won't start without this)
-- [ ] `main.py` created as FastAPI app factory (BLOCKER — Dockerfile references this file)
-- [ ] PostgreSQL running with `pgvector` extension installed
-- [ ] Redis running and accessible
-- [ ] NDIS policy documents ingested into pgvector (`scripts/ingest_*.py` run)
-- [ ] BSP records seeded for test clients (use `scripts/seed_demo.py`)
-- [ ] AWS credentials with Transcribe + Bedrock + S3 permissions
-- [ ] Google Gemini API key configured
-- [ ] S3 bucket for temporary audio storage created
-- [ ] Webhook target URL defined and accessible (for incident alerts)
-- [ ] Gemini data residency pinned to `australia-southeast1` (pending — see Known Issues)
-
-### What to Confirm Before Integration
-
-1. **BSP data source** — BSPs must be registered via the `/bsp` endpoint before evaluation. Confirm who creates them and when.
-2. **Webhook target** — The service fires async webhooks on confirmed incidents. Define the target URL and expected payload format.
-3. **Audio format from frontend** — Confirm the frontend can produce PCM16 16kHz mono. Many browser audio APIs default to different formats.
-4. **Voice session timeout** — 60 minutes default. Adjust if workers are unlikely to complete in time.
-5. **Who handles incident draft?** — Confirm whether the backend auto-submits the incident draft or a coordinator reviews it first.
-
----
-
-## QA & Testing
-
-### Test Scripts
-```bash
-cd case_review/scripts
-python test_pipeline.py      # pipeline evaluation
-python test_triage.py        # triage gate only
-python test_rag.py           # RAG retrieval
-python test_evaluator.py     # evaluator only
-python _debug_pipeline.py    # full debug run
-```
-
-### Manual Test Scenarios
-
-| Scenario | Expected Result |
-|----------|----------------|
-| Case note with clear physical restraint | `verdict: restrictive_practice_confirmed`, incident draft generated |
-| Routine shift note (no incident) | Triage gate returns NO — pipeline stops early, no incident draft |
-| Case note with authorised BSP practice | `verdict: authorised_practice`, `authorised: true` |
-| Audio upload with unclear speech | Transcription may have gaps — form fields partially filled |
-| Voice session with silence > 8s | Server sends "are you still there?" prompt |
-| Voice session with wrong audio format | Gemini Live returns error or produces garbled output |
-| BSP not found for detected practice | `bsp_status: no_bsp_found` — flagged as unauthorised |
-
----
-
-## Implementation Status
-
-### Done
-- All REST endpoints (evaluate, draft, draft/audio, bsp CRUD, health)
-- 7-stage LangGraph pipeline (triage → RAG → evaluator → cross-check → summary → incident draft)
-- pgvector HNSW indexing and cosine similarity search
-- BSP database (ORM models, CRUD endpoints)
-- Google Gemini Live voice WebSocket bridge
-- Redis-backed voice session state
-- Voice form tools (update_field, clear_field, finalize_note, get_current_state)
-- Field validators (field-level, cross-field, sequencing)
-- Amazon Transcribe integration (en-AU, custom vocabulary)
-- Docker + docker-compose files
-- Policy ingestion scripts
-
-### Missing / Not Yet Implemented
-
-| Item | Impact | Notes |
-|------|--------|-------|
-| `config.py` | **BLOCKER** | Missing — service cannot start without it |
-| `main.py` | **BLOCKER** | Missing — Dockerfile tries to run `uvicorn main:app` |
-| Webhook target definition | High | `pipeline/webhook.py` fires but target URL not defined |
-| Gemini data residency pin | High | Not yet pinned to `australia-southeast1` — required before real participant audio |
-| Voice session resumption (full) | Medium | `voice/resumption.py` skeleton exists but not fully wired |
-| Bedrock model IDs in config | Low | Hardcoded in triage.py and evaluator.py — should reference settings |
-
----
-
-## Integration Requirements
-
-**Mandatory before any integration:**
-
-1. **Create `config.py`** — Must define a `Settings` class with all env vars listed above (use Pydantic Settings)
-2. **Create `main.py`** — Must create the FastAPI app, include routers from `api/routes.py` and `api/voice_routes.py`, and define lifespan hooks for DB init
-3. **PostgreSQL + pgvector** — Database must be running with the `vector` extension enabled
-4. **Run policy ingestion** — `scripts/ingest_ndis_policies.py` must be run before the RAG retrieval step works
-5. **Redis** — Required for voice session state
-6. **S3 bucket** — Required for audio upload via `/draft/audio`
-7. **Google Gemini API key** — Required for voice sessions
-8. **AWS permissions** — Bedrock (Haiku + Sonnet) + Transcribe + S3
-
-**Required for voice integration specifically:**
-- Frontend must produce PCM16 16kHz mono audio
-- Frontend must implement `tool_response` message handling
-- Frontend must handle binary PCM16 audio playback at 24kHz
-
-**Nice to have:**
-- Webhook target service to receive incident alerts
-- Gemini data residency configuration (`australia-southeast1`)
-- HTTP Basic Auth credentials for production REST endpoints
+**To reach 10x cost reduction** you would need: pre-summarise the transcript before triage + evaluator (reducing 600-token input to ~100 tokens), high cache hit rates (>80%), and/or a fine-tuned smaller model replacing Sonnet. These have not been implemented due to compliance accuracy requirements.

@@ -21,12 +21,11 @@ logger = logging.getLogger(__name__)
 def _run_migrations() -> None:
     """Apply Alembic migrations to head.
 
-    Migrations 0001-0002 are idempotent (CREATE TABLE / ADD COLUMN ... IF NOT
-    EXISTS) and 0003-0004 are idempotent reconcilers, so this checks every table
-    and creates only what's missing — safe to run on every startup.
+    Migrations 0001-0005 are idempotent (CREATE TABLE / ADD COLUMN IF NOT EXISTS).
+    Safe to run on every startup — Alembic tracks applied revisions.
 
-    Run in a worker thread (see lifespan): Alembic's env.py uses asyncio.run(),
-    which cannot be called from within the already-running lifespan event loop.
+    Run in a worker thread: Alembic's env.py uses asyncio.run(), which cannot be
+    called from within the already-running lifespan event loop.
     """
     from alembic import command
     from alembic.config import Config as AlembicConfig
@@ -36,12 +35,70 @@ def _run_migrations() -> None:
     command.upgrade(cfg, "head")
 
 
+async def _maybe_ingest_policies() -> None:
+    """Ingest NDIS policy PDFs on first boot (when the chunk table is empty).
+
+    Runs with LLM-assisted section detection (Haiku) for the most accurate
+    parent-child chunking. Takes ~3-5 minutes on first boot while PDFs download
+    and embed — subsequent starts skip this entirely (table already has data).
+
+    This is a ONE-TIME operation. After the first successful ingest the table
+    has rows and this function returns immediately on every future startup.
+    """
+    try:
+        from sqlalchemy import func, select
+        from db.session import AsyncSessionLocal
+        from case_review.models.db import NDISPolicyChunk
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(func.count()).select_from(NDISPolicyChunk))
+            chunk_count = result.scalar_one()
+
+        if chunk_count > 0:
+            logger.info("ndis_ingest: %d chunks already in DB — skipping ingest", chunk_count)
+            return
+
+        logger.info("ndis_ingest: table empty — starting first-boot policy ingest (LLM-assist)...")
+        print("[startup] NDIS policy table empty — ingesting PDFs with LLM-assisted chunking...")
+        print("[startup] This takes 3-5 minutes on first boot. Subsequent starts skip this.")
+
+        # Import and run the ingest function (same as: python scripts/ingest_ndis_policies.py --llm-assist)
+        import sys
+        scripts_dir = Path(__file__).resolve().parent / "scripts"
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+
+        from ingest_ndis_policies import main as _ingest_main
+        await _ingest_main(llm_assist=True)
+
+        logger.info("ndis_ingest: first-boot ingest complete")
+        print("[startup] NDIS policy ingest complete.")
+
+    except Exception as exc:
+        # Ingest failure is non-fatal — the app starts, RAG just returns empty
+        # until ingest is run manually: python scripts/ingest_ndis_policies.py
+        logger.warning(
+            "ndis_ingest: first-boot ingest failed (%s: %s) — "
+            "run scripts/ingest_ndis_policies.py manually to populate the policy DB",
+            type(exc).__name__,
+            exc,
+        )
+        print(f"[startup] WARNING: policy ingest failed ({type(exc).__name__}). "
+              "Run: python scripts/ingest_ndis_policies.py")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     configure_logging(settings.log_level)
+
+    # Step 1: DB schema migrations (always runs, idempotent)
     logger.info("applying database migrations (alembic upgrade head)...")
     await asyncio.to_thread(_run_migrations)
     logger.info("database migrations applied; tables verified")
+
+    # Step 2: Seed NDIS policy chunks if the table is empty (first boot only)
+    await _maybe_ingest_policies()
+
     yield
 
 
