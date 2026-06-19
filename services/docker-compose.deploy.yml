@@ -287,7 +287,7 @@ services:
       LISTEN: "45876"
       KEY: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP5diWOHHdZe3iboO0FwBZLI/ix4RyePyxG+TYnQClC2"
       TOKEN: "2df37ad8-b7d1-478e-8449-fb21f28dbf62"
-      HUB_URL: "http://3.111.109.14:3002"
+      HUB_URL: "http://localhost:8090"
 
   # ── Infrastructure ─────────────────────────────────────────────────────────
   redis-internal:
