@@ -269,8 +269,8 @@ services:
     volumes:
       - beszel-data:/beszel_data
       - beszel-socket:/beszel_socket
-    expose:
-      - "8090"
+    ports:
+      - "127.0.0.1:8090:8090"   # localhost only — agent connects here; nginx exposes it on :3002
     networks:
       - sena-network
 
