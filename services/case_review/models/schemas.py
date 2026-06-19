@@ -342,6 +342,7 @@ class CaseNoteInput(BaseModel):
 class TriageResult(BaseModel):
     flagged: bool
     action_summary: str | None = None
+    triage_confidence: float = 0.5  # 0.0–1.0; drives Haiku vs Sonnet routing
 
 
 class PolicyChunk(BaseModel):

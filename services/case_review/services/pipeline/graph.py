@@ -244,10 +244,12 @@ async def run_pipeline(note: CaseNoteInput, db: AsyncSession, tenant_id: str) ->
         webhook_task.add_done_callback(_bg_tasks.discard)
 
     logger.info(
-        "pipeline done case_note_id=%s flagged=%s alert=%s elapsed_ms=%d "
-        "triage_ms=%s rag_ms=%s eval_ms=%s cc_ms=%s summary_ms=%d incident_ms=%s",
+        "pipeline done case_note_id=%s flagged=%s triage_confidence=%.2f "
+        "alert=%s elapsed_ms=%d triage_ms=%s rag_ms=%s eval_ms=%s cc_ms=%s "
+        "summary_ms=%d incident_ms=%s",
         note.case_note_id,
         triage.flagged,
+        triage.triage_confidence,
         alert_required,
         elapsed_ms,
         final.get("triage_ms"),

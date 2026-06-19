@@ -17,7 +17,7 @@ from core.settings import settings
 from case_review.models.schemas import CaseDraftResponse, CaseNoteInput, DraftInput
 from case_review.services.pipeline.quality_score import score_note
 from case_review.services.pipeline.style_examples import FEW_SHOT_DRAFTER, STYLE_GUIDE
-from case_review.services.usage import record_converse
+from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ def _run_drafter(transcript: str) -> _DrafterResponse:
         ],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )
-    record_converse(response)
+    record_and_print_converse("drafter", response)
 
     text = response["output"]["message"]["content"][0]["text"]
     if not text:

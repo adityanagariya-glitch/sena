@@ -4,11 +4,19 @@ Downloads 5 documents covering all regulated restrictive practice categories,
 practice standards, code of conduct, and incident management obligations.
 
 Run:
-    python scripts/ingest_ndis_policies.py
+    python scripts/ingest_ndis_policies.py              # regex-based section detection
+    python scripts/ingest_ndis_policies.py --llm-assist # LLM-assisted section detection (Haiku)
 
 Idempotent — safe to re-run; existing chunks are updated in place.
+
+Chunking strategy:
+  Default:     Regex detects NDIS section headers (1., 1.1, ALL CAPS) → parent + child chunks.
+  --llm-assist: Haiku reads first 12k chars of each document, identifies section headings,
+               builds parent boundaries. One-time cost ~$0.0003 per document. Use when
+               regex fails to detect structure in a reformatted/scanned PDF.
 """
 
+import argparse
 import asyncio
 import sys
 import tempfile
@@ -30,9 +38,14 @@ _HEADERS = {
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core.settings import settings
 from db.session import AsyncSessionLocal, create_tables
-from ingestion.chunker import chunk_document, extract_text_from_pdf
-from ingestion.embedder import upsert_chunks
+from services.ingestion.chunker import (
+    detect_sections_with_llm,
+    extract_text_from_pdf,
+    semantic_chunk_document,
+)
+from services.ingestion.embedder import upsert_chunks
 
 # Official NDIS Commission PDFs (URLs verified May 2026)
 # If auto-download fails due to government WAF, download manually and place in pdfs/ folder.
@@ -106,7 +119,7 @@ async def download_with_retry(url: str, retries: int = 3) -> bytes:
     raise RuntimeError(f"Download failed after {retries} attempts: {last_exc}") from last_exc
 
 
-async def ingest_document(doc: dict, tmp_dir: Path) -> int:
+async def ingest_document(doc: dict, tmp_dir: Path, llm_assist: bool = False) -> int:
     print(f"\n[{doc['document_type']}] {doc['source']}")
 
     # Prefer local file — check our canonical name AND the browser's default download name
@@ -130,14 +143,30 @@ async def ingest_document(doc: dict, tmp_dir: Path) -> int:
         pdf_path = tmp_path
 
     text = extract_text_from_pdf(pdf_path)
-    chunks = chunk_document(
+
+    # LLM-assisted section detection (one-time; more accurate for non-standard PDFs)
+    sections: list[str] | None = None
+    if llm_assist:
+        print("  Detecting sections with LLM (Haiku)...")
+        sections = await detect_sections_with_llm(
+            text,
+            api_key="",  # Bedrock uses IAM — api_key not needed
+            model_id=settings.classifier_model,
+        )
+        print(f"  LLM detected {len(sections)} sections")
+
+    chunks = semantic_chunk_document(
         text=text,
         document_source=doc["source"],
         category=doc["category"],
         risk_level=doc["risk_level"],
         document_type=doc["document_type"],
+        sections=sections,
     )
-    print(f"  Produced {len(chunks)} chunks")
+
+    parents = sum(1 for c in chunks if c.is_parent)
+    children = len(chunks) - parents
+    print(f"  Produced {len(chunks)} chunks ({parents} parents + {children} children)")
 
     async with AsyncSessionLocal() as db:
         count = await upsert_chunks(chunks, db)
@@ -146,10 +175,11 @@ async def ingest_document(doc: dict, tmp_dir: Path) -> int:
     return count
 
 
-async def main() -> None:
+async def main(llm_assist: bool = False) -> None:
     print("=== NDIS Policy Document Ingestion ===")
     print(f"Documents to ingest: {len(NDIS_DOCUMENTS)}")
     print(f"Local PDF fallback dir: {_LOCAL_PDF_DIR}")
+    print(f"Chunking mode: {'LLM-assisted (Haiku)' if llm_assist else 'Regex (default)'}")
 
     print("\nInitialising database tables...")
     await create_tables()
@@ -161,7 +191,7 @@ async def main() -> None:
         tmp_path = Path(tmp_dir)
         for doc in NDIS_DOCUMENTS:
             try:
-                count = await ingest_document(doc, tmp_path)
+                count = await ingest_document(doc, tmp_path, llm_assist=llm_assist)
                 total_chunks += count
             except Exception as exc:
                 print(f"  ERROR [{type(exc).__name__}]: {exc}", file=sys.stderr)
@@ -189,4 +219,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Ingest NDIS policy PDFs into pgvector.")
+    parser.add_argument(
+        "--llm-assist",
+        action="store_true",
+        help="Use Haiku to detect section boundaries (slower, more accurate for non-standard PDFs)",
+    )
+    args = parser.parse_args()
+    asyncio.run(main(llm_assist=args.llm_assist))

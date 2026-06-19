@@ -42,8 +42,7 @@ class CaseReviewSettings(BaseSettings):
     # SENA_AI_GEMINI_API_KEY
     gemini_api_key: str = ""
     # SENA_AI_GEMINI_MODEL_ID — standard generate_content model (NOT Live API)
-    # gemini-3-flash-preview is the current standard model; gemini-3.1-flash-live-preview
-    # is Live API only (BidiGenerateContent WebSocket) and cannot be used here.
+    # gemini-3.1-flash-live-preview is Live API only (WebSocket) and cannot be used here.
     gemini_model_id: str = "gemini-3.5-flash"
     # SENA_AI_GEMINI_REGION — Australian data residency requirement
     gemini_region: str = "australia-southeast1"
@@ -86,13 +85,30 @@ class CaseReviewSettings(BaseSettings):
     triage_model: str = "au.anthropic.claude-haiku-4-5-20251001-v1:0"
     # SENA_AI_EVALUATOR_MODEL — Sonnet: structured verdict + drafter (maxTokens=8192)
     evaluator_model: str = "au.anthropic.claude-sonnet-4-6"
+    # SENA_AI_CLASSIFIER_MODEL — Haiku: field extraction from raw paragraph
+    classifier_model: str = "au.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # SENA_AI_SUMMARIZER_MODEL — Haiku: rolling context summary across case notes
+    summarizer_model: str = "au.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     # ── RAG / Embeddings (pgvector HNSW, Cohere Embed English v3, 1024-dim) ──
     # SENA_AI_EMBEDDING_MODEL — must match at ingest AND query time; re-ingest if changed
     embedding_model: str = "cohere.embed-english-v3"
     chunk_size: int = 1200
     chunk_overlap: int = 120
-    rag_top_k: int = 5
+    rag_top_k: int = 5  # legacy fallback — prefer rag_top_k_fetch + rag_max_chunks
+    # Smarter RAG: fetch more, score-filter, keep best
+    # SENA_AI_RAG_TOP_K_FETCH — fetch this many from pgvector (wider net)
+    rag_top_k_fetch: int = 10
+    # SENA_AI_RAG_MAX_CHUNKS — keep at most this many after distance filtering
+    rag_max_chunks: int = 3
+    # SENA_AI_RAG_SIMILARITY_THRESHOLD — cosine distance cut-off (lower = stricter)
+    # pgvector <=> returns cosine distance (0=identical, 2=opposite); 0.35 ≈ similarity 0.65
+    rag_similarity_threshold: float = 0.35
+
+    # ── Tiered routing ─────────────────────────────────────────────────────────
+    # SENA_AI_TRIAGE_CONFIDENCE_THRESHOLD — triage_confidence >= this → Haiku evaluator
+    # (fast, cheap, action_summary-only); below → Sonnet evaluator (full transcript)
+    triage_confidence_threshold: float = 0.85
 
     # ── S3 / Amazon Transcribe (audio drafting — POST /draft/audio) ───────────
     # Read WITHOUT SENA_AI_ prefix — standard boto3/AWS env vars, override per role

@@ -80,6 +80,32 @@ def record_converse(response: dict[str, Any]) -> None:
     )
 
 
+def record_and_print_converse(stage: str, response: dict[str, Any]) -> None:
+    """Record token usage AND print a per-stage breakdown to stdout.
+
+    Prints to stdout so Docker container logs capture the line.
+    Format: [stage] in=N out=N cached=N (saved=N%) total=N
+    """
+    usage = (response or {}).get("usage", {}) or {}
+    inp = int(usage.get("inputTokens", 0) or 0)
+    out = int(usage.get("outputTokens", 0) or 0)
+    cached = int(usage.get("cacheReadInputTokens", 0) or 0)
+    created = int(usage.get("cacheWriteInputTokens", 0) or 0)
+    total = inp + out
+
+    _add(inp, out, cached, created)
+
+    # Cache hit %: tokens served from cache vs total input tokens billed
+    cache_pct = int(cached / (inp + cached) * 100) if (inp + cached) > 0 else 0
+    cache_str = f"cached={cached:,} ({cache_pct}% hit)" if cached or created else "no cache"
+    created_str = f" created={created:,}" if created else ""
+
+    print(
+        f"[tokens/{stage:<12}] in={inp:>5,}  out={out:>4,}  {cache_str}{created_str}  total={total:,}",
+        flush=True,
+    )
+
+
 def record_gemini(response: Any) -> None:
     """Record token usage from a google-genai ``generate_content`` response.
 

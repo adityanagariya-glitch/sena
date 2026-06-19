@@ -1,47 +1,49 @@
 from __future__ import annotations
 
 """
-Rolling summary compressor using Gemini structured output.
+Rolling summary compressor — Bedrock Claude Haiku via tool use.
+
+Switched from Gemini generate_content + response_schema to Bedrock Converse +
+tool use structured output. Same structured output guarantee, single vendor,
+prompt caching, and record_converse token tracking.
 
 Input:  past_summary (str), new_notes (list[CaseNoteDTO])
 Output: SummaryResult with summary_text + metadata
 
-Uses response_schema for reliable JSON extraction — no manual parsing.
-Model: SENA_AI_GEMINI_MODEL_ID (default: gemini-3-flash-preview, standard generate_content — NOT Live API)
+Model: SENA_AI_SUMMARIZER_MODEL (Haiku — summarization task, no Sonnet needed)
 """
 
+import asyncio
 import time
 from pathlib import Path
 from typing import Any
 
+import boto3
 import structlog
-from google import genai
-from google.genai import types
 from pydantic import BaseModel
 
-
-import enum
-
-class UsageFeature(str, enum.Enum):
-    VOICE_ONBOARDING = "voice_onboarding"
-    CASE_NOTE_DRAFTING = "case_note_drafting"
-    CASE_NOTE_SUMMARY = "case_note_summary"
-    INCIDENT_REPORT_ANALYSIS = "incident_report_analysis"
-    AI_CHAT = "ai_chat"
-    PSR_SUMMARY = "psr_summary"
-    MONTHLY_REPORT = "monthly_report"
-    STAFF_DOC_EXTRACTION = "staff_doc_extraction"
-
-def emit_usage(**_kwargs: object) -> None:  # type: ignore[misc]
-    return None
-
+from core.settings import settings
 from case_review.models.schemas import CaseNoteDTO
-from case_review.services.usage import record_gemini
+from case_review.services.usage import record_and_print_converse
 
 log = structlog.get_logger(__name__)
 
 _PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "summarize.md"
 _prompt_template: str | None = None
+
+# Singleton Bedrock client — avoids per-call connection overhead
+_bedrock_client = None
+
+
+def _get_client():
+    global _bedrock_client
+    if _bedrock_client is None:
+        kwargs: dict = {"region_name": settings.aws_region}
+        if settings.aws_access_key_id and settings.aws_secret_access_key:
+            kwargs["aws_access_key_id"] = settings.aws_access_key_id
+            kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+        _bedrock_client = boto3.client("bedrock-runtime", **kwargs)
+    return _bedrock_client
 
 
 def _load_prompt() -> str:
@@ -51,25 +53,50 @@ def _load_prompt() -> str:
     return _prompt_template
 
 
-class SummaryResult(BaseModel):
-    """Structured output from the summariser LLM call."""
-    summary_text: str
-    metadata: dict[str, Any]
+# ── Tool schema (replaces Gemini response_schema) ─────────────────────────────
 
+_SUMMARIZE_TOOL = {
+    "toolSpec": {
+        "name": "summarize_case_notes",
+        "description": "Produce a rolling summary of NDIS support worker case notes",
+        "inputSchema": {
+            "json": {
+                "type": "object",
+                "properties": {
+                    "summary_text": {"type": "string"},
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "note_count": {"type": "integer"},
+                            "last_dates": {"type": "array", "items": {"type": "string"}},
+                            "incident_count": {"type": "integer"},
+                            "risk_flags": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["note_count", "last_dates", "incident_count", "risk_flags"],
+                    },
+                },
+                "required": ["summary_text", "metadata"],
+            }
+        },
+    }
+}
+
+
+# ── Pydantic validation ───────────────────────────────────────────────────────
 
 class SummaryMetadata(BaseModel):
-    """Schema for Gemini structured output — mirrors the JSON schema in the prompt."""
     note_count: int
     last_dates: list[str]
     incident_count: int
     risk_flags: list[str]
 
 
-class _GeminiSummaryOutput(BaseModel):
-    """Full structured output schema passed to response_schema."""
+class SummaryResult(BaseModel):
     summary_text: str
-    metadata: SummaryMetadata
+    metadata: dict[str, Any]
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _format_notes(notes: list[CaseNoteDTO]) -> str:
     if not notes:
@@ -84,87 +111,81 @@ def _format_notes(notes: list[CaseNoteDTO]) -> str:
     return "\n\n".join(parts)
 
 
+# ── Core sync call (offloaded to thread pool) ─────────────────────────────────
+
+def _run_summarise(past_summary: str, new_notes: list[CaseNoteDTO]) -> SummaryResult:
+    """Synchronous Bedrock Converse call — runs in a thread via asyncio.to_thread."""
+    template = _load_prompt()
+
+    # Prompt caching: static base instructions → cached prefix (before first dynamic var)
+    # Dynamic content: past_summary + new_notes (varies per request)
+    parts = template.split("{past_summary}", 1)
+    static_prefix = parts[0].strip()
+    suffix = parts[1] if len(parts) > 1 else "\n{new_notes}"
+
+    filled_past = past_summary or "(No previous summary — this is the first session.)"
+    dynamic_content = filled_past + suffix.replace("{new_notes}", _format_notes(new_notes))
+
+    client = _get_client()
+    response = client.converse(
+        modelId=settings.summarizer_model,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"text": static_prefix},
+                {"cachePoint": {"type": "default"}},  # cache static instructions
+                {"text": dynamic_content},
+            ],
+        }],
+        toolConfig={
+            "tools": [_SUMMARIZE_TOOL],
+            "toolChoice": {"tool": {"name": "summarize_case_notes"}},
+        },
+        inferenceConfig={"maxTokens": 2048, "temperature": 0.2},
+    )
+    record_and_print_converse("summarizer", response)
+
+    # Extract structured output from tool use block
+    for block in response["output"]["message"]["content"]:
+        if block.get("toolUse", {}).get("name") == "summarize_case_notes":
+            data = block["toolUse"]["input"]
+            meta = SummaryMetadata(**data["metadata"])
+            return SummaryResult(
+                summary_text=data["summary_text"],
+                metadata=meta.model_dump(),
+            )
+    raise ValueError("Summarizer: no tool_use block in Bedrock response")
+
+
+# ── Public async entry point ──────────────────────────────────────────────────
+
 async def summarise(
     past_summary: str,
     new_notes: list[CaseNoteDTO],
     *,
-    api_key: str,
-    model_id: str,
+    api_key: str,    # kept for API compatibility — not used (Bedrock uses IAM/env)
+    model_id: str,   # kept for API compatibility — settings.summarizer_model is used
     tenant_id: str = "phase1_tbd",
     user_id: str | None = None,
     session_id: str | None = None,
-    feature: UsageFeature = UsageFeature.CASE_NOTE_SUMMARY,
+    feature: Any = None,  # kept for API compatibility
 ) -> SummaryResult:
+    """Compress past_summary + new_notes into an updated rolling summary.
+
+    api_key, model_id, and feature are accepted for backwards compatibility
+    with existing route handler calls but are not used.
     """
-    Compress past_summary + new_notes into an updated rolling summary.
-    Returns SummaryResult with summary_text and metadata dict.
-
-    `feature` defaults to CASE_NOTE_SUMMARY but accepts PSR_SUMMARY or
-    MONTHLY_REPORT so the same summariser feeds three of the client's billable
-    features without duplication. Pass the right value from the route handler.
-    """
-    prompt = (
-        _load_prompt()
-        .replace("{past_summary}", past_summary or "(No previous summary — this is the first session.)")
-        .replace("{new_notes}", _format_notes(new_notes))
-    )
-
-    client = genai.Client(api_key=api_key)
-
-    log.info("summariser.call", model=model_id, new_note_count=len(new_notes))
-
+    log.info("summariser.call", model=settings.summarizer_model, new_note_count=len(new_notes))
     start = time.perf_counter()
+
     try:
-        response = client.models.generate_content(
-            model=model_id,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=_GeminiSummaryOutput,
-                temperature=0.2,
-            ),
-        )
+        result = await asyncio.to_thread(_run_summarise, past_summary, new_notes)
     except Exception as exc:
-        emit_usage(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            feature=feature,
-            model=model_id,
-            session_id=session_id,
-            latency_ms=int((time.perf_counter() - start) * 1000),
-            success=False,
-            failure_reason=type(exc).__name__,
-        )
+        log.error("summariser.error", error=type(exc).__name__, msg=str(exc)[:120])
         raise
-
-    latency_ms = int((time.perf_counter() - start) * 1000)
-    um = getattr(response, "usage_metadata", None)
-    # Accumulate into the request-scoped usage total surfaced on the API response.
-    record_gemini(response)
-    emit_usage(
-        tenant_id=tenant_id,
-        user_id=user_id,
-        feature=feature,
-        model=model_id,
-        session_id=session_id,
-        prompt_tokens=int(getattr(um, "prompt_token_count", 0) or 0),
-        response_tokens=int(getattr(um, "candidates_token_count", 0) or 0),
-        cached_tokens=int(getattr(um, "cached_content_token_count", 0) or 0),
-        latency_ms=latency_ms,
-        success=True,
-        new_note_count=len(new_notes),
-    )
-
-    raw = response.text
-    parsed = _GeminiSummaryOutput.model_validate_json(raw)
 
     log.info(
         "summariser.done",
-        incident_count=parsed.metadata.incident_count,
-        risk_flags=parsed.metadata.risk_flags,
+        latency_ms=int((time.perf_counter() - start) * 1000),
     )
-
-    return SummaryResult(
-        summary_text=parsed.summary_text,
-        metadata=parsed.metadata.model_dump(),
-    )
+    return result
