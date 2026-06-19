@@ -1,6 +1,6 @@
 # Case Review Service
 
-> FastAPI + LangGraph service that automates NDIS restrictive practice detection. A support worker submits a case note (text or voice); the pipeline runs triage, retrieves NDIS policy via RAG, evaluates compliance, cross-checks the client's Behaviour Support Plan, and generates an incident report — all with full token tracking and prompt caching across AWS Bedrock Claude and Google Gemini.
+> FastAPI + LangGraph service that automates NDIS restrictive practice detection. A support worker submits a case note (text or voice); the pipeline runs triage, retrieves NDIS policy via **hybrid RAG (BM25 + vector + Cohere reranker)**, evaluates compliance with **Bedrock tool-use structured output**, cross-checks the client's Behaviour Support Plan, and generates an incident report — all with full token tracking, per-stage stdout logging, and prompt caching across AWS Bedrock Claude. Extraction tasks (triage, classify, summarise) run on Claude Haiku; reasoning tasks (evaluate, incident draft, draft) run on Claude Sonnet; real-time voice uses Google Gemini Live.
 
 ---
 
@@ -47,8 +47,9 @@ Support Worker
 LangGraph Pipeline (core path):
   START
     → [1] Triage (Haiku)          — YES/NO gate + confidence score
-    → [2] RAG (Cohere embeddings) — retrieve top-3 NDIS policy chunks
-    → [3] Evaluator (Sonnet)      — structured compliance verdict
+    → [2] RAG (hybrid + rerank)   — BM25 + vector → RRF → Cohere rerank → parent chunks
+                                     depth adapts to triage confidence (top-1 / top-3 / top-5)
+    → [3] Evaluator (Sonnet)      — structured compliance verdict via tool use
     → [4] Cross-check (SQL)       — BSP authorisation lookup
   END
 
@@ -68,13 +69,15 @@ Clean notes (flagged=False) exit after step 1. Roughly 70% of notes never touch 
 
 | Model | Provider | Where Used | Why |
 |-------|----------|-----------|-----|
-| `au.anthropic.claude-haiku-4-5-20251001-v1:0` | AWS Bedrock | Triage, Summary | Fast cheap gate — YES/NO decisions, shift summaries |
+| `au.anthropic.claude-haiku-4-5-20251001-v1:0` | AWS Bedrock | Triage, Summary, **Classifier**, **Summariser**, RAG query expansion | Fast cheap extraction — YES/NO gates, field extraction, rolling summaries |
 | `au.anthropic.claude-sonnet-4-6` | AWS Bedrock | Evaluator, Incident Draft, Drafter | Complex structured reasoning, legal compliance output |
 | `cohere.embed-english-v3` | AWS Bedrock | RAG embeddings | 1024-dim asymmetric embeddings for policy chunk retrieval |
-| `gemini-3.5-flash` | Google AI | Context summariser, Classifier | Rolling context summaries across multiple case notes |
+| `cohere.rerank-v3-5` | AWS Bedrock (agent-runtime) | RAG reranking | Cross-encoder reranking of hybrid-search candidates |
 | `gemini-3.1-flash-live-preview` | Google AI (Live API) | Voice dictation WebSocket | Real-time conversational case note collection |
 
-**Region**: All Bedrock calls use `ap-southeast-2` (Sydney) for Australian data residency.
+**Migrated from Gemini → Bedrock Haiku**: the classifier and summariser previously called Gemini `generate_content`. They now use Bedrock Claude Haiku via **tool-use structured output** (single vendor, prompt caching, unified token tracking). The `gemini_model_id` setting is retained for backward-compat but is **passed-and-ignored** by these paths — Gemini is now used *only* for the real-time voice WebSocket (Gemini Live).
+
+**Region**: All Bedrock calls use `ap-southeast-2` (Sydney) for Australian data residency by default (`SENA_AI_AWS_REGION`).
 
 ---
 
@@ -95,7 +98,7 @@ Reads the full case note and returns a binary gate decision plus a confidence sc
 ```
 
 - `flagged=False` → pipeline exits here. No RAG, no Sonnet. ~70% of notes.
-- `confidence` (0.0–1.0) is logged for monitoring. High confidence = explicit restriction language. Low = ambiguous wording.
+- `confidence` (0.0–1.0) **drives adaptive RAG retrieval depth** in Stage 2 (see below): high confidence fetches fewer chunks, low confidence fetches more + expands the query. It does **not** route the evaluator (Sonnet always runs on the full transcript — see "Why we did NOT add a Haiku evaluator path").
 - Prompt caching: the static few-shot prefix is cached; only the transcript varies per call.
 
 **Five regulated restrictive practices screened**:
@@ -108,35 +111,50 @@ Reads the full case note and returns a binary gate decision plus a confidence sc
 ---
 
 ### Stage 2 — RAG (`services/pipeline/rag.py`)
-**Model**: Cohere Embed English v3 | **Vector DB**: PostgreSQL + pgvector (HNSW index)
+**Models**: Cohere Embed English v3 (embeddings) + Cohere Rerank v3.5 (reranking) | **Vector DB**: PostgreSQL + pgvector (HNSW) + tsvector (GIN for BM25)
 
-Retrieves the most relevant NDIS policy chunks to ground the evaluator. Uses the triage `action_summary` as the query (not the full transcript) — it is a clean 1-sentence description, far more semantically focused.
+Retrieves the most relevant NDIS policy chunks to ground the evaluator. Uses the triage `action_summary` as the query (not the full transcript) — a clean 1-sentence description, far more semantically focused.
 
-**Smarter RAG algorithm** (not naïve top-5):
+**Hybrid retrieval pipeline**:
 
 ```
-1. Embed query → 1024-dimensional vector (input_type="search_query")
-2. Fetch top-10 candidates from pgvector using cosine distance (<=>)
-3. Filter: keep only chunks where cosine_distance < 0.35 (similarity > 0.65)
-4. Cap at top-3 (not top-5)
-5. Compress each chunk: strip version headers, dates, deduplicate repeated sentences
+1. Embed query → 1024-dim vector (input_type="search_query")
+2. Run TWO searches in parallel:
+     • Vector  — pgvector cosine (<=>) over the HNSW index   (semantic match)
+     • BM25    — PostgreSQL ts_rank_cd over the tsvector GIN  (exact keyword match)
+3. Merge both ranked lists with Reciprocal Rank Fusion (RRF)
+4. Rerank the top candidates with Cohere Rerank v3.5 (cross-encoder)
+5. For child chunks: fetch their PARENT section (full regulatory context)
+6. Compress boilerplate, return the top-N to the evaluator
 ```
 
-**Why cosine distance?**
+**Why hybrid?** Vector search alone misses exact strings ("section 5.2.4", "NDIS Act"); BM25 alone misses synonyms ("seclusion" vs "isolation"). Running both and fusing them catches what either signal misses on its own.
+
+**Reciprocal Rank Fusion (RRF)** — how the two lists merge:
 ```
-cosine_distance = 1 - (A · B) / (‖A‖ · ‖B‖)
-0.0 = identical vectors
-2.0 = opposite vectors
-< 0.35 ≈ strong semantic match (similarity > 0.65)
+score(chunk) = Σ_i  1 / (k + rank_i(chunk))      k = 60, rank starts at 1
 ```
+A chunk near the top of *both* the vector and BM25 lists scores highest. RRF needs only the rank position (not the raw, non-comparable cosine vs ts_rank scores), so it fuses heterogeneous signals cleanly. Each (query × signal) list is fused independently, so a chunk surfaced by several signals wins.
 
-**Asymmetric embeddings**: chunks are indexed with `input_type="search_document"`, queries use `input_type="search_query"`. Cohere's v3 model is trained on asymmetric pairs — this meaningfully improves retrieval quality vs symmetric embeddings.
+**Cohere Rerank v3.5 (cross-encoder)**: RRF orders by rank agreement, but a cross-encoder reads the query and each chunk *together* and scores true relevance — more accurate than any metric that embeds them separately. Called via `bedrock-agent-runtime.rerank`. If the Rerank API is unavailable in the region it **degrades gracefully** to RRF order (logs a warning, never crashes).
 
-**Chunk compression**: before sending chunks to the evaluator, boilerplate is stripped (version headers, date lines, page references, consecutive duplicate sentences). Reduces each ~1200-char chunk by 20–35% without losing regulatory content.
+**Parent-child chunking**: child chunks (~300 chars) are embedded for precise retrieval; once a child matches, its **parent** (the full ~800–1500 char regulatory section) is sent to the evaluator so it sees complete context, not a truncated fragment. Legacy flat chunks (no parent) pass through unchanged.
 
-**Result**: ~40% fewer evaluator input tokens on RAG context vs naïve top-5.
+**Adaptive retrieval depth** — driven by `triage_confidence`:
 
-**Corpus**: ~300 chunks from 5 official NDIS government PDFs:
+| Triage confidence | Behaviour | Rationale |
+| --- | --- | --- |
+| `> 0.95` | top-1 chunk, fetch 3 | Explicit violation — evaluator already knows what it is; minimal grounding |
+| `0.80 – 0.95` | top-3 chunks (default) | Normal path |
+| `< 0.80` | top-5 + **query expansion** | Ambiguous wording — needs more context |
+
+**Query expansion** (low-confidence only): a small Haiku call rewrites `action_summary` into 2 alternative regulatory queries (one targeting the practice category, one the BSP/authorisation angle). Each variant is embedded **and** keyword-searched — so expansion widens *both* the semantic and keyword signals, then all lists feed RRF. Falls back to the single query if expansion fails.
+
+**Asymmetric embeddings**: chunks are indexed with `input_type="search_document"`, queries use `input_type="search_query"`. Cohere v3 is trained on asymmetric pairs — meaningfully better retrieval than symmetric embeddings.
+
+**Chunk compression**: before chunks reach the evaluator, boilerplate is stripped (version headers, dates, page refs, consecutive duplicate sentences) — ~20–35% smaller per chunk without losing regulatory content.
+
+**Corpus**: 5 official NDIS government PDFs, chunked into parent sections + embedded children:
 - Regulated Restrictive Practice Guide
 - NDIS Practice Standards and Quality Indicators
 - Code of Conduct — Provider Guidance
@@ -150,7 +168,9 @@ cosine_distance = 1 - (A · B) / (‖A‖ · ‖B‖)
 
 Full compliance analysis grounded in the retrieved policy chunks.
 
-**Output** (structured JSON):
+**Structured output via tool use** (not prompt-and-parse): the evaluator defines a `compliance_verdict` Bedrock tool with a JSON schema and forces `toolChoice` to it. Claude must return all fields in the schema — there is **no JSON parsing or regex repair**, and malformed-output failures are eliminated. The 12 required fields are validated at the tool-call layer.
+
+**Output** (the `compliance_verdict` tool input):
 ```json
 {
   "incident_detected": true,
@@ -218,24 +238,30 @@ Converts a raw voice transcript into the 6-section NDIS case note form. Complete
 
 ### Ingestion (one-time, `scripts/ingest_ndis_policies.py`)
 ```
-PDF → text extraction → recursive character splitting (1200 chars, 120 overlap)
-    → Cohere embed (input_type="search_document") → store in NDISPolicyChunk table
+PDF → text extraction → semantic SECTION detection (regex; or Haiku with --llm-assist)
+    → parent chunks  = full sections (~800–1500 chars, is_parent=true, no embedding)
+    → child chunks   = ~300-char splits of each section (embedded for retrieval)
+    → Cohere embed children (input_type="search_document")
+    → store both in rp_ndis_policy_chunks (+ search_vector tsvector for BM25)
 ```
+
+Section detection is regex-based by default (NDIS PDFs use numbered headings `1.`, `1.1`, ALL-CAPS). Pass `--llm-assist` to have Haiku identify section boundaries for reformatted/scanned PDFs — a one-time cost during ingest only. Sections shorter than ~200 chars are stored as flat retrievable chunks (no parent/child split).
 
 ### Query (every flagged case note)
 ```
-triage.action_summary → Cohere embed (input_type="search_query")
-    → pgvector HNSW cosine search (fetch 10)
-    → distance filter (< 0.35)
-    → cap at 3 chunks
-    → compress (strip boilerplate)
+triage.action_summary  →  embed (search_query)  +  (low-confidence: Haiku query expansion)
+    → parallel:  vector cosine search  +  BM25 ts_rank_cd search   (per query variant)
+    → Reciprocal Rank Fusion over all ranked lists
+    → Cohere Rerank v3.5 (cross-encoder) → top-N
+    → swap matched children for their PARENT sections
+    → compress boilerplate
     → pass to Evaluator
 ```
 
-### pgvector HNSW index
-- Algorithm: Hierarchical Navigable Small Worlds (approximate nearest neighbour)
-- Distance function: cosine
-- Why HNSW: O(log n) query time vs O(n) brute force. At 300 chunks the difference is negligible, but it scales cleanly to 300K chunks.
+### Indexes
+- **pgvector HNSW** (`embedding`) — cosine, approximate nearest neighbour. O(log n) query vs O(n) brute force; scales cleanly from ~300 to 300K chunks. Only child/flat chunks are embedded (parents are fetched by FK).
+- **GIN** (`search_vector`) — PostgreSQL tsvector for BM25 full-text search, populated at ingest via `to_tsvector('english', text)`.
+- **Partial B-tree** (`parent_chunk_id WHERE NOT NULL`) — fast parent lookups during retrieval.
 
 ---
 
@@ -271,24 +297,25 @@ response = client.converse(
 
 Haiku ($0.80/MTok) runs first. Only if `flagged=True` does Sonnet ($3/MTok) run. Most care notes are routine (no incident) — they cost Haiku price only.
 
-### 3. Smarter RAG (top-10 fetch → distance filter → top-3 compressed)
-**Savings: ~40% on evaluator RAG context tokens**
+### 3. Hybrid RAG + reranker + parent-child (precision, fewer chunks)
+**Savings: ~40% on evaluator RAG context tokens; higher recall than vector-only**
 
-- Was: always return 5 chunks × ~200 tokens = 1000 tokens of policy context
-- Now: fetch 10, keep only relevant ones (distance < 0.35), cap at 3 compressed = ~450 tokens
-- Also: chunk compression strips 20–35% of boilerplate from each chunk
+- Hybrid BM25 + vector with RRF catches matches either signal alone would miss
+- Cohere cross-encoder reranking puts the genuinely-relevant chunks first, so a smaller top-N is enough
+- Parent-child means we embed precise 300-char children but send the evaluator the full parent section once (deduped) — better context, no duplicate fragments
+- Chunk compression strips 20–35% of boilerplate per chunk
 
-### 4. Gemini Implicit Caching
-**Savings: variable (automatic in Gemini 2.5+)**
+### 4. Adaptive retrieval depth (triage_confidence — now ACTIVE, not just logged)
+**Savings: ~70% fewer RAG tokens on high-confidence cases**
 
-Gemini 2.5+ automatically caches repeated context. No code changes needed — the SDK handles it. Usage is tracked via `usage_metadata.cached_content_token_count`.
+`triage_confidence` now actively scales RAG depth: `>0.95` fetches a single chunk (explicit violations need minimal grounding), `0.80–0.95` fetches the default 3, and `<0.80` widens to 5 and runs Haiku query expansion. Most real violations are explicit (high confidence), so the common case is the cheapest.
 
-### 5. triage_confidence Signal (future routing)
-**Current: logged only. Future: can gate incident draft.**
+### 5. Single-vendor extraction on Haiku (classifier + summariser)
+**Savings: consolidation + prompt caching on previously-uncached Gemini paths**
 
-Triage now returns a `confidence` float (0.0–1.0). Currently used for monitoring. Future use: if `flagged=True AND confidence > 0.90 AND evaluator.confidence == HIGH`, skip incident draft (already very certain — no need for a second expensive Sonnet call).
+The classifier and summariser moved from Gemini `generate_content` to Bedrock Haiku tool use. This unifies token tracking, enables Bedrock prompt caching on their static prefixes, and removes a second vendor SDK from the hot path. (Gemini remains only for the real-time voice WebSocket.)
 
-**Why we did NOT add a Haiku evaluator path**: the evaluator requires the full transcript to extract `trigger_phrases`, `suppression_factors`, and `bsp_mention_excerpt`. Running Haiku on just the action_summary would produce fabricated phrases — unacceptable in a legal compliance context.
+**Why we did NOT add a Haiku evaluator path**: the evaluator requires the full transcript to extract `trigger_phrases`, `suppression_factors`, and `bsp_mention_excerpt`. Running Haiku on just the action_summary would produce fabricated phrases — unacceptable in a legal compliance context. The evaluator always runs Sonnet on the full transcript; `triage_confidence` only tunes *retrieval depth*, never the evaluator itself.
 
 ### What we chose NOT to do (and why)
 | Approach | Why skipped |
@@ -324,11 +351,24 @@ A `ContextVar`-based request-scoped accumulator. Each LLM call records its usage
 start_usage()
 
 # After each LLM call (automatic — called inside triage, evaluator, etc.)
-record_converse(response)   # Bedrock Converse API
-record_gemini(response)     # Google Gemini
+record_and_print_converse("evaluator", response)  # Bedrock Converse — records + prints
 
 # At route return
 token_usage = TokenUsage(**get_usage())
+```
+
+> All active token recording goes through `record_and_print_converse` (every Bedrock stage). `record_gemini()` still exists in `usage.py` for the Gemini response shape but is **not currently called** — the only remaining Gemini path is the real-time voice WebSocket, whose usage is tracked by the shared `sena_common.voice` engine, not this accumulator.
+
+**Per-stage stdout logging**: every Bedrock stage now calls `record_and_print_converse(stage, response)`, which records the usage **and** prints a one-line breakdown to stdout (captured in Docker logs). All 8 Bedrock stages print: `triage`, `evaluator`, `summary`, `incident_draft`, `drafter`, `classifier`, `summarizer`, `voice_drafter`.
+
+```text
+[tokens/triage      ] in=  245  out=  48  cached=1,840 (78% hit)  total=293
+[tokens/evaluator   ] in=4,523  out= 312  cached=3,102 (41% hit)  total=4,835
+```
+
+Tail them live:
+```bash
+docker compose -f docker-compose.deploy.yml logs -f case-review | grep "\[tokens/"
 ```
 
 **Thread safety**: pipeline stages run via `asyncio.to_thread` (blocking Bedrock SDK calls offloaded to a thread pool). The accumulator uses in-place dict mutation so changes from worker threads are visible to the asyncio context. A `threading.Lock` guards concurrent stage writes.
@@ -408,11 +448,14 @@ Classify a raw paragraph into NDIS case note fields.
 
 ### Voice Dictation
 
-#### `WebSocket /v1/voice/session`
-Real-time Gemini Live dictation session. Worker speaks; AI assistant guides them through form fields conversationally.
+#### `POST /v1/restrictive-practices/voice/session`
+Create a tenant-scoped RP voice session; returns a `session_id` and the WebSocket URL.
 
-#### `POST /v1/voice/finalize`
-Close a voice session and retrieve the collected note.
+#### `WebSocket /v1/restrictive-practices/voice/ws/{session_id}`
+Real-time Gemini Live dictation. Worker speaks; the assistant guides them through the case-note form conversationally.
+
+#### `POST /v1/case-review/voice/session` · `POST /v1/case-review/voice/draft`
+Case-review voice session create + transcript-to-fields draft (Gemini Live).
 
 ---
 
@@ -433,22 +476,28 @@ SENA_AI_AWS_REGION=ap-southeast-2
 SENA_AI_AWS_ACCESS_KEY_ID=
 SENA_AI_AWS_SECRET_ACCESS_KEY=
 
-# Models
+# Models (extraction → Haiku, reasoning → Sonnet)
 SENA_AI_TRIAGE_MODEL=au.anthropic.claude-haiku-4-5-20251001-v1:0
 SENA_AI_EVALUATOR_MODEL=au.anthropic.claude-sonnet-4-6
+SENA_AI_CLASSIFIER_MODEL=au.anthropic.claude-haiku-4-5-20251001-v1:0
+SENA_AI_SUMMARIZER_MODEL=au.anthropic.claude-haiku-4-5-20251001-v1:0
 SENA_AI_EMBEDDING_MODEL=cohere.embed-english-v3
+# Reranker model is not env-configurable — pinned to cohere.rerank-v3-5 in embedder.py
 
 # RAG tuning
-SENA_AI_RAG_TOP_K_FETCH=10          # fetch this many candidates
-SENA_AI_RAG_MAX_CHUNKS=3            # keep at most this many after filtering
-SENA_AI_RAG_SIMILARITY_THRESHOLD=0.35  # cosine distance cut-off
+SENA_AI_RAG_TOP_K_FETCH=10          # fetch this many candidates per signal
+SENA_AI_RAG_MAX_CHUNKS=3            # default top-N after rerank (normal-confidence path)
+SENA_AI_RAG_SIMILARITY_THRESHOLD=0.35  # cosine distance cut-off (legacy filter helper)
+# Adaptive-depth thresholds (>0.95 → top-1, <0.80 → top-5+expansion) are code
+# constants in rag.py (_HIGH_CONF_THRESHOLD / _LOW_CONF_THRESHOLD), not env vars.
 
-# Tiered routing
+# triage_confidence_threshold — retained in settings but NOT used for routing
+# (the rejected Haiku-evaluator path). Adaptive RAG depth uses the rag.py constants.
 SENA_AI_TRIAGE_CONFIDENCE_THRESHOLD=0.85
 
-# Gemini
+# Gemini (voice WebSocket only — classifier/summariser now run on Bedrock Haiku)
 SENA_AI_GEMINI_API_KEY=
-SENA_AI_GEMINI_MODEL_ID=gemini-3.5-flash
+SENA_AI_GEMINI_MODEL_ID=gemini-3.5-flash   # passed-and-ignored by classify/summarise
 SENA_AI_GEMINI_LIVE_MODEL_ID=gemini-3.1-flash-live-preview
 
 # Redis (dedicated instance, separate from onboarding)
@@ -484,13 +533,19 @@ Or via Docker Compose (always use `docker-compose.deploy.yml`, not `docker-compo
 docker compose -f docker-compose.deploy.yml up case-review
 ```
 
-### Ingest NDIS policies (run once, or when PDFs change)
+### Startup behaviour (automatic)
+On boot, `main.py`'s lifespan runs two steps before serving traffic:
+1. **`alembic upgrade head`** — applies any pending migrations (idempotent; safe every boot).
+2. **First-boot policy ingest** — if `rp_ndis_policy_chunks` is **empty**, it ingests the 5 NDIS PDFs with LLM-assisted chunking (~3–5 min). If the table already has rows it returns instantly. Failures are caught and logged — they never block startup.
+
+### Ingest NDIS policies (manual — only needed if PDFs change or to force re-ingest)
 ```bash
 cd services/case_review
-python scripts/ingest_ndis_policies.py
+python scripts/ingest_ndis_policies.py              # regex section detection (default)
+python scripts/ingest_ndis_policies.py --llm-assist # Haiku-assisted section detection
 ```
 
-This chunks the 5 NDIS PDFs, embeds each chunk via Cohere, and stores them in the `ndis_policy_chunks` pgvector table.
+This chunks the 5 NDIS PDFs into parent sections + embedded children, embeds children via Cohere, populates the BM25 `search_vector`, and upserts into the `rp_ndis_policy_chunks` pgvector table. Idempotent — safe to re-run.
 
 ---
 
@@ -502,11 +557,16 @@ This chunks the 5 NDIS PDFs, embeds each chunk via Cohere, and stores them in th
 
 | Table | Purpose |
 |-------|---------|
-| `ndis_policy_chunks` | NDIS policy text chunks with 1024-dim embeddings (HNSW cosine index) |
+| `rp_ndis_policy_chunks` | NDIS policy chunks: parent sections + embedded children. Columns include `embedding` HALFVEC(1024) (HNSW cosine, nullable for parents), `search_vector` TSVECTOR (GIN, BM25), `parent_chunk_id` (self-FK), `is_parent` |
 | `behaviour_support_plans` | Client BSP records for cross-check (Stage 4) |
-| `case_note_runs` | Audit log of every pipeline run (timing, verdict, alert status) |
+| `rp_case_note_runs` | Audit log of every pipeline run (timing, verdict, alert status) |
 
-**Migrations**: tables are created via SQLAlchemy `create_all()` on startup (no Alembic for the AI DB). If a column is missing in production, add it with an idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — do not run `alembic upgrade`.
+**Migrations**: managed by **Alembic** under `migrations/versions/` (`0001`→`0005`, single linear head). `main.py` runs `alembic upgrade head` on every startup — each migration is idempotent (`CREATE TABLE / ADD COLUMN ... IF NOT EXISTS`), so it is safe to run repeatedly.
+
+- **`0002`** creates `rp_ndis_policy_chunks` (id, chunk_id UNIQUE, text, embedding, HNSW index).
+- **`0005`** adds the hybrid-search + parent-child columns: `parent_chunk_id` (self-FK, `ON DELETE CASCADE`), `is_parent` (default false), `search_vector` (TSVECTOR + GIN index), a partial index on `parent_chunk_id`, backfills `search_vector` for existing rows, and relaxes `embedding` to nullable. **Purely additive — zero-downtime on a live DB.**
+
+`scripts/migrate_rag_schema.py` contains the same `0005` SQL as a standalone runner, for applying the schema change outside the Alembic flow if ever needed.
 
 ---
 
@@ -514,22 +574,24 @@ This chunks the 5 NDIS PDFs, embeds each chunk via Cohere, and stores them in th
 
 ```
 services/case_review/
-├── main.py                          # FastAPI app factory
+├── main.py                          # FastAPI app factory + lifespan (migrate + first-boot ingest)
 ├── core/
 │   └── settings.py                  # All env vars (pydantic-settings)
 ├── api/
 │   ├── routes.py                    # /context, /classify endpoints
-│   └── rp_routes.py                 # /evaluate, /draft, /bsp endpoints
+│   └── rp_routes.py                 # /evaluate, /draft, /bsp, /voice endpoints
 ├── models/
 │   ├── schemas.py                   # All Pydantic request/response models
-│   └── db.py                        # SQLAlchemy ORM (NDISPolicyChunk, BSP, CaseNoteRun)
+│   └── db.py                        # SQLAlchemy ORM (NDISPolicyChunk +parent/child/tsvector, BSP, CaseNoteRun)
+├── migrations/
+│   └── versions/                    # Alembic 0001→0005 (0005 = hybrid-search + parent-child schema)
 ├── services/
-│   ├── usage.py                     # ★ Token accumulator (ContextVar, thread-safe)
+│   ├── usage.py                     # ★ Token accumulator (ContextVar) + record_and_print_converse
 │   ├── pipeline/
 │   │   ├── graph.py                 # LangGraph wiring + run_pipeline()
-│   │   ├── triage.py                # Stage 1: Haiku YES/NO gate + confidence
-│   │   ├── rag.py                   # Stage 2: Smarter RAG (top-10→filter→top-3)
-│   │   ├── evaluator.py             # Stage 3: Sonnet compliance verdict
+│   │   ├── triage.py                # Stage 1: Haiku YES/NO gate + confidence (drives RAG depth)
+│   │   ├── rag.py                   # Stage 2: hybrid BM25+vector → RRF → rerank → parent-fetch
+│   │   ├── evaluator.py             # Stage 3: Sonnet verdict via tool-use structured output
 │   │   ├── cross_check.py           # Stage 4: SQL BSP lookup
 │   │   ├── summary.py               # Stage 5: Haiku supervisor summary
 │   │   ├── incident_draft.py        # Stage 6: Sonnet NDIS incident report
@@ -537,15 +599,16 @@ services/case_review/
 │   │   ├── style_examples.py        # Few-shot examples + style guides (cached)
 │   │   └── webhook.py               # Alert delivery (detached task)
 │   ├── ingestion/
-│   │   ├── embedder.py              # Cohere embed calls (async-safe via to_thread)
-│   │   └── chunker.py               # Recursive character splitter (1200 chars, 120 overlap)
+│   │   ├── embedder.py              # Cohere embed + rerank_chunks + upsert (search_vector/parent/child)
+│   │   └── chunker.py               # Semantic parent-child chunking (regex / Haiku --llm-assist)
 │   └── llm/
-│       ├── classifier.py            # Gemini classifier (record_gemini called)
-│       └── summarizer.py            # Gemini summariser (record_gemini called)
+│       ├── classifier.py            # Bedrock Haiku classifier (tool use + cachePoint)
+│       └── summarizer.py            # Bedrock Haiku summariser (tool use + cachePoint)
 ├── voice/
 │   └── drafter.py                   # Gemini Live WebSocket handler
 └── scripts/
-    └── ingest_ndis_policies.py      # One-time PDF → pgvector ingest
+    ├── ingest_ndis_policies.py      # PDF → pgvector ingest (--llm-assist optional)
+    └── migrate_rag_schema.py        # Standalone 0005 schema migration (Alembic alternative)
 ```
 
 ---
@@ -558,8 +621,9 @@ Based on what is actually implemented (not marketing numbers):
 |-------------|---------------|-------------------|
 | Haiku triage gate | Every call | 70% of notes skip Sonnet entirely |
 | Prompt caching | Cache hit within 5-min window | 40–60% on cached token cost |
-| Smarter RAG (top-3 compressed) | Every flagged note | ~40% on RAG context tokens |
-| Gemini implicit caching | Automatic (Gemini 2.5+) | Variable, uncontrolled |
+| Hybrid RAG + rerank + compression | Every flagged note | ~40% on RAG context tokens (fewer, better chunks) |
+| Adaptive retrieval depth | High-confidence flagged notes | ~70% fewer RAG tokens (top-1 vs top-3/5) |
+| Haiku for classify/summarise + caching | Context + classify endpoints | Single vendor; cacheable static prefixes |
 | **Combined (busy system)** | | **~35–50% overall cost reduction** |
 
 **To reach 10x cost reduction** you would need: pre-summarise the transcript before triage + evaluator (reducing 600-token input to ~100 tokens), high cache hit rates (>80%), and/or a fine-tuned smaller model replacing Sonnet. These have not been implemented due to compliance accuracy requirements.
