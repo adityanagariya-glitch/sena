@@ -16,7 +16,8 @@ services:
     ports:
       - "8080:80"
       - "8443:443"
-      - "3001:3001"   # Uptime Kuma — served at root on its own port
+      - "3001:3001"   # Uptime Kuma
+      - "3002:3002"   # Beszel — server monitoring
     volumes:
       - ./nginx/dev-api.isena.org.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
@@ -259,6 +260,25 @@ services:
       timeout: 30s
       retries: 5
 
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: beszel-hub
+    volumes:
+      - beszel-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "8090"
+    environment:
+      PORT: "8090"
+    networks:
+      - sena-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # ── Infrastructure ─────────────────────────────────────────────────────────
   redis-internal:
     image: redis:7.4-alpine
@@ -331,3 +351,4 @@ volumes:
   casenote-reports:
   casenote-trends:
   uptime-kuma-data:
+  beszel-data:
