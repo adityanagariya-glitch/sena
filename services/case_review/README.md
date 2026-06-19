@@ -536,7 +536,13 @@ docker compose -f docker-compose.deploy.yml up case-review
 ### Startup behaviour (automatic)
 On boot, `main.py`'s lifespan runs two steps before serving traffic:
 1. **`alembic upgrade head`** — applies any pending migrations (idempotent; safe every boot).
-2. **First-boot policy ingest** — if `rp_ndis_policy_chunks` is **empty**, it ingests the 5 NDIS PDFs with LLM-assisted chunking (~3–5 min). If the table already has rows it returns instantly. Failures are caught and logged — they never block startup.
+2. **First-boot policy ingest** — if `rp_ndis_policy_chunks` is **empty**, it ingests the 5 NDIS PDFs with LLM-assisted chunking (**~3–5 min on first boot**; Haiku generates optimal section boundaries for the most accurate parent-child split). If the table already has rows it returns instantly. Failures are caught and logged — they never block startup.
+
+**First Docker run will be slow** due to policy ingest. Monitor startup logs:
+```bash
+docker compose -f docker-compose.deploy.yml logs -f case-review | grep -E "\[startup\]|migration|NDIS|ingest"
+```
+Once you see `[startup] NDIS policy ingest complete`, the service is ready. Subsequent starts skip ingest entirely (table already has data).
 
 ### Ingest NDIS policies (manual — only needed if PDFs change or to force re-ingest)
 ```bash
@@ -546,6 +552,81 @@ python scripts/ingest_ndis_policies.py --llm-assist # Haiku-assisted section det
 ```
 
 This chunks the 5 NDIS PDFs into parent sections + embedded children, embeds children via Cohere, populates the BM25 `search_vector`, and upserts into the `rp_ndis_policy_chunks` pgvector table. Idempotent — safe to re-run.
+
+### Docker Testing
+
+The service runs behind nginx. Test endpoints via:
+
+**Health check** (runs immediately):
+```bash
+curl http://localhost/case-review/health/live
+# Expected: {"status":"ok","service":"case-review","version":"0.1.0"}
+```
+
+**Watch token logging live** (per-stage breakdown):
+```bash
+docker compose -f docker-compose.deploy.yml logs -f case-review 2>&1 | grep "\[tokens/"
+# Expected output:
+#   [tokens/triage      ] in=  245  out=  48  cached=1,840 (78% hit)  total=293
+#   [tokens/evaluator   ] in=4,523  out= 312  cached=3,102 (41% hit)  total=4,835
+```
+
+**Full pipeline test** — flagged note (triggers triage → RAG → evaluator):
+```bash
+curl -s -X POST http://localhost/case-review/v1/restrictive-practices/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transcript": "During the afternoon shift, participant became agitated. Staff physically held the participant by the arms and guided him to his bedroom, locking the door from the outside for approximately 20 minutes until he calmed down. No behaviour support plan was referenced.",
+    "worker_id": "worker-001",
+    "client_id": "client-001",
+    "case_note_id": "test-001",
+    "tenant_id": "tenant-test"
+  }' | python3 -m json.tool
+# Expected in response:
+#   verdict.outcome → "REPORTABLE_INCIDENT"
+#   detected_practice.category → "Physical Restraint"
+#   reporting_obligations.reporting_required → true
+#   token_usage.total_tokens → (sum across triage, evaluator, etc.)
+```
+
+**Clean note** (should exit at triage; no RAG or evaluator):
+```bash
+curl -s -X POST http://localhost/case-review/v1/restrictive-practices/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transcript": "Assisted participant with morning routine. Made breakfast together. Participant was in good spirits and chose to watch TV. Prompted hydration. Shift ended without incident.",
+    "worker_id": "worker-001",
+    "client_id": "client-001",
+    "case_note_id": "test-002",
+    "tenant_id": "tenant-test"
+  }' | python3 -m json.tool
+# Expected: verdict.outcome → "NOT_FLAGGED", minimal token usage
+```
+
+**Ambiguous note** (confidence < 0.80; triggers query expansion):
+```bash
+curl -s -X POST http://localhost/case-review/v1/restrictive-practices/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transcript": "Participant was upset after lunch. Staff redirected him to the lounge area and stayed nearby. He settled after some time.",
+    "worker_id": "worker-001",
+    "client_id": "client-001",
+    "case_note_id": "test-003",
+    "tenant_id": "tenant-test"
+  }' | python3 -m json.tool
+# Expected: triage.confidence < 0.80, RAG runs with 2 query expansions
+```
+
+**Check migration ran**:
+```bash
+docker compose -f docker-compose.deploy.yml logs case-review 2>&1 | grep -i "migration\|alembic"
+# Expected: lines showing "alembic upgrade head" and "database migrations applied"
+```
+
+**For production server** (replace `localhost` with `http://3.111.109.14:8080/case-review`):
+```bash
+curl http://3.111.109.14:8080/case-review/health/live
+```
 
 ---
 
