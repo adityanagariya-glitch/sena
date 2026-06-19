@@ -304,46 +304,45 @@ async def retrieve_policy_chunks(
         max_chunks,
     )
 
-    # Step 1: Embed primary query; for low-confidence cases also expand queries in parallel
+    # Step 1: Decide the query set. Low-confidence (ambiguous) notes get
+    # Haiku-expanded query variants so BOTH retrieval signals widen — not just
+    # keyword search. Normal/high-confidence paths use the single query.
     if confidence < _LOW_CONF_THRESHOLD:
-        query_embedding, extra_queries = await asyncio.gather(
-            embed_query(query_text),
-            _expand_query(query_text),
-        )
+        extra_queries = await _expand_query(query_text)
         all_queries = [query_text] + extra_queries
     else:
-        query_embedding = await embed_query(query_text)
         all_queries = [query_text]
 
-    # Step 2: Run BM25 + vector for all queries in parallel, then merge
-    search_tasks = []
-    for q_text in all_queries:
-        search_tasks.append(_bm25_search(q_text, db, limit=fetch_k))
-    # Vector search only uses embedding (all queries share the same embedding for simplicity)
-    search_tasks.append(_vector_search(query_embedding, db, limit=fetch_k))
+    # Embed EVERY query variant (search_query input type). Each variant gets its
+    # own embedding so the semantic (vector) search benefits from expansion too,
+    # not only BM25. Single-query path = one embed call (cost unchanged).
+    query_embeddings = await asyncio.gather(*[embed_query(q) for q in all_queries])
 
-    all_results = await asyncio.gather(*search_tasks)
-    vector_results = all_results[-1]
-    bm25_results_all = all_results[:-1]
+    # Step 2: For each query run BM25 (on text) + vector (on its own embedding),
+    # all in parallel. N queries → 2N searches.
+    bm25_tasks = [_bm25_search(q, db, limit=fetch_k) for q in all_queries]
+    vector_tasks = [_vector_search(emb, db, limit=fetch_k) for emb in query_embeddings]
 
-    # Flatten BM25 results from multiple queries (deduplicated inside RRF)
-    bm25_combined: list[NDISPolicyChunk] = []
-    seen_ids: set[str] = set()
-    for result_list in bm25_results_all:
-        for chunk in result_list:
-            if chunk.chunk_id not in seen_ids:
-                bm25_combined.append(chunk)
-                seen_ids.add(chunk.chunk_id)
+    all_results = await asyncio.gather(*bm25_tasks, *vector_tasks)
+    n = len(all_queries)
+    bm25_lists = all_results[:n]
+    vector_lists = all_results[n:]
+
+    # Distinct-chunk counts for logging only (RRF dedups internally)
+    vector_seen = {c.chunk_id for lst in vector_lists for c in lst}
+    bm25_seen = {c.chunk_id for lst in bm25_lists for c in lst}
 
     logger.info(
-        "rag.signals vector=%d bm25=%d (queries=%d)",
-        len(vector_results),
-        len(bm25_combined),
-        len(all_queries),
+        "rag.signals vector=%d bm25=%d (queries=%d, lists=%d)",
+        len(vector_seen),
+        len(bm25_seen),
+        n,
+        len(all_results),
     )
 
-    # Step 3: Merge with RRF
-    merged = _reciprocal_rank_fusion(vector_results, bm25_combined)
+    # Step 3: Merge EVERY ranked list with RRF. Each (query × signal) is its own
+    # list, so chunks surfaced by multiple variants or by both signals rank highest.
+    merged = _reciprocal_rank_fusion(*vector_lists, *bm25_lists)
 
     if not merged:
         logger.warning("rag.hybrid — no chunks retrieved, returning empty")
@@ -399,8 +398,8 @@ async def retrieve_policy_chunks(
     logger.info(
         "rag.hybrid → %d chunks (vector=%d bm25=%d merged=%d reranked=%d) categories=%s",
         len(result_chunks),
-        len(vector_results),
-        len(bm25_results),
+        len(vector_seen),
+        len(bm25_seen),
         len(merged),
         len(reranked_db_chunks),
         [c.category for c in result_chunks],

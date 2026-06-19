@@ -12,7 +12,7 @@ import json as _json
 import logging
 
 import boto3
-from sqlalchemy import func, text
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,7 +98,7 @@ def _rerank_sync(query: str, chunks: list[DocumentChunk], top_n: int) -> list[tu
     try:
         client = _get_rerank_client()
         response = client.rerank(
-            textSources=[{"type": "TEXT", "text": query}],
+            queries=[{"type": "TEXT", "textQuery": {"text": query}}],
             sources=[
                 {
                     "type": "INLINE",
@@ -122,7 +122,8 @@ def _rerank_sync(query: str, chunks: list[DocumentChunk], top_n: int) -> list[tu
                 },
             },
         )
-        ranked = response.get("rerankingResults", [])
+        # Bedrock Rerank returns "results": [{"index", "relevanceScore", "document"}]
+        ranked = response.get("results", [])
         return [(chunks[r["index"]], r["relevanceScore"]) for r in ranked]
 
     except Exception as exc:
