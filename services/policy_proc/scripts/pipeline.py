@@ -83,7 +83,7 @@ def run_pipeline(
 
     # Step 2: Classify
     try:
-        classification = classify(question)
+        classification = classify(question, recent_turns=recent_turns)
     except Exception as e:
         logger.error(f"Classification failed: {e}")
         classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error"}
@@ -131,7 +131,7 @@ def run_pipeline(
     
     # Step 3.5: Rewrite query for better retrieval
     try:
-        rewritten_query = rewrite_query(question, recent_turns)
+        rewritten_query, _ = rewrite_query(question, recent_turns)
     except Exception as e:
         logger.warning(f"Query rewriting failed: {e} — using original")
         rewritten_query = question
@@ -168,7 +168,6 @@ def run_pipeline(
     full_answer  = []
     blocked      = False
     block_reason = None
-    usage        = {"input_tokens": 0, "output_tokens": 0}
 
     for chunk in generate_stream(
         question=question,
@@ -179,11 +178,6 @@ def run_pipeline(
         ctype = chunk.get("type")
         if ctype == "token":
             full_answer.append(chunk.get("text", ""))
-        elif ctype == "usage":
-            usage = {
-                "input_tokens": chunk.get("input_tokens", 0),
-                "output_tokens": chunk.get("output_tokens", 0),
-            }
         elif ctype == "blocked":
             blocked      = True
             block_reason = "GUARDRAIL_BLOCKED"
@@ -224,70 +218,270 @@ def run_pipeline(
         "block_reason":block_reason,
         "classification": classification,
         "sources":     [s.split("/")[-1] for s in sources],
-        "session_id":  session_id,
-        "usage":       usage,
+        "session_id":  session_id
     }
 
 
+def run_pipeline_stream(
+    question:    str,
+    session_id:  str  = None,
+    user_id:     str  = None,
+    org_id:      str  = None,
+    role:        str  = None,
+    is_new_chat: bool = False,
+    doc_type:    str  = None,
+):
+    """
+    True-streaming version of run_pipeline. Yields SSE-ready event dicts:
+        {type: meta,    session_id, label, sources}
+        {type: token,   text}
+        {type: done,    stop_reason}
+        {type: usage,   input_tokens, output_tokens}   ← aggregate across all LLM calls
+        {type: blocked, text, label}
+        {type: error,   text}
+
+    Tokens are forwarded word-by-word as they arrive from Bedrock.
+    Memory is saved after the last event is yielded.
+    """
+    total_usage = {"input_tokens": 0, "output_tokens": 0}
+
+    def _add(u):
+        total_usage["input_tokens"]  += u.get("input_tokens",  0)
+        total_usage["output_tokens"] += u.get("output_tokens", 0)
+
+    # ── Validation ──────────────────────────────────────────────────────────────
+    if not question or not question.strip():
+        yield {"type": "error", "text": "Please enter a valid question."}
+        return
+    if len(question) > 2000:
+        yield {"type": "error", "text": "Your question is too long. Please keep it under 2000 characters."}
+        return
+
+    question   = question.strip()
+    session_id = session_id or str(uuid.uuid4())
+    user_id    = user_id    or "anonymous"
+
+    logger.info(f"Stream pipeline — user: {user_id} | session: {session_id} | q: {question[:80]}")
+
+    if is_new_chat:
+        try:
+            create_session(user_id, session_id, question)
+        except Exception as e:
+            logger.error(f"Session create failed: {e}")
+
+    # ── Step 1: Memory ──────────────────────────────────────────────────────────
+    try:
+        memory_ctx    = get_memory_context(user_id, session_id, question)
+        recent_turns  = memory_ctx["recent_turns"]
+        agentcore_ctx = memory_ctx["agentcore_ctx"]
+    except Exception as e:
+        logger.error(f"Memory read failed: {e}")
+        recent_turns  = ""
+        agentcore_ctx = ""
+
+    # ── Step 2: Classify ────────────────────────────────────────────────────────
+    try:
+        classification = classify(question, recent_turns=recent_turns)
+        _add(classification.get("usage", {}))
+    except Exception as e:
+        logger.error(f"Classification failed: {e}")
+        classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error", "usage": {}}
+
+    label = classification.get("label")
+
+    # ── Step 3: Block ───────────────────────────────────────────────────────────
+    blocked, block_message = should_block(classification)
+    if blocked:
+        logger.info(f"Blocked — {label}")
+        yield {"type": "meta",    "session_id": session_id, "label": label, "sources": []}
+        yield {"type": "blocked", "text": block_message, "label": label}
+        yield {"type": "usage",   "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+        return
+
+    # ── Step 3a: Greeting ────────────────────────────────────────────────────────
+    if label == "GREETING":
+        logger.info("Greeting — skipping retrieval, streaming direct response")
+        yield {"type": "meta", "session_id": session_id, "label": label, "sources": []}
+        full_answer = []
+        for chunk in generate_stream(question=question, context="", recent_turns=recent_turns, agentcore_ctx=agentcore_ctx):
+            ctype = chunk.get("type")
+            if ctype == "token":
+                full_answer.append(chunk.get("text", ""))
+                yield chunk
+            elif ctype == "usage":
+                _add(chunk)
+            elif ctype in ("done", "blocked", "error"):
+                yield chunk
+        yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+        try:
+            save_memory(user_id, session_id, question, "".join(full_answer).strip(), [])
+        except Exception as e:
+            logger.error(f"Memory save failed for greeting: {e}")
+        return
+
+    # ── Step 3.5: Rewrite ───────────────────────────────────────────────────────
+    try:
+        rewritten_query, rewriter_usage = rewrite_query(question, recent_turns)
+        _add(rewriter_usage)
+    except Exception as e:
+        logger.warning(f"Query rewriting failed: {e} — using original")
+        rewritten_query = question
+
+    # ── Step 4: Retrieve ────────────────────────────────────────────────────────
+    try:
+        _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
+    except Exception as e:
+        logger.error(f"Retrieval failed: {e}")
+        yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
+        yield {"type": "error", "text": MESSAGES["ERROR"]}
+        return
+
+    # ── Step 5: Empty context ───────────────────────────────────────────────────
+    if is_context_empty(context):
+        logger.info("Context empty — returning NOT_IN_KB")
+        yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
+        yield {"type": "token", "text": MESSAGES["NOT_IN_KB"]}
+        yield {"type": "done",  "stop_reason": "end_turn"}
+        yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+        return
+
+    # ── Meta event (sources now known) ──────────────────────────────────────────
+    clean_sources = [s.split("/")[-1] for s in sources]
+    yield {"type": "meta", "session_id": session_id, "label": label, "sources": clean_sources}
+
+    # ── Step 6: Stream generation ───────────────────────────────────────────────
+    full_answer  = []
+    is_blocked   = False
+
+    for chunk in generate_stream(
+        question      = question,
+        context       = context,
+        recent_turns  = recent_turns,
+        agentcore_ctx = agentcore_ctx,
+    ):
+        ctype = chunk.get("type")
+        if ctype == "token":
+            full_answer.append(chunk.get("text", ""))
+            yield chunk
+        elif ctype == "usage":
+            _add(chunk)
+        elif ctype == "blocked":
+            is_blocked = True
+            full_answer.append(chunk.get("text", MESSAGES["BLOCKED"]))
+            yield chunk
+        elif ctype == "done":
+            yield chunk
+        elif ctype == "error":
+            is_blocked = True
+            full_answer.append(chunk.get("text", MESSAGES["ERROR"]))
+            yield chunk
+
+    yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+
+    # ── Step 7: Save memory (after all events are yielded) ──────────────────────
+    try:
+        final_answer = "".join(full_answer).strip()
+        if final_answer and not is_blocked:
+            save_memory(user_id, session_id, question, final_answer, clean_sources)
+    except Exception as e:
+        logger.error(f"Memory save failed: {e}")
+
+    logger.info(f"Stream pipeline complete — blocked: {is_blocked}")
+
+
 if __name__ == "__main__":
-    # # Test org isolation
-    # print("\n=== ORG_SUNRISE QUERY ===")
-    # result = run_pipeline("what is the dignity of risk policy?", user_id="test-user", session_id=str(uuid.uuid4()), org_id="org_sunrise", is_new_chat=True)
-    # print(f"Answer: {result['answer'][:200]}")
-    # print(f"Sources: {result['sources']}")
+    import logging as _logging
 
-    # print("\n=== ORG_HORIZONS QUERY ===")
-    # result = run_pipeline("what is the leave policy?", user_id="test-user", session_id=str(uuid.uuid4()), org_id="org_horizons", is_new_chat=True)
-    # print(f"Answer: {result['answer'][:200]}")
-    # print(f"Sources: {result['sources']}")
+    # Buffer log records per turn; flush them after the metadata block so they
+    # never interleave with streaming tokens.
+    class _TurnBuffer(_logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.lines = []
+            self.setFormatter(_logging.Formatter("    %(name)s — %(message)s"))
+        def emit(self, record):
+            self.lines.append(self.format(record))
+        def flush_turn(self):
+            if self.lines:
+                print("  · Log")
+                for ln in self.lines:
+                    print(ln)
+            self.lines.clear()
 
-    # print("\n=== NDIS ONLY QUERY ===")
-    # result = run_pipeline("what is the safeguarding policy?", user_id="test-user", session_id=str(uuid.uuid4()), org_id="org_sunrise", is_new_chat=True)
-    # print(f"Answer: {result['answer'][:200]}")
-    # print(f"Sources: {result['sources']}")
-
-    # print("\n=== CROSS ORG TEST (org_sunrise asking org_horizons question) ===")
-    # result = run_pipeline("what is the allowances policy?", user_id="test-user", session_id=str(uuid.uuid4()), org_id="org_sunrise", is_new_chat=True)
-    # print(f"Answer: {result['answer'][:200]}")
-    # print(f"Sources: {result['sources']}")
-
+    _root = _logging.getLogger()
+    for _h in _root.handlers[:]:
+        _root.removeHandler(_h)
+    _buf = _TurnBuffer()
+    _root.addHandler(_buf)
+    _root.setLevel(_logging.INFO)
 
     test_user_id    = "test-user"
     test_session_id = str(uuid.uuid4())
     is_new_chat     = True
 
-    print(f"Session ID: {test_session_id}")
-    print("Type 'quit' to exit, 'new' to start new chat, 'history' to see turns\n")
+    SEP = "─" * 60
+
+    print(SEP)
+    print(f"  Session : {test_session_id}")
+    print(f"  Commands: quit | new | history")
+    print(SEP + "\n")
 
     while True:
         q = input("You: ").strip()
+        if not q:
+            continue
 
         if q.lower() == "quit":
+            print("\nGoodbye.\n")
             break
 
         elif q.lower() == "new":
             test_session_id = str(uuid.uuid4())
             is_new_chat     = True
-            print(f"New session: {test_session_id}\n")
+            print(f"\n  New session: {test_session_id}\n")
             continue
 
         elif q.lower() == "history":
             turns = get_turns(test_session_id)
-            print(f"\n--- Chat History ({len(turns)} turns) ---")
-            for t in turns:
-                print(f"Q: {t['question']}")
-                print(f"A: {t['answer'][:150]}...")
-                print()
+            print(f"\n{SEP}")
+            print(f"  Chat history ({len(turns)} turns)")
+            print(SEP)
+            for i, t in enumerate(turns, 1):
+                print(f"  [{i}] You : {t['question']}")
+                print(f"       Bot : {t['answer'][:120]}{'...' if len(t['answer']) > 120 else ''}")
+            print(SEP + "\n")
             continue
 
-        result = run_pipeline(
+        label   = ""
+        sources = []
+        in_tok  = 0
+        out_tok = 0
+        _buf.lines.clear()   # discard any stray logs before this turn starts
+
+        print("\nBot: ", end="", flush=True)
+        for event in run_pipeline_stream(
             question    = q,
             session_id  = test_session_id,
             user_id     = test_user_id,
-            is_new_chat = is_new_chat
-        )
+            is_new_chat = is_new_chat,
+        ):
+            etype = event.get("type")
+            if etype == "meta":
+                label   = event.get("label", "")
+                sources = event.get("sources", [])
+            elif etype == "token":
+                print(event["text"], end="", flush=True)
+            elif etype in ("blocked", "error"):
+                print(event.get("text", ""), end="", flush=True)
+            elif etype == "usage":
+                in_tok  = event.get("input_tokens",  0)
+                out_tok = event.get("output_tokens", 0)
 
-        is_new_chat = False  # only True on first question
+        is_new_chat = False
 
-        print(f"\nBot: {result['answer']}")
-        print(f"[{result['classification'].get('label')} | Sources: {result['sources']}]\n")
+        src_str = ", ".join(sources) if sources else "—"
+        print(f"\n\n  Label  : {label}")
+        print(f"  Sources: {src_str}")
+        print(f"  Tokens : {in_tok:,} in  /  {out_tok:,} out")
+        _buf.flush_turn()
+        print()

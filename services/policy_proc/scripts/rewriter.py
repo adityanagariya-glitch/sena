@@ -62,13 +62,13 @@ def _is_valid_rewrite(rewritten: str) -> bool:
         return False
     return True
 
-def rewrite_query(question: str, recent_turns: str = "") -> str:
+def rewrite_query(question: str, recent_turns: str = "") -> tuple:
     """
     Rewrites user question into optimised KB search query using Nova Lite.
-    Falls back to original question on error.
+    Returns (rewritten_query, usage_dict). Falls back to original question on error.
     """
     if not question or not question.strip():
-        return question
+        return question, {"input_tokens": 0, "output_tokens": 0}
     # Include recent turns context for follow-up questions
     context_section = ""
     if recent_turns:
@@ -87,15 +87,20 @@ Rewritten search query:"""
                 "temperature": 0.0
             }
         )
-        rewritten = response["output"]["message"]["content"][0]["text"].strip()
+        rewritten  = response["output"]["message"]["content"][0]["text"].strip()
+        raw_usage  = response.get("usage", {})
+        usage_dict = {
+            "input_tokens":  raw_usage.get("inputTokens",  0),
+            "output_tokens": raw_usage.get("outputTokens", 0),
+        }
         if not _is_valid_rewrite(rewritten):
             logger.warning(f"Invalid rewrite produced, using original query: '{rewritten}'")
-            return question
+            return question, usage_dict
         logger.info(f"Query rewritten: '{question[:60]}' -> '{rewritten}'")
-        return rewritten
+        return rewritten, usage_dict
     except Exception as e:
         logger.warning(f"Query rewriter error: {e} - using original query")
-        return question
+        return question, {"input_tokens": 0, "output_tokens": 0}
 
 if __name__ == "__main__":
     test_questions = [
@@ -112,7 +117,7 @@ if __name__ == "__main__":
     ]
 
     for q in test_questions:
-        rewritten = rewrite_query(q)
+        rewritten, _ = rewrite_query(q)
         print(f"Original:  {q}")
         print(f"Rewritten: {rewritten}")
         print()

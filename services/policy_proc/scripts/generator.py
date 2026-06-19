@@ -20,7 +20,6 @@ def generate_stream(
     Streams response token-by-token from Bedrock Claude.
     Returns generator events:
         {type: token, text: "..."}
-        {type: usage, input_tokens: N, output_tokens: N}
         {type: done, stop_reason: "..."}
         {type: blocked, text: "..."}
         {type: error, text: "..."}
@@ -125,13 +124,13 @@ Do not use the NOT_IN_KB message for greetings.
                         "type": "done",
                         "stop_reason": stop_reason
                     }
-            # Final metadata event — carries token usage for this generation.
+            # Token usage — emitted by Bedrock after messageStop
             elif "metadata" in event:
-                u = event["metadata"].get("usage", {}) or {}
+                usage = event["metadata"].get("usage", {})
                 yield {
                     "type": "usage",
-                    "input_tokens": u.get("inputTokens", 0),
-                    "output_tokens": u.get("outputTokens", 0),
+                    "input_tokens":  usage.get("inputTokens",  0),
+                    "output_tokens": usage.get("outputTokens", 0),
                 }
     # Error handling
     except Exception as e:
