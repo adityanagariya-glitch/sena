@@ -318,15 +318,21 @@ async def retrieve_policy_chunks(
     # not only BM25. Single-query path = one embed call (cost unchanged).
     query_embeddings = await asyncio.gather(*[embed_query(q) for q in all_queries])
 
-    # Step 2: For each query run BM25 (on text) + vector (on its own embedding),
-    # all in parallel. N queries → 2N searches.
-    bm25_tasks = [_bm25_search(q, db, limit=fetch_k) for q in all_queries]
-    vector_tasks = [_vector_search(emb, db, limit=fetch_k) for emb in query_embeddings]
+    # Step 2: For each query run BM25 (on text) + vector (on its own embedding).
+    # These run SEQUENTIALLY on purpose. A single AsyncSession multiplexes one
+    # connection and cannot service concurrent operations — asyncio.gather() of
+    # multiple db.execute() calls on the same session raises
+    #   "This session is provisioning a new connection; concurrent operations
+    #    are not permitted"
+    # the first time it runs on a cold (un-provisioned) session, which is exactly
+    # what happens on every real request (RAG is the first DB touch in the chain).
+    # The queries are GIN/HNSW-indexed and sub-10ms, and true parallelism is
+    # impossible over one connection anyway, so sequential is correct and cheap.
+    bm25_lists = [await _bm25_search(q, db, limit=fetch_k) for q in all_queries]
+    vector_lists = [await _vector_search(emb, db, limit=fetch_k) for emb in query_embeddings]
 
-    all_results = await asyncio.gather(*bm25_tasks, *vector_tasks)
     n = len(all_queries)
-    bm25_lists = all_results[:n]
-    vector_lists = all_results[n:]
+    all_results = bm25_lists + vector_lists  # retained for the signal-count log below
 
     # Distinct-chunk counts for logging only (RRF dedups internally)
     vector_seen = {c.chunk_id for lst in vector_lists for c in lst}
