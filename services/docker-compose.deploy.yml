@@ -84,7 +84,12 @@ services:
     env_file:
       - ../.env
     environment:
+      # core/settings.py reads SENA_AI_AI_DB_URL (alembic migrations, api/deps.py)
       SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
+      # config.py reads SENA_AI_RP_DATABASE_URL (db/session.py, ingest, pipeline,
+      # embedder, chunker). MUST match the DB above — without it the runtime data
+      # path falls back to its localhost:5433 default and cannot reach the DB.
+      SENA_AI_RP_DATABASE_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
       SENA_AI_CASE_REVIEW_REDIS_URL: redis://redis-internal:6979/1
     expose:
       - "8002"

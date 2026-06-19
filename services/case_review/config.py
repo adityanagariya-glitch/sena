@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # case_review reads the repo-root .env (/home/main/SENA/.env). In Docker the path
@@ -34,8 +34,15 @@ class Settings(BaseSettings):
     s3_bucket: str = Field(default="", validation_alias="S3_BUCKET")
     s3_public_base_url: str = Field(default="", validation_alias="S3_PUBLIC_BASE_URL")
 
-    # Database
-    rp_database_url: str = "postgresql+asyncpg://sena_ai:sena_ai@localhost:5433/sena_ai"
+    # Database — the runtime data path (db/session.py, ingest, pipeline, embedder).
+    # Reads SENA_AI_RP_DATABASE_URL if set, else falls back to the shared
+    # SENA_AI_AI_DB_URL that core/settings.py + compose already define. This keeps
+    # the two settings objects pointing at the SAME DB so they can never silently
+    # drift (the cause of the localhost:5433 connection-refused bug).
+    rp_database_url: str = Field(
+        default="postgresql+asyncpg://sena_ai:sena_ai@localhost:5433/sena_ai",
+        validation_alias=AliasChoices("SENA_AI_RP_DATABASE_URL", "SENA_AI_AI_DB_URL"),
+    )
 
     # Embedding model (Bedrock)
     embedding_model: str = "cohere.embed-english-v3"

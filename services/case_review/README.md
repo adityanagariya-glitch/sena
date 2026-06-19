@@ -545,13 +545,19 @@ docker compose -f docker-compose.deploy.yml logs -f case-review | grep -E "\[sta
 Once you see `[startup] NDIS policy ingest complete`, the service is ready. Subsequent starts skip ingest entirely (table already has data).
 
 ### Ingest NDIS policies (manual — only needed if PDFs change or to force re-ingest)
+
+**Must run inside the container.** The AI database (`ai-db-internal:5432`) is only on the Docker network — it is never published to the host, so a host-side `python scripts/...` cannot reach it (`ConnectionRefusedError` on `localhost:5433`).
+
 ```bash
-cd services/case_review
-python scripts/ingest_ndis_policies.py              # regex section detection (default)
-python scripts/ingest_ndis_policies.py --llm-assist # Haiku-assisted section detection
+cd services
+docker compose -f docker-compose.deploy.yml exec sena-case-review \
+  python scripts/ingest_ndis_policies.py --llm-assist   # Haiku-assisted section detection
+# drop --llm-assist for fast regex-only section detection
 ```
 
 This chunks the 5 NDIS PDFs into parent sections + embedded children, embeds children via Cohere, populates the BM25 `search_vector`, and upserts into the `rp_ndis_policy_chunks` pgvector table. Idempotent — safe to re-run.
+
+> **DB config note:** the runtime data path (`config.py` → `rp_database_url`) reads `SENA_AI_RP_DATABASE_URL`, falling back to the shared `SENA_AI_AI_DB_URL` (what compose sets). Both must resolve to `ai-db-internal:5432`. If you ever see the ingest or pipeline hit `localhost:5433`, that fallback chain is broken — check the container env.
 
 ### Docker Testing
 
