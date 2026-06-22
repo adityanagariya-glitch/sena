@@ -16,6 +16,7 @@
 | 4 | Auto-start the assistant on screen mount | **P1** | ALL flows |
 | 5 | Render voice updates LIVE (DOB date-picker bug) | **P1** | ALL flows |
 | 6 | Consent per-role access voice-fill (Fix 2) | P2 | client step 6 |
+| 7 | NDIS-plan `preferred_schedule` overlap validation (NEW) | P1 | client step 3 (NDIS plan) |
 
 **Architectural fact:** items 3–5 are **universal** — the backend runs one flow-agnostic engine for client, staff, and every future voice flow. Implement them once in the shared `voice_session_controller` / sink layer and they work for all flows. No per-flow duplication.
 
@@ -306,6 +307,24 @@ The four base consent booleans default to `false`; the backend prompt now treats
 
 ---
 
+# 7. NDIS-plan `preferred_schedule` overlap validation — client step 3 (P1 — NEW)
+
+**Gap:** the NDIS-plan step lets the agent set a support item's schedule by voice
+(`update_field(section="support_schedule", field="preferred_schedule", value="<DSL>")`). Same-day
+time slots must NOT overlap, but nothing enforces it today — the backend has no validator and the
+voice prompt's "soft" check is not a reliable gate. Per §1.7 this is **client-owned** validation.
+
+**Contract (the §3 voice-initiated path):** on an `update_field` `tool_request` for
+`preferred_schedule`, parse the proposed `value` — it REPLACES the whole row's schedule, so validate
+it against itself — and if any same-day ranges overlap, reply
+`{ok:false, code:"schedule_overlap", reason:"<spoken sentence>"}` (the agent reads `reason` verbatim).
+No overlap → your normal `{ok:true}`. Touching ranges (`end == start`) are OK.
+
+**Full spec — DSL grammar, the overlap algorithm, copy-paste Dart, and a test-vector table — is in
+`FLUTTER_DEV_PREFERRED_SCHEDULE_OVERLAP.md` (this folder).**
+
+---
+
 # Acceptance checklist (hand back when done)
 
 - [ ] **Staff:** 5 staff voice schemas send the exact `staff_*` stepIds; a full staff voice session works end-to-end (§1).
@@ -313,6 +332,7 @@ The four base consent booleans default to `false`; the backend prompt now treats
 - [ ] **Validation:** any screen validation error (e.g. under-18 DOB) makes the agent speak it and re-ask (§3).
 - [ ] **Auto-start:** voice screen greets within ~3 s on mount, no tap (§4).
 - [ ] **Live render:** voice-set DOB (and dropdowns/checkboxes) update the widget live (§5).
+- [ ] **NDIS plan:** overlapping same-day `preferred_schedule` slots are rejected with a spoken `reason`; non-overlapping (incl. touching) accepted (§7).
 
 ---
 
