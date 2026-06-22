@@ -61,7 +61,17 @@ def _add(input_tokens: int, output_tokens: int, cache_read: int, cache_creation:
         acc["output_tokens"] += int(output_tokens or 0)
         acc["cache_read_tokens"] += int(cache_read or 0)
         acc["cache_creation_tokens"] += int(cache_creation or 0)
-        acc["total_tokens"] = acc["input_tokens"] + acc["output_tokens"]
+        # total = TRUE tokens processed. Bedrock reports inputTokens as the
+        # UNCACHED remainder only; cacheRead + cacheWrite are separate fields for
+        # tokens that were also part of the prompt. Summing all four gives the
+        # real total the model processed (not the uncached slice, not a
+        # cost-discounted number).
+        acc["total_tokens"] = (
+            acc["input_tokens"]
+            + acc["output_tokens"]
+            + acc["cache_read_tokens"]
+            + acc["cache_creation_tokens"]
+        )
 
 
 def record_converse(response: dict[str, Any]) -> None:
@@ -84,24 +94,41 @@ def record_and_print_converse(stage: str, response: dict[str, Any]) -> None:
     """Record token usage AND print a per-stage breakdown to stdout.
 
     Prints to stdout so Docker container logs capture the line.
-    Format: [stage] in=N out=N cached=N (saved=N%) total=N
+    Format: [stage] in=N out=N cached=N (saved=N%) billed=N
+
+    Bedrock billing with prompt caching:
+      - Input tokens: full price
+      - Output tokens: full price
+      - Cache creation tokens: full price (one-time, on first request)
+      - Cache read tokens: 10% of normal price (on cache hits)
+
+    billed_total = inputTokens + outputTokens + cacheWriteInputTokens + (cacheReadInputTokens * 0.1)
     """
     usage = (response or {}).get("usage", {}) or {}
     inp = int(usage.get("inputTokens", 0) or 0)
     out = int(usage.get("outputTokens", 0) or 0)
     cached = int(usage.get("cacheReadInputTokens", 0) or 0)
     created = int(usage.get("cacheWriteInputTokens", 0) or 0)
-    total = inp + out
+
+    # Actual billed cost accounting for cache pricing
+    billed = inp + out + created + int(cached * 0.1)
 
     _add(inp, out, cached, created)
 
-    # Cache hit %: tokens served from cache vs total input tokens billed
-    cache_pct = int(cached / (inp + cached) * 100) if (inp + cached) > 0 else 0
-    cache_str = f"cached={cached:,} ({cache_pct}% hit)" if cached or created else "no cache"
-    created_str = f" created={created:,}" if created else ""
+    # Cache state: a read (hit) takes priority in the display, then a write
+    # (cache built this call), then no caching at all. Checking `cached` first
+    # (not `inp + cached`) is required — inp is always > 0, so an `inp + cached`
+    # guard would shadow the cache-write branch on every call.
+    if cached > 0:
+        cache_pct = int(cached / (inp + cached) * 100)
+        cache_str = f"cache_read={cached:,} ({cache_pct}% of input, saved ~{int(cached * 0.9):,})"
+    elif created > 0:
+        cache_str = f"cache_write={created:,}"
+    else:
+        cache_str = "no cache"
 
     print(
-        f"[tokens/{stage:<12}] in={inp:>5,}  out={out:>4,}  {cache_str}{created_str}  total={total:,}",
+        f"[tokens/{stage:<12}] in={inp:>5,}  out={out:>4,}  {cache_str}  billed={billed:>6,}",
         flush=True,
     )
 

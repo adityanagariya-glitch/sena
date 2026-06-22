@@ -223,15 +223,23 @@ def _run_evaluator(
     """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
 
-    # Prompt caching: static prefix (style guide + few-shot + policy context) cached;
-    # transcript + action_summary are dynamic (vary per call).
-    prefix_tmpl, suffix_tmpl = _EVALUATOR_PROMPT.split("{transcript}", 1)
+    # Prompt caching: cache ONLY the truly-static prefix (style guide + few-shot).
+    # The cache point splits at {policy_context} — NOT {transcript} — because the
+    # retrieved policy chunks vary per case note. If they sat before the cachePoint
+    # the ~25k-token prefix would be a unique cache WRITE (1.25x) almost every call
+    # and never get re-read. Splitting earlier means the static style-guide+few-shot
+    # block caches once and is re-read at 0.1x on every subsequent request, while the
+    # variable policy chunks + transcript + action_summary are billed at full rate
+    # after the cachePoint.
+    prefix_tmpl, suffix_tmpl = _EVALUATOR_PROMPT.split("{policy_context}", 1)
     static_prefix = prefix_tmpl.format(
         style_guide=STYLE_GUIDE,
         few_shot_eval_reasoning=FEW_SHOT_EVAL_REASONING,
-        policy_context=policy_context,
     )
-    dynamic_suffix = transcript + suffix_tmpl.format(action_summary=action_summary)
+    dynamic_suffix = policy_context + suffix_tmpl.format(
+        transcript=transcript,
+        action_summary=action_summary,
+    )
 
     response = client.converse(
         modelId=settings.evaluator_model,
