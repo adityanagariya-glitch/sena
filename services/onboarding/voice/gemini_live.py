@@ -1037,13 +1037,13 @@ class GeminiLiveSession:
                                 d_response,
                                 cache_read_tokens=d_cached,
                             )
-                                # Surface per-turn token usage to the client.
-                                await self._ws.send_text(json.dumps({
-                                    "type": "token_usage",
-                                    "input_tokens": d_prompt,
-                                    "output_tokens": d_response,
-                                    "total_tokens": d_prompt + d_response,
-                                }))
+                            # Surface per-turn token usage to the client.
+                            await self._ws.send_text(json.dumps({
+                                "type": "token_usage",
+                                "input_tokens": d_prompt,
+                                "output_tokens": d_response,
+                                "total_tokens": d_prompt + d_response,
+                            }))
                             d_prompt_audio = max(
                                 0,
                                 self._usage_cum_prompt_audio
