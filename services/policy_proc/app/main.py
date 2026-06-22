@@ -57,7 +57,7 @@ s3            = boto3.client("s3",            region_name=REGION)
 bedrock_agent = boto3.client("bedrock-agent", region_name=REGION)
 
 JWT_ENABLED = os.environ.get("JWT_ENABLED", "false").lower() == "true"
-JWT_SECRET  = os.environ.get("JWT_SECRET", "")  # Only used if policy validates JWTs locally
+JWT_SECRET  = os.environ.get("JWT_SECRET_KEY", "")  # Only used if policy validates JWTs locally
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL     = 3600  # seconds
 
