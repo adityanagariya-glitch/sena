@@ -20,6 +20,9 @@ GUARDRAIL_ID      = os.environ.get("GUARDRAIL_ID", "j9x9dysm5m3h")
 GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "DRAFT")
 
 # ── Models ──────────────────────────────────────────────────────────g the version:
+
+
+"au.anthropic.claude-sonnet-4-6"  # mis──────────
 CLASSIFIER_MODEL  = os.environ.get("CLASSIFIER_MODEL",  "apac.amazon.nova-micro-v1:0")
 RERANKER_MODEL    = os.environ.get("RERANKER_MODEL",     "apac.amazon.nova-micro-v1:0")
 REWRITER_MODEL    = os.environ.get("REWRITER_MODEL",     "apac.amazon.nova-lite-v1:0")
@@ -82,3 +85,14 @@ ORG_ADMIN   = os.environ.get("ORG_ADMIN", "superadmin,admin,coordinator").split(
 
 BACKEND_API_BASE = os.environ.get("BACKEND_API_BASE", "")
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
+
+# ── Langfuse ──────────────────────────────────────────────────────────────────
+# load_dotenv() here ensures env vars are available when config is imported
+# directly (e.g., python scripts/pipeline.py REPL). FastAPI main.py also calls
+# load_dotenv() early — calling it twice is safe (idempotent).
+from dotenv import load_dotenv
+load_dotenv()
+
+from langfuse import get_client
+
+langfuse = get_client()  # auto-disabled if LANGFUSE_PUBLIC_KEY / SECRET_KEY not set

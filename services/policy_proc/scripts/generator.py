@@ -1,6 +1,10 @@
 # generator.py
 import boto3
 import logging
+from datetime import datetime, timezone
+from langfuse import observe, get_client
+
+langfuse = get_client()
 
 from config import REGION, GENERATION_MODEL, MESSAGES
 from prompt import SYSTEM_PROMPTS, ACTIVE_PROMPT_VERSION
@@ -10,6 +14,7 @@ logger = logging.getLogger(__name__)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
 
 
+@observe(as_type="generation", name="generate", capture_input=False, capture_output=False)
 def generate_stream(
     question: str,
     context: str,
@@ -20,7 +25,6 @@ def generate_stream(
     Streams response token-by-token from Bedrock Claude.
     Returns generator events:
         {type: token, text: "..."}
-        {type: usage, input_tokens: N, output_tokens: N}
         {type: done, stop_reason: "..."}
         {type: blocked, text: "..."}
         {type: error, text: "..."}
@@ -68,6 +72,10 @@ If the question is a greeting or conversational message (hi, hello, good morning
 with no policy context available — respond warmly in 1 sentence and invite a policy question.
 Do not use the NOT_IN_KB message for greetings.
 """
+    langfuse.update_current_generation(model=GENERATION_MODEL, input=question)
+    _answer_parts = []
+    _first_token = True
+
     # Streaming generation
     try:
         response = bedrock_runtime.converse_stream(
@@ -104,6 +112,12 @@ Do not use the NOT_IN_KB message for greetings.
             if "contentBlockDelta" in event:
                 delta = event["contentBlockDelta"]["delta"]
                 if "text" in delta:
+                    if _first_token:
+                        langfuse.update_current_generation(
+                            completion_start_time=datetime.now(timezone.utc)
+                        )
+                        _first_token = False
+                    _answer_parts.append(delta["text"])
                     yield {
                         "type": "token",
                         "text": delta["text"]
@@ -125,13 +139,19 @@ Do not use the NOT_IN_KB message for greetings.
                         "type": "done",
                         "stop_reason": stop_reason
                     }
-            # Final metadata event — carries token usage for this generation.
+            # Token usage — emitted by Bedrock after messageStop
             elif "metadata" in event:
-                u = event["metadata"].get("usage", {}) or {}
+                usage = event["metadata"].get("usage", {})
+                in_tok  = usage.get("inputTokens",  0)
+                out_tok = usage.get("outputTokens", 0)
+                langfuse.update_current_generation(
+                    output="".join(_answer_parts),
+                    usage_details={"input": in_tok, "output": out_tok},
+                )
                 yield {
                     "type": "usage",
-                    "input_tokens": u.get("inputTokens", 0),
-                    "output_tokens": u.get("outputTokens", 0),
+                    "input_tokens":  in_tok,
+                    "output_tokens": out_tok,
                 }
     # Error handling
     except Exception as e:

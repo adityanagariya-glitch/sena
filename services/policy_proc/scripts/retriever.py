@@ -3,7 +3,10 @@ import boto3
 import json
 import logging
 import os
-import re 
+import re
+from langfuse import observe, get_client
+
+langfuse = get_client()
 
 from config import (
     REGION,
@@ -345,6 +348,7 @@ Chunks:
     '''
 
 
+@observe(name="retrieve", capture_input=False, capture_output=False)
 def retrieve(question: str, org_id: str = None, role: str = None, doc_type: str = None) -> tuple[list, str, list]:
     """
     Retrieves relevant chunks from Bedrock KB then reranks using Nova Micro.
@@ -441,6 +445,19 @@ def retrieve(question: str, org_id: str = None, role: str = None, doc_type: str 
                 f"  [{i+1}] OrigScore: {orig_score} | "
                 f"AmazonScore: {amazon_score} | {src.split('/')[-1]}"
             )
+
+        langfuse.update_current_span(
+            input=question,
+            output=[s.split("/")[-1] for s in sources],
+            metadata={
+                "chunks_retrieved": len(all_chunks),
+                "chunks_after_noise_filter": len(content_chunks),
+                "chunks_returned": len(reranked_chunks),
+                "rerank_provider": selected_provider,
+                "org_id": org_id,
+                "doc_type": doc_type,
+            },
+        )
 
         return reranked_chunks, context, sources
 
