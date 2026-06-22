@@ -193,8 +193,7 @@ class GeminiLiveService:
                     d_out = max(0, self._usage_cum_response - self._usage_emitted_response)
                     self._usage_emitted_prompt = self._usage_cum_prompt
                     self._usage_emitted_response = self._usage_cum_response
-                    if d_in or d_out:
-                        log_token_usage("voice_live", d_in, d_out)
+                    log_token_usage("voice_live", d_in, d_out)
                     yield {
                         "type": "turn_complete",
                         "token_usage": {
