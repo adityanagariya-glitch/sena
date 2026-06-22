@@ -43,11 +43,15 @@ def _run(inputs: dict | None) -> ToolResult:
     if "guardian" in roles or user_type == "guardian":
         path = "/mobile/visitor/clients/{clientId}"
         placeholders = {"clientId": client_id}
+    elif staff_type in ("support_worker", "isw") or user_type in ("staff", "isw"):
+        # Support workers (including ISWs) use the mobile endpoint for their assigned clients
+        path = "/mobile/visitor/clients/{clientId}"
+        placeholders = {"clientId": client_id}
     elif "support_coordinator" in roles or "support coordinator" in " ".join(roles):
         path = "/organization/support-coordinator/client/{id}"
         placeholders = {"id": client_id}
     else:
-        # admin / staff default
+        # admin / client default
         path = "/organization/client/get/{id}"
         placeholders = {"id": client_id}
 
