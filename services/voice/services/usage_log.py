@@ -20,10 +20,13 @@ def log_token_usage(
     cache_write_tokens: int = 0,
 ) -> None:
     """Log per-stage token usage with optional cache metrics (logs only, not API)."""
+    import sys
     inp = int(input_tokens or 0)
     out = int(output_tokens or 0)
     cached_read = int(cache_read_tokens or 0)
     cached_write = int(cache_write_tokens or 0)
+    sys.stderr.write(f"[DEBUG] log_token_usage called: stage={stage} in={inp} out={out}\n")
+    sys.stderr.flush()
 
     # Cache state: read (hit) takes priority, then write, then no cache
     if cached_read > 0:
