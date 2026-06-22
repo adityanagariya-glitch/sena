@@ -1031,6 +1031,12 @@ class GeminiLiveSession:
                             d_prompt = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
                             d_response = max(0, self._usage_cum_response - self._usage_emitted_response)
                             d_cached = max(0, self._usage_cum_cached - self._usage_emitted_cached)
+                            log.info(
+                                "token_delta turn=%d in=%d out=%d cached=%d cum_in=%d cum_out=%d session=%s",
+                                self._turn_id, d_prompt, d_response, d_cached,
+                                self._usage_cum_prompt, self._usage_cum_response,
+                                self._session_id,
+                            )
                             log_token_usage(
                                 "onboarding_live",
                                 d_prompt,

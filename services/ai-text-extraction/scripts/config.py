@@ -48,7 +48,11 @@ class DocumentConfig:
     """Supported document format settings."""
 
     # Accepted file extensions
-    supported_extensions: tuple = (".jpg", ".jpeg", ".png", ".pdf", ".docx")
+    supported_extensions: tuple = (
+        ".jpg", ".jpeg", ".png", ".webp",
+        ".heif", ".heic", ".avif",
+        ".pdf", ".docx",
+    )
 
 
 @dataclass(frozen=True)

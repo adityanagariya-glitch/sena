@@ -1,15 +1,19 @@
 """Per-API token-usage logging for the onboarding service.
 
-Prints a single line per LLM call/turn to stdout (captured in Docker logs), in
-the same shape used across the SENA AI services:
+Emits a single structured log line per LLM call/turn, in the same shape used
+across the SENA AI services:
 
-    [tokens/<stage>] in=<input> out=<output> <cache_info> total=<input+output>
+    [tokens/<stage>] in=<input> out=<output> <cache_info> billed=<billed>
 
-Cache info is logged (e.g. "cache_read=X" or "cache_write=X") but NOT included
-in the API response — the response keeps total=input+output only.
+Cache info is logged (e.g. "cache_read=X") but NOT included in the API
+response — the response keeps total=input+output only.
 """
 
 from __future__ import annotations
+
+import logging
+
+_log = logging.getLogger("sena.tokens")
 
 
 def log_token_usage(
@@ -37,7 +41,7 @@ def log_token_usage(
     # Billed cost: input + output + cache_write + (cache_read * 0.1)
     billed = inp + out + cached_write + int(cached_read * 0.1)
 
-    print(
-        f"[tokens/{stage}] in={inp:,}  out={out:,}  {cache_str}  billed={billed:,}",
-        flush=True,
+    _log.info(
+        "[tokens/%s] in=%s  out=%s  %s  billed=%s",
+        stage, f"{inp:,}", f"{out:,}", cache_str, f"{billed:,}",
     )
