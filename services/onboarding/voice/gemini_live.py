@@ -92,6 +92,8 @@ if TYPE_CHECKING:
 
 import structlog
 
+from services.usage_log import log_token_usage
+
 log = structlog.get_logger(__name__)
 
 _SILENCE_POLL_SEC = 2.0  # silence monitor check interval
@@ -1029,6 +1031,20 @@ class GeminiLiveSession:
                             d_prompt = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
                             d_response = max(0, self._usage_cum_response - self._usage_emitted_response)
                             d_cached = max(0, self._usage_cum_cached - self._usage_emitted_cached)
+                            if d_prompt or d_response or d_cached:
+                                log_token_usage(
+                                    "onboarding_live",
+                                    d_prompt,
+                                    d_response,
+                                    cache_read_tokens=d_cached,
+                                )
+                                # Surface per-turn token usage to the client.
+                                await self._ws.send_text(json.dumps({
+                                    "type": "token_usage",
+                                    "input_tokens": d_prompt,
+                                    "output_tokens": d_response,
+                                    "total_tokens": d_prompt + d_response,
+                                }))
                             d_prompt_audio = max(
                                 0,
                                 self._usage_cum_prompt_audio

@@ -14,6 +14,7 @@ from voice.services.personal_details_service import (
     _compute_completeness,
     _compute_missing,
 )
+from voice.services.usage_log import log_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,12 @@ class GeminiLiveService:
             self._fields.update({k: v for k, v in initial_fields.items() if k in self._fields})
         self._session: Any = None
         self._ctx: Any = None
+        # Gemini Live emits CUMULATIVE usage_metadata per session; track the latest
+        # and log the per-turn delta at turn_complete.
+        self._usage_cum_prompt = 0
+        self._usage_cum_response = 0
+        self._usage_emitted_prompt = 0
+        self._usage_emitted_response = 0
 
     async def __aenter__(self) -> GeminiLiveService:
         config = types.LiveConnectConfig(
@@ -163,6 +170,17 @@ class GeminiLiveService:
             Gemini finished a turn of speech.
         """
         async for msg in self._session.receive():
+            # Usage telemetry — usage_metadata may arrive on any event and is
+            # cumulative for the session; keep the latest read.
+            _um = getattr(msg, "usage_metadata", None)
+            if _um is not None:
+                self._usage_cum_prompt = int(getattr(_um, "prompt_token_count", 0) or 0)
+                self._usage_cum_response = int(
+                    getattr(_um, "response_token_count", 0)
+                    or getattr(_um, "candidates_token_count", 0)
+                    or 0
+                )
+
             if msg.server_content:
                 sc = msg.server_content
                 if sc.model_turn:
@@ -170,7 +188,21 @@ class GeminiLiveService:
                         if part.inline_data and part.inline_data.mime_type.startswith("audio"):
                             yield {"type": "audio", "data": part.inline_data.data}
                 if sc.turn_complete:
-                    yield {"type": "turn_complete"}
+                    # This turn's delta (cumulative minus what we already reported).
+                    d_in = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
+                    d_out = max(0, self._usage_cum_response - self._usage_emitted_response)
+                    self._usage_emitted_prompt = self._usage_cum_prompt
+                    self._usage_emitted_response = self._usage_cum_response
+                    if d_in or d_out:
+                        log_token_usage("voice_live", d_in, d_out)
+                    yield {
+                        "type": "turn_complete",
+                        "token_usage": {
+                            "input_tokens": d_in,
+                            "output_tokens": d_out,
+                            "total_tokens": d_in + d_out,
+                        },
+                    }
 
             if msg.tool_call:
                 for fn_call in msg.tool_call.function_calls:

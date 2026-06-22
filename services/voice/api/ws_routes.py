@@ -218,6 +218,11 @@ async def _send_from_gemini(
             match event["type"]:
                 case "audio":
                     await websocket.send_bytes(event["data"])
+                case "turn_complete":
+                    # Surface per-turn LLM token usage to the client.
+                    await websocket.send_text(
+                        json.dumps({"type": "token_usage", **event.get("token_usage", {})})
+                    )
                 case "fields_update":
                     await websocket.send_text(
                         json.dumps(

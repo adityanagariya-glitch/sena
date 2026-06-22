@@ -12,6 +12,7 @@ from voice.prompts.personal_details_prompt import (
     PERSONAL_DETAILS_SYSTEM_PROMPT,
     build_personal_details_user_prompt,
 )
+from voice.services.usage_log import log_token_usage
 
 
 class GeminiService:
@@ -48,9 +49,18 @@ class GeminiService:
         usage = response.usage_metadata
         input_tokens = int(getattr(usage, "prompt_token_count", 0) or 0)
         output_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
-        total_tokens = int(getattr(usage, "total_token_count", 0) or 0)
+        # total = input + output (consistent across all SENA APIs), not Gemini's
+        # total_token_count (which can include extra internal tokens).
+        total_tokens = input_tokens + output_tokens
         # Tokens served from Gemini's implicit cache (billed at reduced rate).
         cache_read_tokens = int(getattr(usage, "cached_content_token_count", 0) or 0)
+
+        log_token_usage(
+            "voice_personal_details_gemini",
+            input_tokens,
+            output_tokens,
+            cache_read_tokens=cache_read_tokens,
+        )
 
         usage_dict = {
             "input_tokens": input_tokens,

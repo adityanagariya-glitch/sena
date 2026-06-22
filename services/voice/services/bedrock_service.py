@@ -31,6 +31,7 @@ from voice.prompts.personal_details_prompt import (
     PERSONAL_DETAILS_SYSTEM_PROMPT,
     build_personal_details_user_prompt,
 )
+from voice.services.usage_log import log_token_usage
 
 
 class BedrockService:
@@ -114,6 +115,13 @@ class BedrockService:
                     success=True,
                     history_turns=len(history),
                 )
+                log_token_usage(
+                    "voice_dictation",
+                    input_tokens,
+                    output_tokens,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_creation_tokens,
+                )
                 token_usage = {
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
@@ -190,6 +198,13 @@ class BedrockService:
                     success=True,
                     history_turns=len(history),
                     missing_field_count=len(missing_fields),
+                )
+                log_token_usage(
+                    "voice_personal_details_bedrock",
+                    input_tokens,
+                    output_tokens,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_creation_tokens,
                 )
                 token_usage = {
                     "input_tokens": input_tokens,
