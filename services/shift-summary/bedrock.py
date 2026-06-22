@@ -15,13 +15,17 @@ logger = logging.getLogger(__name__)
 
 @lru_cache
 def _get_bedrock_client():
-    """Cached boto3 Bedrock runtime client."""
+    """
+    Cached boto3 Bedrock runtime client.
+
+    Credentials are intentionally NOT passed here — boto3 resolves them from the
+    default credential chain (the EC2 instance's IAM role / instance profile on
+    the server). Only the region is supplied.
+    """
     settings = get_settings()
     return boto3.client(
         service_name="bedrock-runtime",
         region_name=settings.aws_region,
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
     )
 
 
@@ -44,7 +48,7 @@ def _build_request_body(summaries: list[str]) -> dict:
 async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
     """
     Call AWS Bedrock with Claude to consolidate the provided summaries.
-    Returns (consolidated_summary, token_usage) where token_usage is {"input_tokens", "output_tokens"}.
+    Returns a tuple of (consolidated text, usage dict with input/output token counts).
     Raises HTTPException on Bedrock or parsing errors.
     """
     settings = get_settings()
@@ -84,10 +88,6 @@ async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
         response_body = json.loads(response["body"].read())
         consolidated = response_body["content"][0]["text"].strip()
         usage = response_body.get("usage", {})
-        token_usage = {
-            "input_tokens": usage.get("input_tokens", 0),
-            "output_tokens": usage.get("output_tokens", 0),
-        }
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         logger.error("Failed to parse Bedrock response: %s", str(exc))
         raise HTTPException(
@@ -95,10 +95,5 @@ async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
             detail=f"Unexpected Bedrock response format: {str(exc)}",
         ) from exc
 
-    logger.info(
-        "Successfully consolidated %d summaries. Input tokens: %d, Output tokens: %d",
-        len(summaries),
-        token_usage["input_tokens"],
-        token_usage["output_tokens"],
-    )
-    return consolidated, token_usage
+    logger.info("Successfully consolidated %d summaries.", len(summaries))
+    return consolidated, usage

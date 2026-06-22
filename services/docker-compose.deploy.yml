@@ -16,23 +16,13 @@ services:
     ports:
       - "8080:80"
       - "8443:443"
+      - "3001:3001"   # Uptime Kuma
     volumes:
       - ./nginx/dev-api.isena.org.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      - sena-voice
-      - sena-onboarding
-      - sena-case-review
-      - sena-casenote-monthly
-      - sena-ai-chatbot
-      - sena-policy-proc
-      - sena-staff
-      - sena-ai-communication-log
-      - sena-shift-summary
-      - sena-ai-text-extraction
-      - sena-case-review-ui
+    depends_on: []
     networks:
       - sena-network
     restart: unless-stopped
@@ -94,7 +84,12 @@ services:
     env_file:
       - ../.env
     environment:
+      # core/settings.py reads SENA_AI_AI_DB_URL (alembic migrations, api/deps.py)
       SENA_AI_AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
+      # config.py reads SENA_AI_RP_DATABASE_URL (db/session.py, ingest, pipeline,
+      # embedder, chunker). MUST match the DB above — without it the runtime data
+      # path falls back to its localhost:5433 default and cannot reach the DB.
+      SENA_AI_RP_DATABASE_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
       SENA_AI_CASE_REVIEW_REDIS_URL: redis://redis-internal:6979/1
     expose:
       - "8002"
@@ -166,6 +161,7 @@ services:
     environment:
       SENA_AI_HOST: 0.0.0.0
       SENA_AI_POLICY_PROC_PORT: "8000"
+      AWS_REGION: "ap-southeast-2"
     expose:
       - "8000"
     networks:
@@ -250,6 +246,24 @@ services:
       - sena-network
     restart: unless-stopped
 
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    volumes:
+      - uptime-kuma-data:/app/data
+    expose:
+      - "3001"
+    environment:
+      UPTIME_KUMA_URL: http://3.111.109.14:3001/
+    networks:
+      - sena-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "extra/healthcheck"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+
   # ── Infrastructure ─────────────────────────────────────────────────────────
   redis-internal:
     image: redis:7.4-alpine
@@ -321,3 +335,4 @@ volumes:
   shared-db-data:
   casenote-reports:
   casenote-trends:
+  uptime-kuma-data:

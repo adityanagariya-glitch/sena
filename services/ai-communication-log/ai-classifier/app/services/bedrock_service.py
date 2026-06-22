@@ -9,12 +9,12 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from app.core.config import settings
 from app.models.schemas import (
     BreakdownAssessment,
-    ClassificationResult,
     RiskAssessment,
     SentimentResult,
+    TokenUsage,
     Message,
 )
-from app.prompts.classification_prompt import SYSTEM_PROMPT, build_user_prompt
+from app.prompts.sentiment_batch_prompt import BATCH_SYSTEM_PROMPT, build_batch_user_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +33,20 @@ _VALID_OUTCOMES = {"resolved", "unresolved", "pending"}
 
 
 @dataclass
-class BedrockOutput:
-    """Parsed model response — passed from BedrockService to ClassificationService."""
-    classifications: list[ClassificationResult]
+class MessageAnalysisItem:
+    """Full analysis for a single message — internal dataclass, mirrors MessageAnalysis schema."""
     sentiment: SentimentResult
     risk: RiskAssessment
     breakdown: BreakdownAssessment
     outcome: str
     recommended_action: Optional[str]
+
+
+@dataclass
+class BatchOutput:
+    """Parsed batch model response — passed from BedrockService to SentimentBatchService."""
+    message_analyses: list[MessageAnalysisItem]   # ordered 0..N-1, one per input message
+    token_usage: Optional[TokenUsage] = None
 
 
 class BedrockService:
@@ -59,35 +65,6 @@ class BedrockService:
             )
             raise
 
-    def classify(
-        self,
-        current_message: Message,
-        history: list[Message],
-    ) -> BedrockOutput:
-        """
-        Sends the conversation to Bedrock and returns a fully parsed BedrockOutput
-        covering classifications, sentiment, risk, breakdown, outcome, and recommended_action.
-        """
-        user_prompt = build_user_prompt(current_message, history)
-
-        try:
-            response = self.client.converse(
-                modelId=self.model_id,
-                system=[{"text": SYSTEM_PROMPT}],
-                messages=[{"role": "user", "content": [{"text": user_prompt}]}],
-                inferenceConfig={
-                    "maxTokens": settings.BEDROCK_MAX_TOKENS,
-                    "temperature": settings.BEDROCK_TEMPERATURE,
-                },
-            )
-        except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            logger.error(f"Bedrock ClientError [{error_code}]: {e}")
-            raise RuntimeError(f"Bedrock API error: {error_code}") from e
-
-        raw_text = self._extract_text(response)
-        return self._parse_response(raw_text)
-
     # ── Private helpers ────────────────────────────────────────────────────────
 
     def _extract_text(self, response: dict) -> str:
@@ -97,59 +74,11 @@ class BedrockService:
             logger.error(f"Unexpected Bedrock response structure: {response}")
             raise ValueError("Could not extract text from Bedrock response") from e
 
-    def _parse_response(self, raw_text: str) -> BedrockOutput:
-        """Parses the full model JSON into a BedrockOutput. Applies safe fallbacks per section."""
-        cleaned = raw_text.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("```")[1]
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
-            cleaned = cleaned.strip()
-
-        try:
-            data = json.loads(cleaned)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse model response as JSON: {raw_text}")
-            raise ValueError(f"Model returned invalid JSON: {e}") from e
-
-        return BedrockOutput(
-            classifications=self._parse_classifications(data),
-            sentiment=self._parse_sentiment(data),
-            risk=self._parse_risk(data),
-            breakdown=self._parse_breakdown(data),
-            outcome=self._parse_outcome(data),
-            recommended_action=self._parse_recommended_action(data),
-        )
-
-    def _parse_classifications(self, data: dict) -> list[ClassificationResult]:
-        raw = data.get("classifications", [])
-        if not raw:
-            logger.warning("Model returned empty classifications list.")
-            raise ValueError("Model returned no classifications.")
-
-        results = []
-        for item in raw:
-            label = item.get("label", "").lower()
-            if label not in settings.VALID_LABELS:
-                logger.warning(f"Skipping unknown classification label: {label}")
-                continue
-            results.append(
-                ClassificationResult(
-                    label=label,
-                    confidence=float(item.get("confidence", 0.0)),
-                    reason=item.get("reason", "No reason provided."),
-                )
-            )
-
-        if not results:
-            raise ValueError("No valid classification labels found in model response.")
-        return results
-
-    def _parse_sentiment(self, data: dict) -> SentimentResult:
-        raw = data.get("sentiment", {})
+    def _parse_sentiment_from_key(self, data: dict, key: str) -> SentimentResult:
+        raw = data.get(key, {})
         label = raw.get("label", "neutral").lower()
         if label not in _VALID_SENTIMENT_LABELS:
-            logger.warning(f"Unknown sentiment label '{label}', defaulting to 'neutral'.")
+            logger.warning(f"Unknown sentiment label '{label}' in '{key}', defaulting to 'neutral'.")
             label = "neutral"
         return SentimentResult(
             label=label,
@@ -195,3 +124,75 @@ class BedrockService:
         if not action or str(action).lower() in ("null", "none", ""):
             return None
         return str(action)
+
+    # ── Batch analysis ─────────────────────────────────────────────────────────
+
+    def analyse_batch(self, messages: list[Message]) -> BatchOutput:
+        """
+        Sends a conversation window (up to BATCH_MAX_MESSAGES messages) to Bedrock
+        and returns a full analysis (sentiment, risk, breakdown, outcome, recommended_action)
+        for every individual message in the batch.
+        """
+        user_prompt = build_batch_user_prompt(messages)
+
+        try:
+            response = self.client.converse(
+                modelId=self.model_id,
+                system=[{"text": BATCH_SYSTEM_PROMPT}],
+                messages=[{"role": "user", "content": [{"text": user_prompt}]}],
+                inferenceConfig={
+                    "maxTokens": settings.BEDROCK_MAX_TOKENS,
+                    "temperature": settings.BEDROCK_TEMPERATURE,
+                },
+            )
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            logger.error(f"Bedrock ClientError (batch) [{error_code}]: {e}")
+            raise RuntimeError(f"Bedrock API error: {error_code}") from e
+
+        raw_text = self._extract_text(response)
+        usage_raw = response.get("usage", {})
+        token_usage = TokenUsage(
+            input_tokens=usage_raw.get("inputTokens", 0),
+            output_tokens=usage_raw.get("outputTokens", 0),
+            total_tokens=usage_raw.get("totalTokens", 0),
+        )
+        batch_output = self._parse_batch_response(raw_text)
+        batch_output.token_usage = token_usage
+        return batch_output
+
+    def _parse_batch_response(self, raw_text: str) -> BatchOutput:
+        cleaned = raw_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```")[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse batch model response as JSON: {raw_text}")
+            raise ValueError(f"Model returned invalid JSON: {e}") from e
+
+        return BatchOutput(message_analyses=self._parse_message_analyses(data))
+
+    def _parse_message_analyses(self, data: dict) -> list[MessageAnalysisItem]:
+        raw = data.get("messages", [])
+        if not isinstance(raw, list):
+            logger.warning("'messages' field in batch response is not a list — returning empty.")
+            return []
+
+        # Sort by index so order matches the original input message list
+        raw_sorted = sorted(raw, key=lambda x: x.get("index", 0))
+
+        results = []
+        for item in raw_sorted:
+            results.append(MessageAnalysisItem(
+                sentiment=self._parse_sentiment_from_key(item, "sentiment"),
+                risk=self._parse_risk(item),
+                breakdown=self._parse_breakdown(item),
+                outcome=self._parse_outcome(item),
+                recommended_action=self._parse_recommended_action(item),
+            ))
+        return results

@@ -23,7 +23,7 @@ from botocore.exceptions import ClientError
 
 from scripts.config import config
 from scripts.converter import DocumentFormat
-from scripts.models import ExtractionResult
+from scripts.models import ExtractionResult, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +414,14 @@ def extract(
     parsed               = _parse_response(raw_text)
     mapped               = _map_fields(parsed)
 
-    result = ExtractionResult(**mapped)
+    result = ExtractionResult(
+        **mapped,
+        token_usage=TokenUsage(
+            input_tokens=token_info["input_tokens"],
+            output_tokens=token_info["output_tokens"],
+            total_tokens=token_info["total_tokens"],
+        ),
+    )
 
     logger.info(
         "Extraction complete — filled=%d/5 missing=%s",

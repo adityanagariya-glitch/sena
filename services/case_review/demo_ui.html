@@ -510,6 +510,16 @@ const FORM_SECS = [
 
 function toggleFS(id) { document.getElementById(id).classList.toggle('open'); }
 
+// UUID v4 — crypto.randomUUID() only exists in secure contexts (HTTPS/localhost).
+// Over plain HTTP it's undefined, so fall back to a Math.random-based generator.
+function uuid() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
 // ── Draft submit ──────────────────────────────────────────────────────────────
 document.getElementById('d-btn').addEventListener('click', async () => {
   const transcript = document.getElementById('d-transcript').value.trim();
@@ -517,7 +527,7 @@ document.getElementById('d-btn').addEventListener('click', async () => {
   clearErr('d-err');
   setLoad('d', true);
   const payload = {
-    case_note_id: crypto.randomUUID(),
+    case_note_id: uuid(),
     worker_id: document.getElementById('d-worker').value.trim() || 'worker-demo-001',
     client_id: document.getElementById('d-client').value.trim() || 'client-demo-001',
     shift_date: document.getElementById('d-date').value || null,
@@ -615,7 +625,7 @@ document.getElementById('e-btn').addEventListener('click', async () => {
   let payload;
 
   if (isForm) {
-    payload = { case_note_id: crypto.randomUUID(), client_id: clientId, worker_id: workerId, incident_occurred: incident };
+    payload = { case_note_id: uuid(), client_id: clientId, worker_id: workerId, incident_occurred: incident };
     for (const f of ['describe','assisted','practised_skill','participants_level_of_independence','observations','mood','behavioural_events','what_went_well','what_needs_further_support','participant_comments','medication_reminders_given','safety_hazards_observed','injury_description','carer_feedback']) {
       const el = document.getElementById('ef-' + f);
       if (el && el.value.trim()) payload[f] = el.value.trim();
@@ -625,7 +635,7 @@ document.getElementById('e-btn').addEventListener('click', async () => {
   } else {
     const t = document.getElementById('e-transcript').value.trim();
     if (!t) { showErr('e-err', 'Please enter a case note or transcript.'); return; }
-    payload = { case_note_id: crypto.randomUUID(), client_id: clientId, worker_id: workerId, transcript: t, incident_occurred: incident };
+    payload = { case_note_id: uuid(), client_id: clientId, worker_id: workerId, transcript: t, incident_occurred: incident };
   }
 
   setLoad('e', true);

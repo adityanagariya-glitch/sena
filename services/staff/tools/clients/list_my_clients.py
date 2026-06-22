@@ -57,7 +57,7 @@ def _run(inputs: dict | None) -> ToolResult:
         path = "/organization/client/my-clients"
     elif "guardian" in roles or user_type == "guardian":
         path = "/mobile/visitor/clients"
-    elif staff_type == "support_worker" or user_type == "staff":
+    elif staff_type in ("support_worker", "isw") or user_type == "staff":
         path = "/mobile/visitor/clients"
     else:
         path = "/organization/client/my-clients"

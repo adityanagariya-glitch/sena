@@ -20,7 +20,7 @@ from case_review.models.schemas import (
     IncidentDraftOutput,
 )
 from case_review.services.pipeline.style_examples import FEW_SHOT_INCIDENT, STYLE_GUIDE
-from case_review.services.usage import record_converse
+from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +187,7 @@ def _run_incident_draft(
         ],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )
-    record_converse(response)
+    record_and_print_converse("incident_draft", response)
 
     text = response["output"]["message"]["content"][0]["text"]
     if not text:

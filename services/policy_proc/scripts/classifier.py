@@ -3,6 +3,9 @@ import boto3
 import json
 import logging
 import re
+from langfuse import observe, get_client
+
+langfuse = get_client()
 
 from config import REGION, CLASSIFIER_MODEL, MESSAGES
 
@@ -88,6 +91,7 @@ Respond with a JSON object in this exact format — no preamble, no markdown fen
   "reason": "User is asking about incident reporting procedure."
 }"""
 
+@observe(as_type="generation", name="classify", capture_input=False, capture_output=False)
 def classify(question: str, recent_turns: str = "") -> dict:
     """
     Classifies user question into NDIS, GREETING, SENSITIVE, OFF_TOPIC, or HARMFUL.
@@ -116,12 +120,27 @@ Classification:"""
         label      = data.get("label", "NDIS").upper()
         confidence = float(data.get("confidence", 0.5))
         reason     = data.get("reason", "")
+        raw_usage  = response.get("usage", {})
+        langfuse.update_current_generation(
+            model=CLASSIFIER_MODEL,
+            input=prompt,
+            output={"label": label, "confidence": confidence, "reason": reason},
+            usage_details={"input": raw_usage.get("inputTokens", 0), "output": raw_usage.get("outputTokens", 0)},
+        )
         logger.info(f"Classified: {label} ({confidence}) — {reason}")
-        return {"label": label, "confidence": confidence, "reason": reason}
+        return {
+            "label":      label,
+            "confidence": confidence,
+            "reason":     reason,
+            "usage": {
+                "input_tokens":  raw_usage.get("inputTokens",  0),
+                "output_tokens": raw_usage.get("outputTokens", 0),
+            },
+        }
 
     except Exception as e:
         logger.warning(f"Classifier error: {e} — defaulting to NDIS")
-        return {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error"}
+        return {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error", "usage": {"input_tokens": 0, "output_tokens": 0}}
 
 
 def should_block(classification: dict) -> tuple[bool, str]:

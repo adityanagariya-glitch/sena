@@ -1,0 +1,3 @@
+.env
+text-extract-venv\
+gen_token.py

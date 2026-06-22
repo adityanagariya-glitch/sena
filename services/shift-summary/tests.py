@@ -15,15 +15,13 @@ from unittest.mock import MagicMock, patch
 from io import BytesIO
 
 # ── Point to a test env before any app imports ───────────────────────────────
-os.environ.setdefault("API_KEY", "test-secret-key")
-os.environ.setdefault("AWS_ACCESS_KEY_ID", "fake-key-id")
-os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "fake-secret")
-os.environ.setdefault("AWS_REGION", "us-east-1")
-os.environ.setdefault("APP_ENV", "test")
-os.environ.setdefault("MIN_SUMMARIES", "1")
-os.environ.setdefault("MAX_SUMMARIES", "10")
-os.environ.setdefault("MIN_SUMMARY_LENGTH", "1")
-os.environ.setdefault("MAX_SUMMARY_LENGTH", "5000")
+# os.environ.setdefault("SHIFT_SUMMARY_API_KEY", "test-secret-key")
+# os.environ.setdefault("SHIFT_SUMMARY_AWS_REGION", "us-east-1")
+# os.environ.setdefault("SHIFT_SUMMARY_APP_ENV", "test")
+# os.environ.setdefault("SHIFT_SUMMARY_MIN_SUMMARIES", "1")
+# os.environ.setdefault("SHIFT_SUMMARY_MAX_SUMMARIES", "10")
+# os.environ.setdefault("SHIFT_SUMMARY_MIN_SUMMARY_LENGTH", "1")
+# os.environ.setdefault("SHIFT_SUMMARY_MAX_SUMMARY_LENGTH", "5000")
 
 from fastapi.testclient import TestClient
 from config import get_settings
@@ -48,9 +46,12 @@ MOCK_CONSOLIDATED = "Overall, the company had a strong quarter with revenue grow
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _mock_bedrock_response(text: str) -> MagicMock:
+def _mock_bedrock_response(text: str, input_tokens: int = 100, output_tokens: int = 50) -> MagicMock:
     """Build a mock boto3 invoke_model response with Claude's message format."""
-    body_content = json.dumps({"content": [{"text": text}]}).encode()
+    body_content = json.dumps({
+        "content": [{"text": text}],
+        "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+    }).encode()
     mock_response = MagicMock()
     mock_response.__getitem__ = lambda self, key: BytesIO(body_content) if key == "body" else None
     return mock_response
@@ -176,6 +177,11 @@ class TestSummarize:
         data = resp.json()
         assert "consolidated_summary" in data
         assert data["consolidated_summary"] == MOCK_CONSOLIDATED
+        assert data["token_usage"]["input_tokens"] == 100
+        assert data["token_usage"]["output_tokens"] == 50
+        assert data["token_usage"]["total_tokens"] == 150
+        print("\n--- token_usage response ---")
+        print(data["token_usage"])
 
     @patch("bedrock._get_bedrock_client")
     def test_single_summary_is_accepted(self, mock_client_factory):

@@ -20,12 +20,10 @@ from onboarding.services.cross_screen_context import build_summary
 
 
 class TokenUsage(BaseModel):
-    """LLM token usage metrics including cache metrics for Claude."""
+    """LLM token usage metrics (input, output, total)."""
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
 
 log = structlog.get_logger(__name__)
 

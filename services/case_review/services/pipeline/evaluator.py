@@ -3,10 +3,13 @@
 Claude Sonnet reads the case note + retrieved NDIS policy chunks and produces a
 structured compliance verdict. Only called when triage flagged=True.
 Uses RAG-grounded context to prevent hallucination of regulatory rules.
+
+Structured output: Bedrock tool use (same pattern as classifier and summarizer).
+No JSON parsing or regex repair — the model must call the compliance_verdict tool
+with all fields populated before the response is accepted.
 """
 
 import asyncio
-import json
 import logging
 
 import boto3
@@ -22,9 +25,95 @@ from case_review.models.schemas import (
     TriageResult,
 )
 from case_review.services.pipeline.style_examples import FEW_SHOT_EVAL_REASONING, STYLE_GUIDE
-from case_review.services.usage import record_converse
+from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
+
+# ── Tool schema — replaces "Respond with JSON" prompt instruction ─────────────
+# Claude must call this tool with all required fields before the response ends.
+# No JSON parsing bugs, no temperature sensitivity, no regex repair.
+
+_EVAL_TOOL = {
+    "toolSpec": {
+        "name": "compliance_verdict",
+        "description": (
+            "Record the NDIS compliance evaluation verdict. "
+            "Call this tool with all fields populated to complete the evaluation."
+        ),
+        "inputSchema": {
+            "json": {
+                "type": "object",
+                "properties": {
+                    "incident_detected": {
+                        "type": "boolean",
+                        "description": "True if a regulated restrictive practice was used",
+                    },
+                    "practice_category": {
+                        "type": "string",
+                        "description": "One of: Chemical Restraint, Physical Restraint, Mechanical Restraint, Environmental Restraint, Seclusion, None",
+                    },
+                    "action_summary": {
+                        "type": "string",
+                        "description": "One-sentence description of what happened",
+                    },
+                    "policy_violation_risk": {
+                        "type": "string",
+                        "enum": ["Low", "Medium", "High", "Critical"],
+                    },
+                    "confidence": {
+                        "type": "string",
+                        "enum": ["High", "Medium", "Low"],
+                        "description": "Confidence in the restrictive practice determination",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Evidence-based reasoning citing specific phrases from the case note",
+                    },
+                    "trigger_phrases": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exact short phrases (3–10 words) indicating a restrictive practice",
+                    },
+                    "suppression_factors": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exact phrases arguing against escalation (BSP reference, participant agency, medical context). Empty array if none.",
+                    },
+                    "bsp_mentioned_in_note": {
+                        "type": "boolean",
+                        "description": "True if the case note explicitly references a Behaviour Support Plan or authorisation",
+                    },
+                    "bsp_mention_excerpt": {
+                        "type": ["string", "null"],
+                        "description": "Exact phrase from the note referencing BSP/authorisation, or null",
+                    },
+                    "reporting_required": {
+                        "type": "boolean",
+                        "description": "True if mandatory NDIS Commission reporting is triggered",
+                    },
+                    "notification_timeframe": {
+                        "type": ["string", "null"],
+                        "description": "'5 business days', '24 hours', or null if no reporting required",
+                    },
+                },
+                "required": [
+                    "incident_detected",
+                    "practice_category",
+                    "action_summary",
+                    "policy_violation_risk",
+                    "confidence",
+                    "reasoning",
+                    "trigger_phrases",
+                    "suppression_factors",
+                    "bsp_mentioned_in_note",
+                    "bsp_mention_excerpt",
+                    "reporting_required",
+                    "notification_timeframe",
+                ],
+            }
+        },
+    }
+}
 
 _EVALUATOR_PROMPT = """\
 You are a senior NDIS compliance officer reviewing a support worker case note.
@@ -103,34 +192,8 @@ Determine:
    Set to true and populate "bsp_mention_excerpt" with the exact phrase if found.
 
 Be precise and evidence-based. Quote specific phrases from the case note in your reasoning.
-
-Respond with a single flat JSON object — no nested objects, no markdown, no extra text. Use exactly these top-level keys:
-incident_detected, practice_category, action_summary, policy_violation_risk, confidence, reasoning,
-trigger_phrases, suppression_factors, bsp_mentioned_in_note, bsp_mention_excerpt, reporting_required, notification_timeframe.
+Call the compliance_verdict tool with your complete analysis.
 """
-
-
-class _EvaluatorResponse(BaseModel):
-    incident_detected: bool
-    practice_category: str
-    action_summary: str
-    policy_violation_risk: str
-    confidence: str = "High"
-    reasoning: str
-    trigger_phrases: list[str] = []
-    suppression_factors: list[str] = []
-    bsp_mentioned_in_note: bool = False
-    bsp_mention_excerpt: str | None = None
-    reporting_required: bool = False
-    notification_timeframe: str | None = None
-
-
-def _extract_json(text: str) -> dict:
-    start = text.find("{")
-    if start == -1:
-        raise json.JSONDecodeError("No JSON object found", text, 0)
-    obj, _ = json.JSONDecoder().raw_decode(text, start)
-    return obj
 
 
 def _make_client():
@@ -160,15 +223,23 @@ def _run_evaluator(
     """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
 
-    # Prompt caching: cache the static prefix (style guide + few-shot + policy
-    # context) before the cachePoint; transcript + action_summary vary per call.
-    prefix_tmpl, suffix_tmpl = _EVALUATOR_PROMPT.split("{transcript}", 1)
+    # Prompt caching: cache ONLY the truly-static prefix (style guide + few-shot).
+    # The cache point splits at {policy_context} — NOT {transcript} — because the
+    # retrieved policy chunks vary per case note. If they sat before the cachePoint
+    # the ~25k-token prefix would be a unique cache WRITE (1.25x) almost every call
+    # and never get re-read. Splitting earlier means the static style-guide+few-shot
+    # block caches once and is re-read at 0.1x on every subsequent request, while the
+    # variable policy chunks + transcript + action_summary are billed at full rate
+    # after the cachePoint.
+    prefix_tmpl, suffix_tmpl = _EVALUATOR_PROMPT.split("{policy_context}", 1)
     static_prefix = prefix_tmpl.format(
         style_guide=STYLE_GUIDE,
         few_shot_eval_reasoning=FEW_SHOT_EVAL_REASONING,
-        policy_context=policy_context,
     )
-    dynamic_suffix = transcript + suffix_tmpl.format(action_summary=action_summary)
+    dynamic_suffix = policy_context + suffix_tmpl.format(
+        transcript=transcript,
+        action_summary=action_summary,
+    )
 
     response = client.converse(
         modelId=settings.evaluator_model,
@@ -182,46 +253,46 @@ def _run_evaluator(
                 ],
             }
         ],
+        toolConfig={
+            "tools": [_EVAL_TOOL],
+            "toolChoice": {"tool": {"name": "compliance_verdict"}},
+        },
         inferenceConfig={"maxTokens": 8192, "temperature": 0.0},
     )
-    record_converse(response)
+    record_and_print_converse("evaluator", response)
 
-    text = response["output"]["message"]["content"][0]["text"]
-    if not text:
-        raise ValueError(
-            f"Empty evaluator response. stopReason={response.get('stopReason', 'NO_CANDIDATES')}"
-        )
+    # Extract structured output from tool use block — no JSON parsing needed
+    for block in response["output"]["message"]["content"]:
+        tool_use = block.get("toolUse", {})
+        if tool_use.get("name") == "compliance_verdict":
+            data = tool_use["input"]
 
-    try:
-        data = _extract_json(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Evaluator response not valid JSON: {exc}. Raw: {text[:200]}") from exc
-    parsed = _EvaluatorResponse(**data)
+            try:
+                risk = PolicyViolationRisk(data.get("policy_violation_risk", "Medium"))
+            except ValueError:
+                risk = PolicyViolationRisk.MEDIUM
 
-    try:
-        risk = PolicyViolationRisk(parsed.policy_violation_risk)
-    except ValueError:
-        risk = PolicyViolationRisk.MEDIUM
+            try:
+                confidence = ConfidenceLevel(data.get("confidence", "High"))
+            except ValueError:
+                confidence = ConfidenceLevel.HIGH
 
-    try:
-        confidence = ConfidenceLevel(parsed.confidence)
-    except ValueError:
-        confidence = ConfidenceLevel.HIGH
+            return EvaluatorOutput(
+                incident_detected=bool(data.get("incident_detected", False)),
+                practice_category=data.get("practice_category", "None"),
+                action_summary=data.get("action_summary", ""),
+                policy_violation_risk=risk,
+                confidence=confidence,
+                reasoning=data.get("reasoning", ""),
+                trigger_phrases=data.get("trigger_phrases", []),
+                suppression_factors=data.get("suppression_factors", []),
+                bsp_mentioned_in_note=bool(data.get("bsp_mentioned_in_note", False)),
+                bsp_mention_excerpt=data.get("bsp_mention_excerpt"),
+                reporting_required=bool(data.get("reporting_required", False)),
+                notification_timeframe=data.get("notification_timeframe"),
+            )
 
-    return EvaluatorOutput(
-        incident_detected=parsed.incident_detected,
-        practice_category=parsed.practice_category,
-        action_summary=parsed.action_summary,
-        policy_violation_risk=risk,
-        confidence=confidence,
-        reasoning=parsed.reasoning,
-        trigger_phrases=parsed.trigger_phrases,
-        suppression_factors=parsed.suppression_factors,
-        bsp_mentioned_in_note=parsed.bsp_mentioned_in_note,
-        bsp_mention_excerpt=parsed.bsp_mention_excerpt,
-        reporting_required=parsed.reporting_required,
-        notification_timeframe=parsed.notification_timeframe,
-    )
+    raise ValueError("Evaluator: no compliance_verdict tool_use block in Bedrock response")
 
 
 async def run_evaluator(

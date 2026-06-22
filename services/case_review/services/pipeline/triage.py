@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from core.settings import settings
 from case_review.models.schemas import CaseNoteInput, TriageResult
 from case_review.services.pipeline.style_examples import FEW_SHOT_TRIAGE
-from case_review.services.usage import record_converse
+from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,11 @@ Case Note:
 ---
 
 Respond with a single flat JSON object only — no markdown, no extra text.
-Keys: "flagged" (bool) and "action_summary" (str or null).
+Keys:
+- "flagged" (bool): true if ANY restrictive practice signal is present
+- "confidence" (float 0.0-1.0): certainty in the flagged decision
+  (0.95+ = explicit restriction language; 0.7-0.94 = implied/context-dependent; <0.7 = ambiguous)
+- "action_summary" (str or null): one-sentence description of suspected practice, or null if not flagged
 
 Be conservative — flag if uncertain. False negatives (missed incidents) are worse than false positives.
 """
@@ -48,6 +52,7 @@ Be conservative — flag if uncertain. False negatives (missed incidents) are wo
 
 class _TriageResponse(BaseModel):
     flagged: bool
+    confidence: float = 0.5
     action_summary: str | None = None
 
 
@@ -90,9 +95,9 @@ def _run_triage(transcript: str) -> TriageResult:
                 ],
             }
         ],
-        inferenceConfig={"maxTokens": 512, "temperature": 0.0},
+        inferenceConfig={"maxTokens": 1024, "temperature": 0.0},
     )
-    record_converse(response)
+    record_and_print_converse("triage", response)
 
     text = response["output"]["message"]["content"][0]["text"]
     if not text:
@@ -106,6 +111,7 @@ def _run_triage(transcript: str) -> TriageResult:
     return TriageResult(
         flagged=parsed.flagged,
         action_summary=parsed.action_summary or None,
+        triage_confidence=max(0.0, min(1.0, float(parsed.confidence))),
     )
 
 
@@ -114,8 +120,9 @@ async def run_triage(note: CaseNoteInput) -> TriageResult:
     logger.info("triage start case_note_id=%s", note.case_note_id)
     result = await asyncio.to_thread(_run_triage, note.to_text())
     logger.info(
-        "triage done case_note_id=%s flagged=%s",
+        "triage done case_note_id=%s flagged=%s confidence=%.2f",
         note.case_note_id,
         result.flagged,
+        result.triage_confidence,
     )
     return result

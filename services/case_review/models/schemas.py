@@ -18,17 +18,10 @@ class AuthContext(BaseModel):
 
 
 class TokenUsage(BaseModel):
-    """Aggregated LLM token usage for a request (Gemini + Bedrock stages).
-
-    cache_read_tokens / cache_creation_tokens surface prompt-caching activity:
-    Bedrock Converse reports both; Gemini reports cache reads only (implicit
-    caching, no separate creation cost).
-    """
+    """LLM token usage metrics (input, output, total)."""
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
 
 
 # ── Case note (from other engineer's API / stub) ──────────────────────────────
@@ -349,6 +342,7 @@ class CaseNoteInput(BaseModel):
 class TriageResult(BaseModel):
     flagged: bool
     action_summary: str | None = None
+    triage_confidence: float = 0.5  # 0.0–1.0; drives Haiku vs Sonnet routing
 
 
 class PolicyChunk(BaseModel):

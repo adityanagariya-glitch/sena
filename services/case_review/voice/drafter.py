@@ -16,7 +16,7 @@ import structlog
 from pydantic import BaseModel
 
 from core.settings import settings
-from case_review.services.usage import record_converse
+from case_review.services.usage import record_and_print_converse
 
 log = structlog.get_logger(__name__)
 
@@ -173,7 +173,7 @@ def _run_sync(transcript: str) -> _Extracted:
         ],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )
-    record_converse(response)
+    record_and_print_converse("voice_drafter", response)
     text = response["output"]["message"]["content"][0]["text"]
     if not text:
         raise ValueError(

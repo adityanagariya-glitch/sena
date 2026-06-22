@@ -38,36 +38,26 @@ from pydantic import BaseModel
 from typing import Optional
 
 import boto3
-from scripts.registry import registry_create, registry_update, registry_get, registry_list_by_org
-from scripts.config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN, BACKEND_API_BASE, INTERNAL_API_KEY, REGION
+from policy_proc.scripts.registry import registry_create, registry_update, registry_get, registry_list_by_org
+from policy_proc.scripts.config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN, BACKEND_API_BASE, INTERNAL_API_KEY, REGION
 
-from scripts.pipeline import run_pipeline
-from scripts.generator import generate_stream
-from scripts.classifier import classify, should_block
-from scripts.retriever import retrieve, is_context_empty
-from scripts.memory import (
+from policy_proc.scripts.pipeline import run_pipeline, run_pipeline_stream
+from policy_proc.scripts.generator import generate_stream
+from policy_proc.scripts.classifier import classify, should_block
+from policy_proc.scripts.retriever import retrieve, is_context_empty
+from policy_proc.scripts.memory import (
     get_sessions, get_turns, rename_session,
     get_memory_context, save_memory, create_session,
 )
-from scripts.config import MESSAGES
-from scripts.registry import now_iso
+from policy_proc.scripts.config import MESSAGES
+from policy_proc.scripts.registry import now_iso
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 s3            = boto3.client("s3",            region_name=REGION)
 bedrock_agent = boto3.client("bedrock-agent", region_name=REGION)
 
-JWT_SECRET = os.environ.get("JWT_SECRET")
-if not JWT_SECRET:
-    # JWT_SECRET only signs the DEV login tokens (POST /auth/login). Production
-    # auth uses ISENA tokens, decoded without this secret (see decode_token), so
-    # a missing secret must not crash the service — fall back to an ephemeral
-    # per-process secret. Dev tokens just won't survive a restart.
-    import secrets as _secrets
-    JWT_SECRET = _secrets.token_hex(32)
-    logging.getLogger(__name__).warning(
-        "JWT_SECRET not set — using an ephemeral per-process secret. "
-        "Dev /auth/login tokens won't survive restarts; ISENA tokens unaffected."
-    )
+JWT_ENABLED = os.environ.get("JWT_ENABLED", "false").lower() == "true"
+JWT_SECRET  = os.environ.get("JWT_SECRET_KEY", "")  # Only used if policy validates JWTs locally
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL     = 3600  # seconds
 
@@ -133,17 +123,7 @@ def get_user_role(user_id: str, token: str, jwt_role: str = "support_worker") ->
         logger.error(f"Failed to get user type from backend: {e}")
         return jwt_role
 
-app = FastAPI(
-    title="SENA RAG API",
-    version="2.0.0",
-    description=(
-        "⚠️ INTERNAL SERVICE — the frontend must NOT call this directly. All client "
-        "traffic goes through the **ai-chatbot gateway** (`POST /ai-chatbot/route` with "
-        "category `policy` or `procedure`); the gateway validates the JWT and forwards "
-        "the request here over the private docker network. These endpoints are "
-        "documented for backend/ops reference only."
-    ),
-)
+app = FastAPI(title="SENA RAG API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -158,7 +138,7 @@ def verify_api_key(x_api_key: str = Header(default=None)):
         return  # enforcement disabled — INTERNAL_API_KEY not configured
     if x_api_key != INTERNAL_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
-    
+
 # ── User store ─────────────────────────────────────────────────────────────────
 
 def _load_users() -> dict:
@@ -199,28 +179,17 @@ def _mint_token(user: dict) -> str:
 
 
 def decode_token(authorization: str) -> dict:
+    if not JWT_ENABLED:
+        return {"user_id": "dev", "org_id": "ndis", "role": "superadmin"}
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
     token = authorization.split(" ", 1)[1]
     try:
-        # 1. Policy's own dev token (POST /auth/login) — signed with our JWT_SECRET.
         raw = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        # 2. Production ISENA token (POST /auth/ai/login) — signed by ISENA with a
-        #    secret we don't hold. The frontend obtains it and the gateway forwards
-        #    it unchanged; the gateway is the trust boundary (same model as the staff
-        #    service), so we decode without signature verification but still enforce
-        #    expiry. To require a verified signature instead, set JWT_SECRET to
-        #    ISENA's signing key and this branch won't be reached.
-        try:
-            raw = jwt.decode(token, options={"verify_signature": False})
-        except jwt.InvalidTokenError as exc:
-            raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
-        exp = raw.get("exp")
-        if exp and datetime.now(timezone.utc) > datetime.fromtimestamp(exp, tz=timezone.utc):
-            raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
 
     # Normalise field names — support both real backend (camelCase) and local dev (snake_case)
     user_id = raw.get("user_id") or raw.get("userId") or raw.get("sub", "")
@@ -335,9 +304,9 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
     """
     SSE streaming. Events:
         data: {"type": "meta",    "session_id": "...", "label": "...", "sources": [...]}
-        data: {"type": "token",   "text": "..."}
-        data: {"type": "usage",   "input_tokens": N, "output_tokens": N}
+        data: {"type": "token",   "text": "..."}          ← one per word, streamed live
         data: {"type": "done",    "stop_reason": "end_turn"}
+        data: {"type": "usage",   "input_tokens": N, "output_tokens": N}
         data: {"type": "blocked", "text": "...", "label": "..."}
         data: {"type": "error",   "text": "..."}
     """
@@ -360,7 +329,8 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
 
     def event_stream():
         try:
-            result = run_pipeline(
+            meta_sent = False
+            for event in run_pipeline_stream(
                 question    = question,
                 session_id  = session_id,
                 user_id     = actor_id,
@@ -368,29 +338,15 @@ def query_stream(req: QueryRequest, authorization: str = Header(default=None)):
                 role        = role,
                 is_new_chat = req.is_new_chat,
                 doc_type    = req.doc_type.value if req.doc_type else None,
-            )
+            ):
+                # Inject identity into the meta event
+                if event.get("type") == "meta" and not meta_sent:
+                    event["_identity"] = {"user_id": user_id, "org_id": org_id, "role": role}
+                    meta_sent = True
+                yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:
-            logger.error(f"Pipeline error: {exc}")
+            logger.error(f"Pipeline stream error: {exc}")
             yield f"data: {json.dumps({'type': 'error', 'text': MESSAGES['ERROR']})}\n\n"
-            return
-
-        answer       = result.get("answer", "")
-        sources      = result.get("sources", [])
-        blocked      = result.get("blocked", False)
-        block_reason = result.get("block_reason")
-        label        = result.get("classification", {}).get("label")
-        usage        = result.get("usage") or {"input_tokens": 0, "output_tokens": 0}
-
-        yield f"data: {json.dumps({'type': 'meta', 'session_id': result.get('session_id', session_id), 'label': label, 'sources': sources, '_identity': {'user_id': user_id, 'org_id': org_id, 'role': role}})}\n\n"
-
-        if blocked:
-            yield f"data: {json.dumps({'type': 'blocked', 'text': answer, 'label': block_reason or label})}\n\n"
-            return
-
-        yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
-        # Token usage for THIS question (input + output) — same shape as the staff service.
-        yield f"data: {json.dumps({'type': 'usage', 'input_tokens': usage.get('input_tokens', 0), 'output_tokens': usage.get('output_tokens', 0)})}\n\n"
-        yield f"data: {json.dumps({'type': 'done', 'stop_reason': 'end_turn'})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -641,7 +597,7 @@ def trigger_ingestion(req: TriggerIngestionRequest, authorization: str = Header(
     registry_update(doc_id, {"status": final_status})
  
     # Clear org doc cache so retriever picks up new doc immediately
-    from scripts.retriever import clear_org_cache
+    from policy_proc.scripts.retriever import clear_org_cache
     clear_org_cache(doc_org)
  
     return {
@@ -739,7 +695,7 @@ def trigger_cleanup(req: TriggerCleanupRequest, authorization: str = Header(defa
     })
  
     # Clear org doc cache
-    from scripts.retriever import clear_org_cache
+    from policy_proc.scripts.retriever import clear_org_cache
     clear_org_cache(doc_org)
  
     return {

@@ -15,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -149,6 +149,20 @@ class NDISPolicyChunk(Base):
     NDIS policy document chunks for RAG retrieval.
     Global reference data — shared across all tenants, no RLS needed.
     HALFVEC(1024) matches Cohere Embed English v3 output dimensions.
+
+    Parent-child architecture:
+      Parent chunks  — full semantic sections (~800-1500 chars). is_parent=True.
+                       Sent to the evaluator for context. No embedding needed.
+      Child chunks   — sub-sections (~300 chars). is_parent=False.
+                       Embedded for high-precision retrieval. parent_chunk_id → parent.
+
+    Hybrid search:
+      search_vector  — PostgreSQL tsvector for BM25 keyword search.
+                       Populated at ingest from to_tsvector('english', text).
+                       Queried alongside vector cosine search; results merged via RRF.
+
+    Legacy flat chunks (pre-parent-child ingest) have is_parent=False, parent_chunk_id=NULL.
+    The RAG query treats these as directly retrievable, same as child chunks.
     """
 
     __tablename__ = "rp_ndis_policy_chunks"
@@ -162,7 +176,21 @@ class NDISPolicyChunk(Base):
     document_type: Mapped[str] = mapped_column(
         String(100), nullable=False, server_default="Regulatory"
     )
-    embedding: Mapped[list[float]] = mapped_column(HALFVEC(1024), nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(HALFVEC(1024), nullable=True)
+
+    # Parent-child hierarchy (NULL = legacy flat chunk or parent with no parent)
+    parent_chunk_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("rp_ndis_policy_chunks.chunk_id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    # True for parent/section chunks; False for child/retrieval chunks and legacy flat chunks
+    is_parent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    # BM25 hybrid search — populated at ingest via to_tsvector('english', text)
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

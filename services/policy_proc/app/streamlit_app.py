@@ -233,14 +233,36 @@ st.markdown("""
     background: #e5e5e5 !important;
 }
 
-/* doc type radio in sidebar */
-[data-testid="stSidebar"] [data-testid="stRadio"] label {
+/* doc type selectbox in sidebar */
+[data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div {
+    background: #1a1a1a !important;
+    border-color: #2a2a2a !important;
     font-size: 12px !important;
-    color: #a3a3a3 !important;
+    color: #d4d4d4 !important;
 }
-[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
-    font-size: 12px !important;
+
+/* doc type radio toggle in main area */
+div[data-testid="stRadio"] > label { display: none; }
+div[data-testid="stRadio"] div[role="radiogroup"] {
+    justify-content: center;
+    gap: 6px;
 }
+div[data-testid="stRadio"] div[role="radiogroup"] label {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 20px;
+    padding: 4px 16px;
+    font-size: 12px;
+    color: #a3a3a3;
+    cursor: pointer;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+    background: #d4d4d4;
+    border-color: #d4d4d4;
+    color: #0a0a0a;
+    font-weight: 600;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] span { display: none; }
 
 /* user chip in sidebar footer */
 .user-chip {
@@ -286,7 +308,7 @@ def _init():
         "all_sessions":   [],
         "active_session": None,
         "login_error":    "",
-        "doc_type":       "All",      # "All" | "Policy" | "Procedure"
+        "doc_type":       "Policy",   # "Policy" | "Procedure"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -379,9 +401,9 @@ def load_session(session_id: str):
     msgs = []
     for t in data.get("turns", []):
         msgs.append({"role": "user",      "content": t["question"], "blocked": False,
-                     "sources": [], "label": "", "ts": t.get("timestamp", "")})
+                     "sources": [], "label": "", "usage": {}, "ts": t.get("timestamp", "")})
         msgs.append({"role": "assistant", "content": t["answer"],   "blocked": False,
-                     "sources": t.get("sources", []), "label": "", "ts": t.get("timestamp", "")})
+                     "sources": t.get("sources", []), "label": "", "usage": {}, "ts": t.get("timestamp", "")})
     st.session_state.messages       = msgs
     st.session_state.session_id     = session_id
     st.session_state.active_session = session_id
@@ -424,22 +446,20 @@ def send_message(question: str):
         "session_title": session_title,
         "is_new_chat":   is_new,
     }
-    selected_doc_type = st.session_state.get("doc_type", "All")
-    if selected_doc_type == "Policy":
-        payload["doc_type"] = "policy"
-    elif selected_doc_type == "Procedure":
-        payload["doc_type"] = "procedure"
-    # "All" → omit doc_type so backend returns both
+    selected_doc_type = st.session_state.get("doc_type", "Policy")
+    payload["doc_type"] = "policy" if selected_doc_type == "Policy" else "procedure"
 
     # Placeholder for streaming tokens
     with st.chat_message("assistant"):
         placeholder = st.empty()
 
-    token_buf    = []
-    final_type   = "done"
-    final_label  = ""
+    token_buf     = []
+    final_type    = "done"
+    final_label   = ""
     final_sources = []
     blocked_text  = None
+    usage_input   = 0
+    usage_output  = 0
 
     try:
         with requests.post(
@@ -490,6 +510,10 @@ def send_message(question: str):
                         unsafe_allow_html=True,
                     )
 
+                elif etype == "usage":
+                    usage_input  = event.get("input_tokens",  0)
+                    usage_output = event.get("output_tokens", 0)
+
                 elif etype == "done":
                     if token_buf:
                         placeholder.markdown("".join(token_buf))
@@ -515,6 +539,7 @@ def send_message(question: str):
             "blocked": True,
             "sources": [],
             "label":   final_label,
+            "usage":   {"input_tokens": usage_input, "output_tokens": usage_output},
             "ts":      datetime.now().strftime("%H:%M"),
         })
     else:
@@ -525,6 +550,7 @@ def send_message(question: str):
             "blocked": False,
             "sources": final_sources,
             "label":   final_label,
+            "usage":   {"input_tokens": usage_input, "output_tokens": usage_output},
             "ts":      datetime.now().strftime("%H:%M"),
         })
 
@@ -540,6 +566,7 @@ def render_message(msg: dict):
     sources = msg.get("sources", [])
     label   = msg.get("label", "")
     ts      = msg.get("ts", "")
+    usage   = msg.get("usage", {})
 
     if role == "user":
         st.markdown(
@@ -563,6 +590,13 @@ def render_message(msg: dict):
                     src_str = "  ".join(f"`{s}`" for s in sources)
                     st.markdown(
                         f"<div class='msg-meta'>Sources: {src_str}</div>",
+                        unsafe_allow_html=True,
+                    )
+                if usage.get("input_tokens") or usage.get("output_tokens"):
+                    st.markdown(
+                        f"<div class='msg-meta'>"
+                        f"Tokens: {usage.get('input_tokens', 0):,} in &nbsp;·&nbsp; {usage.get('output_tokens', 0):,} out"
+                        f"</div>",
                         unsafe_allow_html=True,
                     )
 
@@ -653,6 +687,25 @@ with st.sidebar:
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
+    # Doc type filter — pinned near top so it's always visible
+    st.markdown(
+        "<div style='font-size:10px;color:#525252;letter-spacing:0.08em;"
+        "text-transform:uppercase;padding:0 2px 4px'>Document type</div>",
+        unsafe_allow_html=True,
+    )
+    options = ["Policy", "Procedure"]
+    current = st.session_state.get("doc_type", "Policy")
+    if current not in options:
+        current = "Policy"
+    st.session_state.doc_type = st.selectbox(
+        "Document type",
+        options=options,
+        index=options.index(current),
+        label_visibility="collapsed",
+    )
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+
     # Session list
     sessions = st.session_state.all_sessions
     if sessions:
@@ -674,22 +727,6 @@ with st.sidebar:
             "<div style='font-size:12px;color:#404040;padding:4px 2px'>No conversations yet.</div>",
             unsafe_allow_html=True,
         )
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-
-    # Doc type filter
-    st.markdown(
-        "<div style='font-size:10px;color:#525252;letter-spacing:0.08em;"
-        "text-transform:uppercase;padding:0 2px 6px'>Filter by type</div>",
-        unsafe_allow_html=True,
-    )
-    st.session_state.doc_type = st.radio(
-        "Document type",
-        options=["All", "Policy", "Procedure"],
-        index=["All", "Policy", "Procedure"].index(st.session_state.get("doc_type", "All")),
-        label_visibility="collapsed",
-        horizontal=True,
-    )
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -726,6 +763,25 @@ if not messages:
 else:
     for msg in messages:
         render_message(msg)
+
+
+# ── Doc type toggle (always visible above input) ──────────────────────────────
+
+_dt_options = ["Policy", "Procedure"]
+_dt_current = st.session_state.get("doc_type", "Policy")
+if _dt_current not in _dt_options:
+    _dt_current = "Policy"
+
+_gap1, _dt_col, _gap2 = st.columns([2, 3, 2])
+with _dt_col:
+    _sel = st.radio(
+        "doc_type_main",
+        options=_dt_options,
+        index=_dt_options.index(_dt_current),
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.session_state.doc_type = _sel
 
 
 # ── Chat Input ────────────────────────────────────────────────────────────────
