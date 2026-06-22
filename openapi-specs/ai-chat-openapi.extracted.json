@@ -220,11 +220,5 @@
       "name": "Health",
       "description": "Gateway + child-service health."
     }
-  ],
-  "servers": [
-    {
-      "url": "https://dev-api.isena.org/ai-chatbot",
-      "description": "Production ai-chatbot service (behind nginx)"
-    }
   ]
 }

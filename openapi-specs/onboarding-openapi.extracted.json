@@ -3,10 +3,7 @@
   "info": {
     "title": "SENA Onboarding Voice API",
     "description": "AI voice agent for NDIS participant onboarding. WebSocket protocol documented in docs/WS_PROTOCOL.md.",
-    "version": "0.1.0",
-    "contact": {
-      "name": "SENA AI Team"
-    }
+    "version": "0.1.0"
   },
   "paths": {
     "/v1/onboarding/session": {
@@ -1260,28 +1257,6 @@
         ],
         "title": "ValidationError"
       }
-    },
-    "securitySchemes": {
-      "BearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT"
-      },
-      "HeaderAuth": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-User-ID"
-      }
     }
-  },
-  "servers": [
-    {
-      "url": "http://localhost:8083",
-      "description": "Development server"
-    },
-    {
-      "url": "https://api.sena.example.com/onboarding",
-      "description": "Production server"
-    }
-  ]
+  }
 }

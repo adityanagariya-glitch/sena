@@ -149,3 +149,8 @@ services/8ef31cb1-1146-4775-923b-ce6a820208d5.zip
 services/casenote_monthly/example.json
 services/casenote_monthly/trends/
 services/casenote_monthly/output/
+luvvoice.com-20260619-HYolcX.mp3
+test.raw
+services/services/nginx/nginx-local.conf
+services/docker-compose-gateway.yml
+services/docker-compose.yml

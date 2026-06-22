@@ -684,29 +684,5 @@
         "title": "ValidationError"
       }
     }
-  },
-  "servers": [
-    {
-      "url": "http://127.0.0.1:8000",
-      "description": "Internal policy service (child process of ai-chatbot)"
-    }
-  ],
-  "tags": [
-    {
-      "name": "Query",
-      "description": "Policy and procedure question answering via RAG"
-    },
-    {
-      "name": "Sessions",
-      "description": "Conversation session management"
-    },
-    {
-      "name": "Admin",
-      "description": "Document ingestion and management (coordinator/superadmin only)"
-    },
-    {
-      "name": "Health",
-      "description": "Service health checks"
-    }
-  ]
+  }
 }

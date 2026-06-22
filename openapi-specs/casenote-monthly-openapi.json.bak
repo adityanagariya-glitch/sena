@@ -222,7 +222,6 @@
         "properties": {
           "client_id": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "title": "Client Id",
             "description": "Client UUID from the SENA system.",
             "examples": [
@@ -337,7 +336,6 @@
         "properties": {
           "client_id": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "title": "Client Id",
             "description": "Client UUID from the SENA system.",
             "examples": [
@@ -346,7 +344,6 @@
           },
           "period": {
             "type": "string",
-            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
             "title": "Period",
             "description": "Reporting month in **YYYY-MM** format.",
             "examples": [
@@ -430,6 +427,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

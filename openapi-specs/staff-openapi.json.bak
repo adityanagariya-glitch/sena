@@ -1,0 +1,181 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "SENA Staff API",
+        "description": "**Internal API — called by ai-chatbot only.** Two completely independent sections with separate tool sets:\n\n**Sections:**\n- `POST /staff/query/stream` → Check Shifts (shifts, rosters, team directory)\n- `POST /client/query/stream` → Client's Information (participant data)\n\nA staff-section request can never reach client data, and vice-versa. Each section gets only its own tool set. The frontend (chip-selector) never calls this directly — only ai-chatbot does.\n\n**Streaming:** All endpoints return Server-Sent Events: `meta` → `token` → `usage` → `done` (or `error`)",
+        "version": "2.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://127.0.0.1:8001",
+            "description": "Internal staff service (child process of ai-chatbot)"
+        }
+    ],
+    "paths": {
+        "/staff/query/stream": {
+            "post": {
+                "tags": ["Staff"],
+                "summary": "Answer a shifts/roster question",
+                "description": "Ask about shifts, rosters, shift details, the staff/team directory, or general identity information.\n\nThis section can **only** access:\n- Shift data (list, details, schedule)\n- Staff/team directory\n- User identity and timezone\n- Organization info\n\nIt cannot access client/participant data.\n\n**Token Usage:** Response includes `input_tokens` and `output_tokens` from Bedrock for metrics and cost tracking.",
+                "operationId": "staff_query_stream_staff_query_stream_post",
+                "parameters": [
+                    {
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {"type": "string"},
+                        "description": "Bearer JWT token (validated by gateway, passed through)"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/QueryRequest"},
+                            "examples": {
+                                "list_shifts": {
+                                    "value": {
+                                        "question": "What are my shifts this week?",
+                                        "is_new_chat": true
+                                    }
+                                },
+                                "with_session": {
+                                    "value": {
+                                        "question": "When is my next shift?",
+                                        "session_id": "sess-abc123"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "SSE stream with events: meta → token → usage → done",
+                        "content": {
+                            "text/event-stream": {
+                                "example": "data: {\"type\": \"meta\", \"session_id\": \"staff-session-001\"}\n\ndata: {\"type\": \"token\", \"text\": \"You have 2 shifts this week:\\n\\n1. **Monday 10:00–2:00 PM**\\n2. **Thursday 6:00–10:00 PM**\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 2496, \"output_tokens\": 320}\n\ndata: {\"type\": \"done\"}\n"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/client/query/stream": {
+            "post": {
+                "tags": ["Client"],
+                "summary": "Answer a participant/client question",
+                "description": "Ask about clients, participant information, support workers, guardians, or search/filter participants.\n\nThis section can **only** access:\n- Client/participant list and details\n- Support worker and guardian information\n- Client search and filtering\n- User identity and timezone\n- Organization info\n\nIt cannot access shift/staff data.\n\n**Token Usage:** Response includes `input_tokens` and `output_tokens` from Bedrock for metrics and cost tracking.",
+                "operationId": "client_query_stream_client_query_stream_post",
+                "parameters": [
+                    {
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": false,
+                        "schema": {"type": "string"},
+                        "description": "Bearer JWT token (validated by gateway, passed through)"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/QueryRequest"},
+                            "examples": {
+                                "list_clients": {
+                                    "value": {
+                                        "question": "Who are my clients?",
+                                        "is_new_chat": true
+                                    }
+                                },
+                                "client_details": {
+                                    "value": {
+                                        "question": "Tell me about John Smith",
+                                        "session_id": "sess-abc123"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "SSE stream with events: meta → token → usage → done",
+                        "content": {
+                            "text/event-stream": {
+                                "example": "data: {\"type\": \"meta\", \"session_id\": \"client-session-001\"}\n\ndata: {\"type\": \"token\", \"text\": \"You have 3 clients:\\n\\n1. John Smith (Age 28)\\n2. Sarah Johnson (Age 35)\\n3. Michael Brown (Age 42)\"}\n\ndata: {\"type\": \"usage\", \"input_tokens\": 3124, \"output_tokens\": 256}\n\ndata: {\"type\": \"done\"}\n"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "tags": ["Health"],
+                "summary": "Liveness probe",
+                "description": "Returns 200 when the service is healthy.",
+                "operationId": "health_check_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Service is healthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {"type": "object"},
+                                "example": {"status": "ok"}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "QueryRequest": {
+                "type": "object",
+                "required": ["question"],
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The user's natural-language question for this section.",
+                        "example": "What are my shifts this week?"
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Conversation ID to continue a thread. Omit or null to start fresh.",
+                        "example": "sess-abc123"
+                    },
+                    "session_title": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Optional human-readable title for a new conversation.",
+                        "example": "This week's roster"
+                    },
+                    "is_new_chat": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "True to begin a brand-new conversation (clears prior turns)."
+                    }
+                },
+                "description": "A user question for one section, plus optional session context."
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Staff",
+            "description": "Worker's own work — shifts, rosters, shift details, team directory"
+        },
+        {
+            "name": "Client",
+            "description": "Participant data — client list, details, support workers, guardians"
+        },
+        {
+            "name": "Health",
+            "description": "Service health checks"
+        }
+    ]
+}

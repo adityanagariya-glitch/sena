@@ -135,25 +135,7 @@ async def onboarding_ws(
 
     try:
 
-        # ── 4. Wait for the opening handshake ─────────────────────────────────
-        # Accept either the v2 mobile client ({"type":"hello","client_proto":"v2"})
-        # or the legacy / test-harness frame ({"type":"start"}). The frame is only
-        # used as a go-ahead signal; nothing downstream reads it.
-        _expected = 'Expected {"type":"hello","client_proto":"v2"} or {"type":"start"} as first message'
-        try:
-            raw = await websocket.receive_text()
-            hello = json.loads(raw)
-        except WebSocketDisconnect:
-            return
-        except json.JSONDecodeError:
-            await _close_with_error(websocket, "protocol_error", _expected, 4008)
-            return
-
-        if hello.get("type") not in ("hello", "start"):
-            await _close_with_error(websocket, "protocol_error", _expected, 4008)
-            return
-
-        # ── 5. Send "ready" with current form state ────────────────────────────
+        # ── 4. Send "ready" with current form state ───────────────────────────
         await websocket.send_text(json.dumps({
             "type": "ready",
             "state": json.loads(state.model_dump_json()),

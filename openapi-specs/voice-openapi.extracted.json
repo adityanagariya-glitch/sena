@@ -2,11 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SENA Voice Service - Flow B",
-    "version": "0.1.0",
-    "description": "AI voice agent for case note dictation and personal details collection",
-    "contact": {
-      "name": "SENA AI Team"
-    }
+    "version": "0.1.0"
   },
   "paths": {
     "/health/live": {
@@ -1700,28 +1696,6 @@
         ],
         "title": "ValidationError"
       }
-    },
-    "securitySchemes": {
-      "BearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT"
-      },
-      "HeaderAuth": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-User-ID"
-      }
     }
-  },
-  "servers": [
-    {
-      "url": "http://localhost:8082",
-      "description": "Development server"
-    },
-    {
-      "url": "https://api.sena.example.com/voice",
-      "description": "Production server"
-    }
-  ]
+  }
 }

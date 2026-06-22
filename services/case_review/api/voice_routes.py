@@ -261,18 +261,6 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
         return
 
     try:
-        # Opening handshake — accept {"type":"hello"} or {"type":"start"}.
-        try:
-            hello = json.loads(await websocket.receive_text())
-        except WebSocketDisconnect:
-            return
-        except json.JSONDecodeError:
-            await _close(websocket, "protocol_error", 'Expected {"type":"hello"} first', 4008)
-            return
-        if hello.get("type") not in ("hello", "start"):
-            await _close(websocket, "protocol_error", 'Expected {"type":"hello"} first', 4008)
-            return
-
         await websocket.send_text(json.dumps({
             "type": "ready",
             "state": json.loads(state.model_dump_json()),
