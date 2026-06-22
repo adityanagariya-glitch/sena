@@ -319,41 +319,20 @@ async def retrieve_policy_chunks(
     # not only BM25. Single-query path = one embed call (cost unchanged).
     query_embeddings = await asyncio.gather(*[embed_query(q) for q in all_queries])
 
-    # Step 2: For each query run BM25 (on text) + vector (on its own embedding),
-    # in TRUE PARALLEL with separate DB connections per task. A single AsyncSession
-    # multiplexes one connection and cannot service concurrent operations. But the
-    # engine has a pool, so we can get fresh sessions for each parallel task.
-    async def _search_with_session(search_fn, *args, **kwargs):
-        """Helper: acquire a fresh session from the engine and run search_fn."""
-        from sqlalchemy.ext.asyncio import async_sessionmaker
-        session_factory = async_sessionmaker(bind=db.get_bind(), expire_on_commit=False)
-        async with session_factory() as fresh_db:
-            return await search_fn(*args, fresh_db, **kwargs)
-
-    search_tasks = []
-    # BM25 tasks
-    for q in all_queries:
-        search_tasks.append(_search_with_session(_bm25_search, q, limit=fetch_k))
-    # Vector tasks
-    for emb in query_embeddings:
-        search_tasks.append(_search_with_session(_vector_search, emb, limit=fetch_k))
-
-    try:
-        all_results = await asyncio.wait_for(
-            asyncio.gather(*search_tasks),
-            timeout=timeout_secs - 0.5  # reserve 0.5s for post-search ops
-        )
-    except asyncio.TimeoutError:
-        logger.warning(
-            "rag.hybrid RAG timeout after %.1fs (queries=%d) — degrading to empty chunks",
-            timeout_secs,
-            len(all_queries)
-        )
-        return []  # evaluator will work on raw transcript
+    # Step 2: For each query run BM25 (on text) + vector (on its own embedding).
+    # These run SEQUENTIALLY on the request's session — a single AsyncSession
+    # multiplexes one connection and CANNOT run concurrent operations
+    # (asyncio.gather of db.execute calls raises "session is provisioning a new
+    # connection; concurrent operations are not permitted"). Parallelising would
+    # need a fresh session per task bound to the AsyncEngine, but db.get_bind()
+    # returns the SYNC engine — binding async_sessionmaker to it breaks on execute.
+    # The queries are GIN/HNSW-indexed and sub-10ms, so sequential is correct and
+    # the latency cost is negligible.
+    bm25_lists = [await _bm25_search(q, db, limit=fetch_k) for q in all_queries]
+    vector_lists = [await _vector_search(emb, db, limit=fetch_k) for emb in query_embeddings]
 
     n = len(all_queries)
-    bm25_lists = all_results[:n]
-    vector_lists = all_results[n:]
+    all_results = bm25_lists + vector_lists  # retained for the signal-count log below
 
     # Distinct-chunk counts for logging only (RRF dedups internally)
     vector_seen = {c.chunk_id for lst in vector_lists for c in lst}
