@@ -870,6 +870,62 @@
   },
   {
     "method": "GET",
+    "path": "/organization-member/support-coordinator/my-clients",
+    "description": "Get logged-in coordinator's assigned clients",
+    "parameters": [
+      {"name": "page", "type": "integer", "required": false, "description": "Default value : 1"},
+      {"name": "limit", "type": "integer", "required": false, "description": "Default value : 10"},
+      {"name": "search", "type": "string", "required": false, "description": "Search by client name"},
+      {"name": "sortByName", "type": "string", "required": false, "description": "Available values : a, d"},
+      {"name": "sortByPlanStartDate", "type": "string", "required": false, "description": "Available values : a, d"},
+      {"name": "sortByCity", "type": "string", "required": false, "description": "Available values : a, d"},
+      {"name": "clientStatus", "type": "string", "required": false},
+      {"name": "filterByConsentStatus", "type": "string", "required": false, "description": "Available values : invited, accepted, rejected"}
+    ],
+    "responseExample": null,
+    "section": "client",
+    "audience": ["isw_mobile", "support_coordinator_mobile"],
+    "purpose": "Get logged-in ISW or support coordinator's assigned clients"
+  },
+  {
+    "method": "GET",
+    "path": "/organization/client/list/all-clients",
+    "description": "Get all clients without pagination",
+    "parameters": [
+      {"name": "statusIs", "type": "string", "required": false, "description": "Include only clients with these statuses. Accepts a single value, comma-separated string, or repeated params. e.g. onboarded,pending_verification"},
+      {"name": "statusIsNot", "type": "string", "required": false, "description": "Exclude clients with these statuses. Accepts a single value, comma-separated string, or repeated params. e.g. rejected,invited"},
+      {"name": "search", "type": "string", "required": false, "description": "Search by client name (first/last/preferred)"}
+    ],
+    "responseExample": {
+      "success": true,
+      "message": "Get All My clients filtered by status unpaginated successful",
+      "data": {
+        "data": [
+          {
+            "id": "d0fa560a-2cee-4a01-9306-0dcc41f7cda1",
+            "client": {
+              "id": "060da8cf-c071-46cb-a1f8-54aed6d52072",
+              "firstName": "John",
+              "lastName": "Doe",
+              "city": "Sydney",
+              "state": "NSW",
+              "ndisNumber": "ND12345678",
+              "planStartDate": "2025-01-01",
+              "planEndDate": "2025-12-31"
+            },
+            "clientStatus": "in_progress",
+            "stepsCompleted": 0
+          }
+        ],
+        "total": 1
+      }
+    },
+    "section": "client",
+    "audience": ["admin_web"],
+    "purpose": "Get all org clients unpaginated, filterable by status"
+  },
+  {
+    "method": "GET",
     "path": "/organization/client/board-view",
     "description": "Get clients grouped by onboarding status",
     "parameters": [

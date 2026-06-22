@@ -12,6 +12,7 @@ from auth import has_auth_token
 from api_router import call_target_api, construct_api_url
 from response_strippers import strip_api_response
 from tools.base import ToolSpec, ToolResult
+from tools._common import parallel_fetch, dedup_by_id
 
 
 def _run(inputs: dict | None) -> ToolResult:
@@ -57,8 +58,64 @@ def _run(inputs: dict | None) -> ToolResult:
         path = "/organization/client/my-clients"
     elif "guardian" in roles or user_type == "guardian":
         path = "/mobile/visitor/clients"
-    elif staff_type in ("support_worker", "isw") or user_type == "staff":
-        path = "/mobile/visitor/clients"
+    elif staff_type == "support_worker" or user_type == "staff":
+        # ISW bridges support-worker and coordinator roles — call both endpoints
+        # in parallel and merge so the user sees all their clients regardless of
+        # which role they were assigned under.
+        query_params = {"page": str(page), "limit": str(limit)}
+        fetchers = [
+            {
+                "label": "visitor",
+                "url": construct_api_url("/mobile/visitor/clients", {}),
+                "params": query_params,
+            },
+            {
+                "label": "coordinator",
+                "url": construct_api_url("/organization-member/support-coordinator/my-clients", {}),
+                "params": query_params,
+            },
+        ]
+        par = parallel_fetch(fetchers, tool_name="list_my_clients")
+        raw_visitor = par.get("visitor", {})
+        raw_coord = par.get("coordinator", {})
+
+        visitor_err = isinstance(raw_visitor, dict) and raw_visitor.get("error")
+        coord_err = isinstance(raw_coord, dict) and raw_coord.get("error")
+
+        if visitor_err and coord_err:
+            return ToolResult(
+                error=f"Both client sources failed: {raw_visitor.get('error')}",
+                meta={
+                    "status_code": raw_visitor.get("status_code"),
+                    "paths": ["/mobile/visitor/clients", "/organization-member/support-coordinator/my-clients"],
+                },
+            )
+
+        def _extract(raw):
+            if not isinstance(raw, dict):
+                return []
+            data = raw.get("data", raw)
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                inner = data.get("data", [])
+                if isinstance(inner, list):
+                    return inner
+            return []
+
+        clients_a = _extract(raw_visitor) if not visitor_err else []
+        clients_b = _extract(raw_coord) if not coord_err else []
+        merged = dedup_by_id(clients_a + clients_b, id_keys=("clientId", "id", "_id"))
+
+        return ToolResult(
+            data={"clients": merged, "total": len(merged)},
+            meta={
+                "paths": ["/mobile/visitor/clients", "/organization-member/support-coordinator/my-clients"],
+                "visitor_count": len(clients_a),
+                "coordinator_count": len(clients_b),
+                "merged_total": len(merged),
+            },
+        )
     else:
         path = "/organization/client/my-clients"
 
