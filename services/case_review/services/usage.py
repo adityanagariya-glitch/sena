@@ -59,19 +59,13 @@ def _add(input_tokens: int, output_tokens: int, cache_read: int, cache_creation:
     with _lock:
         acc["input_tokens"] += int(input_tokens or 0)
         acc["output_tokens"] += int(output_tokens or 0)
+        # Cache counts are still accumulated (for logs / get_usage_full), but the
+        # API total is intentionally kept simple: total = input + output. Cache
+        # read/write are surfaced in the per-stage stdout logs, not folded into
+        # the total.
         acc["cache_read_tokens"] += int(cache_read or 0)
         acc["cache_creation_tokens"] += int(cache_creation or 0)
-        # total = TRUE tokens processed. Bedrock reports inputTokens as the
-        # UNCACHED remainder only; cacheRead + cacheWrite are separate fields for
-        # tokens that were also part of the prompt. Summing all four gives the
-        # real total the model processed (not the uncached slice, not a
-        # cost-discounted number).
-        acc["total_tokens"] = (
-            acc["input_tokens"]
-            + acc["output_tokens"]
-            + acc["cache_read_tokens"]
-            + acc["cache_creation_tokens"]
-        )
+        acc["total_tokens"] = acc["input_tokens"] + acc["output_tokens"]
 
 
 def record_converse(response: dict[str, Any]) -> None:

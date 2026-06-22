@@ -120,6 +120,7 @@ langchain-aws
 langchain-openai
 langchain-text-splitters
 langgraph
+langfuse
 openai
 pandas
 numpy
