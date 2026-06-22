@@ -56,9 +56,7 @@ from registry import now_iso
 s3            = boto3.client("s3",            region_name=REGION)
 bedrock_agent = boto3.client("bedrock-agent", region_name=REGION)
 
-JWT_SECRET = os.environ.get("JWT_SECRET")
-if not JWT_SECRET:
-    raise RuntimeError("JWT_SECRET environment variable is not set")
+JWT_SECRET = os.environ.get("JWT_SECRET", "")  # Only used if policy validates JWTs locally
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL     = 3600  # seconds
 
