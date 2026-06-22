@@ -38,6 +38,7 @@ def _run(inputs: dict | None) -> ToolResult:
         )
 
     user_type = (user_context.get("user_type") or "").lower()
+    staff_type = (user_context.get("staff_type") or "").lower()
     roles = [r.lower() for r in (user_context.get("roles") or [])]
 
     if "guardian" in roles or user_type == "guardian":
