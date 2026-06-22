@@ -60,6 +60,8 @@ packaging
 pathspec
 pgvector
 pillow
+pillow-avif-plugin
+pillow-heif
 python-docx
 pip-tools
 platformdirs

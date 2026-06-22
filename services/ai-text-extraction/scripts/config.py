@@ -49,8 +49,9 @@ class DocumentConfig:
 
     # Accepted file extensions
     supported_extensions: tuple = (
-        ".jpg", ".jpeg", ".png", ".pdf", ".docx",
-        ".heif", ".heic",
+        ".jpg", ".jpeg", ".png", ".webp",
+        ".heif", ".heic", ".avif",
+        ".pdf", ".docx",
     )
 
 
