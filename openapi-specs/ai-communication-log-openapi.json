@@ -1,0 +1,377 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sena Communication Log Classifier",
+    "description": "AI batch sentiment analysis service for Sena platform. Analyses support_worker \u2194 client conversations for NDIS compliance \u2014 returns full per-message sentiment, risk, breakdown, outcome, and recommended action. Powered by AWS Bedrock (Claude Sonnet, Sydney region).",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/sentiment-batch": {
+      "post": {
+        "tags": [
+          "Sentiment Batch"
+        ],
+        "summary": "Batch sentiment analysis for a conversation window",
+        "description": "Accepts a batch of messages from a timed conversation window. Returns full per-message analysis (sentiment, risk, breakdown, outcome, recommended_action). Called by the Sena backend on a debounce timer or message-count cap \u2014 whichever triggers first. Max batch size is configurable via BATCH_MAX_MESSAGES.",
+        "operationId": "analyse_sentiment_batch_api_v1_sentiment_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentimentBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Batch analysis successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentimentBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error \u2014 empty list, or exceeds BATCH_MAX_MESSAGES"
+          },
+          "500": {
+            "description": "Internal analysis error (Bedrock or parsing failure)"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BreakdownAssessment": {
+        "properties": {
+          "detected": {
+            "type": "boolean",
+            "title": "Detected",
+            "description": "True if communication breakdown was detected"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "Breakdown criteria matched \u2014 empty when detected=false",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "detected"
+        ],
+        "title": "BreakdownAssessment"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "model"
+        ],
+        "title": "HealthResponse"
+      },
+      "Message": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "support_worker",
+              "client"
+            ],
+            "title": "Role",
+            "description": "Who sent this message"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text",
+            "description": "Message content"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "UTC timestamp of the message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text",
+          "timestamp"
+        ],
+        "title": "Message"
+      },
+      "MessageAnalysis": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "support_worker",
+              "client"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "sentiment": {
+            "$ref": "#/components/schemas/SentimentResult"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/RiskAssessment"
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/BreakdownAssessment"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "unresolved",
+              "pending"
+            ],
+            "title": "Outcome"
+          },
+          "recommended_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "text",
+          "timestamp",
+          "sentiment",
+          "risk",
+          "breakdown",
+          "outcome"
+        ],
+        "title": "MessageAnalysis",
+        "description": "Full analysis for a single message in the batch \u2014 all fields match existing schema types."
+      },
+      "RiskAssessment": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Level",
+            "description": "Risk severity: low / medium / high / critical"
+          },
+          "indicators": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Indicators",
+            "description": "Specific risk indicators detected",
+            "default": []
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Risk assessment summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level",
+          "reason"
+        ],
+        "title": "RiskAssessment"
+      },
+      "SentimentBatchRequest": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "Unique ID for this conversation thread"
+          },
+          "provider_id": {
+            "type": "string",
+            "title": "Provider Id",
+            "description": "Service provider org ID \u2014 used for data isolation"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Messages",
+            "description": "Ordered (oldest \u2192 newest) batch of messages to analyse"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "Optional extra context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "provider_id",
+          "messages"
+        ],
+        "title": "SentimentBatchRequest"
+      },
+      "SentimentBatchResponse": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "provider_id": {
+            "type": "string",
+            "title": "Provider Id"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageAnalysis"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "messages_analysed": {
+            "type": "integer",
+            "title": "Messages Analysed"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start",
+            "description": "Timestamp of the earliest message in the batch"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period End",
+            "description": "Timestamp of the latest message in the batch"
+          },
+          "analysed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Analysed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "provider_id",
+          "messages",
+          "messages_analysed",
+          "period_start",
+          "period_end"
+        ],
+        "title": "SentimentBatchResponse"
+      },
+      "SentimentResult": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "enum": [
+              "positive_satisfied",
+              "neutral",
+              "frustrated_dissatisfied",
+              "distressed_upset",
+              "confused_uncertain",
+              "engaged",
+              "disengaged"
+            ],
+            "title": "Label",
+            "description": "Participant wellbeing/engagement category"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "Confidence score 0.0\u20131.0"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "One sentence citing specific participant language or behaviour"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "confidence",
+          "reason"
+        ],
+        "title": "SentimentResult"
+      }
+    }
+  }
+}

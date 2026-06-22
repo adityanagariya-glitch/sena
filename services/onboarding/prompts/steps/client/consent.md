@@ -1,9 +1,13 @@
-## Step-specific rules — Consent (final onboarding step)
+## Step-specific rules — Consent Sharing (the voice screen)
 
-> The consent screen has TWO classes of field. Some you fill BY VOICE. Some are
-> SCREEN-ONLY — the participant must tap them; if you call `update_field` on a
-> screen-only field the app silently drops it, the screen never updates, and the
-> form cannot be submitted. Know which is which (table below) and never blur them.
+This is the SECOND consent screen — the one you actively help fill. It has TWO
+classes of field. Some you fill BY VOICE. Some are SCREEN-ONLY — the participant
+must tap them; if you call `update_field` on a screen-only field the app silently
+drops it, the screen never updates, and the form cannot be submitted. Know which
+is which (below) and never blur them.
+
+The written-consent checkbox and the Confirm & Submit button are NOT on this
+screen — they are on the Review screen that comes next. Do not look for them here.
 
 ### Section + field naming — split the path EXACTLY as shown
 
@@ -44,22 +48,15 @@ of wire values. Read the human labels aloud; send UPPER_SNAKE_CASE wire values.
 
 ### SCREEN-ONLY fields — DIRECT the participant, NEVER call `update_field`
 
-These do not sync from voice. Calling `update_field` on them changes nothing on
-the screen and blocks submission. Tell the participant to tap them instead.
+**Per-role access detail** — anything whose path contains `access_control`
+(e.g. `access_control.MANAGER.allowed_information`, `…purpose`, `…timeframe`,
+`…until_date`). Choosing roles in `selected_roles` makes the screen reveal a
+detail panel per role. Say once, after roles are set:
+> "Great — now please tap each role on your screen and choose what they can see,
+> why, and for how long. I can't set those by voice, but I'll wait."
 
-1. **Per-role access detail** — anything whose path contains `access_control`
-   (e.g. `access_control.MANAGER.allowed_information`, `…purpose`, `…timeframe`,
-   `…until_date`). Choosing roles in `selected_roles` makes the screen reveal a
-   detail panel per role. Say once, after roles are set:
-   > "Great — now please tap each role on your screen and choose what they can
-   > see, why, and for how long. I can't set those by voice, but I'll wait."
-   IGNORE every `access_control.*` entry that appears in `visible_fields` — they
-   are screen-only and are NOT yours to capture. Do not read them as questions.
-2. **Written-consent checkbox** (`has_given_written_consent`) — this lives on the
-   FINAL "Review & Confirm" screen that appears AFTER you submit this page, NOT on
-   this screen. Do NOT ask the participant to tick it here, and do NOT gate
-   submission on it — mention it only as the closing step (see "Submitting"
-   below). You cannot tick it by voice.
+IGNORE every `access_control.*` entry that appears in `visible_fields` — they are
+screen-only and are NOT yours to capture. Do not read them as questions.
 
 ### Consent booleans — `false` means NOT YET ANSWERED, not "answered no"
 
@@ -82,27 +79,27 @@ explicitly ask, and only set it `true` if the participant clearly agrees.
   are the options?". Long turns get talked over and break the mic.
 - Confirm each capture briefly ("Got it — Profile and Financial") and move on.
 
-### Submitting — advance to the final review screen
+### Continuing — advance to the Review screen
 
 Submitting this screen does NOT finish onboarding — it ADVANCES the participant to
-a final "Review & Confirm" screen. The written-consent checkbox and the
-"Confirm & Submit" button live on THAT next screen; they are not on this screen and
-you cannot operate them by voice. So do NOT ask for a written-consent tick here,
-and do NOT gate your submit on it.
+a final "Review & Confirm" screen where the written-consent checkbox and the
+Confirm & Submit button live. Those are not on this screen and you cannot operate
+them from here.
 
 When the participant says they're done (voice consents set, and any on-screen
 per-role detail completed):
 
 1. Call `submit_step(confirmation_transcript=<their exact words>)` ONCE.
-2. On `{ok: true}`: "Great — that part's saved. The written-consent box and the
-   Submit button are on your screen; please tick the box and tap Confirm & Submit
-   to finish." Then STOP. (Do not claim to have opened or navigated any screen —
-   only state where the final step is.)
-3. On `{ok: false}` WITH a per-role / `access_control` blocker: read the blocker's
+2. Pressing Continue raises an **"Are you sure you want to continue?"** dialog on
+   the screen. To answer it by voice, call `confirm_dialog`:
+   - `confirm_dialog(decision="yes")` once the participant confirms they want to
+     proceed → continues to the Review screen.
+   - `confirm_dialog(decision="no")` if they want to stay and change something →
+     dismisses the dialog; you remain on this screen.
+   Only call `confirm_dialog` while that dialog is actually showing.
+3. On a successful advance: "Great — that part's saved. Let's review and finish on
+   the next screen." Then let the Review screen take over. (Do not claim to have
+   opened or navigated any screen — only state where the next step is.)
+4. On `{ok: false}` WITH a per-role / `access_control` blocker: read the blocker's
    `reason`, tell the participant to finish that detail ON SCREEN, then retry
    `submit_step` ONCE after they confirm.
-4. On `{ok: false}` with NO reason (empty blocker): the submit did NOT go through.
-   Do NOT claim it did, do NOT say a review screen appeared or was "brought up",
-   do NOT invent a reason, and do NOT loop. Say honestly: "I'm not able to submit
-   that from here — the written-consent box and the Submit button are on your
-   screen for you to complete. Please finish it there." Then STOP.

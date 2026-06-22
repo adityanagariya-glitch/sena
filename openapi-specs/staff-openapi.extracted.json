@@ -318,11 +318,5 @@
       "name": "Health",
       "description": "Liveness probe for orchestration."
     }
-  ],
-  "servers": [
-    {
-      "url": "http://127.0.0.1:8001",
-      "description": "Internal staff service (child process of ai-chatbot)"
-    }
   ]
 }

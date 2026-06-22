@@ -250,14 +250,10 @@ class GeminiLiveSession:
         # LiveConnectConfig property.
         compression_cfg = None
         try:
-            # Option D Layer 3 — aggressive sliding-window compression so
-            # stale conversational drift gets summarised away faster, leaving
-            # recent function_response.state payloads to dominate the model's
-            # attention. 4000 tokens ≈ 5–7 min of voice — long enough to keep
-            # recent exchanges, short enough to evict stale drift fast.
-            # See .claude/plans/per-screen-session-model/ISSUE_AND_SOLUTION.md §7.12.
+            # 16k tokens handles data-heavy screens (many fields, large schemas,
+            # repeatable sections) without hitting model limits mid-session.
             compression_cfg = types.ContextWindowCompressionConfig(
-                sliding_window=types.SlidingWindow(target_tokens=4000)
+                sliding_window=types.SlidingWindow(target_tokens=16000)
             )
         except (AttributeError, TypeError):
             # SDK older than the compression types — keep going without it.
