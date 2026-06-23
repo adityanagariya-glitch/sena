@@ -27,21 +27,39 @@ class TokenUsage(BaseModel):
 # ── Case note (from other engineer's API / stub) ──────────────────────────────
 
 class CaseNoteDTO(BaseModel):
-    """Shape returned by the other engineer's GET /case-notes API."""
+    """
+    Normalised case note consumed by the summarizer.
+
+    Sourced either from fixtures (stub) or the SENA org backend
+    (GET /organization/case-note/{id}). The org backend has no raw voice
+    transcript — only the structured/drafted note — so `transcript` is
+    optional and `drafted_note` carries the composed note body.
+    """
     note_id: str
     date: str
     staff_id: str
     client_id: str
-    transcript: str
-    drafted_note: str
+    transcript: str = ""
+    drafted_note: str = ""
 
 
 # ── POST /v1/case-review/context ──────────────────────────────────────────────
 
 class ContextRequest(BaseModel):
-    staff_id: uuid.UUID = uuid.UUID("cccccccc-0000-0000-0000-000000000003")
-    client_id: uuid.UUID = uuid.UUID("dddddddd-0000-0000-0000-000000000004")
-    limit: int = Field(default=10, ge=1, le=50)
+    staff_id: uuid.UUID = Field(
+        default=uuid.UUID("cccccccc-0000-0000-0000-000000000003"),
+        description="Staff/worker UUID — maps to the org backend's memberId / organizationMemberId.",
+    )
+    client_id: uuid.UUID = Field(
+        default=uuid.UUID("dddddddd-0000-0000-0000-000000000004"),
+        description="Client/participant UUID — maps to the org backend's clientId.",
+    )
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Max case notes to fetch (newest first). Hard-capped server-side by case_note_fetch_limit (default 10).",
+    )
 
 
 class ContextResponse(BaseModel):

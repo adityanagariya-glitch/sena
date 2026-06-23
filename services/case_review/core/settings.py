@@ -35,8 +35,19 @@ class CaseReviewSettings(BaseSettings):
     drafting_service_url: str = "http://localhost:8085"
     # SENA_AI_DRAFTING_SERVICE_API_KEY
     drafting_service_api_key: str = ""
-    # SENA_AI_CASE_NOTE_FETCH_LIMIT — how many past notes to fetch for context
+    # SENA_AI_CASE_NOTE_FETCH_LIMIT — hard cap on past notes pulled per /context call
     case_note_fetch_limit: int = 10
+
+    # ── External: SENA org backend (real case-note source) ────────────────────
+    # Two-step fetch:
+    #   1. GET {base}/organization/case-note/get-all?clientId&memberId&limit&status=completed
+    #   2. GET {base}/organization/case-note/{caseNoteId}  (per note, for full content)
+    # SENA_AI_CASE_NOTE_API_BASE_URL — org backend base, no trailing slash
+    case_note_api_base_url: str = "http://localhost:8085"
+    # SENA_AI_CASE_NOTE_API_TOKEN — bearer token for the org backend (blank in dev)
+    case_note_api_token: str = ""
+    # SENA_AI_CASE_NOTE_USE_STUB — True → fixtures; False → call the org backend
+    case_note_use_stub: bool = True
 
     # ── Gemini ────────────────────────────────────────────────────────────────
     # SENA_AI_GEMINI_API_KEY

@@ -57,7 +57,30 @@ async def health_ready() -> HealthResponse:
 
 # ── Context (Phase B) ─────────────────────────────────────────────────────────
 
-@router.post("/v1/case-review/context", response_model=ContextResponse, tags=["context"])
+@router.post(
+    "/v1/case-review/context",
+    response_model=ContextResponse,
+    tags=["context"],
+    summary="Rolling case-note summary for a staff–client pair",
+    description=(
+        "Fetches the most recent case notes for a (staff, client) pair and returns a "
+        "rolling summary (pre-meeting brief).\n\n"
+        "**Source of case notes** — the SENA org backend, fetched in two steps:\n"
+        "1. `GET /organization/case-note/get-all?clientId=&memberId=&limit=&status=completed"
+        "&sortByUpdatedAt=d` → newest case-note references (rows with no `caseNoteId` "
+        "i.e. pending notes are skipped).\n"
+        "2. `GET /organization/case-note/{id}` (one call per note, concurrent) → full "
+        "content, composed into the note body that the summarizer ingests.\n\n"
+        "`staff_id` maps to the backend's `memberId`/`organizationMemberId`; `client_id` "
+        "maps to `clientId`. At most `limit` notes are fetched, hard-capped at the "
+        "service's `case_note_fetch_limit` (default 10).\n\n"
+        "**Idempotent** — re-calling with the same notes returns the cached rolling "
+        "summary with no LLM call; only new notes trigger a re-summarise and are merged "
+        "into `processed_note_ids`.\n\n"
+        "_Dev note: when `SENA_AI_CASE_NOTE_USE_STUB=true` (default) notes come from local "
+        "fixtures instead of the org backend._"
+    ),
+)
 async def get_context(
     req: ContextRequest,
     auth: AuthContext = Depends(get_auth_context),
@@ -65,8 +88,13 @@ async def get_context(
     client: CaseNoteClient = Depends(get_case_note_client),
 ) -> ContextResponse:
     """
-    Fetch the last N case notes for a staff-client pair and return a rolling summary.
-    Idempotent — re-calling with same notes returns cached summary (no LLM call).
+    Fetch the most recent N case notes for a staff-client pair and return a rolling summary.
+
+    Notes are sourced from the SENA org backend in two steps:
+      1. GET /organization/case-note/get-all (filter by clientId + memberId, completed only)
+      2. GET /organization/case-note/{id} per note for full content.
+
+    Idempotent — re-calling with the same notes returns the cached summary (no LLM call).
     Adding new notes updates and compresses the rolling summary.
     """
     repo = get_repo(db)
