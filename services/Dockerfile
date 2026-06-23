@@ -251,3 +251,20 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8007/health').status==200 else 1)"
 
 CMD ["uvicorn", "scripts.api:app", "--host", "0.0.0.0", "--port", "8007"]
+
+# ── Doc Service — policy/procedure document ingestion + KB management (port 8010)
+FROM base AS doc-service
+
+# Flat package with BARE imports (config, auth, pipeline, registry) — keep them
+# all on one root and run uvicorn from that dir.
+COPY doc_service /app/doc_service
+
+WORKDIR /app/doc_service
+ENV PYTHONPATH=/app/doc_service
+
+EXPOSE 8010
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8010/health').status==200 else 1)"
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8010"]

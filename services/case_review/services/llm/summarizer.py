@@ -103,11 +103,11 @@ def _format_notes(notes: list[CaseNoteDTO]) -> str:
         return "(none)"
     parts = []
     for n in notes:
-        parts.append(
-            f"### Note {n.note_id} | Date: {n.date}\n"
-            f"**Transcript:** {n.transcript}\n"
-            f"**Drafted note:** {n.drafted_note}"
-        )
+        block = f"### Note {n.note_id} | Date: {n.date}\n"
+        if n.transcript:
+            block += f"**Transcript:** {n.transcript}\n"
+        block += f"**Drafted note:** {n.drafted_note}"
+        parts.append(block)
     return "\n\n".join(parts)
 
 

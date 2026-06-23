@@ -35,8 +35,19 @@ class CaseReviewSettings(BaseSettings):
     drafting_service_url: str = "http://localhost:8085"
     # SENA_AI_DRAFTING_SERVICE_API_KEY
     drafting_service_api_key: str = ""
-    # SENA_AI_CASE_NOTE_FETCH_LIMIT — how many past notes to fetch for context
+    # SENA_AI_CASE_NOTE_FETCH_LIMIT — hard cap on past notes pulled per /context call
     case_note_fetch_limit: int = 10
+
+    # ── External: SENA org backend (real case-note source) ────────────────────
+    # Two-step fetch:
+    #   1. GET {base}/organization/case-note/get-all?clientId&memberId&limit&status=completed
+    #   2. GET {base}/organization/case-note/{caseNoteId}  (per note, for full content)
+    # SENA_AI_CASE_NOTE_API_BASE_URL — org backend base, no trailing slash
+    case_note_api_base_url: str = "http://localhost:8085"
+    # SENA_AI_CASE_NOTE_API_TOKEN — bearer token for the org backend (blank in dev)
+    case_note_api_token: str = ""
+    # SENA_AI_CASE_NOTE_USE_STUB — True → fixtures; False → call the org backend
+    case_note_use_stub: bool = True
 
     # ── Gemini ────────────────────────────────────────────────────────────────
     # SENA_AI_GEMINI_API_KEY
@@ -75,10 +86,6 @@ class CaseReviewSettings(BaseSettings):
     aws_secret_access_key: str = ""
     # SENA_AI_BEDROCK_MODEL_ID
     bedrock_model_id: str = "au.anthropic.claude-sonnet-4-6"
-
-    # ── Auth ──────────────────────────────────────────────────────────────────
-    # SENA_AI_AUTH_MODE: "dev_header" | "jwt"
-    auth_mode: str = "dev_header"
 
     # ── Pipeline LLM models (LangGraph 5-step triage → RAG → eval → BSP → verdict) ──
     # SENA_AI_TRIAGE_MODEL — Haiku: cheap YES/NO gate (Bedrock converse, maxTokens=512)
@@ -131,6 +138,11 @@ class CaseReviewSettings(BaseSettings):
     # SENA_AI_BASIC_AUTH_USER / SENA_AI_BASIC_AUTH_PASSWORD
     basic_auth_user: str = ""
     basic_auth_password: str = ""
+
+    # ── Signature auth for /evaluate (RSA public key, PEM format) ────────────────
+    # SENA_AI_EVALUATE_PUBLIC_KEY — PEM-encoded RSA public key used to verify request
+    # signatures. If blank, signature auth is disabled for /evaluate.
+    evaluate_public_key: str = ""
 
     # ── Voice resumption ──────────────────────────────────────────────────────
     # SENA_AI_RESUMPTION_HANDLE_TTL_SEC

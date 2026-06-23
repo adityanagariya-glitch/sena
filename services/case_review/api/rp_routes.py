@@ -37,7 +37,7 @@ from shared.src.sena_common.voice.turn_payload import Participant, StepInfo, Tur
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_auth_context, get_db, voice_redis_client
+from api.deps import get_auth_context, get_db, verify_signature_auth, voice_redis_client
 from case_review.core.settings import settings
 from case_review.services.caching import cache_verdict
 from case_review.models.db import BehaviourSupportPlan
@@ -315,12 +315,41 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
     )
 
 
-@rp_router.post("/evaluate", response_model=EvaluateResponse, dependencies=[Depends(_require_auth)])
+@rp_router.post(
+    "/evaluate",
+    response_model=EvaluateResponse,
+    summary="Evaluate case note via RSA signature auth",
+    description=(
+        "Run a case note through the full restrictive practice detection pipeline "
+        "(triage + evaluator + auto-incident-draft if flagged).\n\n"
+        "**Auth:** RSA signature-based (replaces JWT + HTTP Basic).\n"
+        "1. Sign the JSON request body with your private key (RSA-PSS, SHA256).\n"
+        "2. Base64-encode the signature.\n"
+        "3. Send in `X-Signature` header.\n"
+        "Server verifies using the public key from `SENA_AI_EVALUATE_PUBLIC_KEY`.\n\n"
+        "**Example curl:**\n"
+        "```bash\n"
+        "curl -X POST http://3.111.109.14:8080/case-review/v1/restrictive-practices/evaluate \\\n"
+        "  -H 'Content-Type: application/json' \\\n"
+        "  -H 'X-Signature: <base64-rsa-signature-of-body>' \\\n"
+        "  -d '{\n"
+        "    \"case_note_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n"
+        "    \"client_id\": \"dab57916-9863-4b49-ba39-92441547ba5b\",\n"
+        "    \"worker_id\": \"30d4f882-93d0-4c5d-9af6-22612908817e\",\n"
+        "    \"transcript\": \"Good session today. Assisted with meal prep and community access. Participant was cooperative.\"\n"
+        "  }'\n"
+        "```\n"
+        "User must: (1) sign the JSON body with their RSA private key (PSS padding, SHA256), "
+        "(2) base64-encode the signature, (3) pass it in the X-Signature header.\n\n"
+        "**Results:** cached by transcript (SHA256). Repeated notes return in ~10ms. "
+        "Cache TTL: 24 hours. Non-cached first run: ~4–5 seconds."
+    ),
+)
 @cache_verdict
 async def evaluate_case_note(
     payload: CaseNoteInput,
     response: Response,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext = Depends(verify_signature_auth),
     db: AsyncSession = Depends(get_db),
 ) -> EvaluateResponse:
     """Run a case note through the full restrictive practice detection pipeline.
@@ -450,7 +479,10 @@ def _bsp_to_response(bsp: BehaviourSupportPlan) -> BSPResponse:
 
 
 @rp_router.post("/draft", response_model=CaseDraftResponse)
-async def draft_case_note(payload: DraftInput) -> CaseDraftResponse:
+async def draft_case_note(
+    payload: DraftInput,
+    auth: AuthContext = Depends(get_auth_context),
+) -> CaseDraftResponse:
     """Extract a voice transcript into a pre-filled structured case note draft.
 
     The worker reviews and edits the returned fields before submitting.
@@ -481,6 +513,7 @@ async def draft_case_note_audio(
     shift_date: str = Form(default=""),
     shift_time: str = Form(default=""),
     worker_position: str = Form(default=""),
+    auth: AuthContext = Depends(get_auth_context),
 ) -> CaseDraftResponse:
     """Transcribe an audio recording then extract it into a pre-filled case note draft.
 

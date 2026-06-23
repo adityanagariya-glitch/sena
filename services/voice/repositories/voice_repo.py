@@ -62,6 +62,26 @@ class VoiceRepository:
             )
         )
 
+    async def update_session_fields(
+        self,
+        db: AsyncSession,
+        session_id: UUID,
+        fields_json: dict,
+        completeness_score: float,
+        missing_fields: list,
+    ) -> None:
+        """Update session with field extraction results (background task)."""
+        await db.execute(
+            update(VoiceSession)
+            .where(VoiceSession.id == session_id)
+            .values(
+                draft_preview=str(fields_json),
+                section_coverage={"completeness": completeness_score},
+                missing_topics=missing_fields,
+                turn_count=VoiceSession.turn_count + 1,
+            )
+        )
+
     async def mark_session_completed(
         self, db: AsyncSession, session_id: UUID, ended_at: datetime
     ) -> None:
