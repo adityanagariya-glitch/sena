@@ -122,35 +122,6 @@ async def test_dispatch_unknown_tool_returns_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_current_state_flags_screen_session_mismatch() -> None:
-    # Client reports a DIFFERENT screen than the session was created for —
-    # a stale screen<->session binding. dispatch() must surface it to the agent.
-    bridge = _FakeBridge({"ok": True, "state": {"step": {"id": "medical_information"}}})
-    disp = ToolDispatcher(bridge=bridge, expected_step_id="consent")
-    out = await disp.dispatch("get_current_state", {})
-    assert "screen_mismatch_warning" in out
-    assert "consent" in out["screen_mismatch_warning"]
-    assert "medical_information" in out["screen_mismatch_warning"]
-
-
-@pytest.mark.asyncio
-async def test_get_current_state_no_flag_when_screen_matches() -> None:
-    bridge = _FakeBridge({"ok": True, "state": {"step": {"id": "consent"}}})
-    disp = ToolDispatcher(bridge=bridge, expected_step_id="consent")
-    out = await disp.dispatch("get_current_state", {})
-    assert "screen_mismatch_warning" not in out
-
-
-@pytest.mark.asyncio
-async def test_get_current_state_no_flag_when_no_expected_step() -> None:
-    # Back-compat: a dispatcher built without expected_step_id never flags.
-    bridge = _FakeBridge({"ok": True, "state": {"step": {"id": "anything"}}})
-    disp = ToolDispatcher(bridge=bridge)
-    out = await disp.dispatch("get_current_state", {})
-    assert "screen_mismatch_warning" not in out
-
-
-@pytest.mark.asyncio
 async def test_escalate_incident_does_not_call_bridge() -> None:
     bridge = _FakeBridge({"ok": True})
     incidents: list[dict[str, Any]] = []

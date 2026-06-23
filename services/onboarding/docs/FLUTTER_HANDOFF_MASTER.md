@@ -18,6 +18,7 @@
 | 6 | Consent per-role access voice-fill (Fix 2) | P2 | client step 6 |
 | 7 | NDIS-plan `preferred_schedule` overlap validation (NEW) | P1 | client step 3 (NDIS plan) |
 | 8 | Voice session ↔ screen binding (stale controller answers wrong screen) | **P0** | ALL flows |
+| 9 | Consent 3-screen voice — correct `step` per screen (prior fix targeted wrong layer) | **P0** | client step 6 (consent) |
 
 **Architectural fact:** items 3–5 are **universal** — the backend runs one flow-agnostic engine for client, staff, and every future voice flow. Implement them once in the shared `voice_session_controller` / sink layer and they work for all flows. No per-flow duplication.
 
@@ -350,6 +351,28 @@ so it fails loud, not silent. **This is not a fix; the Flutter binding must stil
 
 ---
 
+# 9. Consent 3-screen voice -- correct step per screen (P0 -- NEW)
+
+**Symptom:** on the consent flow the agent runs the wrong prompt per screen (overview behaves like
+sharing, review behaves like sharing). A prior fix was implemented but did not work.
+
+**Root cause:** the prompt is selected by **`schema.step_id`** (the `step_id` inside the schema object;
+`ws_routes.py:163` -> `build_system_prompt` -> `rglob({step_id}.md)`), NOT the top-level body `step` (which
+only sets state, `routes.py:336`). Logs show the dev's fix DID set the per-screen top-level `step` / URL /
+`screen_state` and created 3 sessions -- but `schema.step_id` stayed hardcoded `consent`
+(`step6_consent_schema.dart:24`), so every screen loaded `consent.md` (sharing). See issues-solved 0024.
+
+**Fix:** vary `schema.step_id` per screen (`consent_overview` / `consent` / `consent_review`); each screen
+creates and disposes its OWN voice session; bootstrap carries the mounting screen's values. Verify via
+`gemini_bridge_constructed instruction_chars` (1592/6280/2315 fragment sizes) -- NOT
+`session_create_resolved_bootstrap step=`, which shows the already-correct top-level `step`.
+
+**Full end-to-end spec (request body, all IDs, every Flutter change, verification) ->
+`FLUTTER_HANDOFF_CONSENT_3SCREEN_E2E.md` (this folder). Supersedes the root-cause pointer in
+`FLUTTER_HANDOFF_CONSENT_PER_SCREEN.md`.**
+
+---
+
 # Acceptance checklist (hand back when done)
 
 - [ ] **Staff:** 5 staff voice schemas send the exact `staff_*` stepIds; a full staff voice session works end-to-end (§1).
@@ -359,6 +382,7 @@ so it fails loud, not silent. **This is not a fix; the Flutter binding must stil
 - [ ] **Live render:** voice-set DOB (and dropdowns/checkboxes) update the widget live (§5).
 - [ ] **NDIS plan:** overlapping same-day `preferred_schedule` slots are rejected with a spoken `reason`; non-overlapping (incl. touching) accepted (§7).
 - [ ] **Screen binding:** `get_current_state` on any screen returns a `step_id` equal to that session's `step`; navigating between voice screens disposes the prior controller (§8).
+- [ ] **Consent 3-screen:** `session_create_resolved_bootstrap step=` logs `consent_overview` / `consent` / `consent_review` per screen; each screen owns its session; overview never says "shall we submit?" (§9).
 
 ---
 
