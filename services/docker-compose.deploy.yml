@@ -227,25 +227,6 @@ services:
       - sena-network
     restart: unless-stopped
 
-  sena-case-review-ui:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: case-review-ui
-    container_name: sena-case-review-ui-internal
-    env_file:
-      - ../.env
-    environment:
-      # The Streamlit UI calls the case-review API directly over the docker network.
-      SENA_TEST_BASE_URL: http://sena-case-review-internal:8002
-    expose:
-      - "8501"
-    depends_on:
-      - sena-case-review
-    networks:
-      - sena-network
-    restart: unless-stopped
-
   # ── Testing: Voice Testing Instance ──────────────────────────────────────
   sena-voice-internal-testing:
     build:
