@@ -6,9 +6,17 @@ import time
 import uuid
 from typing import AsyncGenerator
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import from_url as redis_from_url
+
+try:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.backends import default_backend
+    HAS_CRYPTO = True
+except ImportError:
+    HAS_CRYPTO = False
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from clients.case_note_client import CaseNoteClient
@@ -158,3 +166,81 @@ def get_bearer_token(
     Validation is handled by get_auth_context; this just extracts the token string.
     """
     return creds.credentials if creds else ""
+
+
+# ── Signature auth (RSA public-key) ────────────────────────────────────────────
+
+async def verify_signature_auth(request: Request) -> AuthContext:
+    """Verify request signature using RSA public key.
+
+    User signs the request body with their private key; we verify using the
+    public key from settings. Signature sent in X-Signature header (base64-encoded).
+    Returns a synthetic AuthContext (tenant/user = "signature-verified").
+    """
+    if not HAS_CRYPTO:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cryptography library not installed",
+        )
+
+    if not settings.evaluate_public_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Signature auth not configured (missing SENA_AI_EVALUATE_PUBLIC_KEY)",
+        )
+
+    sig_header = request.headers.get("X-Signature")
+    if not sig_header:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Signature header",
+        )
+
+    body = await request.body()
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request body is empty",
+        )
+
+    try:
+        sig_bytes = base64.b64decode(sig_header)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid X-Signature encoding: {exc}",
+        ) from exc
+
+    try:
+        public_key = serialization.load_pem_public_key(
+            settings.evaluate_public_key.encode(),
+            backend=default_backend(),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Failed to load public key: {exc}",
+        ) from exc
+
+    try:
+        public_key.verify(
+            sig_bytes,
+            body,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Signature verification failed: {exc}",
+        ) from exc
+
+    # Signature valid — return a synthetic context (no user/tenant from signature)
+    return AuthContext(
+        tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
+        roles=["signature-verified"],
+    )

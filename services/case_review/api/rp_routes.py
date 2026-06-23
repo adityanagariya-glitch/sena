@@ -37,7 +37,7 @@ from shared.src.sena_common.voice.turn_payload import Participant, StepInfo, Tur
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_auth_context, get_db, voice_redis_client
+from api.deps import get_auth_context, get_db, verify_signature_auth, voice_redis_client
 from case_review.core.settings import settings
 from case_review.services.caching import cache_verdict
 from case_review.models.db import BehaviourSupportPlan
@@ -315,12 +315,27 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
     )
 
 
-@rp_router.post("/evaluate", response_model=EvaluateResponse, dependencies=[Depends(_require_auth)])
+@rp_router.post(
+    "/evaluate",
+    response_model=EvaluateResponse,
+    summary="Evaluate case note via RSA signature auth",
+    description=(
+        "Run a case note through the full restrictive practice detection pipeline "
+        "(triage + evaluator + auto-incident-draft if flagged).\n\n"
+        "**Auth:** RSA signature-based (replaces JWT + HTTP Basic).\n"
+        "1. Sign the JSON request body with your private key (RSA-PSS, SHA256).\n"
+        "2. Base64-encode the signature.\n"
+        "3. Send in `X-Signature` header.\n"
+        "Server verifies using the public key from `SENA_AI_EVALUATE_PUBLIC_KEY`.\n\n"
+        "Results are cached by transcript (SHA256). Repeated notes return in ~10ms. "
+        "Cache TTL: 24 hours. Non-cached first run: ~4–5 seconds."
+    ),
+)
 @cache_verdict
 async def evaluate_case_note(
     payload: CaseNoteInput,
     response: Response,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext = Depends(verify_signature_auth),
     db: AsyncSession = Depends(get_db),
 ) -> EvaluateResponse:
     """Run a case note through the full restrictive practice detection pipeline.

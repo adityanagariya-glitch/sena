@@ -139,6 +139,11 @@ class CaseReviewSettings(BaseSettings):
     basic_auth_user: str = ""
     basic_auth_password: str = ""
 
+    # ── Signature auth for /evaluate (RSA public key, PEM format) ────────────────
+    # SENA_AI_EVALUATE_PUBLIC_KEY — PEM-encoded RSA public key used to verify request
+    # signatures. If blank, signature auth is disabled for /evaluate.
+    evaluate_public_key: str = ""
+
     # ── Voice resumption ──────────────────────────────────────────────────────
     # SENA_AI_RESUMPTION_HANDLE_TTL_SEC
     resumption_handle_ttl_sec: int = 600
