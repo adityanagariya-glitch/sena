@@ -1,60 +1,53 @@
 from __future__ import annotations
 
 """
-Tests for the org-backend case-note fetch (stub=False).
+Tests for the org-backend case-note fetch (stub=False), member-scoped /mobile endpoints.
 
-Verifies the two-step flow:
-  GET /organization/case-note/get-all  → register rows (caseNoteId refs)
-  GET /organization/case-note/{id}     → full content (composed into drafted_note)
+Two-step flow:
+  GET /mobile/organization-member/case-note/get-all-data → data.items[] (shiftId+clientId refs)
+  GET /mobile/organization-member/case-note/get-data/{shiftId}/{clientId} → full content
 
+The caller's JWT is forwarded as the outbound Authorization header.
 httpx is faked via monkeypatch (respx is not a project dependency).
 """
-
-import json
 
 import pytest
 
 from clients.case_note_client import CaseNoteClient, _compose_note_body
 
-_REGISTER = {
+_LIST = {
     "success": True,
-    "data": [
-        {
-            "clientId": "client-1", "memberId": "staff-1", "workerName": "Staff 2",
-            "shiftId": "shift-1", "shiftStartDate": "2026-03-18T02:37:00.000Z",
-            "caseNoteId": "note-1", "status": "completed",
-        },
-        {
-            "clientId": "client-1", "memberId": "staff-1", "workerName": "Ariel",
-            "shiftId": "shift-2", "shiftStartDate": "2026-03-17T02:37:00.000Z",
-            "caseNoteId": None, "status": "pending",   # ← must be skipped
-        },
-        {
-            "clientId": "client-1", "memberId": "staff-1", "workerName": "Staff 2",
-            "shiftId": "shift-3", "shiftStartDate": "2026-03-16T02:37:00.000Z",
-            "caseNoteId": "note-2", "status": "completed",
-        },
-    ],
+    "data": {
+        "items": [
+            {"shiftId": "shift-1", "clientId": "client-1", "startTime": "2026-03-18T02:37:00.000Z"},
+            {"shiftId": "shift-3", "clientId": "client-1", "startTime": "2026-03-16T02:37:00.000Z"},
+        ],
+        "pagination": {"page": 1, "limit": 10, "total": 2},
+    },
 }
 
 _CONTENT = {
-    "note-1": {
+    ("shift-1", "client-1"): {
         "id": "note-1", "clientId": "client-1", "organizationMemberId": "staff-1",
         "updatedAt": "2026-03-18T12:53:10.151Z",
         "summaryOfShift": "Shift went well",
-        "activitiesAndSkill": {"cooking": "boiled pasta independently"},
-        "wellbeingAndBehaviour": {}, "outcomesAndProgress": {}, "safetyAndHealth": {},
-        "careFeedback": None, "anyIncident": False, "reviewNote": None,
+        "activitiesAndSkill": {"assisted": "morning routine", "practisedSkill": "communication"},
+        "wellbeingAndBehaviour": {"mood": "Calm and positive"},
+        "outcomesAndProgress": {}, "safetyAndHealth": {"medicationReminderGiven": True},
+        "careFeedback": None, "anyIncident": False,
     },
-    "note-2": {
+    ("shift-3", "client-1"): {
         "id": "note-2", "clientId": "client-1", "organizationMemberId": "staff-1",
         "updatedAt": "2026-03-16T12:53:10.151Z",
         "summaryOfShift": "Community access",
         "activitiesAndSkill": {}, "wellbeingAndBehaviour": {},
         "outcomesAndProgress": {}, "safetyAndHealth": {},
-        "careFeedback": "Positive", "anyIncident": True, "reviewNote": None,
+        "careFeedback": "Positive", "anyIncident": True,
     },
 }
+
+# captured outbound headers, for the JWT-forwarding assertion
+_seen_headers: dict = {}
 
 
 class _FakeResponse:
@@ -70,7 +63,8 @@ class _FakeResponse:
 
 class _FakeAsyncClient:
     def __init__(self, *args, **kwargs) -> None:
-        pass
+        _seen_headers.clear()
+        _seen_headers.update(kwargs.get("headers") or {})
 
     async def __aenter__(self):
         return self
@@ -79,31 +73,28 @@ class _FakeAsyncClient:
         return None
 
     async def get(self, url: str, params: dict | None = None):
-        if url == "/organization/case-note/get-all":
-            return _FakeResponse(_REGISTER)
-        note_id = url.rsplit("/", 1)[-1]
-        return _FakeResponse({"success": True, "data": _CONTENT[note_id]})
+        if url.endswith("/get-all-data"):
+            return _FakeResponse(_LIST)
+        # /mobile/organization-member/case-note/get-data/{shiftId}/{clientId}
+        shift_id, client_id = url.rsplit("/", 2)[-2:]
+        return _FakeResponse({"success": True, "data": _CONTENT[(shift_id, client_id)]})
 
 
 # ── _compose_note_body (pure) ─────────────────────────────────────────────────
 
 def test_compose_includes_summary_sections_and_incident() -> None:
-    body = _compose_note_body(_CONTENT["note-1"])
+    body = _compose_note_body(_CONTENT[("shift-1", "client-1")])
     assert "Summary of shift: Shift went well" in body
     assert "Activities & skills:" in body
-    assert "boiled pasta independently" in body
+    assert "morning routine" in body
+    assert "Wellbeing & behaviour:" in body
+    assert "Calm and positive" in body
     assert "Incident reported: no" in body
 
 
-def test_compose_skips_empty_sections() -> None:
-    body = _compose_note_body(_CONTENT["note-1"])
-    # empty dict sections must not appear
-    assert "Wellbeing & behaviour:" not in body
-    assert "Care feedback:" not in body  # None → omitted
-
-
-def test_compose_marks_incident_and_feedback() -> None:
-    body = _compose_note_body(_CONTENT["note-2"])
+def test_compose_skips_empty_sections_and_marks_incident() -> None:
+    body = _compose_note_body(_CONTENT[("shift-3", "client-1")])
+    assert "Activities & skills:" not in body   # empty dict → omitted
     assert "Care feedback: Positive" in body
     assert "Incident reported: yes" in body
 
@@ -111,21 +102,24 @@ def test_compose_marks_incident_and_feedback() -> None:
 # ── two-step fetch ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_fetch_from_api_two_step(monkeypatch) -> None:
+async def test_fetch_from_api_two_step_and_forwards_jwt(monkeypatch) -> None:
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
 
     client = CaseNoteClient(stub=False)
-    notes = await client.get_notes("staff-1", "client-1", limit=10)
+    notes = await client.get_notes("staff-1", "client-1", limit=10, bearer_token="tok-abc")
 
-    # pending row (caseNoteId=None) skipped → only 2 notes
+    # both (shift, client) refs resolved to content notes
     assert [n.note_id for n in notes] == ["note-1", "note-2"]
     first = notes[0]
     assert first.client_id == "client-1"
-    assert first.staff_id == "staff-1"
-    assert first.date == "2026-03-18T02:37:00.000Z"  # from register row
-    assert first.transcript == ""  # org backend has no transcript
+    assert first.staff_id == "staff-1"            # from content.organizationMemberId
+    assert first.date == "2026-03-18T02:37:00.000Z"   # from list item startTime
+    assert first.transcript == ""
     assert "Shift went well" in first.drafted_note
+
+    # caller's JWT forwarded outbound
+    assert _seen_headers.get("Authorization") == "Bearer tok-abc"
 
 
 @pytest.mark.asyncio
@@ -134,6 +128,6 @@ async def test_fetch_respects_limit_cap(monkeypatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
 
     client = CaseNoteClient(stub=False)
-    notes = await client.get_notes("staff-1", "client-1", limit=1)
+    notes = await client.get_notes("staff-1", "client-1", limit=1, bearer_token="t")
     assert len(notes) == 1
     assert notes[0].note_id == "note-1"

@@ -7,20 +7,21 @@ Two modes (selected by `stub`):
 
   stub=True  → load fixtures from fixtures/sample_notes.json (local dev / tests).
 
-  stub=False → call the SENA org backend in two steps:
-      1. GET {base}/organization/case-note/get-all
-           ?clientId=<uuid>&memberId=<staff uuid>&limit=<N>
-           &status=completed&sortByUpdatedAt=d
-         → register rows: { clientId, memberId, caseNoteId, shiftStartDate, ... }
-           (caseNoteId is null for pending notes — those are skipped)
-      2. GET {base}/organization/case-note/{caseNoteId}  (one per note, concurrent)
-         → full content: { summaryOfShift, activitiesAndSkill, wellbeingAndBehaviour,
+  stub=False → call the SENA org backend (member-scoped /mobile endpoints) in two
+  steps, authenticated as the calling staff member by FORWARDING their JWT:
+      1. GET {base}/mobile/organization-member/case-note/get-all-data
+           ?clientId=<uuid>&limit=<N>&page=1&sortByStartTime=d
+         → data.items[]: { shiftId, clientId, startTime, ... }
+           (the member is implied by the bearer token, so staff_id is not sent)
+      2. GET {base}/mobile/organization-member/case-note/get-data/{shiftId}/{clientId}
+         (one per note, concurrent)
+         → full content: { id, summaryOfShift, activitiesAndSkill, wellbeingAndBehaviour,
                            outcomesAndProgress, safetyAndHealth, careFeedback,
-                           anyIncident, reviewNote, ... }
+                           anyIncident, organizationMemberId, ... }
 
-The org backend has no raw transcript; the structured content fields are composed
-into CaseNoteDTO.drafted_note for the summarizer. At most `case_note_fetch_limit`
-notes are fetched per call (default 10).
+The backend has no raw transcript; the structured content fields are composed into
+CaseNoteDTO.drafted_note for the summarizer. At most `case_note_fetch_limit` notes
+are fetched per call (default 10).
 """
 
 import asyncio
@@ -104,10 +105,12 @@ class CaseNoteClient:
         staff_id: str,
         client_id: str,
         limit: int = 10,
+        *,
+        bearer_token: str | None = None,
     ) -> list[CaseNoteDTO]:
         if self._stub:
             return self._stub_notes(staff_id, client_id, limit)
-        return await self._fetch_from_api(staff_id, client_id, limit)
+        return await self._fetch_from_api(client_id, limit, bearer_token)
 
     # ── Stub ──────────────────────────────────────────────────────────────────
 
@@ -122,13 +125,13 @@ class CaseNoteClient:
             filtered = notes  # dev convenience: return all if no match
         return filtered[:limit]
 
-    # ── Real API (SENA org backend) ────────────────────────────────────────────
+    # ── Real API (SENA org backend, member-scoped /mobile endpoints) ────────────
 
     async def _fetch_from_api(
         self,
-        staff_id: str,
         client_id: str,
         limit: int,
+        bearer_token: str | None,
     ) -> list[CaseNoteDTO]:
         import httpx
 
@@ -137,49 +140,57 @@ class CaseNoteClient:
         # Hard cap — never pull more than the configured limit (default 10).
         effective_limit = max(1, min(limit, settings.case_note_fetch_limit))
         base = settings.case_note_api_base_url.rstrip("/")
+
+        # Forward the caller's JWT (the endpoints are scoped to the authenticated
+        # member); fall back to a configured service token if no caller token.
+        token = bearer_token or settings.case_note_api_token
         headers = {"Accept": "application/json"}
-        if settings.case_note_api_token:
-            headers["Authorization"] = f"Bearer {settings.case_note_api_token}"
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         async with httpx.AsyncClient(base_url=base, headers=headers, timeout=15.0) as http:
-            # 1. Register: newest-first, completed only (those have a caseNoteId).
-            reg_resp = await http.get(
-                "/organization/case-note/get-all",
+            # 1. Discovery: this member's notes for the client, newest-first.
+            list_resp = await http.get(
+                "/mobile/organization-member/case-note/get-all-data",
                 params={
                     "clientId": client_id,
-                    "memberId": staff_id,
                     "limit": effective_limit,
                     "page": 1,
-                    "status": "completed",
-                    "sortByUpdatedAt": "d",
+                    "sortByStartTime": "d",
                 },
             )
-            reg_resp.raise_for_status()
-            rows = reg_resp.json().get("data") or []
+            list_resp.raise_for_status()
+            items = ((list_resp.json().get("data") or {}).get("items")) or []
 
-            # Keep only rows with an actual case note, newest first, capped.
-            register = [r for r in rows if r.get("caseNoteId")][:effective_limit]
-            if not register:
-                log.info("case_note_client.no_notes", staff_id=staff_id, client_id=client_id)
+            # Each item needs a (shiftId, clientId) pair to fetch content. Cap it.
+            refs = [
+                it for it in items if it.get("shiftId") and it.get("clientId")
+            ][:effective_limit]
+            if not refs:
+                log.info("case_note_client.no_notes", client_id=client_id)
                 return []
 
-            # 2. Fetch each note's content concurrently.
-            async def _fetch_one(row: dict[str, Any]) -> CaseNoteDTO | None:
-                cid = row["caseNoteId"]
-                resp = await http.get(f"/organization/case-note/{cid}")
+            # 2. Fetch each note's content concurrently by (shiftId, clientId).
+            async def _fetch_one(ref: dict[str, Any]) -> CaseNoteDTO | None:
+                shift_id, c_id = ref["shiftId"], ref["clientId"]
+                resp = await http.get(
+                    f"/mobile/organization-member/case-note/get-data/{shift_id}/{c_id}"
+                )
                 resp.raise_for_status()
                 data = resp.json().get("data") or {}
+                if not data:
+                    return None
                 return CaseNoteDTO(
-                    note_id=str(data.get("id") or cid),
-                    date=str(row.get("shiftStartDate") or data.get("updatedAt") or ""),
-                    staff_id=str(data.get("organizationMemberId") or row.get("memberId") or staff_id),
-                    client_id=str(data.get("clientId") or row.get("clientId") or client_id),
-                    transcript="",  # org backend has no raw transcript
+                    note_id=str(data.get("id") or f"{shift_id}:{c_id}"),
+                    date=str(ref.get("startTime") or data.get("updatedAt") or ""),
+                    staff_id=str(data.get("organizationMemberId") or ""),
+                    client_id=str(data.get("clientId") or c_id),
+                    transcript="",  # backend has no raw transcript
                     drafted_note=_compose_note_body(data),
                 )
 
             results = await asyncio.gather(
-                *(_fetch_one(r) for r in register), return_exceptions=True
+                *(_fetch_one(r) for r in refs), return_exceptions=True
             )
 
         notes: list[CaseNoteDTO] = []
@@ -193,7 +204,7 @@ class CaseNoteClient:
         log.info(
             "case_note_client.fetched",
             requested=effective_limit,
-            register_rows=len(register),
+            list_items=len(refs),
             fetched=len(notes),
         )
         return notes

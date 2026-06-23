@@ -32,13 +32,18 @@ async def get_context(
     staff_id: uuid.UUID,
     client_id: uuid.UUID,
     limit: int = 10,
+    bearer_token: str | None = None,
 ) -> ContextResponse:
     """
     Fetch + summarise case notes for a staff-client pair.
     Idempotent: re-calling with same notes returns cached summary without LLM call.
+
+    bearer_token (the caller's JWT) is forwarded to the member-scoped org backend.
     """
-    # 1. Fetch notes from other engineer's service (or stub)
-    raw_notes = await client.get_notes(str(staff_id), str(client_id), limit=limit)
+    # 1. Fetch notes from the org backend (or stub)
+    raw_notes = await client.get_notes(
+        str(staff_id), str(client_id), limit=limit, bearer_token=bearer_token
+    )
 
     # 2. Load existing rolling summary
     existing = await repo.get_rolling_summary(tenant_id, staff_id, client_id)

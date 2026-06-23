@@ -87,10 +87,6 @@ class CaseReviewSettings(BaseSettings):
     # SENA_AI_BEDROCK_MODEL_ID
     bedrock_model_id: str = "au.anthropic.claude-sonnet-4-6"
 
-    # ── Auth ──────────────────────────────────────────────────────────────────
-    # SENA_AI_AUTH_MODE: "dev_header" | "jwt"
-    auth_mode: str = "dev_header"
-
     # ── Pipeline LLM models (LangGraph 5-step triage → RAG → eval → BSP → verdict) ──
     # SENA_AI_TRIAGE_MODEL — Haiku: cheap YES/NO gate (Bedrock converse, maxTokens=512)
     triage_model: str = "au.anthropic.claude-haiku-4-5-20251001-v1:0"

@@ -450,7 +450,10 @@ def _bsp_to_response(bsp: BehaviourSupportPlan) -> BSPResponse:
 
 
 @rp_router.post("/draft", response_model=CaseDraftResponse)
-async def draft_case_note(payload: DraftInput) -> CaseDraftResponse:
+async def draft_case_note(
+    payload: DraftInput,
+    auth: AuthContext = Depends(get_auth_context),
+) -> CaseDraftResponse:
     """Extract a voice transcript into a pre-filled structured case note draft.
 
     The worker reviews and edits the returned fields before submitting.
@@ -481,6 +484,7 @@ async def draft_case_note_audio(
     shift_date: str = Form(default=""),
     shift_time: str = Form(default=""),
     worker_position: str = Form(default=""),
+    auth: AuthContext = Depends(get_auth_context),
 ) -> CaseDraftResponse:
     """Transcribe an audio recording then extract it into a pre-filled case note draft.
 

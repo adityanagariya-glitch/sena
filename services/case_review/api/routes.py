@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_auth_context, get_case_note_client, get_db, get_repo
+from api.deps import get_auth_context, get_bearer_token, get_case_note_client, get_db, get_repo
 from clients.case_note_client import CaseNoteClient
 from services.classify_service import classify_paragraph as svc_classify_paragraph
 from services.context_service import get_context as svc_get_context
@@ -61,19 +61,21 @@ async def health_ready() -> HealthResponse:
     "/v1/case-review/context",
     response_model=ContextResponse,
     tags=["context"],
-    summary="Rolling case-note summary for a staff–client pair",
+    summary="Rolling case-note summary for the calling staff member + client",
     description=(
-        "Fetches the most recent case notes for a (staff, client) pair and returns a "
-        "rolling summary (pre-meeting brief).\n\n"
-        "**Source of case notes** — the SENA org backend, fetched in two steps:\n"
-        "1. `GET /organization/case-note/get-all?clientId=&memberId=&limit=&status=completed"
-        "&sortByUpdatedAt=d` → newest case-note references (rows with no `caseNoteId` "
-        "i.e. pending notes are skipped).\n"
-        "2. `GET /organization/case-note/{id}` (one call per note, concurrent) → full "
-        "content, composed into the note body that the summarizer ingests.\n\n"
-        "`staff_id` maps to the backend's `memberId`/`organizationMemberId`; `client_id` "
-        "maps to `clientId`. At most `limit` notes are fetched, hard-capped at the "
-        "service's `case_note_fetch_limit` (default 10).\n\n"
+        "Fetches the most recent case notes for the **authenticated staff member** and a "
+        "given client, and returns a rolling summary (pre-meeting brief).\n\n"
+        "**Source of case notes** — the SENA org backend (member-scoped `/mobile` "
+        "endpoints), fetched in two steps. The caller's JWT is **forwarded** as the "
+        "outbound `Authorization`, so the member is the token subject:\n"
+        "1. `GET /mobile/organization-member/case-note/get-all-data?clientId=&limit="
+        "&page=1&sortByStartTime=d` → newest `(shiftId, clientId)` references for this member.\n"
+        "2. `GET /mobile/organization-member/case-note/get-data/{shiftId}/{clientId}` "
+        "(one call per note, concurrent) → full structured content, composed into the "
+        "note body the summarizer ingests.\n\n"
+        "`staff_id` is the caller's own member id (used for storage keying); the fetch "
+        "itself is scoped by the JWT. At most `limit` notes are fetched, hard-capped at "
+        "the service's `case_note_fetch_limit` (default 10).\n\n"
         "**Idempotent** — re-calling with the same notes returns the cached rolling "
         "summary with no LLM call; only new notes trigger a re-summarise and are merged "
         "into `processed_note_ids`.\n\n"
@@ -86,13 +88,16 @@ async def get_context(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
     client: CaseNoteClient = Depends(get_case_note_client),
+    bearer_token: str = Depends(get_bearer_token),
 ) -> ContextResponse:
     """
-    Fetch the most recent N case notes for a staff-client pair and return a rolling summary.
+    Fetch the most recent N case notes for the calling staff member + client and
+    return a rolling summary.
 
-    Notes are sourced from the SENA org backend in two steps:
-      1. GET /organization/case-note/get-all (filter by clientId + memberId, completed only)
-      2. GET /organization/case-note/{id} per note for full content.
+    Notes are sourced from the SENA org backend (member-scoped), in two steps,
+    authenticated by forwarding the caller's JWT:
+      1. GET /mobile/organization-member/case-note/get-all-data?clientId=&limit=
+      2. GET /mobile/organization-member/case-note/get-data/{shiftId}/{clientId} per note.
 
     Idempotent — re-calling with the same notes returns the cached summary (no LLM call).
     Adding new notes updates and compresses the rolling summary.
@@ -106,6 +111,7 @@ async def get_context(
         staff_id=req.staff_id,
         client_id=req.client_id,
         limit=req.limit,
+        bearer_token=bearer_token,
     )
     result.token_usage = TokenUsage(**get_usage())
     return result

@@ -6,7 +6,8 @@ import time
 import uuid
 from typing import AsyncGenerator
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import from_url as redis_from_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -53,14 +54,11 @@ def get_case_note_client() -> CaseNoteClient:
     return CaseNoteClient(stub=settings.case_note_use_stub)
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
-# Two modes, selected by SENA_AI_AUTH_MODE:
-#   "dev_header" (default) — trust X-Tenant-Id / X-User-Id / X-User-Roles headers.
-#   "jwt"                  — read the Authorization: Bearer token and derive identity
-#                            from its claims (organizationId → tenant, userId → user,
-#                            roles → roles). Matches the staff service: the payload is
-#                            base64-decoded (signature NOT verified — the SENA gateway
-#                            issues/validates tokens upstream); we only enforce expiry.
+# ── Auth (JWT only) ─────────────────────────────────────────────────────────
+# Identity comes from the Authorization: Bearer token's claims
+# (organizationId → tenant, userId → user, roles → roles). Matches the staff
+# service: the payload is base64-decoded (signature NOT verified — the SENA
+# gateway issues/validates tokens upstream); we only enforce expiry.
 
 
 def _decode_jwt(token: str) -> dict:
@@ -88,14 +86,22 @@ def _normalise_roles(raw: object) -> list[str]:
     return out
 
 
-def _auth_from_jwt(authorization: str | None) -> AuthContext:
-    if not authorization or not authorization.lower().startswith("bearer "):
+# HTTP Bearer scheme — declared so the OpenAPI/Swagger spec advertises auth
+# (adds the "Authorize" button + per-operation lock icons). auto_error=False so we
+# emit our own 401 detail rather than FastAPI's generic "Not authenticated".
+_bearer_scheme = HTTPBearer(
+    auto_error=False,
+    description="SENA JWT — claims: organizationId, userId, roles, exp.",
+)
+
+
+def _auth_from_jwt(token: str | None) -> AuthContext:
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or malformed Authorization header (expected 'Bearer <token>')",
+            detail="Missing bearer token (expected 'Authorization: Bearer <jwt>')",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    token = authorization.split(" ", 1)[1].strip()
 
     try:
         claims = _decode_jwt(token)
@@ -138,28 +144,17 @@ def _auth_from_jwt(authorization: str | None) -> AuthContext:
 
 
 async def get_auth_context(
-    authorization: str | None = Header(default=None, alias="Authorization"),
-    x_tenant_id: str = Header(default="aaaaaaaa-0000-0000-0000-000000000001", alias="X-Tenant-Id"),
-    x_user_id: str = Header(default="bbbbbbbb-0000-0000-0000-000000000002", alias="X-User-Id"),
-    x_user_roles: str = Header(default="worker", alias="X-User-Roles"),
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> AuthContext:
-    """
-    Resolve the caller's identity.
+    """Resolve the caller's identity from the Authorization: Bearer JWT."""
+    return _auth_from_jwt(creds.credentials if creds else None)
 
-    auth_mode == "jwt"        → from the Authorization: Bearer token's claims.
-    auth_mode == "dev_header" → trust X-Tenant-Id / X-User-Id / X-User-Roles (default).
-    """
-    if settings.auth_mode == "jwt":
-        return _auth_from_jwt(authorization)
 
-    try:
-        return AuthContext(
-            tenant_id=uuid.UUID(x_tenant_id),
-            user_id=uuid.UUID(x_user_id),
-            roles=[r.strip() for r in x_user_roles.split(",")],
-        )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid auth header: {exc}",
-        ) from exc
+def get_bearer_token(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> str:
+    """Raw bearer token to forward to member-scoped org-backend calls.
+
+    Validation is handled by get_auth_context; this just extracts the token string.
+    """
+    return creds.credentials if creds else ""
