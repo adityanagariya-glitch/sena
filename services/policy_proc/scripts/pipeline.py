@@ -229,7 +229,7 @@ def run_pipeline(
         "blocked":     result["blocked"],
         "block_reason":block_reason,
         "classification": classification,
-        "sources":     [s.split("/")[-1] for s in sources],
+        "sources":     clean_sources,
         "session_id":  session_id
     }
 

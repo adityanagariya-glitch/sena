@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from langfuse import observe, get_client
 
 langfuse = get_client()
@@ -32,10 +33,9 @@ bedrock_agent_runtime = boto3.client("bedrock-agent-runtime", region_name=REGION
 # bedrock_runtime       = boto3.client("bedrock-runtime",       region_name=REGION)
 
 # ── Org doc cache ─────────────────────────────────────────────────────────────
-# Persists for lifetime of FastAPI process.
-# Clears automatically on server restart (--reload on code change).
-# Call clear_org_cache() after manual S3 uploads/deletions in production.
-_org_doc_cache: dict[str, bool] = {}
+# TTL-based: entries expire after 5 min so new uploads are picked up automatically.
+_ORG_DOC_CACHE_TTL = 300  # seconds
+_org_doc_cache: dict[str, tuple[bool, float]] = {}  # (has_docs, expires_at)
 
 def content_score(chunk: dict) -> float:
     """
@@ -127,15 +127,24 @@ def clear_org_cache(org_id: str = None):
         logger.info("Full org doc cache cleared")
 
 
+def _org_cache_get(org_id: str):
+    """Returns cached bool if entry exists and has not expired, else None."""
+    entry = _org_doc_cache.get(org_id)
+    if entry and time.time() < entry[1]:
+        return entry[0]
+    return None
+
+
 def org_has_docs(org_id: str) -> bool:
     """
     Checks if the org has any documents indexed in S3 Vectors.
-    Result cached for lifetime of process — avoids extra Bedrock call per query.
+    Result cached for _ORG_DOC_CACHE_TTL seconds — auto-refreshes after new uploads.
     Returns True if at least one chunk exists for this org.
     """
-    if org_id in _org_doc_cache:
-        logger.info(f"org_has_docs cache hit — {org_id}: {_org_doc_cache[org_id]}")
-        return _org_doc_cache[org_id]
+    cached = _org_cache_get(org_id)
+    if cached is not None:
+        logger.info(f"org_has_docs cache hit — {org_id}: {cached}")
+        return cached
 
     try:
         response = bedrock_agent_runtime.retrieve(
@@ -151,8 +160,8 @@ def org_has_docs(org_id: str) -> bool:
             }
         )
         result = len(response["retrievalResults"]) > 0
-        _org_doc_cache[org_id] = result
-        logger.info(f"org_has_docs — {org_id}: {result} (cached)")
+        _org_doc_cache[org_id] = (result, time.time() + _ORG_DOC_CACHE_TTL)
+        logger.info(f"org_has_docs — {org_id}: {result} (cached for {_ORG_DOC_CACHE_TTL}s)")
         return result
 
     except Exception as e:
@@ -174,13 +183,14 @@ def build_filter(org_id: str, doc_type: str = None) -> dict | None:
         logger.info("Filter: none (superadmin — all docs)")
         return None
 
+    has_docs = org_has_docs(org_id)
     org_filter = (
         {"equals": {"key": "org_id", "value": org_id}}
-        if org_has_docs(org_id)
+        if has_docs
         else {"equals": {"key": "org_id", "value": "ndis"}}
     )
 
-    logger.info(f"Filter: org={'own' if org_has_docs(org_id) else 'ndis'} | doc_type={doc_type or 'all'}")
+    logger.info(f"Filter: org={'own' if has_docs else 'ndis'} | doc_type={doc_type or 'all'}")
 
     if not doc_type:
         return org_filter
