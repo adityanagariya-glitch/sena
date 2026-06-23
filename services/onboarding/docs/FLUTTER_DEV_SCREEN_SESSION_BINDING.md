@@ -66,14 +66,15 @@ tool_response_rejected     field=agreed_to_data_collection  code=unknown_path
 - A consent `update_field` (e.g. `agreed_to_data_collection = true`) returns `{ok:true}`, not
   `unknown_path`.
 
-## Backend safety net (already added — but it does NOT fix the bug)
+## Backend safety net — REMOVED (2026-06-23)
 
-The backend now **detects** this mismatch: when `get_current_state` returns a `step_id` that doesn't match
-the session's `step`, it logs `screen_session_mismatch` and tells the agent to say *"the voice assistant
-opened on the wrong screen — please close it and reopen it on the correct screen,"* instead of silently
-spinning on the wrong screen for 90 seconds. **That turns a silent dead-end into a clear instruction — it
-is not a fix.** The binding still has to be corrected in Flutter so the assistant works at all on the
-screen the user is on.
+A `screen_session_mismatch` detector was briefly added (compared `get_current_state` step_id vs the session
+step) and then **reverted** — it **false-positived on the correct screen**, making the agent wrongly announce
+"the assistant is on the wrong screen" during perfectly working flows. The live `get_current_state` step_id
+does not reliably equal the session's `schema.step_id` in normal operation, so the comparison was unsound.
+
+**There is no backend backstop.** The screen binding must be correct on the Flutter side (this doc), and the
+consent prompt is selected by `schema.step_id` (see `FLUTTER_HANDOFF_CONSENT_3SCREEN_E2E.md`).
 
 ## Related
 - `FLUTTER_HANDOFF_MASTER.md` §1.7 (validation/state ownership), §3 (error channels) — registered there as item 8.
