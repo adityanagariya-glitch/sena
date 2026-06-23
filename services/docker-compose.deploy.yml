@@ -227,6 +227,24 @@ services:
       - sena-network
     restart: unless-stopped
 
+  sena-doc-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: doc-service
+    container_name: sena-doc-service-internal
+    env_file:
+      - ../.env
+    environment:
+      # Ingests into the SAME Bedrock KB that policy-proc queries — must match
+      # policy-proc's region (config.py defaults to ap-southeast-2 for KB/S3).
+      AWS_REGION: "ap-southeast-2"
+    expose:
+      - "8010"
+    networks:
+      - sena-network
+    restart: unless-stopped
+
   # ── Testing: Voice Testing Instance ──────────────────────────────────────
   sena-voice-internal-testing:
     build:
