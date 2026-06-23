@@ -35,10 +35,17 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install all dependencies (merged from all services) in one shot
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt && \
+    find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
+    find /opt/venv -type f -name "*.pyc" -delete && \
+    find /opt/venv -type f -name "*.so" -exec strip {} \; 2>/dev/null || true && \
+    rm -rf /tmp/requirements.txt /root/.cache
+
 # shared/ lives inside services/ — same level as this Dockerfile
 COPY shared /app/shared
-RUN pip install /app/shared
+RUN pip install /app/shared && \
+    find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
+    find /opt/venv -type f -name "*.pyc" -delete
 
 
 # ── Voice — case note dictation via Bedrock (port 8008) ───────────────────
