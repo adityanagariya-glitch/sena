@@ -1,8 +1,0 @@
-fastapi
-uvicorn[standard]
-python-multipart
-pydantic
-python-dotenv
-PyJWT
-boto3
-markitdown[all]

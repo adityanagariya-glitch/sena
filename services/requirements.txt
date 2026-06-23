@@ -130,3 +130,4 @@ datasets
 openpyxl
 ragas
 langchain_text_splitters
+markitdown[all]
