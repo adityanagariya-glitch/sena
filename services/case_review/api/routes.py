@@ -10,6 +10,12 @@ from api.deps import get_auth_context, get_case_note_client, get_db, get_repo
 from clients.case_note_client import CaseNoteClient
 from services.classify_service import classify_paragraph as svc_classify_paragraph
 from services.context_service import get_context as svc_get_context
+from services.review_service import review_session_pipeline as svc_review
+from services.incident_service import (
+    detect_incident as svc_detect_incident,
+    draft_incident as svc_draft_incident,
+    confirm_incident as svc_confirm_incident,
+)
 from models.schemas import (
     AuthContext,
     ClassifyRequest,
@@ -106,22 +112,36 @@ async def classify_paragraph(
 
 # ── Review (Phase D) ──────────────────────────────────────────────────────────
 
-@router.post("/v1/case-review/review", response_model=ReviewResponse, tags=["review"])
+@router.post(
+    "/v1/case-review/review",
+    response_model=ReviewResponse,
+    tags=["review"],
+    summary="Analyse case note for risks and compliance flags",
+    description=(
+        "Runs triage (cheap Haiku gate) followed by deep evaluator (Sonnet) analysis "
+        "on a review session's classified case note. Returns structured flags categorised as: "
+        "risks (policy violations), restrictive_practices (NDIS taxonomy), anomalies (evidence phrases), "
+        "and improvements (mitigating factors). All flags are persisted to the session and queryable later. "
+        "Pipeline: Triage → (if flagged) Evaluator → FlagItem mapping → DB persist."
+    ),
+)
 async def review_session(
     req: ReviewRequest,
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> ReviewResponse:
-    """
-    Analyse classified fields against rolling history.
-    Returns risk flags, restrictive-practice categories (NDIS taxonomy),
-    anomalies vs history, and improvement suggestions.
-    Implemented in Phase D.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Phase D — review endpoint not yet implemented",
-    )
+    """Analyse case note for risks and compliance flags."""
+    repo = get_repo(db)
+    start_usage()
+    try:
+        return await svc_review(
+            repo=repo,
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            req=req,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 # ── Incident detect (Phase E) ─────────────────────────────────────────────────
@@ -130,20 +150,28 @@ async def review_session(
     "/v1/case-review/incident/detect",
     response_model=IncidentDetectResponse,
     tags=["incident"],
+    summary="Detect if case note describes a reportable incident",
+    description=(
+        "Binary classifier using triage + evaluator. Returns incident_detected (bool) and, "
+        "if true, creates an empty IncidentDraft placeholder with draft_id for the /draft step. "
+        "Also extracts trigger_phrases (evidence) from the evaluator. "
+        "Pipeline: Triage → (if flagged) Evaluator → incident_detected? → create IncidentDraft."
+    ),
 )
 async def detect_incident(
     req: IncidentDetectRequest,
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> IncidentDetectResponse:
-    """
-    Binary classifier: does this case note describe a reportable incident?
-    If yes, creates an IncidentDraft and returns draft_id for the autofill step.
-    Implemented in Phase E.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Phase E — incident/detect endpoint not yet implemented",
+    """Detect if case note describes a reportable incident."""
+    repo = get_repo(db)
+    start_usage()
+    return await svc_detect_incident(
+        repo=repo,
+        db=db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        req=req,
     )
 
 
@@ -151,20 +179,29 @@ async def detect_incident(
     "/v1/case-review/incident/draft",
     response_model=IncidentDraftResponse,
     tags=["incident"],
+    summary="Autofill NDIS incident report fields from case note",
+    description=(
+        "Runs the NDIS Incident Drafter LLM (Bedrock Sonnet) on the case note. "
+        "Autofills 20+ fields: incident_type, date, location, staff_involved, description, "
+        "contributing_factors, risk_assessment, reportable status, notification_timeframe, etc. "
+        "Creates or updates the IncidentDraft row (idempotent). Staff must review and confirm "
+        "via PATCH /incident/{id}/confirm before submission. NDIS non-negotiable: no auto-submit."
+    ),
 )
 async def draft_incident(
     req: IncidentDraftRequest,
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> IncidentDraftResponse:
-    """
-    Autofill incident form fields from case note text.
-    Staff must review and confirm (PATCH /incident/{id}/confirm) before submit.
-    Implemented in Phase E.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Phase E — incident/draft endpoint not yet implemented",
+    """Autofill NDIS incident report fields from case note."""
+    repo = get_repo(db)
+    start_usage()
+    return await svc_draft_incident(
+        repo=repo,
+        db=db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        req=req,
     )
 
 
@@ -172,24 +209,30 @@ async def draft_incident(
     "/v1/case-review/incident/{incident_id}/confirm",
     response_model=IncidentConfirmResponse,
     tags=["incident"],
+    summary="Staff confirms AI-drafted incident report",
+    description=(
+        "Staff explicitly confirms the AI-autofilled incident draft after review. "
+        "Sets staff_confirmed=True and status='confirmed'. No auto-submit happens; the confirmed "
+        "draft is then passed to submit. NDIS non-negotiable: every incident report requires "
+        "human sign-off before reporting to the NDIS Commission."
+    ),
 )
 async def confirm_incident(
     incident_id: uuid.UUID,
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> IncidentConfirmResponse:
-    """
-    Staff explicitly confirms the AI-autofilled incident draft.
-    NDIS non-negotiable: no auto-submit without human confirmation.
-    Implemented in Phase E.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Phase E — incident confirm endpoint not yet implemented",
+    """Staff confirms AI-drafted incident report."""
+    repo = get_repo(db)
+    return await svc_confirm_incident(
+        repo=repo,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        incident_id=incident_id,
     )
 
 
-# ── Submit (Phase F) ──────────────────────────────────────────────────────────
+# ── Submit ──────────────────────────────────────────────────────────
 
 @router.post("/v1/case-review/submit", response_model=SubmitResponse, tags=["submit"])
 async def submit_review(
@@ -204,5 +247,5 @@ async def submit_review(
     """
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Phase F — submit endpoint not yet implemented (blocked: register schema TBD)",
+        detail= "submit endpoint not yet implemented (blocked: register schema TBD)",
     )
