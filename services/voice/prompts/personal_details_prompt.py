@@ -68,7 +68,8 @@ Return strict JSON only — no markdown, no explanation outside the JSON:
     "emergency_contact_phone": "string or null"
   },
   "missing_fields": ["string"],
-  "completeness_score": 0.0
+  "completeness_score": 0.0,
+  "user_sentiment": "cooperative|hesitant|confused"
 }
 
 completeness_score is a float from 0.0 to 1.0 based on how many required fields are filled.

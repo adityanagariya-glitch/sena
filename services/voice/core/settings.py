@@ -59,8 +59,12 @@ class VoiceSettings(BaseSettings):
     gemini_api_key: str = Field(alias="GEMINI_API_KEY")
     gemini_model_id: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL_ID")
     gemini_live_model_id: str = Field(
-        default="gemini-2.5-flash-native-audio-latest", alias="GEMINI_LIVE_MODEL_ID"
+        default="gemini-3.1-flash-live-preview", alias="GEMINI_LIVE_MODEL_ID"
     )
+    gemini_thinking_level: str = Field(
+        default="EXTENDED", alias="GEMINI_THINKING_LEVEL"
+    )
+    voice_persona: str = Field(default="friendly_australian", alias="VOICE_PERSONA")
 
 
 settings = VoiceSettings()
