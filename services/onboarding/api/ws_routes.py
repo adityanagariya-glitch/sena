@@ -209,6 +209,7 @@ async def onboarding_ws(
         tool_dispatcher = ToolDispatcher(
             bridge=mobile_bridge,
             on_incident=_on_incident,
+            expected_step_id=schema.step_id,
         )
 
         # Seed the model with the live screen state so its FIRST greeting knows

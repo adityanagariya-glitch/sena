@@ -17,6 +17,7 @@
 | 5 | Render voice updates LIVE (DOB date-picker bug) | **P1** | ALL flows |
 | 6 | Consent per-role access voice-fill (Fix 2) | P2 | client step 6 |
 | 7 | NDIS-plan `preferred_schedule` overlap validation (NEW) | P1 | client step 3 (NDIS plan) |
+| 8 | Voice session ↔ screen binding (stale controller answers wrong screen) | **P0** | ALL flows |
 
 **Architectural fact:** items 3–5 are **universal** — the backend runs one flow-agnostic engine for client, staff, and every future voice flow. Implement them once in the shared `voice_session_controller` / sink layer and they work for all flows. No per-flow duplication.
 
@@ -325,6 +326,30 @@ No overlap → your normal `{ok:true}`. Touching ranges (`end == start`) are OK.
 
 ---
 
+# 8. Voice session ↔ screen binding — ALL flows (P0 — NEW)
+
+**Symptom (tested 2026-06-22):** assistant opened on the Consent screen but kept reading/writing the
+**Medical Information** screen (step 5); every consent write came back `unknown_path`; the agent said
+*"I'm stuck on the medical information section"* and the session was abandoned.
+
+**Root cause:** the session was *created* for `consent`, but `get_current_state` / `update_field` were
+*answered* by the previous screen's (medical) controller — a stale voice controller / `tool_request`
+handler that wasn't torn down on navigation. The backend relays whatever you return, so it read medical
+and rejected consent fields.
+
+**Fix:** the screen that creates a voice session MUST be the one whose controller answers that session's
+`tool_request` frames. On navigation, fully dispose the old screen's voice controller (close WS,
+unregister handler) before the next screen attaches; route `tool_request` by `session_id`. **Invariant:**
+the `step_id` returned by `get_current_state` must equal the `step` sent at session create.
+
+**Backend safety net (added this change):** on a `step_id` ≠ session-`step` mismatch the backend logs
+`screen_session_mismatch` and tells the agent to ask the participant to reopen on the correct screen —
+so it fails loud, not silent. **This is not a fix; the Flutter binding must still be corrected.**
+
+**Full detail + verify steps → `FLUTTER_DEV_SCREEN_SESSION_BINDING.md` (this folder).**
+
+---
+
 # Acceptance checklist (hand back when done)
 
 - [ ] **Staff:** 5 staff voice schemas send the exact `staff_*` stepIds; a full staff voice session works end-to-end (§1).
@@ -333,6 +358,7 @@ No overlap → your normal `{ok:true}`. Touching ranges (`end == start`) are OK.
 - [ ] **Auto-start:** voice screen greets within ~3 s on mount, no tap (§4).
 - [ ] **Live render:** voice-set DOB (and dropdowns/checkboxes) update the widget live (§5).
 - [ ] **NDIS plan:** overlapping same-day `preferred_schedule` slots are rejected with a spoken `reason`; non-overlapping (incl. touching) accepted (§7).
+- [ ] **Screen binding:** `get_current_state` on any screen returns a `step_id` equal to that session's `step`; navigating between voice screens disposes the prior controller (§8).
 
 ---
 
