@@ -220,6 +220,7 @@ class ToolDispatcher:
         on_incident: Callable[[dict[str, Any]], Any] | None = None,
         known_tools: frozenset[str] = _KNOWN_TOOLS,
         submit_tool_name: str = "submit_step",
+        expected_step_id: str | None = None,
     ) -> None:
         self._bridge = bridge
         self._on_incident = on_incident
@@ -227,6 +228,12 @@ class ToolDispatcher:
         # passes its own tool set + "finalize_note" as the submit/loop-exit tool.
         self._known_tools = known_tools
         self._submit_tool_name = submit_tool_name
+        # Step this session was created for. Lets dispatch() detect a stale client
+        # screen<->session binding — where get_current_state is answered by a
+        # DIFFERENT screen's controller than the one that created the session
+        # (observed: session=consent but the device kept reporting
+        # medical_information, so every consent write came back unknown_path).
+        self._expected_step_id = expected_step_id
         # Loop-exit flag — gemini_live.py polls this after each tool call to end
         # the WS session once the submit/finalize tool succeeds. Set True when the
         # tool named ``submit_tool_name`` returns {ok: True}.
@@ -266,7 +273,36 @@ class ToolDispatcher:
         result = await self._bridge.dispatch(name, args)
         if name == self._submit_tool_name and result.get("ok") is True:
             self.step_completed = True
+        if name == "get_current_state":
+            self._flag_screen_mismatch(result)
         return result
+
+    def _flag_screen_mismatch(self, result: dict[str, Any]) -> None:
+        """Catch a stale client screen<->session binding.
+
+        If the live screen the client reports via get_current_state doesn't match
+        the step this session was created for, a previous screen's controller is
+        answering this session's tool calls. Log it and inject a directive so the
+        agent tells the participant to reopen the assistant on the correct screen,
+        instead of silently reading/writing the wrong screen and dead-ending.
+        """
+        expected = self._expected_step_id
+        if not expected:
+            return
+        state = result.get("state")
+        if not isinstance(state, dict):
+            return
+        step = state.get("step")
+        live = step.get("id") if isinstance(step, dict) else None
+        if not live or live == expected:
+            return
+        log.warning("screen_session_mismatch", expected_step=expected, live_step=live)
+        result["screen_mismatch_warning"] = (
+            f"DEVICE SCREEN MISMATCH: the participant's screen reports '{live}', but this "
+            f"voice session is for '{expected}'. Do NOT read or update any fields. Tell the "
+            "participant the voice assistant opened on the wrong screen and ask them to close "
+            "it and reopen it on the correct screen."
+        )
 
 
 def _preflight_validate(name: str, args: dict[str, Any]) -> str | None:
