@@ -90,6 +90,10 @@ def _compose_note_body(data: dict[str, Any]) -> str:
     if review:
         parts.append(f"Review note: {review}")
 
+    handover = data.get("handover")
+    if handover:
+        parts.append(f"Handover: {handover}")
+
     parts.append(f"Incident reported: {'yes' if data.get('anyIncident') else 'no'}")
     return "\n\n".join(parts)
 
