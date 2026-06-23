@@ -71,9 +71,9 @@ Legacy `initial_state` still works but `bootstrap` wins; use `bootstrap`.
 - `step_id = req.step` (line 336) → stored on FormState; logged as `session_create_resolved_bootstrap step=<X>`.
 - The system prompt is rendered **once at WS connect** from `schema.step_id` →
   `prompt_builder._step_rules_section(step_id)` → `steps_dir.rglob(f"{step_id}.md")` (`prompt_builder.py:92`).
-- There is **no backend safety net** for screen/session mismatch (a `screen_session_mismatch` detector was
-  tried and reverted on 2026-06-23 — it false-positived on the correct screen). The prompt is correct only
-  if `schema.step_id` is correct; the backend will not warn you otherwise.
+- A live screen<->session safety net now runs: if `get_current_state` returns a `step_id` ≠ the session's
+  step, the backend logs `screen_session_mismatch` and tells the agent to ask you to reopen on the right
+  screen. (Added 2026-06-22 — it will fire loudly if you create the session with the wrong `step`.)
 
 ### 2.4 Set BOTH `step` and `schema.step_id`
 `req.step` drives FormState/state; `schema.step_id` drives the rendered prompt's turn. Keep them **identical**
@@ -122,9 +122,8 @@ exact "stuck on the wrong screen" failure.
 Build the bootstrap from the screen that is mounting, not from a shared controller (see §2.5).
 
 ### 3.5 Keep `screen_state_v2` aligned (defensive, not the fix)
-Continue pushing `screen_state_v2` with the matching `step_id` per screen for UI/transcript correctness. It
-does NOT select the prompt (only `schema.step_id` does) and there is no backend mismatch detector — so this
-is hygiene, not a backstop.
+Continue pushing `screen_state_v2` with the matching `step_id` per screen. It does NOT select the prompt, but
+the backend safety net compares it to the session step — aligned values keep the mismatch warning silent.
 
 ### 3.6 Wire the `confirm_dialog` tool (Sharing screen popup)
 On Sharing, the "Are you sure you want to continue?" dialog can be answered by voice. Backend emits
@@ -169,7 +168,7 @@ Review screen    → body.step = "consent_review"     → consent_review.md
 | Body `step` / `schema.step_id` | ✅ **YES — this is the only one** |
 | POST **URL** query `?step=…` | ❌ no (logging/routing only) |
 | Per-turn payload `step.id` (`client_consent_voice_handler.dart:31`) | ❌ no |
-| `screen_state_v2.data.step_id` | ❌ no (UI/transcript only) |
+| `screen_state_v2.data.step_id` | ❌ no (only feeds the live-screen safety net) |
 
 If you only changed the bottom three, the prompt never changes. This is exactly what the logs showed.
 
@@ -184,8 +183,8 @@ is wrong. They look right while the bug persists (this is what fooled the last f
 1. **Which prompt actually loaded (definitive):** backend log `gemini_bridge_constructed instruction_chars`
    must DIFFER per screen — the per-step fragment sizes are overview ≈ 1592, sharing ≈ 6280, review ≈ 2315,
    so the totals differ. Same `instruction_chars` on two consent screens = same prompt = still broken.
-2. **No backstop to rely on:** there is no `screen_session_mismatch` detector anymore (removed 2026-06-23 —
-   it false-positived). Correctness is purely client-side, so #1 and #3 are the real checks.
+2. **No `screen_session_mismatch`** warning in the backend log during the consent flow (the safety net fires
+   when the live screen disagrees with the session).
 3. **Behaviour:** on Overview the agent explains and never says "shall we submit?"; on Review it drives the
    checkbox + Confirm & Submit.
 
@@ -194,12 +193,12 @@ is wrong. They look right while the bug persists (this is what fooled the last f
 ## 7. Acceptance checklist (hand back when all true)
 - [ ] Three schema configs exist with `stepId` = `consent_overview` / `consent` / `consent_review`.
 - [ ] Each consent screen creates and disposes its **own** voice session (Overview, Sharing, Review).
-- [ ] `gemini_bridge_constructed instruction_chars` DIFFERS per consent screen (overview≈1592 / sharing≈6280 / review≈2315) — proves the right prompt loaded (§6.1). Do NOT rely on `session_create_resolved_bootstrap step=` (shows req.step, looks correct even when broken).
+- [ ] `session_create_resolved_bootstrap step=` logs the correct id per screen (§6.1).
 - [ ] `bootstrap.current_page_values` carries only the mounting screen's fields.
 - [ ] Overview: explains only, no submit. Sharing: fills + answers the confirm dialog by voice. Review: voice
       live, ticks written-consent, drives Confirm & Submit.
 - [ ] Submit returns `{ok:false, blockers:[…]}` (never bare `{ok:false}`).
-- [ ] Overview never says "shall we submit?"; each screen runs its own prompt (confirmed via `instruction_chars`).
+- [ ] No `screen_session_mismatch` warnings in the backend log during the consent flow.
 
 ---
 

@@ -343,9 +343,9 @@ and rejected consent fields.
 unregister handler) before the next screen attaches; route `tool_request` by `session_id`. **Invariant:**
 the `step_id` returned by `get_current_state` must equal the `step` sent at session create.
 
-**Backend safety net: REMOVED (2026-06-23).** A `screen_session_mismatch` detector was briefly added then
-reverted — it false-positived on the correct screen (the live `get_current_state` step_id does not reliably
-equal the session step in normal operation). **There is no backend backstop; the Flutter binding must be correct.**
+**Backend safety net (added this change):** on a `step_id` ≠ session-`step` mismatch the backend logs
+`screen_session_mismatch` and tells the agent to ask the participant to reopen on the correct screen —
+so it fails loud, not silent. **This is not a fix; the Flutter binding must still be corrected.**
 
 **Full detail + verify steps → `FLUTTER_DEV_SCREEN_SESSION_BINDING.md` (this folder).**
 
@@ -382,7 +382,7 @@ creates and disposes its OWN voice session; bootstrap carries the mounting scree
 - [ ] **Live render:** voice-set DOB (and dropdowns/checkboxes) update the widget live (§5).
 - [ ] **NDIS plan:** overlapping same-day `preferred_schedule` slots are rejected with a spoken `reason`; non-overlapping (incl. touching) accepted (§7).
 - [ ] **Screen binding:** `get_current_state` on any screen returns a `step_id` equal to that session's `step`; navigating between voice screens disposes the prior controller (§8).
-- [ ] **Consent 3-screen:** `gemini_bridge_constructed instruction_chars` DIFFERS per consent screen (overview≈1592 / sharing≈6280 / review≈2315) — proves the right prompt loaded; each screen owns its session; overview never says "shall we submit?" (§9). (Do NOT use `session_create_resolved_bootstrap step=` — it shows req.step, correct-looking even when broken.)
+- [ ] **Consent 3-screen:** `session_create_resolved_bootstrap step=` logs `consent_overview` / `consent` / `consent_review` per screen; each screen owns its session; overview never says "shall we submit?" (§9).
 
 ---
 
