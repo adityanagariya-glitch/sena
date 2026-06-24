@@ -30,11 +30,11 @@ class OnboardingAuthContext:
 def get_ws_auth(websocket: WebSocket) -> OnboardingAuthContext:
     """Extract identity from WebSocket headers.
 
-    auth_mode=jwt   — validates RS256 Bearer token from Authorization header
-                      or ?token= query param (for clients that can't set headers).
-    auth_mode=dev_header — reads X-Tenant-Id / X-User-Id directly (local dev only).
+    jwt_enabled=true   — validates RS256 Bearer token from Authorization header
+                         or ?token= query param (for clients that can't set headers).
+    jwt_enabled=false  — reads X-Tenant-Id / X-User-Id directly (dev only).
     """
-    if settings.auth_mode != "jwt":
+    if not settings.jwt_enabled:
         # Dev mode: trust raw headers (never reachable in production)
         tenant_raw = websocket.headers.get("x-tenant-id") or websocket.query_params.get("tenant_id", "")
         user_raw = websocket.headers.get("x-user-id") or websocket.query_params.get("user_id", "")
@@ -104,14 +104,28 @@ _http_bearer = HTTPBearer(
 
 async def get_http_auth(
     creds: HTTPAuthorizationCredentials | None = Depends(_http_bearer),
+    tenant_id: str | None = None,
+    user_id: str | None = None,
 ) -> OnboardingAuthContext:
-    """Extract identity from HTTP Authorization Bearer header (REST routes)."""
-    if settings.auth_mode != "jwt":
-        # Dev mode: trust headers
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Dev mode not supported for REST routes — use WebSocket",
-        )
+    """Extract identity from HTTP Authorization Bearer header (REST routes).
+
+    jwt_enabled=true   — validates RS256 Bearer token only.
+    jwt_enabled=false  — accepts X-Tenant-Id / X-User-Id query params (dev only).
+    """
+    if not settings.jwt_enabled:
+        # Dev mode: accept query params
+        if not tenant_id or not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Dev mode: tenant_id and user_id query params required",
+            )
+        try:
+            return OnboardingAuthContext(
+                tenant_id=UUID(tenant_id),
+                user_id=UUID(user_id),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid UUID: {exc}") from exc
 
     if not creds:
         raise HTTPException(

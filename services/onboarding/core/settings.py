@@ -65,9 +65,9 @@ class OnboardingSettings(BaseSettings):
     onboarding_mobile_bridge_timeout_sec: float = 12.0
 
     # ── Auth ─────────────────────────────────────────────────────────────────
-    # SENA_AI_AUTH_MODE: "dev_header" (local) or "jwt" (production)
-    auth_mode: str = "dev_header"
-    # RS256 public key PEM for JWT verification (required when auth_mode=jwt)
+    # SENA_AI_JWT_ENABLED: true (prod, require JWT) or false (dev, accept dev_header)
+    jwt_enabled: bool = False
+    # RS256 public key PEM for JWT verification (required when jwt_enabled=true)
     jwt_public_key_pem: str | None = None
     jwt_issuer: str | None = None
     jwt_audience: str | None = None
