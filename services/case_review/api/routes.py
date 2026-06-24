@@ -16,6 +16,7 @@ from services.incident_service import (
     draft_incident as svc_draft_incident,
     confirm_incident as svc_confirm_incident,
 )
+from services.submit_service import submit_review as svc_submit_review
 from models.schemas import (
     AuthContext,
     ClassifyRequest,
@@ -121,7 +122,29 @@ async def get_context(
 
 # ── Classify (Phase C) ────────────────────────────────────────────────────────
 
-@router.post("/v1/case-review/classify", response_model=ClassifyResponse, tags=["classify"])
+@router.post(
+    "/v1/case-review/classify",
+    response_model=ClassifyResponse,
+    tags=["classify"],
+    summary="Classify paragraph into structured case-note fields",
+    description=(
+        "Extract and classify a free-text paragraph into structured case note fields.\n\n"
+        "Returns missing required fields and re-ask prompts if paragraph is incomplete. "
+        "Uses session-level deduplication: identical paragraphs in the same session "
+        "return cached results without LLM call.\n\n"
+        "**Flow:**\n"
+        "1. Resolve or create review_session\n"
+        "2. Check paragraph cache (same hash → return cached result)\n"
+        "3. Call Claude to extract and classify fields\n"
+        "4. Identify missing required fields\n"
+        "5. Return classified fields + re-ask prompts\n\n"
+        "**Performance:**\n"
+        "- Model: Claude Sonnet\n"
+        "- Tokens: 2000-4000\n"
+        "- Latency: 2-4s (first call) or ~100ms (cache hit)\n"
+        "- Caching: SHA256 paragraph hash per session"
+    ),
+)
 async def classify_paragraph(
     req: ClassifyRequest,
     auth: AuthContext = Depends(get_auth_context),
@@ -270,18 +293,41 @@ async def confirm_incident(
 
 # ── Submit ──────────────────────────────────────────────────────────
 
-@router.post("/v1/case-review/submit", response_model=SubmitResponse, tags=["submit"])
-async def submit_review(
+@router.post(
+    "/v1/case-review/submit",
+    response_model=SubmitResponse,
+    tags=["submit"],
+    summary="Final submit gate for reviewed case note",
+    description=(
+        "Staff submits a reviewed case note after all flags are addressed. "
+        "Persists submission snapshot and routes incident if confirmed.\n\n"
+        "**Prerequisites:** review_session must be in 'reviewed', 'reviewed_reportable', "
+        "or 'reviewed_requires_escalation' status.\n\n"
+        "**Flow:**\n"
+        "1. Validate review_session exists and has proper status\n"
+        "2. Create SubmissionRecord (immutable snapshot of case note + flags)\n"
+        "3. Update review_session status → 'submitted'\n"
+        "4. If incident confirmed, route it for incident submission\n"
+        "5. Return submission confirmation with timestamp\n\n"
+        "**Incident routing:** If incident draft exists and is confirmed, "
+        "the submission is marked 'routed_to_incident' and linked for platform delivery."
+    ),
+)
+async def submit_review_endpoint(
     req: SubmitRequest,
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> SubmitResponse:
-    """
-    Final submit gate. Validates all flags acknowledged by staff, then writes
-    to the case note register and routes any confirmed incident separately.
-    BLOCKED on other engineer's register schema (Phase F).
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail= "submit endpoint not yet implemented (blocked: register schema TBD)",
-    )
+    """Final submit gate for reviewed case note."""
+    repo = get_repo(db)
+    start_usage()
+    try:
+        return await svc_submit_review(
+            repo=repo,
+            db=db,
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            req=req,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

@@ -144,6 +144,44 @@ class ReviewAuditLog(Base):
     )
 
 
+class SubmissionRecord(Base):
+    """
+    Final submission record when staff confirms review and submits case note.
+    Persists snapshot of case note, flags, and incident routing info.
+    Immutable — do NOT update after creation.
+    """
+
+    __tablename__ = "cr_submission_record"
+
+    id: Mapped[str] = mapped_column(
+        String(100), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    review_session_id: Mapped[str] = mapped_column(
+        String(100),
+        ForeignKey("cr_review_session.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    staff_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    client_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    submitted_by_user_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now
+    )
+    # Snapshot of case note content at submission time
+    case_note_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Snapshot of all flags {risks, restrictive_practices, anomalies, improvements}
+    flags_summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # pending | submitted | routed_to_incident | failed
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="submitted")
+    # For incident routing — links back to incident submission if routed
+    incident_routing_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class NDISPolicyChunk(Base):
     """
     NDIS policy document chunks for RAG retrieval.
