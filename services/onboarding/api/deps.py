@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import jwt as pyjwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocket
 from redis.asyncio import from_url as redis_from_url
@@ -103,26 +103,27 @@ _http_bearer = HTTPBearer(
 
 
 async def get_http_auth(
+    request: Request,
     creds: HTTPAuthorizationCredentials | None = Depends(_http_bearer),
-    tenant_id: str | None = None,
-    user_id: str | None = None,
 ) -> OnboardingAuthContext:
     """Extract identity from HTTP Authorization Bearer header (REST routes).
 
     jwt_enabled=true   — validates RS256 Bearer token only.
-    jwt_enabled=false  — accepts X-Tenant-Id / X-User-Id query params (dev only).
+    jwt_enabled=false  — reads X-Tenant-Id / X-User-Id headers (dev only).
     """
     if not settings.jwt_enabled:
-        # Dev mode: accept query params
-        if not tenant_id or not user_id:
+        # Dev mode: accept headers
+        tenant_raw = request.headers.get("x-tenant-id") or ""
+        user_raw = request.headers.get("x-user-id") or ""
+        if not tenant_raw or not user_raw:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Dev mode: tenant_id and user_id query params required",
+                detail="Dev mode: X-Tenant-Id and X-User-Id headers required",
             )
         try:
             return OnboardingAuthContext(
-                tenant_id=UUID(tenant_id),
-                user_id=UUID(user_id),
+                tenant_id=UUID(tenant_raw),
+                user_id=UUID(user_raw),
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid UUID: {exc}") from exc
