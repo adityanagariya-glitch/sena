@@ -374,8 +374,10 @@ async def get_state(
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
-    # Cross-tenant isolation: verify session belongs to caller's tenant
-    await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
+    # Cross-tenant isolation: verify session belongs to caller's tenant.
+    # Enforced only in production (JWT on); dev has no real auth to check.
+    if settings.jwt_enabled:
+        await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
 
     return StateResponse(state=state)
 
@@ -387,7 +389,8 @@ async def update_state(
     repo: FormStateRepo = Depends(get_repo),
     auth: OnboardingAuthContext = Depends(get_http_auth),
 ) -> StateResponse:
-    await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
+    if settings.jwt_enabled:
+        await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
     if await repo.is_ws_locked(session_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -544,10 +547,10 @@ async def report_client_validation_error(
     state = await repo.get_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
-    # Mirror state-route guard. Both headers gate the check together — older
-    # clients without headers fall through, matching today's behaviour.
-    if x_participant_id is not None:
-        await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
+    # Cross-tenant isolation, mirroring the state routes. Enforced only in
+    # production (JWT on); dev has no real auth identity to check against.
+    if settings.jwt_enabled:
+        await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
     await repo.append_client_validation_error(
         session_id,
         body.model_dump(mode="json"),

@@ -35,14 +35,20 @@ def get_ws_auth(websocket: WebSocket) -> OnboardingAuthContext:
     jwt_enabled=false  — reads X-Tenant-Id / X-User-Id directly (dev only).
     """
     if not settings.jwt_enabled:
-        # Dev mode: trust raw headers (never reachable in production)
-        tenant_raw = websocket.headers.get("x-tenant-id") or websocket.query_params.get("tenant_id", "")
-        user_raw = websocket.headers.get("x-user-id") or websocket.query_params.get("user_id", "")
-        if not tenant_raw or not user_raw:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Dev mode: X-Tenant-Id and X-User-Id headers required",
-            )
+        # Dev mode: trust raw headers/query if present, else fall back to
+        # defaults so local testing needs no auth wiring. Ownership enforcement
+        # is also skipped in dev (see ws_routes), so these values are only used
+        # as a best-effort identity hint.
+        tenant_raw = (
+            websocket.headers.get("x-tenant-id")
+            or websocket.query_params.get("tenant_id")
+            or "00000000-0000-0000-0000-000000000001"
+        )
+        user_raw = (
+            websocket.headers.get("x-user-id")
+            or websocket.query_params.get("user_id")
+            or "00000000-0000-0000-0000-000000000002"
+        )
         try:
             return OnboardingAuthContext(
                 tenant_id=UUID(tenant_raw),
