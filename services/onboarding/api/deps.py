@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import jwt as pyjwt
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.websockets import WebSocket
 from redis.asyncio import from_url as redis_from_url
