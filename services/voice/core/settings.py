@@ -21,10 +21,11 @@ class VoiceSettings(BaseSettings):
     port: int = Field(default=8082, alias="PORT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # AUTH_MODE=jwt  → read identity claims from the Bearer JWT (no signature
+    #                  re-check; the gateway validated it). Valid token → allow.
+    # AUTH_MODE=dev_header → accept X-Tenant-ID / X-User-ID / X-User-Role (dev).
+    # NOTE: alias bypasses the SENA_AI_ prefix, so the env var is AUTH_MODE.
     auth_mode: str = Field(default="dev_header", alias="AUTH_MODE")
-    jwt_issuer: str | None = Field(default=None, alias="JWT_ISSUER")
-    jwt_audience: str | None = Field(default=None, alias="JWT_AUDIENCE")
-    jwt_public_key_pem: str | None = Field(default=None, alias="JWT_PUBLIC_KEY_PEM")
 
     ai_db_url: str = Field(alias="AI_DB_URL")
     shared_db_url: str = Field(alias="SHARED_DB_URL")

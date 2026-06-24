@@ -27,11 +27,45 @@ class OnboardingAuthContext:
     user_id: UUID
 
 
+def _decode_claims(token: str) -> dict:
+    """Read JWT claims WITHOUT signature verification.
+
+    The platform gateway / auth server already verifies the signature before
+    the request reaches this service — onboarding only needs the identity
+    claims. So there is NO public key, shared secret, issuer or audience to
+    configure: we just base64-decode the payload and trust it. Keep it simple.
+    """
+    try:
+        return pyjwt.decode(token, options={"verify_signature": False})
+    except pyjwt.PyJWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Malformed JWT: {exc}"
+        ) from exc
+
+
+def _context_from_claims(payload: dict) -> OnboardingAuthContext:
+    """Map JWT claims → OnboardingAuthContext. Raises 401 on missing/invalid."""
+    org_id = payload.get("organizationId") or payload.get("tenantId") or payload.get("tenant_id")
+    user_id = payload.get("userId") or payload.get("sub")
+    if not org_id or not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWT missing required claims (organizationId/tenantId, userId/sub)",
+        )
+    try:
+        return OnboardingAuthContext(tenant_id=UUID(str(org_id)), user_id=UUID(str(user_id)))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT claim not a valid UUID: {exc}"
+        ) from exc
+
+
 def get_ws_auth(websocket: WebSocket) -> OnboardingAuthContext:
     """Extract identity from WebSocket headers.
 
-    jwt_enabled=true   — validates RS256 Bearer token from Authorization header
-                         or ?token= query param (for clients that can't set headers).
+    jwt_enabled=true   — reads claims from the Bearer token (Authorization
+                         header or ?token= query param). Signature is NOT
+                         re-verified here (the gateway already did).
     jwt_enabled=false  — reads X-Tenant-Id / X-User-Id directly (dev only).
     """
     if not settings.jwt_enabled:
@@ -57,7 +91,7 @@ def get_ws_auth(websocket: WebSocket) -> OnboardingAuthContext:
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid UUID header: {exc}") from exc
 
-    # JWT mode
+    # JWT mode — pull the bearer token, decode its claims (no signature check).
     raw = websocket.headers.get("authorization") or websocket.query_params.get("token", "")
     token = raw.removeprefix("Bearer ").strip()
     if not token:
@@ -65,39 +99,7 @@ def get_ws_auth(websocket: WebSocket) -> OnboardingAuthContext:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing bearer token (Authorization: Bearer <jwt>)",
         )
-
-    if not settings.jwt_public_key_pem:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="JWT_PUBLIC_KEY_PEM not configured",
-        )
-
-    try:
-        payload = pyjwt.decode(
-            token,
-            settings.jwt_public_key_pem,
-            algorithms=["RS256"],
-            issuer=settings.jwt_issuer or pyjwt.api_jwt.PyJWT.OPTIONS_DEFAULT["verify_iss"],  # type: ignore[attr-defined]
-            audience=settings.jwt_audience,
-            options={"verify_iss": bool(settings.jwt_issuer), "verify_aud": bool(settings.jwt_audience)},
-        )
-    except pyjwt.ExpiredSignatureError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="JWT token expired") from exc
-    except pyjwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid JWT: {exc}") from exc
-
-    org_id = payload.get("organizationId") or payload.get("tenantId") or payload.get("tenant_id")
-    user_id = payload.get("userId") or payload.get("sub")
-    if not org_id or not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="JWT missing required claims (organizationId/tenantId, userId/sub)",
-        )
-
-    try:
-        return OnboardingAuthContext(tenant_id=UUID(str(org_id)), user_id=UUID(str(user_id)))
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT claim not a valid UUID: {exc}") from exc
+    return _context_from_claims(_decode_claims(token))
 
 
 # ── HTTP Bearer auth (for REST routes) ─────────────────────────────────────
@@ -114,7 +116,7 @@ async def get_http_auth(
 ) -> OnboardingAuthContext:
     """Extract identity from HTTP Authorization Bearer header (REST routes).
 
-    jwt_enabled=true   — validates RS256 Bearer token only.
+    jwt_enabled=true   — reads claims from the Bearer token (no signature check).
     jwt_enabled=false  — reads X-Tenant-Id / X-User-Id headers (dev only).
     """
     if not settings.jwt_enabled:
@@ -134,37 +136,4 @@ async def get_http_auth(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing bearer token (Authorization: Bearer <jwt>)",
         )
-
-    token = creds.credentials
-    if not settings.jwt_public_key_pem:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="JWT_PUBLIC_KEY_PEM not configured",
-        )
-
-    try:
-        payload = pyjwt.decode(
-            token,
-            settings.jwt_public_key_pem,
-            algorithms=["RS256"],
-            issuer=settings.jwt_issuer or pyjwt.api_jwt.PyJWT.OPTIONS_DEFAULT["verify_iss"],  # type: ignore[attr-defined]
-            audience=settings.jwt_audience,
-            options={"verify_iss": bool(settings.jwt_issuer), "verify_aud": bool(settings.jwt_audience)},
-        )
-    except pyjwt.ExpiredSignatureError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="JWT token expired") from exc
-    except pyjwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid JWT: {exc}") from exc
-
-    org_id = payload.get("organizationId") or payload.get("tenantId") or payload.get("tenant_id")
-    user_id = payload.get("userId") or payload.get("sub")
-    if not org_id or not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="JWT missing required claims (organizationId/tenantId, userId/sub)",
-        )
-
-    try:
-        return OnboardingAuthContext(tenant_id=UUID(str(org_id)), user_id=UUID(str(user_id)))
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT claim not a valid UUID: {exc}") from exc
+    return _context_from_claims(_decode_claims(creds.credentials))

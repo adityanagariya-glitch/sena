@@ -70,12 +70,12 @@ class OnboardingSettings(BaseSettings):
     onboarding_mobile_bridge_timeout_sec: float = 12.0
 
     # ── Auth ─────────────────────────────────────────────────────────────────
-    # SENA_AI_JWT_ENABLED: true (prod, require JWT) or false (dev, accept dev_header)
+    # SENA_AI_JWT_ENABLED:
+    #   true  — prod: read identity claims from the Bearer JWT. Signature is NOT
+    #           re-verified here (the platform gateway already validated it), so
+    #           NO public key / secret / issuer / audience config is needed.
+    #   false — dev: accept X-Tenant-Id / X-User-Id headers (no token required).
     jwt_enabled: bool = False
-    # RS256 public key PEM for JWT verification (required when jwt_enabled=true)
-    jwt_public_key_pem: str | None = None
-    jwt_issuer: str | None = None
-    jwt_audience: str | None = None
 
     # ── Screen state injection ────────────────────────────────────────────────
     # SENA_AI_SCREEN_STATE_MAX_BYTES — hard cap on screen_state payload size
