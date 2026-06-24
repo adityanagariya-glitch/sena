@@ -3,11 +3,18 @@ from __future__ import annotations
 """
 Context service — pre-meeting brief for a staff-client pair.
 
+DUAL CACHING STRATEGY:
+  1. Session-level replay guard: Checks processed_note_ids to avoid re-summarizing same notes
+     → No LLM call if notes already incorporated (returns cached summary in ~10ms)
+  2. Claude prompt caching: Static summarization instructions cached, only new notes sent
+     → Reduced token cost even when new notes trigger LLM call
+
 Orchestrates:
   1. Fetch last N case notes via CaseNoteClient
   2. Diff against processed_note_ids (replay guard — never double-process)
-  3. If no new notes → return existing summary unchanged (idempotent)
-  4. Summarise: LLM compresses (past_summary + new_notes) → SummaryResult
+  3. If no new notes → return existing summary unchanged (cache hit, ~10ms, 0 tokens)
+  4. If new notes → Summarise: LLM compresses (past_summary + new_notes) → SummaryResult
+     (Claude caches static instructions, only new notes incur token cost)
   5. Upsert RollingSummary row with merged processed_note_ids
 """
 
@@ -75,7 +82,7 @@ async def get_context(
         past_summary=past_summary,
         new_notes=new_notes,
         api_key=settings.gemini_api_key,
-        model_id=settings.gemini_model_id,
+        model_id=settings.bedrock_model_id,
         tenant_id=str(tenant_id),
     )
 

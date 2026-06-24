@@ -327,20 +327,33 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
         "2. Base64-encode the signature.\n"
         "3. Send in `X-Signature` header.\n"
         "Server verifies using the public key from `SENA_AI_EVALUATE_PUBLIC_KEY`.\n\n"
-        "**Example curl:**\n"
+        "**Example curl (voice-transcribed case note):**\n"
         "```bash\n"
         "curl -X POST http://3.111.109.14:8080/case-review/v1/restrictive-practices/evaluate \\\n"
         "  -H 'Content-Type: application/json' \\\n"
-        "  -H 'X-Signature: <base64-rsa-signature-of-body>' \\\n"
+        "  -H 'X-Signature: $SIGNATURE' \\\n"
         "  -d '{\n"
         "    \"case_note_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n"
         "    \"client_id\": \"dab57916-9863-4b49-ba39-92441547ba5b\",\n"
         "    \"worker_id\": \"30d4f882-93d0-4c5d-9af6-22612908817e\",\n"
-        "    \"transcript\": \"Good session today. Assisted with meal prep and community access. Participant was cooperative.\"\n"
+        "    \"transcript\": \"Good session. Assisted with meal prep and community access. Participant was cooperative.\"\n"
         "  }'\n"
-        "```\n"
-        "User must: (1) sign the JSON body with their RSA private key (PSS padding, SHA256), "
-        "(2) base64-encode the signature, (3) pass it in the X-Signature header.\n\n"
+        "```\n\n"
+        "**Example curl (manually-drafted case note):**\n"
+        "```bash\n"
+        "curl -X POST http://3.111.109.14:8080/case-review/v1/restrictive-practices/evaluate \\\n"
+        "  -H 'Content-Type: application/json' \\\n"
+        "  -H 'X-Signature: $SIGNATURE' \\\n"
+        "  -d '{\n"
+        "    \"case_note_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n"
+        "    \"client_id\": \"dab57916-9863-4b49-ba39-92441547ba5b\",\n"
+        "    \"worker_id\": \"30d4f882-93d0-4c5d-9af6-22612908817e\",\n"
+        "    \"describe\": \"Meal prep support. Community access to library and shops. Participant independent and engaged throughout.\"\n"
+        "  }'\n"
+        "```\n\n"
+        "**Auth:** User must (1) sign the JSON body with their RSA private key (PSS padding, SHA256), "
+        "(2) base64-encode the signature, (3) pass it in the X-Signature header.\n"
+        "**Note:** Either `transcript` (voice) OR `describe` (manual) — one is sufficient.\n\n"
         "**Results:** cached by transcript (SHA256). Repeated notes return in ~10ms. "
         "Cache TTL: 24 hours. Non-cached first run: ~4–5 seconds."
     ),
@@ -375,7 +388,22 @@ async def evaluate_case_note(
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
 
-@rp_router.post("/bsp", response_model=BSPResponse, status_code=201)
+@rp_router.post(
+    "/bsp",
+    response_model=BSPResponse,
+    status_code=201,
+    tags=["bsp"],
+    summary="Register a Behaviour Support Plan",
+    description=(
+        "Create or register a new Behaviour Support Plan (BSP) for a client.\n\n"
+        "Called by the platform backend when a practitioner's BSP is approved. "
+        "One row per (client_id, practice_type) combination. To replace an existing "
+        "authorisation, revoke the old record first then POST a new one.\n\n"
+        "**Performance:**\n"
+        "- Latency: <100ms (DB insert)\n"
+        "- No LLM calls"
+    ),
+)
 async def create_bsp(
     payload: BSPCreate,
     auth: AuthContext = Depends(get_auth_context),
@@ -410,7 +438,20 @@ async def create_bsp(
     return _bsp_to_response(bsp)
 
 
-@rp_router.get("/bsp/{client_id}", response_model=list[BSPResponse])
+@rp_router.get(
+    "/bsp/{client_id}",
+    response_model=list[BSPResponse],
+    tags=["bsp"],
+    summary="List Behaviour Support Plans for a client",
+    description=(
+        "Retrieve all BSP records for a given client, ordered by creation date descending.\n\n"
+        "Returns the full history of BSPs for the client, including active, expired, and revoked plans. "
+        "Use to verify current authorisations before evaluating a case note.\n\n"
+        "**Performance:**\n"
+        "- Latency: <50ms (DB query)\n"
+        "- No LLM calls"
+    ),
+)
 async def list_bsps(
     client_id: str,
     auth: AuthContext = Depends(get_auth_context),
@@ -429,7 +470,21 @@ async def list_bsps(
     return [_bsp_to_response(r) for r in rows]
 
 
-@rp_router.patch("/bsp/{bsp_id}/status", response_model=BSPResponse)
+@rp_router.patch(
+    "/bsp/{bsp_id}/status",
+    response_model=BSPResponse,
+    tags=["bsp"],
+    summary="Update Behaviour Support Plan status",
+    description=(
+        "Update the status of a BSP (e.g. revoke or expire it).\n\n"
+        "Valid values: Active | Expired | Revoked\n\n"
+        "Used when a BSP needs to be deactivated before a replacement is registered, "
+        "or when a practitioner revokes an authorisation.\n\n"
+        "**Performance:**\n"
+        "- Latency: <50ms (DB update)\n"
+        "- No LLM calls"
+    ),
+)
 async def update_bsp_status(
     bsp_id: str,
     payload: BSPUpdateStatus,
@@ -478,7 +533,25 @@ def _bsp_to_response(bsp: BehaviourSupportPlan) -> BSPResponse:
     )
 
 
-@rp_router.post("/draft", response_model=CaseDraftResponse)
+@rp_router.post(
+    "/draft",
+    response_model=CaseDraftResponse,
+    tags=["draft"],
+    summary="Draft case note from text transcript",
+    description=(
+        "Extract a voice transcript or text description into a pre-filled structured case note draft.\n\n"
+        "The worker reviews and edits the returned fields before submitting for evaluation. "
+        "No data is stored — this is a stateless AI extraction call.\n\n"
+        "**Flow:**\n"
+        "1. Receive transcript or description\n"
+        "2. Call Claude Sonnet to extract structured fields\n"
+        "3. Return populated fields with gap notes\n\n"
+        "**Performance:**\n"
+        "- Model: Claude Sonnet\n"
+        "- Tokens: 2000-3000\n"
+        "- Latency: 2-3s"
+    ),
+)
 async def draft_case_note(
     payload: DraftInput,
     auth: AuthContext = Depends(get_auth_context),
@@ -504,7 +577,27 @@ async def draft_case_note(
     return result
 
 
-@rp_router.post("/draft/audio", response_model=CaseDraftResponse)
+@rp_router.post(
+    "/draft/audio",
+    response_model=CaseDraftResponse,
+    tags=["draft"],
+    summary="Draft case note from audio recording",
+    description=(
+        "Transcribe an audio recording then extract it into a pre-filled case note draft.\n\n"
+        "Accepts multipart/form-data with an audio file + shift metadata form fields. "
+        "Transcription uses Amazon Transcribe (en-AU). No data is stored — stateless. "
+        "Requires SENA_AI_TRANSCRIPTION_BUCKET to be set.\n\n"
+        "**Flow:**\n"
+        "1. Receive audio file + form fields\n"
+        "2. Transcribe audio (Amazon Transcribe, en-AU)\n"
+        "3. Extract transcript into structured fields (Claude Sonnet)\n"
+        "4. Return populated fields\n\n"
+        "**Performance:**\n"
+        "- Transcription: 2-10s (depends on duration)\n"
+        "- Extraction: 2-3s\n"
+        "- Total: 4-13s"
+    ),
+)
 async def draft_case_note_audio(
     audio: UploadFile = File(..., description="Audio recording (mp3, mp4/m4a, wav, flac, ogg, webm)"),
     worker_id: str = Form(...),
@@ -642,6 +735,23 @@ class RPVoiceSessionResponse(BaseModel):
     "/voice/session",
     response_model=RPVoiceSessionResponse,
     status_code=status.HTTP_201_CREATED,
+    tags=["voice"],
+    summary="Create voice session for case-note dictation",
+    description=(
+        "Create a tenant-scoped RP voice session for interactive case-note dictation.\n\n"
+        "Pass ``initial_values`` from ``POST /draft`` to pre-fill already-extracted "
+        "fields; the voice assistant fills the remaining gaps interactively.\n\n"
+        "**Flow:**\n"
+        "1. Create session and store form state in Redis\n"
+        "2. Return WebSocket URL for mobile client\n"
+        "3. Connect to /voice/ws/{session_id} for Gemini Live interaction\n\n"
+        "**Performance:**\n"
+        "- Session creation: <100ms\n"
+        "- Model: Gemini 3.1 Flash Live (real-time voice)\n"
+        "- Latency: ~50-200ms per token\n"
+        "- Session timeout: 3600s\n\n"
+        "_Staff-only: non-staff roles are rejected._"
+    ),
 )
 async def create_rp_voice_session(
     body: RPVoiceSessionRequest,
