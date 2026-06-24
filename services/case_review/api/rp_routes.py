@@ -687,6 +687,9 @@ _RP_STAFF_ROLES = {"worker", "staff", "support_worker", "admin"}
 
 
 def _rp_is_staff(roles: list[str]) -> bool:
+    # In debug mode, allow non-staff roles for testing
+    if settings.debug_case_review:
+        return True
     return any(r.strip().lower() in _RP_STAFF_ROLES for r in roles)
 
 
