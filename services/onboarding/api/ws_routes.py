@@ -41,7 +41,7 @@ import json
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
-from onboarding.api.deps import get_repo
+from onboarding.api.deps import get_repo, get_ws_auth
 from onboarding.core.settings import settings
 from voice.config import VoiceEngineConfig
 from voice.gemini_live import GeminiLiveSession
@@ -71,33 +71,29 @@ async def onboarding_ws(
     await websocket.accept()
     log.info("ws_connect session=%s resume=%s", session_id, bool(resume))
 
+    # ── 0. JWT / dev-header auth ───────────────────────────────────────────────
+    try:
+        auth = get_ws_auth(websocket)
+    except HTTPException as exc:
+        await _close_with_error(websocket, "unauthorized", exc.detail, 4401)
+        return
+
     # ── 1. Load state + schema from Redis ─────────────────────────────────────
     state = await repo.get_state(session_id)
     if state is None:
         await _close_with_error(websocket, "session_not_found", "Session not found or expired", 4004)
         return
 
-    # ── 1b. Tenant ownership guard (defense-in-depth) ─────────────────────────
-    # Onboarding Redis keys are flat (session-id only), so a guessed session_id
-    # could otherwise read another tenant's session over the WS — the REST routes
-    # already call assert_session_owner, but this WS route never did. Enforce it
-    # when the client presents X-Tenant-Id (matches the REST contract). Header-less
-    # legacy connections are allowed through but logged; FULL closure needs the
-    # Flutter WS client to send X-Tenant-Id/X-Participant-Id (see followups.md).
-    _hdr_tenant = websocket.headers.get("x-tenant-id")
-    _hdr_participant = websocket.headers.get("x-participant-id")
-    if _hdr_tenant:
-        try:
-            await repo.assert_session_owner(
-                session_id, _hdr_tenant, _hdr_participant or state.participant_id
-            )
-        except HTTPException:
-            await _close_with_error(
-                websocket, "forbidden", "Session does not belong to caller", 4403
-            )
-            return
-    else:
-        log.warning("ws_ownership_check_skipped_no_tenant_header", session_id=session_id)
+    # ── 1b. Tenant ownership guard — derived from JWT, not raw headers ─────────
+    try:
+        await repo.assert_session_owner(
+            session_id, str(auth.tenant_id), str(auth.user_id)
+        )
+    except HTTPException:
+        await _close_with_error(
+            websocket, "forbidden", "Session does not belong to caller", 4403
+        )
+        return
 
     schema = await repo.get_schema(session_id)
     if schema is None:

@@ -803,7 +803,7 @@ async def create_rp_voice_session(
     )
 
 
-@rp_router.websocket("/voice/ws/{session_id}")
+@rp_router.websocket("/voice/ws/{session_id}", tags=["voice"])
 async def rp_voice_websocket(
     websocket: WebSocket,
     session_id: str,
