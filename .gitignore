@@ -154,3 +154,4 @@ test.raw
 services/services/nginx/nginx-local.conf
 services/docker-compose-gateway.yml
 services/docker-compose.yml
+services/onboarding/scripts/verify_staff_banking_prompt.ps1
