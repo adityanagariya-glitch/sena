@@ -101,7 +101,6 @@ class BedrockService:
                 output_tokens = int(usage.get("output_tokens", 0) or 0)
                 cache_read_tokens = int(usage.get("cache_read_input_tokens", 0) or 0)
                 cache_creation_tokens = int(usage.get("cache_creation_input_tokens", 0) or 0)
-                cached_tokens = cache_read_tokens + cache_creation_tokens
                 emit_usage(
                     tenant_id=tenant_id,
                     user_id=user_id,
@@ -110,7 +109,8 @@ class BedrockService:
                     session_id=session_id,
                     prompt_tokens=input_tokens,
                     response_tokens=output_tokens,
-                    cached_tokens=cached_tokens,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_creation_tokens,
                     latency_ms=latency_ms,
                     success=True,
                     history_turns=len(history),
@@ -123,9 +123,9 @@ class BedrockService:
                     cache_write_tokens=cache_creation_tokens,
                 )
                 token_usage = {
-                    "input_tokens": input_tokens,
+                    "input_tokens": input_tokens + cache_read_tokens + cache_creation_tokens,
                     "output_tokens": output_tokens,
-                    "total_tokens": input_tokens + output_tokens,
+                    "total_tokens": input_tokens + cache_read_tokens + cache_creation_tokens + output_tokens,
                     "cache_read_tokens": cache_read_tokens,
                     "cache_creation_tokens": cache_creation_tokens,
                 }
@@ -181,7 +181,6 @@ class BedrockService:
                 output_tokens = int(usage.get("output_tokens", 0) or 0)
                 cache_read_tokens = int(usage.get("cache_read_input_tokens", 0) or 0)
                 cache_creation_tokens = int(usage.get("cache_creation_input_tokens", 0) or 0)
-                cached_tokens = cache_read_tokens + cache_creation_tokens
                 emit_usage(
                     tenant_id=tenant_id,
                     user_id=user_id,
@@ -193,7 +192,8 @@ class BedrockService:
                     session_id=session_id,
                     prompt_tokens=input_tokens,
                     response_tokens=output_tokens,
-                    cached_tokens=cached_tokens,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_creation_tokens,
                     latency_ms=latency_ms,
                     success=True,
                     history_turns=len(history),
@@ -207,9 +207,9 @@ class BedrockService:
                     cache_write_tokens=cache_creation_tokens,
                 )
                 token_usage = {
-                    "input_tokens": input_tokens,
+                    "input_tokens": input_tokens + cache_read_tokens + cache_creation_tokens,
                     "output_tokens": output_tokens,
-                    "total_tokens": input_tokens + output_tokens,
+                    "total_tokens": input_tokens + cache_read_tokens + cache_creation_tokens + output_tokens,
                     "cache_read_tokens": cache_read_tokens,
                     "cache_creation_tokens": cache_creation_tokens,
                 }
