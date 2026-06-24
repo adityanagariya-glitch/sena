@@ -56,6 +56,11 @@ class OnboardingSettings(BaseSettings):
     # When True (default), prompt_builder shrinks bootstrap to header-only;
     # Flutter must include fresh TurnPayload `state` in every tool_response.
     onboarding_tool_state_channel: bool = True
+    # SENA_AI_ONBOARDING_COMPRESS_TOOL_STATE — strip static per-field metadata
+    # (filled-field enum_values, section, repeatable_index, validations_hint)
+    # from the state echoed to Gemini in every function_response. Self-contained
+    # (no field omitted), safe under sliding-window compression. Default ON.
+    onboarding_compress_tool_state: bool = True
     # SENA_AI_ONBOARDING_SILENCE_TIMEOUT_SEC — seconds of user silence before
     # Gemini is prompted to check in ("are you still there?"). 0 = disabled.
     onboarding_silence_timeout_sec: int = 8

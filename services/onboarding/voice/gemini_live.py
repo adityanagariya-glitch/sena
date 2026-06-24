@@ -250,33 +250,11 @@ class GeminiLiveSession:
         """Open Gemini connection and bridge until the client disconnects."""
         client = genai.Client(api_key=self._cfg.gemini_api_key)
 
-        # Cache system instruction at session start — saves input tokens on every
-        # subsequent turn within this session (system prompt never re-counted).
-        # Per-session cache because the prompt includes participant-specific context.
-        # Deleted when the session closes so we don't accumulate stale caches.
-        _session_cache_name: str | None = None
-        try:
-            _cache = await client.aio.caches.create(
-                model=self._cfg.gemini_live_model_id,
-                config=types.CreateCachedContentConfig(
-                    contents=[types.Content(
-                        role="user",
-                        parts=[types.Part(text=self._system_instruction)],
-                    )],
-                    ttl="1800s",
-                ),
-            )
-            _session_cache_name = _cache.name
-            log.info(
-                "onboarding_prompt_cache_created session=%s name=%s",
-                self._session_id,
-                _session_cache_name,
-            )
-        except Exception:
-            log.warning(
-                "onboarding_prompt_cache_failed session=%s — using inline system_instruction",
-                self._session_id,
-            )
+        # NOTE: explicit prompt caching (client.aio.caches.create) is NOT
+        # supported for the Live API / -live-preview models. It also wouldn't
+        # help: a Live connection is stateful — the system instruction is sent
+        # once at connect and kept for the whole session, not re-counted per
+        # turn the way generateContent is. So we pass it inline and never cache.
 
         # Long-session compression — official Gemini Live mechanism for sessions
         # that would otherwise exceed the model's native window. Sliding window
@@ -303,22 +281,11 @@ class GeminiLiveSession:
                 self._session_id,
             )
 
-        _prompt_kwargs: dict = (
-            {"cached_content": _session_cache_name}
-            if _session_cache_name
-            else {"system_instruction": types.Content(
-                parts=[types.Part(text=self._system_instruction)],
-            )}
-        )
-        log.info(
-            "onboarding_prompt_cache=%s session=%s",
-            "hit" if _session_cache_name else "miss_inline",
-            self._session_id,
-        )
-
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
-            **_prompt_kwargs,
+            system_instruction=types.Content(
+                parts=[types.Part(text=self._system_instruction)],
+            ),
             **({"context_window_compression": compression_cfg} if compression_cfg else {}),
             # language_code="en-AU" sets TTS accent to Australian English (SDK >= 1.10).
             # voice_name="Aoede" pins ASR to English so the native-audio model does not
@@ -1406,6 +1373,64 @@ class GeminiLiveSession:
 
     # ── Private: tool_call handling (Phase C) ────────────────────────────────
 
+    # Per-field attributes that never change within a session and are redundant
+    # with `path`, so they're stripped from EVERY function_response state. Their
+    # canonical source is the field schema; the model doesn't need them re-sent.
+    _SLIM_DROP_ALWAYS = ("section", "repeatable_index", "validations_hint")
+
+    def _slim_tool_state(self, result: dict) -> dict:
+        """Shrink the state echoed to Gemini in a function_response.
+
+        Option D ships fresh full state on every tool call so each response is
+        self-contained (robust to the sliding-window compression that summarises
+        old turns). We must preserve that — so this does NOT delta against prior
+        turns or omit any field. Every field's `path` + `value` is kept every
+        turn; the model always sees the complete current state.
+
+        What it removes is only the STATIC per-field metadata that doesn't change
+        and that the model has already learned:
+          • always: ``section``, ``repeatable_index`` (redundant with ``path``),
+            ``validations_hint`` (failures come back as mobile rejection reasons);
+          • filled fields: ``enum_values`` too — the option list only matters
+            while ASKING a field; once it holds a valid value it's dead weight.
+        Empty / invalid fields keep ``enum_values`` so the agent can still offer
+        the valid choices when it asks. Returns a shallow copy — the original
+        ``result`` (already logged in full by MobileBridge) is left untouched.
+        """
+        if not isinstance(result, dict):
+            return result
+        state = result.get("state")
+        if not isinstance(state, dict):
+            return result
+        vfields = state.get("visible_fields")
+        if not isinstance(vfields, list):
+            return result
+
+        slimmed: list = []
+        enum_stripped = 0
+        for f in vfields:
+            if not isinstance(f, dict):
+                slimmed.append(f)
+                continue
+            g = {k: v for k, v in f.items() if k not in self._SLIM_DROP_ALWAYS}
+            is_filled = f.get("value") not in (None, "", [], {})
+            if is_filled and g.get("enum_values"):
+                del g["enum_values"]
+                enum_stripped += 1
+            slimmed.append(g)
+
+        new_state = dict(state)
+        new_state["visible_fields"] = slimmed
+        new_result = dict(result)
+        new_result["state"] = new_state
+        log.info(
+            "tool_state_slimmed session=%s fields=%d enum_stripped=%d",
+            self._session_id,
+            len(slimmed),
+            enum_stripped,
+        )
+        return new_result
+
     async def _handle_tool_call(
         self,
         session: genai.live.AsyncSession,
@@ -1447,6 +1472,8 @@ class GeminiLiveSession:
                     "reason": "Internal dispatch error",
                     "code": "dispatch_error",
                 }
+            if self._cfg.compress_tool_state:
+                result = self._slim_tool_state(result)
             responses.append(
                 types.FunctionResponse(
                     id=call.id,

@@ -188,6 +188,7 @@ async def onboarding_ws(
             session_max_sec=settings.session_max_sec,
             silence_timeout_sec=settings.onboarding_silence_timeout_sec,
             tool_state_channel=settings.onboarding_tool_state_channel,
+            compress_tool_state=settings.onboarding_compress_tool_state,
             debug=settings.debug,
         )
 
