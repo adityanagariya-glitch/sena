@@ -188,4 +188,16 @@ def emit_usage(
         "failure_reason": failure_reason,
         **extras,
     }
+    _log.info(
+        "token_usage",
+        feature=record["feature"],
+        model=model,
+        session_id=session_id,
+        input_tokens=record["prompt_tokens"],
+        output_tokens=record["response_tokens"],
+        cached_tokens=record["cached_tokens"],
+        total_tokens=record["prompt_tokens"] + record["response_tokens"],
+        tool_calls=record["tool_call_count"],
+        success=record["success"],
+    )
     _forward_to_mongo(record)

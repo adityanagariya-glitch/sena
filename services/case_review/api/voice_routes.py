@@ -21,11 +21,13 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.deps import get_auth_context, voice_redis_client
 from core.settings import settings
-from models.schemas import AuthContext
+from models.schemas import AuthContext, TokenUsage
+# Canonical import path (must match drafter.py + routes.py accumulator import — see usage.py).
+from case_review.services.usage import get_usage, start_usage
 from voice.casenote_schema import CASE_NOTE_SCHEMA
 from voice.drafter import run_draft
 from voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
@@ -196,6 +198,7 @@ class DraftTranscriptResponse(BaseModel):
     initial_values: dict[str, dict[str, Any]]
     gaps_note: str | None = None
     filled_count: int
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 @voice_router.post(
@@ -227,17 +230,23 @@ async def draft_from_transcript(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "not_staff", "message": "Voice case notes are staff-only"},
         )
+    start_usage()
     initial_values, gaps_note = await run_draft(body.transcript)
     filled_count = sum(len(fields) for fields in initial_values.values())
+    usage = get_usage()
     log.info(
         "voice_draft_done",
         tenant_id=str(auth.tenant_id),
         filled_count=filled_count,
+        input_tokens=usage["input_tokens"],
+        output_tokens=usage["output_tokens"],
+        total_tokens=usage["total_tokens"],
     )
     return DraftTranscriptResponse(
         initial_values=initial_values,
         gaps_note=gaps_note,
         filled_count=filled_count,
+        token_usage=TokenUsage(**usage),
     )
 
 
