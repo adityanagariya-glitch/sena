@@ -245,6 +245,34 @@ class GeminiLiveSession:
         """Open Gemini connection and bridge until the client disconnects."""
         client = genai.Client(api_key=self._cfg.gemini_api_key)
 
+        # Cache system instruction at session start — saves input tokens on every
+        # subsequent turn within this session (system prompt never re-counted).
+        # Per-session cache because the prompt includes participant-specific context.
+        # Deleted when the session closes so we don't accumulate stale caches.
+        _session_cache_name: str | None = None
+        try:
+            _cache = await client.aio.caches.create(
+                model=self._cfg.gemini_live_model_id,
+                config=types.CreateCachedContentConfig(
+                    contents=[types.Content(
+                        role="user",
+                        parts=[types.Part(text=self._system_instruction)],
+                    )],
+                    ttl="1800s",
+                ),
+            )
+            _session_cache_name = _cache.name
+            log.info(
+                "onboarding_prompt_cache_created session=%s name=%s",
+                self._session_id,
+                _session_cache_name,
+            )
+        except Exception:
+            log.warning(
+                "onboarding_prompt_cache_failed session=%s — using inline system_instruction",
+                self._session_id,
+            )
+
         # Long-session compression — official Gemini Live mechanism for sessions
         # that would otherwise exceed the model's native window. Sliding window
         # automatically drops the oldest turns when the context approaches the
@@ -270,11 +298,22 @@ class GeminiLiveSession:
                 self._session_id,
             )
 
+        _prompt_kwargs: dict = (
+            {"cached_content": _session_cache_name}
+            if _session_cache_name
+            else {"system_instruction": types.Content(
+                parts=[types.Part(text=self._system_instruction)],
+            )}
+        )
+        log.info(
+            "onboarding_prompt_cache=%s session=%s",
+            "hit" if _session_cache_name else "miss_inline",
+            self._session_id,
+        )
+
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
-            system_instruction=types.Content(
-                parts=[types.Part(text=self._system_instruction)],
-            ),
+            **_prompt_kwargs,
             **({"context_window_compression": compression_cfg} if compression_cfg else {}),
             # language_code="en-AU" sets TTS accent to Australian English (SDK >= 1.10).
             # voice_name="Aoede" pins ASR to English so the native-audio model does not
