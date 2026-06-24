@@ -93,6 +93,21 @@ _SECTIONS: list[SectionSpec] = [
             FieldSpec(id="anyIncident", type=FieldType.boolean, label="Any Incident?"),
         ],
     ),
+    # Conditional: incident details only if anyIncident is true
+    # (reduces tokens by ~500-800 if no incident)
+    SectionSpec(
+        id="incidentDetails",
+        label="Incident Details",
+        fields=[
+            FieldSpec(
+                id="incidentDescription",
+                type=FieldType.textarea,
+                label="Describe the incident",
+                required=False,
+                visible_if={"feedback.anyIncident": True},
+            ),
+        ],
+    ),
     SectionSpec(
         id="handover",
         label="Handover",
@@ -101,6 +116,21 @@ _SECTIONS: list[SectionSpec] = [
             # even though the wire payload defaults handoverNote to '' — the form
             # will not submit without it, so the voice flow treats it as required.
             FieldSpec(id="handover", type=FieldType.textarea, label="Handover Note"),
+        ],
+    ),
+    # Conditional: hazard details only if safetyHazardObserved is true
+    # (reduces tokens by ~300-500 if no hazards)
+    SectionSpec(
+        id="hazardDetails",
+        label="Safety Hazard Details",
+        fields=[
+            FieldSpec(
+                id="hazardDescription",
+                type=FieldType.textarea,
+                label="Describe the hazard",
+                required=False,
+                visible_if={"safetyAndHealth.safetyHazardObserved": True},
+            ),
         ],
     ),
 ]

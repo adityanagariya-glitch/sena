@@ -29,4 +29,9 @@ class VoiceEngineConfig:
     session_max_sec: int = 3600
     silence_timeout_sec: int = 8
     tool_state_channel: bool = True
+    # Strip static per-field metadata (enum_values on filled fields, section,
+    # repeatable_index, validations_hint) from the state echoed back to Gemini
+    # in every function_response. Self-contained (all path+value kept every
+    # turn — no field omitted), so it's safe under sliding-window compression.
+    compress_tool_state: bool = True
     debug: bool = False

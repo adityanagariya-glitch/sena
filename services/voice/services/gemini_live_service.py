@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from types import TracebackType
@@ -231,6 +232,45 @@ _REPORT_USER_ENGAGEMENT_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+# ── Module-level system prompt cache (reused across all voice sessions) ───────
+# Voice prompt is static, so one cache serves every session. TTL 30 min;
+# refreshed automatically on expiry (next session that misses the cache
+# recreates it). Lock prevents double-creation under concurrent session starts.
+_prompt_cache_name: str | None = None
+_prompt_cache_lock: asyncio.Lock | None = None
+
+
+def _prompt_cache_get_lock() -> asyncio.Lock:
+    global _prompt_cache_lock
+    if _prompt_cache_lock is None:
+        _prompt_cache_lock = asyncio.Lock()
+    return _prompt_cache_lock
+
+
+async def _get_or_create_prompt_cache(client: genai.Client, model: str) -> str | None:
+    """Return cached system prompt name, creating it once per process lifetime."""
+    global _prompt_cache_name
+    async with _prompt_cache_get_lock():
+        if _prompt_cache_name:
+            return _prompt_cache_name
+        try:
+            cache = await client.aio.caches.create(
+                model=model,
+                config=types.CreateCachedContentConfig(
+                    contents=[types.Content(
+                        role="user",
+                        parts=[types.Part(text=_LIVE_SYSTEM_PROMPT)],
+                    )],
+                    ttl="1800s",
+                ),
+            )
+            _prompt_cache_name = cache.name
+            logger.info("voice_prompt_cache_created name=%s model=%s", _prompt_cache_name, model)
+            return _prompt_cache_name
+        except Exception:
+            logger.warning("voice_prompt_cache_failed — falling back to inline system_instruction")
+            return None
+
 
 class GeminiLiveService:
     """
@@ -272,12 +312,23 @@ class GeminiLiveService:
 
     async def __aenter__(self) -> GeminiLiveService:
         voice_name = _get_voice_for_persona(settings.voice_persona)
-        config = types.LiveConnectConfig(
-            response_modalities=["AUDIO"],
-            system_instruction=types.Content(
+
+        # Use cached system prompt if available (saves tokens every turn).
+        # Falls back to inline system_instruction transparently on any failure.
+        cache_name = await _get_or_create_prompt_cache(self._client, self._model)
+        prompt_kwargs: dict = (
+            {"cached_content": cache_name}
+            if cache_name
+            else {"system_instruction": types.Content(
                 parts=[types.Part(text=_LIVE_SYSTEM_PROMPT)],
                 role="user",
-            ),
+            )}
+        )
+        logger.info("voice_prompt_cache=%s", "hit" if cache_name else "miss_inline")
+
+        config = types.LiveConnectConfig(
+            response_modalities=["AUDIO"],
+            **prompt_kwargs,
             tools=[types.Tool(function_declarations=[
                 _UPDATE_FIELDS_DECLARATION,
                 _ASSESS_USER_SENTIMENT_DECLARATION,
@@ -374,57 +425,65 @@ class GeminiLiveService:
             Turn finished. Token usage included.
         """
         _agent_speaking = False  # Track if Gemini is currently speaking
+        _turn_started = False  # Track if turn_start was emitted for current turn
 
-        async for msg in self._session.receive():
-            # Emit any pending sentiment/engagement events first (STREAMING)
-            while self._pending_events:
-                pending_event = self._pending_events.pop(0)
-                yield pending_event
-            # Usage telemetry — usage_metadata may arrive on any event and is
-            # cumulative for the session; keep the latest read.
-            _um = getattr(msg, "usage_metadata", None)
-            if _um is not None:
-                self._usage_cum_prompt = int(getattr(_um, "prompt_token_count", 0) or 0)
-                self._usage_cum_response = int(
-                    getattr(_um, "response_token_count", 0)
-                    or getattr(_um, "candidates_token_count", 0)
-                    or 0
-                )
+        while True:  # Multi-turn: re-enter receive() after each turn_complete
+            async for msg in self._session.receive():
+                # Emit any pending sentiment/engagement events first (STREAMING)
+                while self._pending_events:
+                    pending_event = self._pending_events.pop(0)
+                    yield pending_event
+                # Usage telemetry — usage_metadata may arrive on any event and is
+                # cumulative for the session; keep the latest read.
+                _um = getattr(msg, "usage_metadata", None)
+                if _um is not None:
+                    self._usage_cum_prompt = int(getattr(_um, "prompt_token_count", 0) or 0)
+                    self._usage_cum_response = int(
+                        getattr(_um, "response_token_count", 0)
+                        or getattr(_um, "candidates_token_count", 0)
+                        or 0
+                    )
 
-            if msg.server_content:
-                sc = msg.server_content
-                if sc.model_turn:
-                    _agent_speaking = True  # Agent started speaking
-                    for part in sc.model_turn.parts:
-                        if part.inline_data and part.inline_data.mime_type.startswith("audio"):
-                            yield {"type": "audio", "data": part.inline_data.data}
+                if msg.server_content:
+                    sc = msg.server_content
+                    if sc.model_turn:
+                        _agent_speaking = True  # Agent started speaking
+                        for part in sc.model_turn.parts:
+                            if part.inline_data and part.inline_data.mime_type.startswith("audio"):
+                                if not _turn_started:
+                                    yield {"type": "turn_start"}
+                                    _turn_started = True
+                                yield {"type": "audio", "data": part.inline_data.data}
 
-                # INTERRUPTION DETECTION: User started speaking while agent was mid-turn
-                if sc.interrupted and _agent_speaking:
-                    _agent_speaking = False
-                    self.track_interruption("user_spoke", "user interrupted agent mid-speech")
-                    logger.info("user_interrupted_agent during_speech=true")
-                    yield {
-                        "type": "interrupted",
-                        "message": "Listening to you now",
-                        "interruption_count": self._interruption_count,
-                    }
+                    # INTERRUPTION DETECTION: User started speaking while agent was mid-turn
+                    if sc.interrupted and _agent_speaking:
+                        _agent_speaking = False
+                        _turn_started = False
+                        self.track_interruption("user_spoke", "user interrupted agent mid-speech")
+                        logger.info("user_interrupted_agent during_speech=true")
+                        yield {
+                            "type": "interrupted",
+                            "message": "Listening to you now",
+                            "interruption_count": self._interruption_count,
+                        }
 
-                if sc.turn_complete:
-                    # This turn's delta (cumulative minus what we already reported).
-                    d_in = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
-                    d_out = max(0, self._usage_cum_response - self._usage_emitted_response)
-                    self._usage_emitted_prompt = self._usage_cum_prompt
-                    self._usage_emitted_response = self._usage_cum_response
-                    log_token_usage("voice_live", d_in, d_out)
-                    yield {
-                        "type": "turn_complete",
-                        "token_usage": {
-                            "input_tokens": d_in,
-                            "output_tokens": d_out,
-                            "total_tokens": d_in + d_out,
-                        },
-                    }
+                    if sc.turn_complete:
+                        _agent_speaking = False
+                        _turn_started = False
+                        # This turn's delta (cumulative minus what we already reported).
+                        d_in = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
+                        d_out = max(0, self._usage_cum_response - self._usage_emitted_response)
+                        self._usage_emitted_prompt = self._usage_cum_prompt
+                        self._usage_emitted_response = self._usage_cum_response
+                        log_token_usage("voice_live", d_in, d_out)
+                        yield {
+                            "type": "turn_complete",
+                            "token_usage": {
+                                "input_tokens": d_in,
+                                "output_tokens": d_out,
+                                "total_tokens": d_in + d_out,
+                            },
+                        }
 
             if msg.tool_call:
                 for fn_call in msg.tool_call.function_calls:

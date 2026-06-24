@@ -42,6 +42,10 @@ from .screen_context import (
     payload_hash,
     render_injection_text,
 )
+from .screen_delta import ScreenDeltaTracker, DeltaLogBuffer
+
+# Global 30-minute delta log buffer (shared across all sessions)
+_delta_log_buffer = DeltaLogBuffer(ttl_seconds=1800)
 from .tools import FUNCTION_DECLS
 
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
@@ -177,6 +181,7 @@ class GeminiLiveSession:
         self._current_turn: TurnPayload | None = None
         self._turn_id = 0
         self._last_screen_hash: str | None = None
+        self._screen_delta_tracker = ScreenDeltaTracker()
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
         # Kickoff audio-suppression shield. gemini-3.1-flash-live-preview has a
@@ -244,6 +249,12 @@ class GeminiLiveSession:
     async def run(self) -> None:
         """Open Gemini connection and bridge until the client disconnects."""
         client = genai.Client(api_key=self._cfg.gemini_api_key)
+
+        # NOTE: explicit prompt caching (client.aio.caches.create) is NOT
+        # supported for the Live API / -live-preview models. It also wouldn't
+        # help: a Live connection is stateful — the system instruction is sent
+        # once at connect and kept for the whole session, not re-counted per
+        # turn the way generateContent is. So we pass it inline and never cache.
 
         # Long-session compression — official Gemini Live mechanism for sessions
         # that would otherwise exceed the model's native window. Sliding window
@@ -333,6 +344,9 @@ class GeminiLiveSession:
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
                 log.debug("replay_context_injected session=%s", self._session_id)
+                # Reset delta tracker on resume — next screen_state will be full to reset baseline
+                self._screen_delta_tracker.reset_baseline()
+                log.debug("delta_tracker_reset_on_resume session=%s", self._session_id)
             # Seed the live screen state as a hidden context turn so the model's
             # FIRST greeting already knows which fields are filled — no
             # get_current_state round-trip, no "these are already filled"
@@ -676,13 +690,80 @@ class GeminiLiveSession:
             return
 
         self._last_screen_hash = h
-        injection = render_injection_text(state_v2)
-        log.debug(
-            "screen_state_inject session=%s version=%d",
-            self._session_id,
-            version,
-        )
-        await session.send_realtime_input(text=injection)
+
+        # Determine injection type: full state, delta, or none
+        state_dict = {
+            "step_id": state_v2.step_id,
+            "focused_section": state_v2.focused_section,
+            "focused_field": state_v2.focused_field,
+            "field_status": state_v2.field_status,
+            "field_errors": state_v2.field_errors,
+            "repeatable_rows": state_v2.repeatable_rows,
+        }
+        injection_type = self._screen_delta_tracker.injection_type(state_dict)
+
+        if injection_type == "none":
+            log.debug(
+                "screen_state_no_delta session=%s version=%d",
+                self._session_id,
+                version,
+            )
+            return
+
+        # Inject full state on first call or delta after
+        if injection_type == "full":
+            injection = render_injection_text(state_v2)
+            delta_version = self._screen_delta_tracker.get_delta_version()
+            log.info(
+                "screen_state_inject_delta_v1 session=%s delta_version=%s tokens_est=~120 focus=%s/%s",
+                self._session_id,
+                delta_version,
+                state_v2.focused_section or "—",
+                state_v2.focused_field or "—",
+            )
+            # Record in 30-min buffer
+            _delta_log_buffer.record(
+                session_id=self._session_id,
+                delta_version=1,
+                delta_type="v1-full",
+                fields_changed=len(state_v2.field_status),
+                focus_section=state_v2.focused_section,
+                focus_field=state_v2.focused_field,
+            )
+            await session.send_realtime_input(text=injection)
+            self._screen_delta_tracker.set_full_state(state_dict)
+        else:  # delta
+            delta, _ = self._screen_delta_tracker.compute_delta(state_dict)
+            injection = delta.render()
+            version_num = self._screen_delta_tracker.increment_injection_count()
+            fields_changed = (
+                len(delta.added)
+                + len(delta.filled_changed)
+                + len(delta.emptied)
+                + len(delta.invalid_changed)
+                + len(delta.removed)
+            )
+            log.info(
+                "screen_state_inject_delta_v%d session=%s tokens_est=~10 changed=%d added=%d removed=%d focus=%s/%s",
+                version_num + 1,
+                self._session_id,
+                fields_changed,
+                len(delta.added),
+                len(delta.removed),
+                delta.focused_field or "—",
+                state_v2.focused_section or "—",
+            )
+            # Record in 30-min buffer
+            _delta_log_buffer.record(
+                session_id=self._session_id,
+                delta_version=version_num + 1,
+                delta_type=f"v{version_num + 1}-delta",
+                fields_changed=fields_changed,
+                focus_section=state_v2.focused_section,
+                focus_field=state_v2.focused_field,
+            )
+            await session.send_realtime_input(text=injection)
+            self._screen_delta_tracker.set_full_state(state_dict)
 
         # N-4 fix: mirror v2 field_errors into state.pending_validation_errors so
         # advance_step's gate has a single source of truth regardless of whether
@@ -1292,6 +1373,64 @@ class GeminiLiveSession:
 
     # ── Private: tool_call handling (Phase C) ────────────────────────────────
 
+    # Per-field attributes that never change within a session and are redundant
+    # with `path`, so they're stripped from EVERY function_response state. Their
+    # canonical source is the field schema; the model doesn't need them re-sent.
+    _SLIM_DROP_ALWAYS = ("section", "repeatable_index", "validations_hint")
+
+    def _slim_tool_state(self, result: dict) -> dict:
+        """Shrink the state echoed to Gemini in a function_response.
+
+        Option D ships fresh full state on every tool call so each response is
+        self-contained (robust to the sliding-window compression that summarises
+        old turns). We must preserve that — so this does NOT delta against prior
+        turns or omit any field. Every field's `path` + `value` is kept every
+        turn; the model always sees the complete current state.
+
+        What it removes is only the STATIC per-field metadata that doesn't change
+        and that the model has already learned:
+          • always: ``section``, ``repeatable_index`` (redundant with ``path``),
+            ``validations_hint`` (failures come back as mobile rejection reasons);
+          • filled fields: ``enum_values`` too — the option list only matters
+            while ASKING a field; once it holds a valid value it's dead weight.
+        Empty / invalid fields keep ``enum_values`` so the agent can still offer
+        the valid choices when it asks. Returns a shallow copy — the original
+        ``result`` (already logged in full by MobileBridge) is left untouched.
+        """
+        if not isinstance(result, dict):
+            return result
+        state = result.get("state")
+        if not isinstance(state, dict):
+            return result
+        vfields = state.get("visible_fields")
+        if not isinstance(vfields, list):
+            return result
+
+        slimmed: list = []
+        enum_stripped = 0
+        for f in vfields:
+            if not isinstance(f, dict):
+                slimmed.append(f)
+                continue
+            g = {k: v for k, v in f.items() if k not in self._SLIM_DROP_ALWAYS}
+            is_filled = f.get("value") not in (None, "", [], {})
+            if is_filled and g.get("enum_values"):
+                del g["enum_values"]
+                enum_stripped += 1
+            slimmed.append(g)
+
+        new_state = dict(state)
+        new_state["visible_fields"] = slimmed
+        new_result = dict(result)
+        new_result["state"] = new_state
+        log.info(
+            "tool_state_slimmed session=%s fields=%d enum_stripped=%d",
+            self._session_id,
+            len(slimmed),
+            enum_stripped,
+        )
+        return new_result
+
     async def _handle_tool_call(
         self,
         session: genai.live.AsyncSession,
@@ -1333,6 +1472,8 @@ class GeminiLiveSession:
                     "reason": "Internal dispatch error",
                     "code": "dispatch_error",
                 }
+            if self._cfg.compress_tool_state:
+                result = self._slim_tool_state(result)
             responses.append(
                 types.FunctionResponse(
                     id=call.id,

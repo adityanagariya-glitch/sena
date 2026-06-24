@@ -59,13 +59,17 @@ def _add(input_tokens: int, output_tokens: int, cache_read: int, cache_creation:
     with _lock:
         acc["input_tokens"] += int(input_tokens or 0)
         acc["output_tokens"] += int(output_tokens or 0)
-        # Cache counts are still accumulated (for logs / get_usage_full), but the
-        # API total is intentionally kept simple: total = input + output. Cache
-        # read/write are surfaced in the per-stage stdout logs, not folded into
-        # the total.
         acc["cache_read_tokens"] += int(cache_read or 0)
         acc["cache_creation_tokens"] += int(cache_creation or 0)
-        acc["total_tokens"] = acc["input_tokens"] + acc["output_tokens"]
+        # Cache is folded into the input cost (Bedrock inputTokens excludes the
+        # cache read/write counts), so total = (base_input + cache) + output.
+        # get_usage() applies the same fold for the API response.
+        acc["total_tokens"] = (
+            acc["input_tokens"]
+            + acc["cache_read_tokens"]
+            + acc["cache_creation_tokens"]
+            + acc["output_tokens"]
+        )
 
 
 def record_converse(response: dict[str, Any]) -> None:
@@ -132,12 +136,20 @@ def record_gemini(response: Any) -> None:
 
     ``usage_metadata`` exposes ``prompt_token_count``, ``candidates_token_count``
     and ``cached_content_token_count`` (implicit caching, Gemini 2.5+).
+
+    NOTE on the cache fold: unlike Bedrock (whose ``inputTokens`` EXCLUDES cache),
+    Gemini's ``prompt_token_count`` already INCLUDES the cached tokens. We store
+    the base (prompt minus cached) as ``input_tokens`` and the cached count
+    separately, so get_usage()'s ``input = base + cache`` fold reconstructs the
+    true prompt_token_count exactly — never double-counting.
     """
     um = getattr(response, "usage_metadata", None)
+    prompt = getattr(um, "prompt_token_count", 0) or 0
+    cached = getattr(um, "cached_content_token_count", 0) or 0
     _add(
-        input_tokens=getattr(um, "prompt_token_count", 0) or 0,
+        input_tokens=max(0, prompt - cached),  # base, excluding cache (Bedrock-equivalent)
         output_tokens=getattr(um, "candidates_token_count", 0) or 0,
-        cache_read=getattr(um, "cached_content_token_count", 0) or 0,
+        cache_read=cached,
         cache_creation=0,  # Gemini implicit caching has no separate creation cost
     )
 
@@ -145,16 +157,27 @@ def record_gemini(response: Any) -> None:
 def get_usage() -> dict[str, int]:
     """Snapshot the running total for the current request (API response format: 3 fields only).
 
-    Cache metrics are tracked internally but NOT returned in API responses.
+    Cache tokens are FOLDED INTO input. Bedrock's ``inputTokens`` excludes the
+    cache read/write counts, so the true input cost is base + cache_read +
+    cache_write:
+
+        input_tokens = base_input + cache_read + cache_write
+        total_tokens = input_tokens + output_tokens
+
+    The raw base/cache split is still tracked internally (see get_usage_full and
+    the per-stage stdout breakdown) for cost analysis; the API response only
+    exposes the 3 folded figures.
     """
     acc = _usage_var.get()
     if acc is None:
         acc = _zero()
-    # Return only the 3 fields exposed in API responses
+    input_with_cache = (
+        acc["input_tokens"] + acc["cache_read_tokens"] + acc["cache_creation_tokens"]
+    )
     return {
-        "input_tokens": acc["input_tokens"],
+        "input_tokens": input_with_cache,
         "output_tokens": acc["output_tokens"],
-        "total_tokens": acc["total_tokens"],
+        "total_tokens": input_with_cache + acc["output_tokens"],
     }
 
 

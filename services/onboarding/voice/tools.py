@@ -95,7 +95,14 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
     },
     {
         "name": "clear_field",
-        "description": "Blank out a previously-filled scalar.",
+        "description": (
+            "Blank out a previously-filled scalar field. Call this whenever the "
+            "participant wants a single value REMOVED or RESET — phrased ANY way: "
+            "'clear my email', 'remove the phone number', 'scrap that', 'delete "
+            "what I said', 'wipe it', 'leave it blank', 'take that out', 'never "
+            "mind that one'. To CHANGE a value to something new, use update_field "
+            "instead — only use clear_field when nothing should replace it."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -108,7 +115,14 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
     },
     {
         "name": "add_row",
-        "description": "Add a new row to a repeatable section.",
+        "description": (
+            "Add a new row to a repeatable section. Call this whenever the "
+            "participant wants ANOTHER entry — phrased ANY way: 'add another "
+            "contact', 'one more', 'I have a second emergency contact', 'put "
+            "another one', 'there's also my sister', 'can I add more'. Creates "
+            "an empty row; then use update_field with the new repeatable_index "
+            "to fill it."
+        ),
         "parameters": {
             "type": "object",
             "properties": {"section": {"type": "string"}},
@@ -117,7 +131,14 @@ FUNCTION_DECLS: list[dict[str, Any]] = [
     },
     {
         "name": "delete_row",
-        "description": "Remove a row from a repeatable section.",
+        "description": (
+            "Remove a row from a repeatable section. Call this whenever the "
+            "participant wants a whole entry GONE — phrased ANY way: 'delete the "
+            "second contact', 'pop that one off', 'get rid of the last one', "
+            "'remove that entry', 'scrap the sibling one', 'take it off the "
+            "list', 'drop that'. Use row_index for which row (0-based); if the "
+            "participant says 'the last one' use the highest index."
+        ),
         "parameters": {
             "type": "object",
             "properties": {

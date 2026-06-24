@@ -229,6 +229,13 @@ async def _send_from_gemini(
 
             match event_type:
                 # ═══════════════════════════════════════════════════════════
+                # TURN START: Signal client to start playing audio
+                # ═══════════════════════════════════════════════════════════
+                case "turn_start":
+                    await websocket.send_text(json.dumps({"type": "turn_start"}))
+                    logger.debug("turn_start session_id=%s", session_id)
+
+                # ═══════════════════════════════════════════════════════════
                 # AUDIO STREAMING: Send immediately, no buffer (20x faster feel)
                 # ═══════════════════════════════════════════════════════════
                 case "audio":
@@ -243,10 +250,13 @@ async def _send_from_gemini(
                                 session_id, len(event["data"]))
 
                 # ═══════════════════════════════════════════════════════════
-                # TURN COMPLETE: Token usage metrics
+                # TURN COMPLETE: Signal client audio ended + token metrics
                 # ═══════════════════════════════════════════════════════════
                 case "turn_complete":
                     usage = event.get("token_usage", {})
+
+                    # Signal client that agent finished speaking
+                    await websocket.send_text(json.dumps({"type": "turn_complete"}))
 
                     # Surface per-turn LLM token usage to client
                     await websocket.send_text(

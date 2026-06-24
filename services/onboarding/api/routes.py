@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from onboarding.api.deps import OnboardingAuthContext, get_http_auth
 from pydantic import BaseModel, ConfigDict, Field
 
 from onboarding.api.deps import get_repo
@@ -203,6 +204,7 @@ async def create_session(
     req: CreateSessionRequest,
     request: Request,
     repo: FormStateRepo = Depends(get_repo),
+    auth: OnboardingAuthContext = Depends(get_http_auth),
 ) -> CreateSessionResponse:
     session_id = str(uuid.uuid4())
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.onboarding_session_max_min)
@@ -366,18 +368,16 @@ async def create_session(
 async def get_state(
     session_id: str,
     repo: FormStateRepo = Depends(get_repo),
-    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
-    x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
+    auth: OnboardingAuthContext = Depends(get_http_auth),
 ) -> StateResponse:
     state = await repo.get_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
-    # Cross-tenant isolation guard. Only enforced when caller supplied
-    # identity headers — older mobile clients without the headers fall back to
-    # today's lookup-by-session-id behaviour. New clients SHOULD send both.
-    if x_participant_id is not None:
-        await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
+    # Cross-tenant isolation: verify session belongs to caller's tenant.
+    # Enforced only in production (JWT on); dev has no real auth to check.
+    if settings.jwt_enabled:
+        await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
 
     return StateResponse(state=state)
 
@@ -387,11 +387,10 @@ async def update_state(
     session_id: str,
     req: UpdateStateRequest,
     repo: FormStateRepo = Depends(get_repo),
-    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
-    x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
+    auth: OnboardingAuthContext = Depends(get_http_auth),
 ) -> StateResponse:
-    if x_participant_id is not None:
-        await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
+    if settings.jwt_enabled:
+        await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
     if await repo.is_ws_locked(session_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -442,6 +441,7 @@ class CompleteSessionResponse(BaseModel):
 async def complete_session(
     session_id: str,
     repo: FormStateRepo = Depends(get_repo),
+    auth: OnboardingAuthContext = Depends(get_http_auth),
 ) -> CompleteSessionResponse:
     state = await repo.get_state(session_id)
     if state is None:
@@ -531,8 +531,7 @@ async def report_client_validation_error(
     session_id: str,
     body: ClientValidationErrorRequest,
     repo: FormStateRepo = Depends(get_repo),
-    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
-    x_participant_id: str | None = Header(default=None, alias="X-Participant-Id"),
+    auth: OnboardingAuthContext = Depends(get_http_auth),
 ) -> Response:
     """Record a client-reported validation error for telemetry / future tuning.
 
@@ -548,10 +547,10 @@ async def report_client_validation_error(
     state = await repo.get_state(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found or expired")
-    # Mirror state-route guard. Both headers gate the check together — older
-    # clients without headers fall through, matching today's behaviour.
-    if x_participant_id is not None:
-        await repo.assert_session_owner(session_id, x_tenant_id, x_participant_id)
+    # Cross-tenant isolation, mirroring the state routes. Enforced only in
+    # production (JWT on); dev has no real auth identity to check against.
+    if settings.jwt_enabled:
+        await repo.assert_session_owner(session_id, str(auth.tenant_id), str(auth.user_id))
     await repo.append_client_validation_error(
         session_id,
         body.model_dump(mode="json"),
@@ -571,6 +570,7 @@ async def report_client_validation_error(
 @router.get("/v1/onboarding/_diag/bucket", response_model=DiagBucketResponse)
 async def diag_bucket(
     repo: FormStateRepo = Depends(get_repo),
+    auth: OnboardingAuthContext = Depends(get_http_auth),
     tenant_id: str = Query(..., min_length=1),
     participant_id: str = Query(..., min_length=1),
 ) -> DiagBucketResponse:

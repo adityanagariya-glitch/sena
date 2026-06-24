@@ -21,6 +21,7 @@ class CaseReviewSettings(BaseSettings):
     service_version: str = "0.1.0"
     environment: str = "development"
     debug: bool = True
+    debug_case_review: bool = False  # SENA_AI_DEBUG_CASE_REVIEW — bypass staff role check for testing
     host: str = "0.0.0.0"
     # SENA_AI_CASE_REVIEW_PORT
     case_review_port: int = 8084

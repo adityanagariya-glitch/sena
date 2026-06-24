@@ -124,6 +124,8 @@ def emit_usage(
     prompt_tokens: int = 0,
     response_tokens: int = 0,
     cached_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
     prompt_audio_tokens: int = 0,
     response_audio_tokens: int = 0,
     audio_seconds_in: float = 0.0,
@@ -152,8 +154,14 @@ def emit_usage(
             for Bedrock, `usage_metadata.prompt_token_count` for Gemini).
         response_tokens: Output token count (`usage.output_tokens` /
             `usage_metadata.candidates_token_count`).
-        cached_tokens: Gemini context-cache hit tokens. Accepted for forward
-            compatibility; not stored in the Mongo schema yet.
+        cached_tokens: Gemini context-cache hit tokens (already included in
+            prompt_tokens for Gemini — informational only). Kept for Gemini
+            caller backward compatibility; not stored in Mongo yet.
+        cache_read_tokens: Bedrock cacheReadInputTokens — NOT included in
+            prompt_tokens (Bedrock inputTokens is base only). Folded into
+            input_tokens for log/total: input = prompt + read + write.
+        cache_write_tokens: Bedrock cacheWriteInputTokens — same as above.
+            Pass 0 (default) when caching is absent.
         prompt_audio_tokens: AUDIO-modality subset of prompt_tokens (from
             usage_metadata.prompt_tokens_details). Accepted; not stored yet.
         response_audio_tokens: AUDIO-modality subset of response_tokens.
@@ -178,6 +186,8 @@ def emit_usage(
         "prompt_tokens": int(prompt_tokens or 0),
         "response_tokens": int(response_tokens or 0),
         "cached_tokens": int(cached_tokens or 0),
+        "cache_read_tokens": int(cache_read_tokens or 0),
+        "cache_write_tokens": int(cache_write_tokens or 0),
         "prompt_audio_tokens": int(prompt_audio_tokens or 0),
         "response_audio_tokens": int(response_audio_tokens or 0),
         "audio_seconds_in": float(audio_seconds_in or 0.0),
@@ -188,4 +198,26 @@ def emit_usage(
         "failure_reason": failure_reason,
         **extras,
     }
+    # input_tokens = base_input + cache_read + cache_write
+    # Gemini callers pass prompt_tokens=prompt_token_count (already includes cache)
+    # and cache_read_tokens=0/cache_write_tokens=0, so the fold is a no-op for them.
+    # Bedrock callers pass prompt_tokens=inputTokens (base only) and explicit
+    # cache_read_tokens/cache_write_tokens, so the fold adds the missing cache cost.
+    _input = (
+        record["prompt_tokens"]
+        + record["cache_read_tokens"]
+        + record["cache_write_tokens"]
+    )
+    _log.info(
+        "token_usage",
+        feature=record["feature"],
+        model=model,
+        session_id=session_id,
+        input_tokens=_input,
+        output_tokens=record["response_tokens"],
+        cached_tokens=record["cached_tokens"],
+        total_tokens=_input + record["response_tokens"],
+        tool_calls=record["tool_call_count"],
+        success=record["success"],
+    )
     _forward_to_mongo(record)
