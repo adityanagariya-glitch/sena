@@ -112,14 +112,9 @@ async def get_http_auth(
     jwt_enabled=false  — reads X-Tenant-Id / X-User-Id headers (dev only).
     """
     if not settings.jwt_enabled:
-        # Dev mode: accept headers
-        tenant_raw = request.headers.get("x-tenant-id") or ""
-        user_raw = request.headers.get("x-user-id") or ""
-        if not tenant_raw or not user_raw:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Dev mode: X-Tenant-Id and X-User-Id headers required",
-            )
+        # Dev mode: accept headers, or use defaults if missing
+        tenant_raw = request.headers.get("x-tenant-id") or "00000000-0000-0000-0000-000000000001"
+        user_raw = request.headers.get("x-user-id") or "00000000-0000-0000-0000-000000000002"
         try:
             return OnboardingAuthContext(
                 tenant_id=UUID(tenant_raw),
