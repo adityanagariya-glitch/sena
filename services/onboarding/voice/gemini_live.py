@@ -42,6 +42,10 @@ from .screen_context import (
     payload_hash,
     render_injection_text,
 )
+from .screen_delta import ScreenDeltaTracker, DeltaLogBuffer
+
+# Global 30-minute delta log buffer (shared across all sessions)
+_delta_log_buffer = DeltaLogBuffer(ttl_seconds=1800)
 from .tools import FUNCTION_DECLS
 
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
@@ -177,6 +181,7 @@ class GeminiLiveSession:
         self._current_turn: TurnPayload | None = None
         self._turn_id = 0
         self._last_screen_hash: str | None = None
+        self._screen_delta_tracker = ScreenDeltaTracker()
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
         # Kickoff audio-suppression shield. gemini-3.1-flash-live-preview has a
@@ -372,6 +377,9 @@ class GeminiLiveSession:
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)
                 log.debug("replay_context_injected session=%s", self._session_id)
+                # Reset delta tracker on resume — next screen_state will be full to reset baseline
+                self._screen_delta_tracker.reset_baseline()
+                log.debug("delta_tracker_reset_on_resume session=%s", self._session_id)
             # Seed the live screen state as a hidden context turn so the model's
             # FIRST greeting already knows which fields are filled — no
             # get_current_state round-trip, no "these are already filled"
@@ -715,13 +723,80 @@ class GeminiLiveSession:
             return
 
         self._last_screen_hash = h
-        injection = render_injection_text(state_v2)
-        log.debug(
-            "screen_state_inject session=%s version=%d",
-            self._session_id,
-            version,
-        )
-        await session.send_realtime_input(text=injection)
+
+        # Determine injection type: full state, delta, or none
+        state_dict = {
+            "step_id": state_v2.step_id,
+            "focused_section": state_v2.focused_section,
+            "focused_field": state_v2.focused_field,
+            "field_status": state_v2.field_status,
+            "field_errors": state_v2.field_errors,
+            "repeatable_rows": state_v2.repeatable_rows,
+        }
+        injection_type = self._screen_delta_tracker.injection_type(state_dict)
+
+        if injection_type == "none":
+            log.debug(
+                "screen_state_no_delta session=%s version=%d",
+                self._session_id,
+                version,
+            )
+            return
+
+        # Inject full state on first call or delta after
+        if injection_type == "full":
+            injection = render_injection_text(state_v2)
+            delta_version = self._screen_delta_tracker.get_delta_version()
+            log.info(
+                "screen_state_inject_delta_v1 session=%s delta_version=%s tokens_est=~120 focus=%s/%s",
+                self._session_id,
+                delta_version,
+                state_v2.focused_section or "—",
+                state_v2.focused_field or "—",
+            )
+            # Record in 30-min buffer
+            _delta_log_buffer.record(
+                session_id=self._session_id,
+                delta_version=1,
+                delta_type="v1-full",
+                fields_changed=len(state_v2.field_status),
+                focus_section=state_v2.focused_section,
+                focus_field=state_v2.focused_field,
+            )
+            await session.send_realtime_input(text=injection)
+            self._screen_delta_tracker.set_full_state(state_dict)
+        else:  # delta
+            delta, _ = self._screen_delta_tracker.compute_delta(state_dict)
+            injection = delta.render()
+            version_num = self._screen_delta_tracker.increment_injection_count()
+            fields_changed = (
+                len(delta.added)
+                + len(delta.filled_changed)
+                + len(delta.emptied)
+                + len(delta.invalid_changed)
+                + len(delta.removed)
+            )
+            log.info(
+                "screen_state_inject_delta_v%d session=%s tokens_est=~10 changed=%d added=%d removed=%d focus=%s/%s",
+                version_num + 1,
+                self._session_id,
+                fields_changed,
+                len(delta.added),
+                len(delta.removed),
+                delta.focused_field or "—",
+                state_v2.focused_section or "—",
+            )
+            # Record in 30-min buffer
+            _delta_log_buffer.record(
+                session_id=self._session_id,
+                delta_version=version_num + 1,
+                delta_type=f"v{version_num + 1}-delta",
+                fields_changed=fields_changed,
+                focus_section=state_v2.focused_section,
+                focus_field=state_v2.focused_field,
+            )
+            await session.send_realtime_input(text=injection)
+            self._screen_delta_tracker.set_full_state(state_dict)
 
         # N-4 fix: mirror v2 field_errors into state.pending_validation_errors so
         # advance_step's gate has a single source of truth regardless of whether
