@@ -105,17 +105,27 @@ class FormStateRepo:
         tenant_id: str | None,
         participant_id: str,
     ) -> None:
-        """Raise HTTP 403 when caller's (tenant, participant) does not own session.
+        """Raise HTTP 403 when the caller's TENANT does not own the session.
 
         Closes the latent gap where a guessed UUID4 could read another
-        tenant's transcript. Called from GET state, PUT state, and any new
-        cross-screen context paths whose authorisation depends on session
-        ownership.
+        tenant's transcript. Called from GET state, PUT state, the voice WS,
+        and any cross-screen context paths whose authorisation depends on
+        session ownership.
+
+        Tenant is the real isolation boundary: cross-tenant access is forbidden,
+        but ANY authenticated user WITHIN the owning tenant may operate on the
+        session. This matches the real flow — a staff member (whose JWT
+        ``userId`` is their own) drives onboarding for a *participant* (a
+        different id). We therefore do NOT require the caller's user id to equal
+        the session's ``participant_id``; that comparison rejected every
+        staff-driven session ("Session does not belong to caller").
 
         Legacy sessions saved before tenant_id was required may carry
-        ``state.tenant_id is None``. We treat those as opt-out from this
-        check (matches today's behaviour) while requiring tenant_id on every
-        new session created since this guard landed.
+        ``state.tenant_id is None``. We treat those as opt-out from this check.
+
+        Args:
+            participant_id: caller's user id (kept for signature/back-compat and
+                logging — intentionally NOT used as an equality gate).
         """
         from fastapi import HTTPException, status
 
@@ -128,11 +138,6 @@ class FormStateRepo:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Session does not belong to caller's tenant",
-            )
-        if state.participant_id != participant_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Session does not belong to caller's participant",
             )
 
     # ── State ─────────────────────────────────────────────────────────────────

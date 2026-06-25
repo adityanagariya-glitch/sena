@@ -209,6 +209,13 @@ async def create_session(
     session_id = str(uuid.uuid4())
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.onboarding_session_max_min)
 
+    # Tenant resolution. When JWT auth is ON, the tenant is authoritative from
+    # the verified token — a body-supplied tenant_id is ignored (it could spoof
+    # another org, and it MUST equal what the voice WS ownership guard later
+    # compares against the JWT's organizationId, or the WS 403s with "Session
+    # does not belong to caller"). In dev (JWT off) we trust the body value.
+    effective_tenant_id = str(auth.tenant_id) if settings.jwt_enabled else req.tenant_id
+
     # Resolve bootstrap envelope. Explicit takes precedence; legacy initial_state
     # is wrapped into a synthesised bootstrap so older clients keep working.
     bootstrap = req.bootstrap or SessionBootstrap.from_initial_state(req.initial_state)
@@ -233,7 +240,7 @@ async def create_session(
     # Auto-hydrate `bootstrap.prior_pages` from the cross-screen context bucket
     # when the client did not supply one. Client-supplied prior_pages always
     # wins (forward-compatibility, manual-override path during testing).
-    if settings.onboarding_cross_screen_context_enabled and not req.tenant_id:
+    if settings.onboarding_cross_screen_context_enabled and not effective_tenant_id:
         log.warning(
             "session_create_tenant_id_missing",
             session_id=session_id,
@@ -244,10 +251,10 @@ async def create_session(
     if (
         settings.onboarding_cross_screen_context_enabled
         and not bootstrap.prior_pages
-        and req.tenant_id
+        and effective_tenant_id
     ):
         ctx_repo = UserContextRepo(repo._r)
-        bucket = await ctx_repo.get_bucket(req.tenant_id, req.participant_id)
+        bucket = await ctx_repo.get_bucket(effective_tenant_id, req.participant_id)
         if not bucket.is_empty():
             # New CSC layer only forwards the 5-field allowlist (name, dob,
             # gender, goals, hobbies_interests). prior_pages now carries
@@ -320,7 +327,7 @@ async def create_session(
     log.info(
         "session_create_resolved_bootstrap",
         session_id=session_id,
-        tenant_id=req.tenant_id,
+        tenant_id=effective_tenant_id,
         participant_id=req.participant_id,
         step=req.step,
         bootstrap_mode=bootstrap.mode,
@@ -337,7 +344,7 @@ async def create_session(
         session_id=session_id,
         step_id=req.step,
         participant_id=req.participant_id,
-        tenant_id=req.tenant_id,
+        tenant_id=effective_tenant_id,
         locale=req.locale,
         values=_build_initial_values(seed_values),
     )
@@ -349,9 +356,9 @@ async def create_session(
 
     # Track this session in the per-participant index so on-call tooling can
     # enumerate sessions for "the assistant forgot me" debug requests.
-    if settings.onboarding_cross_screen_context_enabled and req.tenant_id:
+    if settings.onboarding_cross_screen_context_enabled and effective_tenant_id:
         ctx_repo = UserContextRepo(repo._r)
-        await ctx_repo.add_session_to_index(req.tenant_id, req.participant_id, session_id)
+        await ctx_repo.add_session_to_index(effective_tenant_id, req.participant_id, session_id)
 
     _scheme = "wss" if request.url.scheme == "https" else "ws"
     ws_url = f"{_scheme}://{request.url.netloc}/ws/onboarding/{session_id}"
