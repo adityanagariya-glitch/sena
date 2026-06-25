@@ -24,3 +24,8 @@ openpyxl
 # which conflicts with google-genai and breaks the `google.genai` namespace.
 google-genai
 langchain
+
+# LiveKit — added per request for parity with voice/onboarding.
+# NOTE: the import audit found NO `livekit` import in case_review's own code or
+# in the shared modules it uses — so this is currently unused weight here.
+livekit-api

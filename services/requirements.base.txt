@@ -29,6 +29,10 @@ SQLAlchemy
 alembic
 pgvector
 redis
+# MongoDB — shared token-usage logger (sena_common.mongo_usage_logger),
+# called from sena_common.usage_logger on every service. Lazy-imported, so a
+# missing pymongo only surfaces at runtime when Mongo usage-logging fires.
+pymongo
 
 # ── Auth & Security ───────────────────────────────────────────
 Authlib
