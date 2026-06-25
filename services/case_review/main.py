@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from api.routes import router
 from api.rp_routes import rp_router
 from api.voice_routes import voice_router
+from api.unified_incident_routes import unified_router
 from core.logging import configure_logging
 from core.settings import settings
 
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(router)
     app.include_router(rp_router)
     app.include_router(voice_router)
+    app.include_router(unified_router)
 
     # Browser voice demo harness (case_review voice dictation). Served
     # same-origin so its relative fetch + WS work without CORS. voice_demo.html

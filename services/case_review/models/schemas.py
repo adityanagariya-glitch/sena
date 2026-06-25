@@ -600,3 +600,170 @@ class CaseDraftResponse(BaseModel):
     quality_gaps: list[str] = []
 
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+
+# ── POST /v1/restrictive-practices/incidents/analyze (Unified 3-view Analysis) ─
+#
+# One call → the three mobile screens (AI Summary / Risk Summary / Incident Draft).
+# Built by reusing the SAME pipeline + _build_response() as /evaluate, then
+# regrouping. Reuses the tested section schemas:
+#   * AI Summary screen     → _SummarySection         (always present)
+#   * Incident Draft screen → _IncidentReportSection  (present only when an incident is drafted)
+# Only the Risk Summary screen needs a new shape (derived from verdict + detected practice).
+
+
+class RiskSummaryView(BaseModel):
+    """Risk Summary screen — derived from the evaluator verdict + detected practice.
+
+    Present only when the note was flagged by triage (i.e. an evaluator verdict
+    exists). For a clean note this is null — there is no risk to summarise.
+    """
+    risk_category: str = Field(description="Practice category, or 'No Restrictive Practice Detected'")
+    why_flagged: list[str] = Field(default=[], description="Trigger phrases + reasoning behind the flag")
+    current_risk_level: str = Field(description="Low | Medium | High | Critical | N/A")
+    suggested_attention: list[str] = Field(default=[], description="Recommended next steps (from the verdict)")
+
+
+class UnifiedIncidentResponse(BaseModel):
+    """Single response feeding all three mobile screens.
+
+    Field availability mirrors the pipeline:
+      * ``verdict`` + ``ai_summary`` — always present
+      * ``risk_summary``            — null unless triage flagged the note
+      * ``incident_draft``          — null unless an incident report was generated
+    """
+    case_note_id: UUID
+    client_id: str
+    shift_id: str | None = None
+    incident_detected: bool = Field(description="True when the evaluator detected a restrictive-practice incident")
+
+    verdict: _VerdictSection
+    ai_summary: _SummarySection
+    risk_summary: RiskSummaryView | None = None
+    incident_draft: _IncidentReportSection | None = None
+
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+
+# ── Unified analysis INPUT — SENA case note form (+ optional voice transcript) ─
+#
+# The mobile app feeds the structured shift case-note form, optionally with the
+# raw voice dictation. We map it onto the pipeline's CaseNoteInput so the SAME
+# RAG (pgvector NDIS policies) + Bedrock Claude evaluator generate the 3 views.
+#
+# Field names are camelCase to match the platform's case-note form payload.
+
+
+class _ReportMedia(BaseModel):
+    id: str | None = None
+    fileName: str
+    fileSize: int | None = None
+    url: str
+
+
+class _ActivitiesAndSkill(BaseModel):
+    assisted: str | None = None
+    practisedSkill: str | None = None
+    participantsLevelOfIndependence: str | None = None
+    observation: str | None = None
+
+
+class _WellbeingAndBehaviour(BaseModel):
+    mood: str | None = None
+    behaviouralEvents: str | None = None
+    anyConcerns: bool = False
+
+
+class _OutcomesAndProgress(BaseModel):
+    whatWentWell: str | None = None
+    furtherSupport: str | None = None
+    participantsComments: str | None = None
+
+
+class _SafetyAndHealth(BaseModel):
+    medicationReminderGiven: bool = False
+    safetyHazardObserved: bool = False
+    anyInjuries: bool = False
+    injuryDetails: str | None = None
+    reportMedia: list[_ReportMedia] = Field(default_factory=list)
+
+
+class CaseNoteForm(BaseModel):
+    """The SENA shift case-note form (camelCase, mirrors the platform payload)."""
+    clientId: str
+    shiftId: str
+    summaryOfShift: str
+    activitiesAndSkill: _ActivitiesAndSkill = Field(default_factory=_ActivitiesAndSkill)
+    wellbeingAndBehaviour: _WellbeingAndBehaviour = Field(default_factory=_WellbeingAndBehaviour)
+    outcomesAndProgress: _OutcomesAndProgress = Field(default_factory=_OutcomesAndProgress)
+    safetyAndHealth: _SafetyAndHealth = Field(default_factory=_SafetyAndHealth)
+    careFeedback: str | None = None
+    anyIncident: bool = False
+    handoverNote: str | None = None
+    reviewNotes: str | None = None
+
+
+class UnifiedIncidentRequest(BaseModel):
+    """Request for POST /incidents/analyze — structured form + optional voice transcript."""
+    case_note_form: CaseNoteForm
+    voice_transcript: str | None = Field(
+        None,
+        description="Raw voice dictation. Merged with the structured form so the LLM sees both.",
+    )
+
+    def to_case_note_input(self, worker_id: str) -> "CaseNoteInput":
+        """Map the form (+ voice transcript) onto the pipeline's CaseNoteInput.
+
+        The structured fields are set individually (so the graph can read
+        ``incident_occurred`` / ``any_injuries`` directly), then the composed
+        narrative + handover/review notes + voice transcript are folded into
+        ``transcript`` so ``to_text()`` surfaces everything to the LLM.
+        """
+        f = self.case_note_form
+        a, w, o, s = (
+            f.activitiesAndSkill,
+            f.wellbeingAndBehaviour,
+            f.outcomesAndProgress,
+            f.safetyAndHealth,
+        )
+        media_refs = [m.url or m.fileName for m in s.reportMedia] or None
+
+        cni = CaseNoteInput(
+            case_note_id=uuid4(),
+            client_id=f.clientId,
+            worker_id=worker_id,
+            transcript=None,  # compose from structured fields first
+            describe=f.summaryOfShift,
+            assisted=a.assisted,
+            practised_skill=a.practisedSkill,
+            participants_level_of_independence=a.participantsLevelOfIndependence,
+            observations=a.observation,
+            mood=w.mood,
+            behavioural_events=w.behaviouralEvents,
+            any_concerns=w.anyConcerns,
+            what_went_well=o.whatWentWell,
+            what_needs_further_support=o.furtherSupport,
+            participant_comments=o.participantsComments,
+            medication_reminders_given=s.medicationReminderGiven,
+            safety_hazards_observed=s.safetyHazardObserved,
+            any_injuries=s.anyInjuries,
+            injury_description=s.injuryDetails,
+            uploaded_documents=media_refs,
+            carer_feedback=f.careFeedback,
+            incident_occurred=f.anyIncident,
+        )
+
+        parts = [cni.to_text()]
+        if f.handoverNote:
+            parts.append(f"Handover Note:\n{f.handoverNote}")
+        if f.reviewNotes:
+            parts.append(f"Review Notes:\n{f.reviewNotes}")
+        if self.voice_transcript:
+            parts.append(f"Raw Voice Transcript:\n{self.voice_transcript}")
+        combined = "\n\n".join(p for p in parts if p)
+
+        # Re-emit with transcript=combined: to_text() now returns the full merged
+        # text, while the boolean flags above stay intact for the graph logic.
+        return cni.model_copy(update={"transcript": combined})
+
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)

@@ -3,3 +3,6 @@
 numpy
 pandas
 openpyxl
+
+# Markdown → HTML rendering of generated reports (api_main.py: `import markdown`)
+markdown
