@@ -14,3 +14,4 @@ googleapis-common-protos
 # Do NOT add google-generativeai (old SDK): it pins google-ai-generativelanguage
 # which conflicts with google-genai and breaks the `google.genai` namespace.
 google-genai
+langchain
