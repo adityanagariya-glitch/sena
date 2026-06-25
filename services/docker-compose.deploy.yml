@@ -245,58 +245,6 @@ services:
       - sena-network
     restart: unless-stopped
 
-  # ── Testing: Voice Testing Instance ──────────────────────────────────────
-  sena-voice-internal-testing:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: voice
-    container_name: sena-voice-internal-testing
-    env_file:
-      - ../.env
-    environment:
-      REDIS_URL: redis://redis-internal:6979/1
-      AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
-      SHARED_DB_URL: postgresql+asyncpg://shared:shared@shared-db-internal:5433/platform
-    expose:
-      - "8008"
-    depends_on:
-      redis-internal:
-        condition: service_healthy
-      ai-db-internal:
-        condition: service_healthy
-      shared-db-internal:
-        condition: service_healthy
-    networks:
-      - sena-network
-    restart: unless-stopped
-    labels:
-      - "environment=testing"
-
-  # ── Testing: Onboarding Testing Instance ─────────────────────────────────
-  sena-onboarding-internal-testing:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: onboarding
-    container_name: sena-onboarding-internal-testing
-    env_file:
-      - ../.env
-    environment:
-      SENA_AI_REDIS_URL: redis://redis-internal:6979/2
-      SENA_AI_HOST: 0.0.0.0
-      SENA_AI_ONBOARDING_PORT: "8009"
-    expose:
-      - "8009"
-    depends_on:
-      redis-internal:
-        condition: service_healthy
-    networks:
-      - sena-network
-    restart: unless-stopped
-    labels:
-      - "environment=testing"
-
   uptime-kuma:
     image: louislam/uptime-kuma:latest
     container_name: uptime-kuma

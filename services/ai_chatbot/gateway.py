@@ -21,6 +21,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -262,6 +263,34 @@ app = FastAPI(
     docs_url="/ai-chatbot/docs",
     redoc_url="/ai-chatbot/redoc",
     openapi_url="/ai-chatbot/openapi.json",
+)
+
+
+# ---- CORS ----
+# Browser clients (React dashboard, local Vite dev) require CORS. Without this,
+# the preflight `OPTIONS /ai-chatbot/route` gets 405 and the browser reports a
+# CORS error. Server-to-server callers (Flutter, curl) are unaffected.
+#
+# Origins are an explicit allow-list (NOT "*") because requests carry an
+# Authorization bearer header and we keep allow_credentials=True. Override or
+# extend via the CORS_ALLOW_ORIGINS env var (comma-separated).
+_default_cors_origins = [
+    "https://dev-dashboard.isena.org",
+    "https://dashboard.isena.org",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:8080",
+]
+_env_cors_origins = [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()]
+_cors_origins = _env_cors_origins or _default_cors_origins
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],          # includes OPTIONS preflight + POST
+    allow_headers=["*"],          # Authorization, Content-Type, etc.
+    expose_headers=["*"],
 )
 
 
