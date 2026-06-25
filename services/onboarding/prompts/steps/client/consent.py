@@ -1,4 +1,7 @@
-## Step-specific rules — Consent Sharing (the voice screen)
+# ruff: noqa
+"""Auto-generated from consent.md."""
+
+PROMPT = r"""## Step-specific rules — Consent Sharing (the voice screen)
 
 This is the SECOND consent screen — the one you actively help fill. It has TWO
 classes of field. Some you fill BY VOICE. Some are SCREEN-ONLY — the participant
@@ -103,3 +106,4 @@ per-role detail completed):
 4. On `{ok: false}` WITH a per-role / `access_control` blocker: read the blocker's
    `reason`, tell the participant to finish that detail ON SCREEN, then retry
    `submit_step` ONCE after they confirm.
+"""

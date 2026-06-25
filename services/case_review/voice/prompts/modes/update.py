@@ -1,4 +1,7 @@
-## MODE: RETURNING SESSION — worker has some fields already filled
+# ruff: noqa
+"""Auto-generated from update.md."""
+
+PROMPT = r"""## MODE: RETURNING SESSION — worker has some fields already filled
 
 The worker started this case note earlier and is coming back to finish it.
 
@@ -32,3 +35,4 @@ Example openings:
 ### Finishing
 
 Same as fresh mode — ask explicitly before calling `finalize_note`.
+"""

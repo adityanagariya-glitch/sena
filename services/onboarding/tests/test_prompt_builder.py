@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from voice.turn_payload import (
     NextTarget,
     Participant,
@@ -103,14 +105,16 @@ def test_prompt_includes_per_step_fragment_when_present() -> None:
     assert "Step-specific rules — Personal Details" in out
 
 
-def test_prompt_omits_step_fragment_for_unknown_step() -> None:
-    """Unknown step.id → no fragment loaded, base template still renders."""
+def test_prompt_raises_for_unknown_step() -> None:
+    """Unknown step.id → loud KeyError (D1), not a silent half-built prompt.
+
+    Replaces the old silent-empty contract: a step_id with no registered
+    fragment is a misconfiguration and must surface immediately.
+    """
     tp = _minimal_turn()
     tp.step.id = "this_step_does_not_exist"
-    out = build_system_prompt(tp)
-    # __STEP_RULES__ placeholder must be replaced even when fragment missing.
-    assert "__STEP_RULES__" not in out
-    assert "Step-specific rules" not in out
+    with pytest.raises(KeyError):
+        build_system_prompt(tp)
 
 
 def test_prompt_step_rules_placeholder_consumed() -> None:

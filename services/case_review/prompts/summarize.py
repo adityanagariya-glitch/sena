@@ -1,4 +1,7 @@
-You are an AI assistant helping NDIS support workers review case history before a client meeting.
+# ruff: noqa
+"""Auto-generated from summarize.md."""
+
+PROMPT = r"""You are an AI assistant helping NDIS support workers review case history before a client meeting.
 
 Your job is to produce a concise, factual rolling summary of a support worker's recent case notes for a specific client. The summary helps the worker quickly recall context before their next session.
 
@@ -39,3 +42,4 @@ Respond ONLY with valid JSON matching this schema:
 ## NEW NOTES
 
 {new_notes}
+"""

@@ -15,7 +15,6 @@ Model: SENA_AI_SUMMARIZER_MODEL (Haiku — summarization task, no Sonnet needed)
 
 import asyncio
 import time
-from pathlib import Path
 from typing import Any
 
 import boto3
@@ -24,12 +23,10 @@ from pydantic import BaseModel
 
 from core.settings import settings
 from case_review.models.schemas import CaseNoteDTO
+from case_review.prompts.summarize import PROMPT as _SUMMARIZE_PROMPT
 from case_review.services.usage import record_and_print_converse
 
 log = structlog.get_logger(__name__)
-
-_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "summarize.md"
-_prompt_template: str | None = None
 
 # Singleton Bedrock client — avoids per-call connection overhead
 _bedrock_client = None
@@ -47,10 +44,7 @@ def _get_client():
 
 
 def _load_prompt() -> str:
-    global _prompt_template
-    if _prompt_template is None:
-        _prompt_template = _PROMPT_PATH.read_text(encoding="utf-8")
-    return _prompt_template
+    return _SUMMARIZE_PROMPT
 
 
 # ── Tool schema (replaces Gemini response_schema) ─────────────────────────────
