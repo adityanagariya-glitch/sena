@@ -1,5 +1,5 @@
 # onboarding service — extra deps on top of services/requirements.base.txt
-# LiveKit (onboarding uses the same voice pipeline)
+# LiveKit (onboarding uses the same shared voice pipeline)
 livekit-api
 livekit-protocol
 grpcio
@@ -8,13 +8,8 @@ proto-plus
 protobuf
 googleapis-common-protos
 
-# Google Gemini Live
+# Google Gemini — NEW unified SDK only. Provides `from google import genai`.
+# Do NOT add google-generativeai (old SDK): it pins google-ai-generativelanguage
+# which conflicts with google-genai and breaks the `google.genai` namespace.
 google-genai
-google-generativeai
-google-ai-generativelanguage
-google-api-core
-google-api-python-client
-google-auth
-google-auth-httplib2
-httplib2
-uritemplate
+langchain

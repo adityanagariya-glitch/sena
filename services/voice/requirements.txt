@@ -10,11 +10,7 @@ proto-plus
 protobuf
 googleapis-common-protos
 
-# Google Gemini
+# Google Gemini — NEW unified SDK only. Provides `from google import genai`.
+# Do NOT add google-generativeai (old SDK): it pins google-ai-generativelanguage
+# which conflicts with google-genai and breaks the `google.genai` namespace.
 google-genai
-google-generativeai
-google-ai-generativelanguage
-google-api-core
-google-api-python-client
-google-auth
-google-auth-httplib2
