@@ -1,0 +1,24 @@
+# policy_proc service — extra deps on top of services/requirements.base.txt
+# LangChain/LangGraph for RAG pipeline
+langchain-core
+langchain-community
+langchain-aws
+langchain-openai
+langchain-text-splitters
+langgraph
+mcp
+openapi-pydantic
+cachetools
+
+# Document processing (markitdown for policy/procedure ingestion)
+pymupdf
+pillow
+pillow-avif-plugin
+pillow-heif
+markitdown[all]
+python-docx
+openpyxl
+
+# Data analysis
+numpy
+pandas

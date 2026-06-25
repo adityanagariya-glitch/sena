@@ -1,0 +1,20 @@
+# onboarding service — extra deps on top of services/requirements.base.txt
+# LiveKit (onboarding uses the same voice pipeline)
+livekit-api
+livekit-protocol
+grpcio
+grpcio-status
+proto-plus
+protobuf
+googleapis-common-protos
+
+# Google Gemini Live
+google-genai
+google-generativeai
+google-ai-generativelanguage
+google-api-core
+google-api-python-client
+google-auth
+google-auth-httplib2
+httplib2
+uritemplate

@@ -1,0 +1,5 @@
+# casenote_monthly service — extra deps on top of services/requirements.base.txt
+# Data analysis for trend stats and NDIS report generation
+numpy
+pandas
+openpyxl

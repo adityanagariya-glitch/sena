@@ -1,0 +1,89 @@
+# ============================================================
+# requirements.base.txt — SENA AI Services Shared Base
+# ============================================================
+# Installed in EVERY service via the base Docker stage.
+# Only packages ALL services genuinely need live here.
+# Service-specific deps go in requirements.<group>.txt files.
+# ============================================================
+
+# ── Web Framework ────────────────────────────────────────────
+fastapi
+uvicorn
+uvloop
+starlette
+hypercorn
+httptools
+websockets
+sse-starlette
+
+# ── Data Validation ──────────────────────────────────────────
+pydantic
+pydantic-settings
+
+# ── Database ─────────────────────────────────────────────────
+asyncpg
+psycopg
+psycopg-binary
+psycopg-pool
+SQLAlchemy
+alembic
+pgvector
+redis
+
+# ── Auth & Security ───────────────────────────────────────────
+Authlib
+PyJWT
+cryptography
+
+# ── HTTP Clients ─────────────────────────────────────────────
+httpx
+httpx-sse
+aiohttp
+aiosignal
+multidict
+frozenlist
+yarl
+requests
+certifi
+charset-normalizer
+idna
+urllib3
+
+# ── AWS (Bedrock used by all services) ────────────────────────
+boto3
+botocore
+s3transfer
+
+# ── AI Core ──────────────────────────────────────────────────
+openai
+langfuse
+
+# ── Observability ─────────────────────────────────────────────
+structlog
+python-json-logger
+opentelemetry-api
+
+# ── Utilities ─────────────────────────────────────────────────
+python-dotenv
+python-multipart
+python-ulid
+python-dateutil
+tenacity
+orjson
+anyio
+sniffio
+PyYAML
+slowapi
+packaging
+typing_extensions
+uuid_utils
+zstandard
+msgspec
+rich
+click
+Jinja2
+MarkupSafe
+regex
+six
+rsa
+Pygments

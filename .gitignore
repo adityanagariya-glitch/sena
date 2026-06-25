@@ -140,6 +140,8 @@ services/8ef31cb1-1146-4775-923b-ce6a820208d5.zip
 # Keep Important Files
 # ==========================================
 !requirements.txt
+!**/requirements.txt
+!services/requirements.base.txt
 !README.md
 !services/onboarding/**/*.md
 !services/voice/**/*.md

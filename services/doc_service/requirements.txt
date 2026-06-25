@@ -1,0 +1,9 @@
+# doc_service — extra deps on top of services/requirements.base.txt
+# Document conversion for S3/Bedrock KB ingestion pipeline
+pymupdf
+pillow
+pillow-avif-plugin
+pillow-heif
+markitdown[all]
+python-docx
+openpyxl

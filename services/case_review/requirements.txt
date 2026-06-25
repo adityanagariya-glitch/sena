@@ -1,0 +1,20 @@
+# case_review service — extra deps on top of services/requirements.base.txt
+# LangChain/LangGraph for RP detection pipeline
+langchain-core
+langchain-community
+langchain-aws
+langchain-openai
+langchain-text-splitters
+langgraph
+mcp
+openapi-pydantic
+cachetools
+
+# PDF/document processing (pymupdf for case note PDFs)
+pymupdf
+pillow
+pillow-avif-plugin
+pillow-heif
+markitdown[all]
+python-docx
+openpyxl

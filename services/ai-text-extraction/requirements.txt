@@ -1,0 +1,9 @@
+# ai-text-extraction service — extra deps on top of services/requirements.base.txt
+# PDF/image processing for identity document field extraction
+pymupdf
+pillow
+pillow-avif-plugin
+pillow-heif
+markitdown[all]
+python-docx
+openpyxl

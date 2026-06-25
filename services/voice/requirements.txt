@@ -1,0 +1,11 @@
+# voice service — extra deps on top of services/requirements.base.txt
+# LiveKit voice pipeline
+livekit-api
+livekit-protocol
+
+# gRPC (required by LiveKit)
+grpcio
+grpcio-status
+proto-plus
+protobuf
+googleapis-common-protos
