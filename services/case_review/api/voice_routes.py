@@ -131,8 +131,6 @@ class CreateVoiceSessionResponse(BaseModel):
 
 @voice_router.post(
     "/v1/case-review/voice/session",
-    response_model=CreateVoiceSessionResponse,
-    status_code=status.HTTP_201_CREATED,
     tags=["voice"],
     summary="Create Voice Session",
     description=(
@@ -148,17 +146,14 @@ class CreateVoiceSessionResponse(BaseModel):
         "- Session timeout: 3600s\n\n"
         "_Staff-only: non-staff roles are rejected._"
     ),
+    response_model=CreateVoiceSessionResponse,
 )
 async def create_voice_session(
     body: CreateVoiceSessionRequest,
     auth: AuthContext = Depends(get_auth_context),
 ) -> CreateVoiceSessionResponse:
-    """Create a tenant-scoped ephemeral voice session for case-note dictation."""
     if not _is_staff(auth.roles):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "not_staff", "message": "Voice case notes are staff-only"},
-        )
+        raise HTTPException(status_code=403, detail="Voice case notes are staff-only")
     tenant_id = str(auth.tenant_id)
     session_id = uuid.uuid4().hex
     state = FormState(
@@ -201,8 +196,6 @@ class DraftTranscriptResponse(BaseModel):
 
 @voice_router.post(
     "/v1/case-review/voice/draft",
-    response_model=DraftTranscriptResponse,
-    status_code=status.HTTP_200_OK,
     tags=["voice"],
     summary="Draft From Transcript",
     description=(
@@ -217,17 +210,14 @@ class DraftTranscriptResponse(BaseModel):
         "- Latency: 2-3s\n\n"
         "_Staff-only: non-staff roles are rejected._"
     ),
+    response_model=DraftTranscriptResponse,
 )
 async def draft_from_transcript(
     body: DraftTranscriptRequest,
     auth: AuthContext = Depends(get_auth_context),
 ) -> DraftTranscriptResponse:
-    """Extract case note fields from a shift transcript via Bedrock Claude Sonnet."""
     if not _is_staff(auth.roles):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "not_staff", "message": "Voice case notes are staff-only"},
-        )
+        raise HTTPException(status_code=403, detail="Voice case notes are staff-only")
     start_usage()
     initial_values, gaps_note = await run_draft(body.transcript)
     filled_count = sum(len(fields) for fields in initial_values.values())

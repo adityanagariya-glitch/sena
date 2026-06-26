@@ -93,22 +93,9 @@ async def get_context(
     client: CaseNoteClient = Depends(get_case_note_client),
     bearer_token: str = Depends(get_bearer_token),
 ) -> ContextResponse:
-    """
-    Fetch the most recent N case notes for the calling staff member + client and
-    return a rolling summary.
-
-    Notes are sourced from the SENA org backend (member-scoped), in two steps,
-    authenticated by forwarding the caller's JWT:
-      1. GET /mobile/organization-member/case-note/get-all-data?clientId=&limit=
-      2. GET /mobile/organization-member/case-note/get-data/{shiftId}/{clientId} per note.
-
-    Idempotent — re-calling with the same notes returns the cached summary (no LLM call).
-    Adding new notes updates and compresses the rolling summary.
-    """
-    repo = get_repo(db)
     start_usage()
     result = await svc_get_context(
-        repo=repo,
+        repo=get_repo(db),
         client=client,
         tenant_id=auth.tenant_id,
         staff_id=req.staff_id,
@@ -150,21 +137,13 @@ async def classify_paragraph(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> ClassifyResponse:
-    """
-    Classify a free-text paragraph into structured case note fields.
-    Returns missing required fields and re-ask prompts if paragraph is thin.
-    """
-    repo = get_repo(db)
     start_usage()
-    try:
-        result = await svc_classify_paragraph(
-            repo=repo,
-            tenant_id=auth.tenant_id,
-            user_id=auth.user_id,
-            req=req,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    result = await svc_classify_paragraph(
+        repo=get_repo(db),
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        req=req,
+    )
     result.token_usage = TokenUsage(**get_usage())
     return result
 
@@ -189,18 +168,14 @@ async def review_session(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> ReviewResponse:
-    """Analyse case note for risks and compliance flags."""
-    repo = get_repo(db)
     start_usage()
-    try:
-        return await svc_review(
-            repo=repo,
-            tenant_id=auth.tenant_id,
-            user_id=auth.user_id,
-            req=req,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    result = await svc_review(
+        repo=get_repo(db),
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        req=req,
+    )
+    return result
 
 
 # ── Incident detect (Phase E) ─────────────────────────────────────────────────
@@ -222,16 +197,15 @@ async def detect_incident(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> IncidentDetectResponse:
-    """Detect if case note describes a reportable incident."""
-    repo = get_repo(db)
     start_usage()
-    return await svc_detect_incident(
-        repo=repo,
+    result = await svc_detect_incident(
+        repo=get_repo(db),
         db=db,
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
         req=req,
     )
+    return result
 
 
 @router.post(
@@ -252,16 +226,15 @@ async def draft_incident(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> IncidentDraftResponse:
-    """Autofill NDIS incident report fields from case note."""
-    repo = get_repo(db)
     start_usage()
-    return await svc_draft_incident(
-        repo=repo,
+    result = await svc_draft_incident(
+        repo=get_repo(db),
         db=db,
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
         req=req,
     )
+    return result
 
 
 @router.patch(
@@ -318,16 +291,12 @@ async def submit_review_endpoint(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> SubmitResponse:
-    """Final submit gate for reviewed case note."""
-    repo = get_repo(db)
     start_usage()
-    try:
-        return await svc_submit_review(
-            repo=repo,
-            db=db,
-            tenant_id=auth.tenant_id,
-            user_id=auth.user_id,
-            req=req,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    result = await svc_submit_review(
+        repo=get_repo(db),
+        db=db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        req=req,
+    )
+    return result

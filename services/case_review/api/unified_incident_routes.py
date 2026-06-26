@@ -89,11 +89,7 @@ async def analyze_incident_unified(
     auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> UnifiedIncidentResponse:
-    """Single endpoint feeding the AI Summary / Risk Summary / Incident Draft screens."""
-    # Map the form (+ voice transcript) onto the pipeline's CaseNoteInput.
-    # worker_id comes from the authenticated staff member, not the form.
     payload = req.to_case_note_input(worker_id=str(auth.user_id))
-
     start_usage()
     try:
         result = await run_pipeline(payload, db, tenant_id=str(auth.tenant_id))
@@ -106,10 +102,9 @@ async def analyze_incident_unified(
         )
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
-    # Reuse the same mapping the /evaluate endpoint uses — verdict, summary, incident report.
     resp = _build_response(result, worker_id=payload.worker_id)
-
     incident_detected = bool(result.evaluator and result.evaluator.incident_detected)
+    usage = get_usage()
 
     return UnifiedIncidentResponse(
         case_note_id=result.case_note_id,
@@ -120,5 +115,5 @@ async def analyze_incident_unified(
         ai_summary=resp.summary,
         risk_summary=_build_risk_summary(resp),
         incident_draft=resp.incident_report,
-        token_usage=TokenUsage(**get_usage()),
+        token_usage=TokenUsage(**usage),
     )

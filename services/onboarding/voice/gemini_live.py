@@ -42,7 +42,7 @@ from .screen_context import (
     payload_hash,
     render_injection_text,
 )
-from .screen_delta import ScreenDeltaTracker, DeltaLogBuffer
+from sena_common.voice.screen_delta import DeltaLogBuffer, ScreenDeltaTracker
 
 # Global 30-minute delta log buffer (shared across all sessions)
 _delta_log_buffer = DeltaLogBuffer(ttl_seconds=1800)
