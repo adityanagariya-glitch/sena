@@ -245,7 +245,7 @@ services:
       - sena-network
     restart: unless-stopped
 
-  # ── TESTING SERVICES (8011-8013) ──────────────────────────────────────────
+  # ── TESTING SERVICES (8014-8016) ──────────────────────────────────────────
   sena-onboarding-testing:
     build:
       context: .
@@ -257,9 +257,9 @@ services:
     environment:
       SENA_AI_REDIS_URL: redis://redis-internal:6979/0
       SENA_AI_HOST: 0.0.0.0
-      SENA_AI_ONBOARDING_PORT: "8011"
+      SENA_AI_ONBOARDING_PORT: "8014"
     expose:
-      - "8011"
+      - "8014"
     depends_on:
       redis-internal:
         condition: service_healthy
@@ -280,7 +280,7 @@ services:
       SENA_AI_RP_DATABASE_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
       SENA_AI_CASE_REVIEW_REDIS_URL: redis://redis-internal:6979/1
     expose:
-      - "8012"
+      - "8015"
     depends_on:
       ai-db-internal:
         condition: service_healthy
@@ -303,7 +303,7 @@ services:
       AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
       SHARED_DB_URL: postgresql+asyncpg://shared:shared@shared-db-internal:5433/platform
     expose:
-      - "8013"
+      - "8016"
     depends_on:
       redis-internal:
         condition: service_healthy
