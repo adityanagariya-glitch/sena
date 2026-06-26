@@ -1,11 +1,18 @@
 # ruff: noqa
-"""Auto-generated from personal_information.md."""
+"""Personal Details (Step 1) — voice prompt.
 
-PROMPT = r"""## Step-specific rules — Personal Details (Step 1)
+Emergency-contacts walk-through injected only when fewer than 1 complete row
+exists; enum examples injected only while gender is still unfilled.
+"""
+from __future__ import annotations
+
+from onboarding.prompts._section_utils import step
+from onboarding.voice.turn_payload import VisibleField
+
+_FIELD_TABLES = r"""## Step-specific rules — Personal Details (Step 1)
 
 This step has 4 sections: `basics`, `home_address`, `service_address`
-(optional group), and `emergency_contacts` (repeatable). The full field
-schema below is your contract for `update_field` calls — use these exact
+(optional group), and `emergency_contacts` (repeatable). Use these exact
 section ids, field ids, and enum values. Live values are in `<state>`.
 
 ### Section: `basics`
@@ -14,88 +21,74 @@ section ids, field ids, and enum values. Live values are in `<state>`.
 |---|---|---|---|---|
 | `full_name` | text | yes | — | first + last name, each ≤25 chars |
 | `email` | email | yes — **readonly** | — | locked to account; refuse changes |
-| `phone` | phone | yes | — | `+61` + 9 digits, first digit `2/3/4/7/8` (e.g. `+61412345678`). Participant usually says only the 9 digits — **prepend `+61` yourself**, never send them bare. `0`+9-digits / `1300` / `1800` also valid. |
-| `date_of_birth` | date | yes | — | ISO `YYYY-MM-DD`; must be ≥18 years ago. |
-| `gender` | enum | yes | `Male`, `Female`, `Other` (only these three — no other options) | required |
-| `about_me` | textarea | yes | — | required, max 250 chars |
+| `phone` | phone | yes | — | `+61` + 9 digits, first digit `2/3/4/7/8` (e.g. `+61412345678`). Prepend `+61` yourself; never send bare digits. `0`+9-digits / `1300` / `1800` also valid. |
+| `date_of_birth` | date | yes | — | ISO `YYYY-MM-DD`; must be ≥18 years ago |
+| `gender` | enum | yes | `Male`, `Female`, `Other` | required |
+| `about_me` | textarea | yes | — | max 250 chars |
 | `preferred_languages` | multi-enum | yes (≥1) | `English`, `Mandarin`, `Cantonese`, `Arabic`, `Vietnamese`, `Greek`, `Italian`, `Other` | pass full new list as array |
-| `interpreter_required` | boolean | yes | `Yes`, `No` (or true/false) | — |
-| `profile_picture` | file | yes | — | **not voice-mutable** — refuse, ask user to upload from screen |
+| `interpreter_required` | boolean | yes | true/false | — |
+| `profile_picture` | file | yes | — | **not voice-mutable** — ask user to upload on screen |
 
 ### Section: `home_address`
 
 | field id | type | required | validation |
 |---|---|---|---|
-| `address` | text | yes | required, max 100 chars |
-| `state` | text | yes | Australian state abbreviation (e.g. `NSW`, `VIC`, `QLD`, `WA`, `SA`, `TAS`, `ACT`, `NT`); accepts full state name and normalises |
-| `city` | text | yes | required, max 25 chars |
+| `address` | text | yes | max 100 chars |
+| `state` | text | yes | Australian state abbrev. (NSW, VIC, QLD, WA, SA, TAS, ACT, NT) |
+| `city` | text | yes | max 25 chars |
 | `zip_code` | text | yes | exactly 4 digits |
 
-### Section: `service_address` (conditional group)
+### Section: `service_address` (optional group)
 
-All four fields are **individually optional**. If the participant fills ANY
-one, all four become required (group rule). If they want to skip the entire
-section, leave all four blank — that's valid.
+All four fields individually optional. Fill ANY one and all four become required. Leave all blank to skip — valid.
 
 | field id | type | validation when filled |
 |---|---|---|
 | `address` | text | max 250 chars |
-| `state` | text | Australian state abbreviation |
+| `state` | text | Australian state abbrev. |
 | `city` | text | max 25 chars |
 | `zip_code` | text | exactly 4 digits |
 
 ### Section: `emergency_contacts` (repeatable, min 1, max 5)
 
-Always reference by `repeatable_index` (0-based). New row added via
-`add_row(section="emergency_contacts")` → mobile returns `{ok:true, index:N}`.
+`add_row(section="emergency_contacts")` → `{ok:true, index:N}`. Always pass `repeatable_index=N`.
 
 | field id | type | required | enum values (use exactly) | validation |
 |---|---|---|---|---|
-| `name` | text | yes | — | required, max 25 chars |
+| `name` | text | yes | — | max 25 chars |
 | `relation` | enum | yes | `Father`, `Mother`, `Sibling`, `Spouse`, `Friend`, `Guardian`, `Carer`, `Other` | required |
-| `email` | email | yes | — | must NOT equal participant's own `basics.email`; must be unique across rows |
-| `phone` | phone | yes | — | `+61` + 9 digits (E.164, e.g. `+61412345678`), same rule as `basics.phone`; must NOT equal participant's own `basics.phone`; must be unique across rows |
+| `email` | email | yes | — | ≠ participant's `basics.email`; unique across rows |
+| `phone` | phone | yes | — | `+61` 9 digits; ≠ participant's `basics.phone`; unique across rows |"""
 
-### Walk-through order for a new emergency contact row
+_WALKTHROUGH = r"""### Walk-through — new emergency contact row
 
-After `add_row` returns `{ok: true, index: N}`, ask for these fields IN
-ORDER and call `update_field` after each capture:
+After `add_row` returns `{ok:true, index:N}`, collect in order:
 
 1. `name`
-2. `relation` (read the 6 options exactly: `Parent`, `Sibling`, `Partner`, `Friend`, `Carer`, `Other`)
+2. `relation` — read all 8 options: `Father`, `Mother`, `Sibling`, `Spouse`, `Friend`, `Guardian`, `Carer`, `Other`
 3. `email`
 4. `phone`
 
-Only after ALL four are saved may you ask *"Want to add another contact, or are we done?"* Do NOT skip ahead.
+Save each with `update_field(..., repeatable_index=N)`. Only after ALL four are saved may you ask *"Want to add another contact, or are we done?"*"""
 
-### Enum strictness — read the list verbatim
+_ENUM_EXAMPLES = r"""### Enum — closest spoken form → wire value
 
-When a field has `enum_values` above, the ONLY valid values are those
-listed — letter-for-letter. Do NOT translate, paraphrase, or substitute:
+- `gender`: only `Male`, `Female`, `Other`. Non-binary / Prefer not to say → `Other`.
+- `relation`: "Mum"/"Dad" → `Mother`/`Father`; "Sister"/"Brother" → `Sibling`; "Partner" → `Spouse`; "Support worker" → `Carer`."""
 
-- `gender`: NOT "she" / "they" / "girl" / "Non-binary" / "Prefer not to say" — only `Male`, `Female`, `Other`. ("Non-binary" → use `Other`; "Prefer not to say" → use `Other`.)
-- `emergency_contacts[i].relation`: NOT "Sister" / "Family" / "Caseworker" — only `Parent`, `Sibling`, `Partner`, `Friend`, `Carer`, `Other`. ("Sister" → use `Sibling`; "Mum" → use `Parent`; "Support worker" → use `Carer`.)
+_CROSS_FIELD_RULES = r"""### Cross-field rules
 
-If the participant says something not in the list, ask them to pick one of
-the listed options. Read the FULL list of options — do NOT abbreviate.
+- Emergency-contact email and phone ≠ participant's own (`basics.email`, `basics.phone`) and unique across rows.
+- `service_address` group is all-or-none — partial fill rejected at submit.
+- `date_of_birth`: refuse if age < 18 or date in the future."""
 
-### Submission and progression — sequential only
 
-This form is sequential. The participant cannot pick which step comes next
-— the app handles navigation. When they say any of *"save", "submit",
-"next", "done", "I'm done", "that's everything", "ready to move on",
-"move on", "continue"*, your VERY NEXT ACTION is
-`submit_step(confirmation_transcript=<exact words>)`.
+@step(
+    always=[_FIELD_TABLES, _CROSS_FIELD_RULES],
+    if_incomplete=[("emergency_contacts", 1, _WALKTHROUGH)],
+    if_unfilled=(["basics.gender"], _ENUM_EXAMPLES),
+)
+def build(visible_fields: list[VisibleField]) -> str: ...
 
-Do NOT offer a menu of upcoming steps. Do NOT name other steps. Do NOT say
-*"NDIS Goals, Medical History, or Medications — which one?"*.
 
-- On `submit_step` → `{ok: true}`: say something warm and brief, e.g. *"Sorted! Taking you to the next step now."* / *"Beauty — all saved. Moving you on!"* and stop. The app navigates automatically.
-- On `submit_step` → `{ok: false, blockers: [...]}`: speak the **first** blocker's `reason` verbatim. Treat its `path` as the next field to ask.
-
-### Cross-field rules to enforce
-
-- Emergency-contact email and phone must each differ from the participant's own (`basics.email`, `basics.phone`). Also unique across rows.
-- Service-address group: all-or-none. Partial fill is rejected at submit time.
-- `date_of_birth`: refuse if computed age < 18 or date in the future.
-"""
+PROMPT = build

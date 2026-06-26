@@ -1,7 +1,15 @@
 # ruff: noqa
-"""Auto-generated from medical_information.md."""
+"""Medical (Step 5) — voice prompt.
 
-PROMPT = r"""## Step-specific rules — Medical (Step 5)
+Repeatable-section walk-throughs injected only while rows are incomplete;
+enum voice-to-wire mappings injected while mobility_status is unfilled.
+"""
+from __future__ import annotations
+
+from onboarding.prompts._section_utils import step
+from onboarding.voice.turn_payload import VisibleField
+
+_FIELD_TABLES = r"""## Step-specific rules — Medical (Step 5)
 
 This step has 6 sections: `medical_overview`, `mobility`, `allergies`
 (repeatable), `medications` (repeatable), `medical_history` (repeatable,
@@ -12,10 +20,10 @@ optional). Use these exact section ids, field ids, and enum values for
 
 | field id | type | required | enum values (use EXACTLY) | validation |
 |---|---|---|---|---|
-| `primary_diagnosis` | textarea | yes | — | required, max 250 chars |
+| `primary_diagnosis` | textarea | yes | — | max 250 chars |
 | `secondary_diagnosis` | textarea | no | — | if filled: min 5, max 250 chars |
 | `blood_type` | enum | no | `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-` | — |
-| `primary_doctor_name` | text | yes | — | required, max 50 chars |
+| `primary_doctor_name` | text | yes | — | max 50 chars |
 | `doctor_phone` | phone | no | — | Australian mobile if filled |
 | `last_medical_checkup` | date | no | — | ISO `YYYY-MM-DD`; today − 10 years … today |
 
@@ -51,48 +59,60 @@ ALL fields required per row (no all-or-none).
 | `purpose` | textarea | yes | required, min 5, max 100 chars |
 | `notes` | text | no | if filled: min 5, max 100 chars |
 
-### Section: `medical_history` (repeatable, min 1, max 10 — title-gated)
+### Section: `medical_history` (repeatable, min 0, max 10 — title-gated optional)
 
-Row is all-or-none gated by `title`: if title is empty, the entire row is
-stripped on save. Otherwise all three fields are required.
+Row active when `title` is non-empty; blank title → whole row stripped on save.
 
-| field id (per row) | type | required (when row active) | validation |
+| field id (per row) | type | required (when active) | validation |
 |---|---|---|---|
-| `title` | text | yes | required, max 25 chars |
+| `title` | text | yes | max 25 chars |
 | `year` | year | yes | integer 1900 … current year |
-| `description` | textarea | yes | required, min 5, max 100 chars |
+| `description` | textarea | yes | min 5, max 100 chars |"""
 
-### Walk-through order for repeatable rows
+_ALLERGY_WALKTHROUGH = r"""### Walk-through — allergies row
 
-After `add_row(section)` returns `{ok:true, index:N}`, ask for fields IN
-ORDER and call `update_field` after each capture:
+After `add_row(section="allergies")` → `{ok:true, index:N}`:
+1. `title` → `update_field(section="allergies", field="title", repeatable_index=N, value=...)`
+2. `description` → `update_field(section="allergies", field="description", repeatable_index=N, value=...)`
 
-- **allergies**: title → description
-- **medications**: medication_name → dosage → frequency → purpose → (notes optional)
-- **medical_history**: title → year → description
+Only after BOTH saved may you ask *"Want to add another allergy, or shall we move on?"*"""
 
-Only after all required fields on the row are saved may you ask
-*"Want to add another, or are we good to move on?"*
+_MEDICATION_WALKTHROUGH = r"""### Walk-through — medications row
 
-### Enum strictness — read the list verbatim
+After `add_row(section="medications")` → `{ok:true, index:N}`, collect in order:
+1. `medication_name`
+2. `dosage`
+3. `frequency`
+4. `purpose`
+5. `notes` (optional — offer once; if declined, move on)
 
-When a field has `enum_values` above, the ONLY valid values are those
-listed — letter-for-letter. Do NOT translate, paraphrase, or substitute:
+Save each with `update_field(..., repeatable_index=N)`. Only after all required fields saved may you ask *"Want to add another medication, or shall we move on?"*"""
 
-- `blood_type`: only `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`.
-- `mobility_status`: only `Independent`, `Uses Walking Aid`, `Wheelchair User`, `Bed Bound`, `Requires Assistance`. ("Walks with cane" → `Uses Walking Aid`; "Bedridden" → `Bed Bound`; "Needs help" → `Requires Assistance`.)
+_HISTORY_WALKTHROUGH = r"""### Walk-through — medical_history row (title-gated)
 
-If the participant says something not in the list, ask them to pick one of
-the listed options. Read the FULL list of options — do NOT abbreviate.
+After `add_row(section="medical_history")` → `{ok:true, index:N}`:
+1. `title` — if left blank, the whole row is stripped on save
+2. `year` — integer 1900 … current year
+3. `description`
 
-### Submission and progression — sequential only
+Save each with `update_field(..., repeatable_index=N)`. Only after all three saved may you ask *"Want to add another history entry, or shall we move on?"*"""
 
-When the participant says *"save", "submit", "next", "done", "I'm done",
-"that's everything", "ready to move on", "move on", "continue"*, your
-VERY NEXT ACTION is `submit_step(confirmation_transcript=<exact words>)`.
+_ENUM_EXAMPLES = r"""### Enum — voice-to-wire mappings
 
-Do NOT offer a menu of upcoming steps. The app navigates automatically.
+- `blood_type`: read aloud as "A positive", "B negative", "AB positive" etc. Send medical notation: `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`.
+- `mobility_status`: "Walks with cane" → `Uses Walking Aid`; "Bedridden" → `Bed Bound`; "Needs help" → `Requires Assistance`."""
 
-- On `{ok: true}`: warm brief line, e.g. *"Sorted! Taking you to the next step."* / *"Beauty — all saved, moving you on!"*
-- On `{ok: false, blockers}`: speak first blocker's `reason` verbatim.
-"""
+
+@step(
+    always=[_FIELD_TABLES],
+    if_incomplete=[
+        ("allergies", 1, _ALLERGY_WALKTHROUGH),
+        ("medications", 1, _MEDICATION_WALKTHROUGH),
+        ("medical_history", 0, _HISTORY_WALKTHROUGH),
+    ],
+    if_unfilled=(["mobility.mobility_status"], _ENUM_EXAMPLES),
+)
+def build(visible_fields: list[VisibleField]) -> str: ...
+
+
+PROMPT = build

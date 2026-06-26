@@ -56,7 +56,7 @@ _CLIENT_LEAKAGE_TOKENS = [
 
 @pytest.mark.parametrize("step_id", STAFF_STEP_IDS)
 def test_staff_step_fragment_loads(step_id: str) -> None:
-    fragment = _step_rules_section(step_id, _REGISTRY)
+    fragment = _step_rules_section(step_id, [], _REGISTRY)
     assert fragment.strip(), f"empty/missing staff fragment for {step_id}"
     assert "context override" in fragment.lower(), (
         f"{step_id} missing the staff CONTEXT OVERRIDE header"
@@ -65,7 +65,7 @@ def test_staff_step_fragment_loads(step_id: str) -> None:
 
 @pytest.mark.parametrize("step_id", STAFF_STEP_IDS)
 def test_staff_fragment_has_no_client_leakage(step_id: str) -> None:
-    body = _step_rules_section(step_id, _REGISTRY).lower()
+    body = _step_rules_section(step_id, [], _REGISTRY).lower()
     leaked = [tok for tok in _CLIENT_LEAKAGE_TOKENS if tok in body]
     assert not leaked, f"{step_id} leaked client-flow tokens: {leaked}"
 
@@ -93,10 +93,10 @@ def test_loader_resolves_steps_across_flow_subfolders() -> None:
     (steps/client/) and a staff step (steps/staff/) by step_id alone, and
     returns empty for an unknown step."""
     assert _step_rules_section(
-        "personal_information", _REGISTRY
+        "personal_information", [], _REGISTRY
     ).strip(), "client step did not resolve"
     assert _step_rules_section(
-        "staff_personal_information", _REGISTRY
+        "staff_personal_information", [], _REGISTRY
     ).strip(), "staff step did not resolve"
     with pytest.raises(KeyError):
-        _step_rules_section("no_such_step", _REGISTRY)
+        _step_rules_section("no_such_step", [], _REGISTRY)

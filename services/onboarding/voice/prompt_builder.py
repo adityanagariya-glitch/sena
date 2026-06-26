@@ -21,6 +21,7 @@ or mode-specific logic.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Protocol, cast
 
 from .turn_payload import TurnPayload, VisibleField
@@ -30,7 +31,7 @@ class PromptRegistry(Protocol):
     """Structural type for a prompt-set registry module (see prompts/registry.py)."""
 
     TEMPLATE: str
-    STEPS: dict[str, str]
+    STEPS: dict[str, str | Callable[[list[VisibleField]], str]]
     MODES: dict[str, str]
 
 
@@ -86,7 +87,9 @@ def _grounding_section(enabled: bool) -> str:
     )
 
 
-def _step_rules_section(step_id: str, reg: PromptRegistry) -> str:
+def _step_rules_section(
+    step_id: str, visible_fields: list[VisibleField], reg: PromptRegistry
+) -> str:
     """Return the `{step_id}` step fragment from the registry, wrapped.
 
     step_id is globally unique across flows (e.g. `personal_information` vs
@@ -94,16 +97,20 @@ def _step_rules_section(step_id: str, reg: PromptRegistry) -> str:
     non-empty step_id with no registered fragment is a misconfiguration (typo /
     unshipped prompt) and raises loudly — replacing the old silent rglob-miss
     that produced a half-built prompt. Empty step_id → empty section.
+
+    Registry entries may be a plain str (static) or a callable that accepts
+    visible_fields and returns the optimised fragment (state-aware injection).
     """
     if not step_id:
         return ""
     try:
-        body = reg.STEPS[step_id].strip()
+        entry = reg.STEPS[step_id]
     except KeyError:
         raise KeyError(
             f"no prompt fragment registered for step_id={step_id!r}; "
             f"known steps: {sorted(reg.STEPS)}"
         ) from None
+    body = (entry(visible_fields) if callable(entry) else entry).strip()
     if not body:
         return ""
     return f"\n{body}\n"
@@ -164,6 +171,6 @@ def build_system_prompt(
         .replace("__VOICE_COVERAGE_SECTION__", _voice_coverage_section(voice_coverage))
         .replace("__GROUNDING_SECTION__", _grounding_section(grounding_enabled))
         .replace("__MODE_RULES__", _mode_rules_section(mode, reg))
-        .replace("__STEP_RULES__", _step_rules_section(turn.step.id, reg))
+        .replace("__STEP_RULES__", _step_rules_section(turn.step.id, turn.visible_fields, reg))
         .replace("__TURN_JSON__", _bootstrap_state_json(turn, tool_state_channel))
     )

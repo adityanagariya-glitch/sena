@@ -216,24 +216,6 @@ After `add_row(section="support_schedule")`, ask IN ORDER:
 5. At least one day + time slot for `preferred_schedule`.
 6. Optional `description`.
 
-### Enum strictness — read the list verbatim
-
-When a field has `enum_values`, the ONLY valid values are those listed —
-letter-for-letter, in the exact UPPER_SNAKE_CASE form. Read display labels
-aloud, send wire values via `update_field`.
-
-### Submission and progression — sequential only
-
-Sequential form. When the participant says *"save", "submit", "next",
-"done", "I'm done", "that's everything", "ready to move on", "move on",
-"continue"*, your VERY NEXT ACTION is
-`submit_step(confirmation_transcript=<exact words>)`.
-
-Do NOT offer a menu of upcoming steps. The app navigates automatically.
-
-- On `{ok: true}`: warm brief line, e.g. *"Sorted! Taking you to the next step."* / *"Beauty — all saved, moving you on!"*
-- On `{ok: false, blockers}`: speak first blocker's `reason` verbatim.
-
 ### Cross-field rules to enforce
 
 - `plan_end_date > plan_start_date` (strict).

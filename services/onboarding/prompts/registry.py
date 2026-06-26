@@ -6,6 +6,10 @@ MODES: mode -> rules text.  Missing key -> KeyError at call site (by design).
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
+from onboarding.voice.turn_payload import VisibleField
+
 from .onboarding_system import TEMPLATE as TEMPLATE
 from .steps.client.consent import PROMPT as _step_consent
 from .steps.client.consent_overview import PROMPT as _step_consent_overview
@@ -24,7 +28,7 @@ from .steps.staff.staff_role_information import PROMPT as _step_staff_role_infor
 from .modes.fresh import PROMPT as _mode_fresh
 from .modes.update import PROMPT as _mode_update
 
-STEPS: dict[str, str] = {
+STEPS: dict[str, str | Callable[[list[VisibleField]], str]] = {
     'consent': _step_consent,
     'consent_overview': _step_consent_overview,
     'consent_review': _step_consent_review,
