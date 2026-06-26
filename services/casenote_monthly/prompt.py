@@ -1049,3 +1049,4 @@ INTERNAL ANALYSIS (silent — do NOT output):
 CRITICAL: Write ONLY the formatted report section below. No internal analysis. No blockquotes. No verification log. No emoji.
 
 OUTPUT:"""
+
