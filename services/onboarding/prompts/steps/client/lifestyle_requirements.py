@@ -1,4 +1,7 @@
-## Step-specific rules — Requirements (Step 2)
+# ruff: noqa
+"""Auto-generated from lifestyle_requirements.md."""
+
+PROMPT = r"""## Step-specific rules — Requirements (Step 2)
 
 This step has 4 sections: `requirements` (lifestyle textareas + communication
 multi-enums), `morning_routine` (repeatable, optional), and `evening_routine`
@@ -103,3 +106,4 @@ Do NOT offer a menu of upcoming steps. The app navigates automatically.
 
 - On `submit_step` → `{ok: true}`: say something warm and brief, e.g. *"Sorted! Taking you to the next step."* / *"Beauty — all saved, moving you on!"* and stop.
 - On `submit_step` → `{ok: false, blockers: [...]}`: speak the **first** blocker's `reason` verbatim. Treat its `path` as the next field to ask.
+"""

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from pathlib import Path
 from typing import Any
 
 import structlog
@@ -30,6 +29,7 @@ from models.schemas import AuthContext, TokenUsage
 from case_review.services.usage import get_usage, start_usage
 from voice.casenote_schema import CASE_NOTE_SCHEMA
 from voice.drafter import run_draft
+from voice.prompts import registry as _VOICE_REGISTRY
 from voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
 from shared.src.sena_common.voice import (
     FormStateRepo,
@@ -50,7 +50,6 @@ voice_router = APIRouter()
 _KEY_PREFIX = "sena:case_review"
 _STEP_ID = "staff_case_note"
 _STEP_LABEL = "Case Note"
-_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "voice" / "prompts"
 _STAFF_ROLES = {"worker", "staff", "support_worker", "admin"}
 
 
@@ -65,7 +64,6 @@ def _voice_config() -> VoiceEngineConfig:
     return VoiceEngineConfig(
         gemini_api_key=settings.gemini_api_key,
         gemini_live_model_id=settings.gemini_live_model_id,
-        prompts_dir=_PROMPTS_DIR,
         grounding_enabled=settings.voice_grounding_enabled,
         screen_state_max_bytes=settings.screen_state_max_bytes,
         session_max_sec=settings.voice_session_max_sec,
@@ -315,9 +313,8 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
             initial_turn,
             grounding_enabled=cfg.grounding_enabled,
             voice_coverage=CASE_NOTE_SCHEMA.voice_coverage,
-            prompts_dir=cfg.prompts_dir,
+            registry=_VOICE_REGISTRY,
             tool_state_channel=cfg.tool_state_channel,
-            template_name="case_note_system.md",
         )
 
         # Early exit optimization: if all required fields are filled, suggest completion

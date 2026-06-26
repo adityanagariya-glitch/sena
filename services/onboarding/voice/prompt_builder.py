@@ -11,30 +11,38 @@ placeholders into a fixed template:
   __TURN_JSON__               — bootstrap state (header-only when tool state
                                  channel enabled; full TurnPayload when flag off)
 
-Per-step rules live in `prompts/steps/<flow>/{step_id}.md` (grouped by flow —
-e.g. steps/client/, steps/staff/). Mode rules live in
-`prompts/modes/{fresh,update}.md`. Edit one file per step/mode. Missing file =
-empty section. The base template stays free of step- or mode-specific logic.
+Per-step / per-mode rules and the base template now live as importable .py
+modules under `prompts/` (one constant per file), assembled by
+`prompts/registry.py` into TEMPLATE / STEPS / MODES. Each prompt-set passes its
+registry via the `registry` kwarg. A step_id / mode with no registered fragment
+raises loudly — no silent empty section. The base template stays free of step-
+or mode-specific logic.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import Protocol, cast
 
 from .turn_payload import TurnPayload, VisibleField
 
 
-def _default_prompts_dir() -> Path:
-    """Fallback prompts dir = onboarding's, resolved lazily.
+class PromptRegistry(Protocol):
+    """Structural type for a prompt-set registry module (see prompts/registry.py)."""
+
+    TEMPLATE: str
+    STEPS: dict[str, str]
+    MODES: dict[str, str]
+
+
+def _default_registry() -> PromptRegistry:
+    """Fallback prompt registry = onboarding's, imported lazily.
 
     Lazy import so loading this module does NOT require ``onboarding`` to be
-    installed — case_review passes its own ``prompts_dir`` and never triggers
-    this. ``onboarding.__file__`` is None (namespace pkg), so resolve via
-    ``__path__``.
+    installed — case_review passes its own ``registry`` and never triggers this.
     """
-    import onboarding
+    from onboarding.prompts import registry
 
-    return Path(next(iter(onboarding.__path__))).resolve() / "prompts"
+    return cast("PromptRegistry", registry)
 
 
 def _bootstrap_state_json(turn: TurnPayload, tool_state_channel: bool) -> str:
@@ -78,21 +86,24 @@ def _grounding_section(enabled: bool) -> str:
     )
 
 
-def _step_rules_section(step_id: str, steps_dir: Path) -> str:
-    """Load the `{step_id}.md` step fragment from anywhere under prompts/steps/.
+def _step_rules_section(step_id: str, reg: PromptRegistry) -> str:
+    """Return the `{step_id}` step fragment from the registry, wrapped.
 
-    Step files are grouped into per-flow subfolders (steps/client/, steps/staff/,
-    …). step_id is globally unique (e.g. `personal_information` vs
-    `staff_personal_information`), so a recursive search resolves to exactly one
-    file regardless of which subfolder holds it. New flows add a subfolder; this
-    loader needs no change. Missing file → empty section.
+    step_id is globally unique across flows (e.g. `personal_information` vs
+    `staff_personal_information`); the registry maps it to its prompt text. A
+    non-empty step_id with no registered fragment is a misconfiguration (typo /
+    unshipped prompt) and raises loudly — replacing the old silent rglob-miss
+    that produced a half-built prompt. Empty step_id → empty section.
     """
     if not step_id:
         return ""
-    matches = sorted(steps_dir.rglob(f"{step_id}.md"))
-    if not matches:
-        return ""
-    body = matches[0].read_text(encoding="utf-8").strip()
+    try:
+        body = reg.STEPS[step_id].strip()
+    except KeyError:
+        raise KeyError(
+            f"no prompt fragment registered for step_id={step_id!r}; "
+            f"known steps: {sorted(reg.STEPS)}"
+        ) from None
     if not body:
         return ""
     return f"\n{body}\n"
@@ -119,12 +130,19 @@ def _detect_form_mode(visible_fields: list[VisibleField]) -> str:
     return "fresh"
 
 
-def _mode_rules_section(mode: str, modes_dir: Path) -> str:
-    """Load `prompts/modes/{mode}.md` if present, else empty."""
-    fragment_path = modes_dir / f"{mode}.md"
-    if not fragment_path.is_file():
-        return ""
-    body = fragment_path.read_text(encoding="utf-8").strip()
+def _mode_rules_section(mode: str, reg: PromptRegistry) -> str:
+    """Return `modes[mode]` from the registry, wrapped.
+
+    Mode is always `fresh`/`update` (see _detect_form_mode), so a missing key is
+    a packaging bug and raises loudly.
+    """
+    try:
+        body = reg.MODES[mode].strip()
+    except KeyError:
+        raise KeyError(
+            f"no mode fragment registered for mode={mode!r}; "
+            f"known modes: {sorted(reg.MODES)}"
+        ) from None
     if not body:
         return ""
     return f"\n{body}\n"
@@ -135,18 +153,17 @@ def build_system_prompt(
     *,
     grounding_enabled: bool = False,
     voice_coverage: list[str] | None = None,
-    prompts_dir: Path | None = None,
+    registry: PromptRegistry | None = None,
     tool_state_channel: bool = True,
-    template_name: str = "onboarding_system.md",
 ) -> str:
-    base = prompts_dir if prompts_dir is not None else _default_prompts_dir()
-    template = (base / template_name).read_text(encoding="utf-8")
+    reg = registry if registry is not None else _default_registry()
+    template = reg.TEMPLATE
     mode = _detect_form_mode(turn.visible_fields)
     return (
         template.replace("__STEP_LABEL__", turn.step.label)
         .replace("__VOICE_COVERAGE_SECTION__", _voice_coverage_section(voice_coverage))
         .replace("__GROUNDING_SECTION__", _grounding_section(grounding_enabled))
-        .replace("__MODE_RULES__", _mode_rules_section(mode, base / "modes"))
-        .replace("__STEP_RULES__", _step_rules_section(turn.step.id, base / "steps"))
+        .replace("__MODE_RULES__", _mode_rules_section(mode, reg))
+        .replace("__STEP_RULES__", _step_rules_section(turn.step.id, reg))
         .replace("__TURN_JSON__", _bootstrap_state_json(turn, tool_state_channel))
     )

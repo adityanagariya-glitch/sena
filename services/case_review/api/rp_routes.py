@@ -5,7 +5,6 @@ import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -69,6 +68,7 @@ from case_review.services.pipeline.drafter import run_drafter
 from case_review.services.pipeline.graph import run_pipeline
 from case_review.services.pipeline.transcription import resolve_media_format, run_transcription
 from case_review.voice.casenote_schema import CASE_NOTE_SCHEMA
+from case_review.voice.prompts import registry as _RP_VOICE_REGISTRY
 from case_review.voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -681,8 +681,6 @@ async def draft_case_note_audio(
 _RP_VOICE_KEY_PREFIX = "sena:rp_voice"
 _RP_STEP_ID = "rp_case_note"
 _RP_STEP_LABEL = "Case Note"
-# Path to the same prompts dir used by the general case-review voice session.
-_RP_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "voice" / "prompts"
 _RP_STAFF_ROLES = {"worker", "staff", "support_worker", "admin"}
 
 
@@ -701,7 +699,6 @@ def _rp_voice_config() -> VoiceEngineConfig:
     return VoiceEngineConfig(
         gemini_api_key=settings.gemini_api_key,
         gemini_live_model_id=settings.gemini_live_model_id,
-        prompts_dir=_RP_PROMPTS_DIR,
         grounding_enabled=settings.voice_grounding_enabled,
         screen_state_max_bytes=settings.screen_state_max_bytes,
         session_max_sec=settings.voice_session_max_sec,
@@ -872,9 +869,8 @@ async def rp_voice_websocket(
             initial_turn,
             grounding_enabled=cfg.grounding_enabled,
             voice_coverage=CASE_NOTE_SCHEMA.voice_coverage,
-            prompts_dir=cfg.prompts_dir,
+            registry=_RP_VOICE_REGISTRY,
             tool_state_channel=cfg.tool_state_channel,
-            template_name="case_note_system.md",
         )
 
         # Early exit optimization: if all required fields are filled, suggest completion

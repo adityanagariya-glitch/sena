@@ -20,6 +20,14 @@ exclude = ["migrations*", "tests*"]
 target-version = "py312"
 line-length = 100
 src = ["shared/src", "services/*/src"]
+# Auto-generated prompt modules (md->py): byte-exact constants — must NOT be
+# linted or formatted (ruff would strip semantically-significant trailing
+# whitespace / wrap long prose, drifting the prompt). Edit the .py directly.
+extend-exclude = [
+    "services/onboarding/prompts",
+    "services/case_review/voice/prompts",
+    "services/case_review/prompts",
+]
 
 [tool.ruff.lint]
 select = [

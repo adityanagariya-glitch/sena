@@ -17,7 +17,6 @@ Model: SENA_AI_CLASSIFIER_MODEL (Haiku — extraction task, no Sonnet needed)
 
 import asyncio
 import time
-from pathlib import Path
 from typing import Any
 
 import boto3
@@ -26,12 +25,10 @@ from pydantic import BaseModel
 
 from core.settings import settings
 from case_review.models.case_note_field_schema import schema_as_text
+from case_review.prompts.classify import PROMPT as _CLASSIFY_PROMPT
 from case_review.services.usage import record_and_print_converse
 
 log = structlog.get_logger(__name__)
-
-_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "classify.md"
-_prompt_template: str | None = None
 
 # Singleton Bedrock client — avoids per-call connection overhead
 _bedrock_client = None
@@ -49,10 +46,7 @@ def _get_client():
 
 
 def _load_prompt() -> str:
-    global _prompt_template
-    if _prompt_template is None:
-        _prompt_template = _PROMPT_PATH.read_text(encoding="utf-8")
-    return _prompt_template
+    return _CLASSIFY_PROMPT
 
 
 # ── Tool schema (replaces Gemini response_schema) ─────────────────────────────

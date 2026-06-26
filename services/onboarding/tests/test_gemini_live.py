@@ -49,15 +49,11 @@ class TestIsClientDisconnect:
 
 
 def _make_session(repo: FormStateRepo, session_id: str = "sid-1") -> GeminiLiveSession:
-    import onboarding
-    from pathlib import Path
-
     ws = MagicMock()
     ws.send_text = AsyncMock()
     cfg = VoiceEngineConfig(
         gemini_api_key="test-key",
         gemini_live_model_id="gemini-3.1-flash-live-preview",
-        prompts_dir=Path(next(iter(onboarding.__path__))).resolve() / "prompts",
     )
     return GeminiLiveSession(
         websocket=ws,

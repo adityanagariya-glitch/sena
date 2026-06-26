@@ -1,4 +1,7 @@
-## STAFF CASE NOTE — context override (READ FIRST)
+# ruff: noqa
+"""Auto-generated from staff_case_note.md."""
+
+PROMPT = r"""## STAFF CASE NOTE — context override (READ FIRST)
 
 You are helping a **support worker** dictate a **post-shift case note** for a
 participant they just supported. This is NOT an onboarding flow. There is no
@@ -135,3 +138,4 @@ When the worker says *"save", "submit", "done", "that's all", "I'm done",
 
 Do NOT summarise the sections already filled unless the worker explicitly asks
 to review. Do NOT name upcoming steps or sections unprompted.
+"""

@@ -176,13 +176,11 @@ async def onboarding_ws(
             next_target=None,
         )
 
-        import onboarding
-        from pathlib import Path
+        from onboarding.prompts import registry as onb_registry
 
         voice_cfg = VoiceEngineConfig(
             gemini_api_key=settings.gemini_api_key,
             gemini_live_model_id=settings.gemini_live_model_id,
-            prompts_dir=Path(next(iter(onboarding.__path__))).resolve() / "prompts",
             grounding_enabled=settings.onboarding_grounding_enabled,
             screen_state_max_bytes=settings.screen_state_max_bytes,
             session_max_sec=settings.session_max_sec,
@@ -196,7 +194,7 @@ async def onboarding_ws(
             initial_turn,
             grounding_enabled=settings.onboarding_grounding_enabled,
             voice_coverage=(schema.voice_coverage if schema and schema.voice_coverage else None),
-            prompts_dir=voice_cfg.prompts_dir,
+            registry=onb_registry,
             tool_state_channel=voice_cfg.tool_state_channel,
         )
 

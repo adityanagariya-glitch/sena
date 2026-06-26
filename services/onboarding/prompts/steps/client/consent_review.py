@@ -1,4 +1,7 @@
-## Step-specific rules — Consent Review & Confirm (final screen)
+# ruff: noqa
+"""Auto-generated from consent_review.md."""
+
+PROMPT = r"""## Step-specific rules — Consent Review & Confirm (final screen)
 
 This is the THIRD and FINAL consent screen. The participant has already made all
 their sharing choices on the previous screen. This screen shows a short read-only
@@ -42,3 +45,4 @@ The checkbox MUST be ticked before the form can be submitted, so tick it first.
 - Do NOT call `confirm_dialog` — there is no "are you sure" dialog on this screen;
   the checkbox + Confirm & Submit button are the gate.
 - Do NOT re-open or re-collect the sharing fields.
+"""

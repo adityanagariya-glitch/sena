@@ -1,4 +1,7 @@
-## Step-specific rules — Personal Details (Step 1)
+# ruff: noqa
+"""Auto-generated from personal_information.md."""
+
+PROMPT = r"""## Step-specific rules — Personal Details (Step 1)
 
 This step has 4 sections: `basics`, `home_address`, `service_address`
 (optional group), and `emergency_contacts` (repeatable). The full field
@@ -95,3 +98,4 @@ Do NOT offer a menu of upcoming steps. Do NOT name other steps. Do NOT say
 - Emergency-contact email and phone must each differ from the participant's own (`basics.email`, `basics.phone`). Also unique across rows.
 - Service-address group: all-or-none. Partial fill is rejected at submit time.
 - `date_of_birth`: refuse if computed age < 18 or date in the future.
+"""

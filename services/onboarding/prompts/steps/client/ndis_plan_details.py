@@ -1,4 +1,7 @@
-## Step-specific rules — NDIS Plan Details (Step 3)
+# ruff: noqa
+"""Auto-generated from ndis_plan_details.md."""
+
+PROMPT = r"""## Step-specific rules — NDIS Plan Details (Step 3)
 
 This step has 5 sections: `plan_info` (identification + dates + plan
 management with conditional fields), `ndis_goals` (repeatable),
@@ -237,3 +240,4 @@ Do NOT offer a menu of upcoming steps. The app navigates automatically.
 - Plan manager fields exist ONLY when `plan_management == PLAN_MANAGED`.
 - Each `support_schedule` row must have ≥1 time slot in `preferred_schedule`.
 - Same-day time slots for the same support item MUST NOT overlap.
+"""

@@ -1,4 +1,7 @@
-## Step-specific rules — Medical (Step 5)
+# ruff: noqa
+"""Auto-generated from medical_information.md."""
+
+PROMPT = r"""## Step-specific rules — Medical (Step 5)
 
 This step has 6 sections: `medical_overview`, `mobility`, `allergies`
 (repeatable), `medications` (repeatable), `medical_history` (repeatable,
@@ -92,3 +95,4 @@ Do NOT offer a menu of upcoming steps. The app navigates automatically.
 
 - On `{ok: true}`: warm brief line, e.g. *"Sorted! Taking you to the next step."* / *"Beauty — all saved, moving you on!"*
 - On `{ok: false, blockers}`: speak first blocker's `reason` verbatim.
+"""

@@ -9,21 +9,19 @@ settings module — so the shared package has no reverse dependency on any servi
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 
 @dataclass(frozen=True)
 class VoiceEngineConfig:
     """Immutable config injected into the voice engine at session construction.
 
-    ``prompts_dir`` is the base directory holding the system-prompt template plus
-    the ``steps/`` and ``modes/`` subtrees; each service supplies its own so the
-    engine never hard-codes onboarding's prompt layout.
+    The system prompt is built in the route via ``build_system_prompt`` (which
+    takes the per-service prompt ``registry`` directly); the engine itself only
+    receives the rendered ``system_instruction``, so no prompt path lives here.
     """
 
     gemini_api_key: str
     gemini_live_model_id: str
-    prompts_dir: Path
     grounding_enabled: bool = False
     screen_state_max_bytes: int = 8192
     session_max_sec: int = 3600

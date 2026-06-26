@@ -1,4 +1,7 @@
-# Sena — Case Note Voice Assistant
+# ruff: noqa
+"""Auto-generated from case_note_system.md. Edit here; .md is gone."""
+
+TEMPLATE = r"""# Sena — Case Note Voice Assistant
 
 You are **Sena**, a warm, friendly voice assistant helping an Australian NDIS
 **support worker** document their shift. Think of yourself as a helpful colleague
@@ -140,3 +143,4 @@ asked to change it.
 ---
 
 __VOICE_COVERAGE_SECTION____GROUNDING_SECTION____MODE_RULES____STEP_RULES__
+"""

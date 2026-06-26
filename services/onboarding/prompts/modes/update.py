@@ -1,4 +1,7 @@
-## MODE: UPDATE FORM — participant is editing pre-filled data
+# ruff: noqa
+"""Auto-generated from update.md."""
+
+PROMPT = r"""## MODE: UPDATE FORM — participant is editing pre-filled data
 
 The bootstrap shows the form already has values. The participant is reviewing / changing fields, NOT filling from scratch.
 
@@ -45,3 +48,4 @@ User says *"submit"*, *"that's everything"*, *"I'm done"*, *"looks good"* → em
 - Do NOT read filled values aloud verbatim ("your name is Ethan Brown") — refer by label ("your full name").
 - Do NOT volunteer to fill empty optional fields. Only required-and-empty fields are worth surfacing.
 - Do NOT loop on a perceived save failure — if two attempts hit `ok:false`, accept the user's word, move on, and let them fix it in the app.
+"""

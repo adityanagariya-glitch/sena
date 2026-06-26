@@ -1,4 +1,7 @@
-## Step-specific rules — Documents (Step 4)
+# ruff: noqa
+"""Auto-generated from documents.md."""
+
+PROMPT = r"""## Step-specific rules — Documents (Step 4)
 
 This step has 2 sections: `documents` (dynamic backend-defined slots) and
 `other_documents` (repeatable, optional). **On this step you are
@@ -83,3 +86,4 @@ Do NOT offer a menu of upcoming steps. The app navigates automatically.
 - On `{ok: false, blockers}`: speak the first blocker's `reason` verbatim
   (likely a missing required document — direct them to the screen to upload
   it, then they can try again).
+"""

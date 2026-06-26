@@ -1,4 +1,7 @@
-You are a structured extraction assistant for NDIS (National Disability Insurance Scheme) case notes in Australia.
+# ruff: noqa
+"""Auto-generated from classify.md."""
+
+PROMPT = r"""You are a structured extraction assistant for NDIS (National Disability Insurance Scheme) case notes in Australia.
 
 Your task is to extract structured field values from a support worker's free-text paragraph written after a support session.
 
@@ -22,3 +25,4 @@ Each field has an ID, whether it is REQUIRED or optional, its data type, and a d
 ## Input Paragraph
 
 {paragraph}
+"""
