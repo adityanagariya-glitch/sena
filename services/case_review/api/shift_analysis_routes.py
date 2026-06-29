@@ -262,11 +262,20 @@ async def analyze_shift(
     """Shift analysis: case-note form (+ optional voice transcript) → three review screens."""
     start_usage()
     form = payload.case_note_form
+    logger.info("shift-analysis START client=%s shift=%s", form.clientId, form.shiftId)
     try:
         case_note_input = payload.to_case_note_input(worker_id=form.shiftId)
+        logger.info("shift-analysis running pipeline client=%s shift=%s", form.clientId, form.shiftId)
         result = await run_pipeline(case_note_input, db, tenant_id=str(auth.tenant_id))
         resp = _build_response(result, form)
         resp.token_usage = TokenUsage(**get_usage())
+
+        usage = get_usage()
+        logger.info(
+            "shift-analysis DONE client=%s shift=%s input=%d output=%d total=%d",
+            form.clientId, form.shiftId,
+            usage["input_tokens"], usage["output_tokens"], usage["total_tokens"],
+        )
         log_api_tokens("/v1/case-review/shift-analysis", "POST", form.clientId, 200)
         return resp
     except Exception as exc:

@@ -350,6 +350,187 @@ export const analyze = (form: Record<string, unknown>, transcript: string, jwt: 
 
 ---
 
+## cURL Examples
+
+**Setup:**
+```bash
+BASE="http://3.111.109.14:8080/case-review"
+JWT="<your-sena-jwt>"
+```
+
+### Step 1 — POST /draft/audio (audio → transcript)
+
+```bash
+curl -X POST "$BASE/v1/restrictive-practices/draft/audio" \
+  -H "Authorization: Bearer $JWT" \
+  -F "audio=@/path/to/recording.m4a" \
+  -F "worker_id=worker-uuid-123" \
+  -F "client_id=client-uuid-456" \
+  -F "shift_date=2026-06-29" \
+  -F "shift_time=09:00-17:00" \
+  -F "worker_position=Support Worker"
+```
+
+**Response (200 OK):**
+```json
+{
+  "case_note_id": "abc-123",
+  "client_id": "client-uuid-456",
+  "worker_id": "worker-uuid-123",
+  "transcript": "Today I supported John with his morning routine...",
+  "describe": "Morning shift support",
+  "mood": "Calm and cooperative",
+  "token_usage": {
+    "input_tokens": 2500,
+    "output_tokens": 850,
+    "total_tokens": 3350
+  }
+}
+```
+
+### Step 2 — POST /shift-analysis (form + transcript → 3 screens)
+
+```bash
+curl -X POST "$BASE/v1/case-review/shift-analysis" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "case_note_form": {
+      "clientId": "client-uuid-456",
+      "shiftId": "shift-uuid-789",
+      "summaryOfShift": "Community outing with personal care tasks",
+      "activitiesAndSkill": {
+        "assisted": "Morning shower, dressing, breakfast prep",
+        "practisedSkill": "Making tea independently",
+        "participantsLevelOfIndependence": "High — minimal prompting",
+        "observation": "Engaged well with peers"
+      },
+      "wellbeingAndBehaviour": {
+        "mood": "Happy and engaged",
+        "behaviouralEvents": null,
+        "anyConcerns": false
+      },
+      "outcomesAndProgress": {
+        "whatWentWell": "Excellent progress with independence",
+        "furtherSupport": "Continue practicing skills",
+        "participantsComments": null
+      },
+      "safetyAndHealth": {
+        "medicationReminderGiven": true,
+        "safetyHazardObserved": false,
+        "anyInjuries": false,
+        "injuryDetails": null,
+        "reportMedia": []
+      },
+      "careFeedback": "Client was cooperative",
+      "anyIncident": false,
+      "handoverNote": "Client feeling good",
+      "reviewNotes": null
+    },
+    "voice_transcript": "Today I supported John with his morning routine and we went to the community centre..."
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "client_id": "client-uuid-456",
+  "shift_id": "shift-uuid-789",
+  "incident_detected": false,
+  "ai_summary": {
+    "reviewed_period": null,
+    "ai_confidence": 0.87,
+    "confidence_label": "High",
+    "progress_rating": "On Track",
+    "progress_identified": ["Independent personal care completion"],
+    "goal_progress": ["Community engagement progress"],
+    "potential_risks": [],
+    "patterns_detected": [],
+    "flagged_highlights": [],
+    "restrictive_practice_used": false,
+    "note_quality_score": 0.82,
+    "note_quality_label": "Average"
+  },
+  "risk_summary": null,
+  "incident_report": null,
+  "token_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 920,
+    "total_tokens": 3720
+  }
+}
+```
+
+### Step 3 — POST /incidents/analyze (same body → incident analysis)
+
+```bash
+curl -X POST "$BASE/v1/restrictive-practices/incidents/analyze" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "case_note_form": {
+      "clientId": "client-uuid-456",
+      "shiftId": "shift-uuid-789",
+      "summaryOfShift": "Community outing with personal care tasks",
+      "activitiesAndSkill": {
+        "assisted": "Morning shower, dressing, breakfast prep",
+        "practisedSkill": "Making tea independently",
+        "participantsLevelOfIndependence": "High — minimal prompting",
+        "observation": "Engaged well with peers"
+      },
+      "wellbeingAndBehaviour": {
+        "mood": "Happy and engaged",
+        "behaviouralEvents": null,
+        "anyConcerns": false
+      },
+      "outcomesAndProgress": {
+        "whatWentWell": "Excellent progress with independence",
+        "furtherSupport": "Continue practicing skills",
+        "participantsComments": null
+      },
+      "safetyAndHealth": {
+        "medicationReminderGiven": true,
+        "safetyHazardObserved": false,
+        "anyInjuries": false,
+        "injuryDetails": null,
+        "reportMedia": []
+      },
+      "careFeedback": "Client was cooperative",
+      "anyIncident": false,
+      "handoverNote": "Client feeling good",
+      "reviewNotes": null
+    },
+    "voice_transcript": "Today I supported John with his morning routine and we went to the community centre..."
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "case_note_id": "shift-uuid-789",
+  "client_id": "client-uuid-456",
+  "shift_id": "shift-uuid-789",
+  "incident_detected": false,
+  "ai_summary": {
+    "progress_identified": ["Independent personal care"],
+    "potential_risks": [],
+    "patterns_detected": [],
+    "flagged_highlights": [],
+    "note_quality_score": 0.82,
+    "note_quality_label": "Average"
+  },
+  "risk_summary": null,
+  "incident_draft": null,
+  "token_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 920,
+    "total_tokens": 3720
+  }
+}
+```
+
+---
+
 ## FAQ
 
 **Does the backend store the transcript?**
@@ -380,3 +561,44 @@ Skip Step 1. Send the typed `case_note_form` straight to Steps 2/3 with
 All three use the same SENA JWT (`Authorization: Bearer <jwt>`) as every other
 case_review endpoint. `roles`/`role` in the token are optional — not required to
 call any of them.
+
+---
+
+## Token Accounting & Logging
+
+Every API call logs token usage to the case_review service logs.
+
+### Token Accounting Formula
+
+```
+input_tokens  = bedrock_base_input + cache_read_tokens + cache_creation_tokens
+output_tokens = bedrock_output
+total_tokens  = input_tokens + output_tokens
+```
+
+(Prompt caching: static prefix is cached on first run, reused on subsequent calls.)
+
+### Log Format
+
+Each API logs to both the structured logger and stdout (Docker):
+
+```
+[api/POST /v1/case-review/shift-analysis      ] client_id=abc-123 in=2,500 out=850 total=3,350 [cache_write=1,200]
+[api/POST /v1/restrictive-practices/incidents/analyze] client_id=abc-123 in=2,200 out=920 total=3,120 [cache_read=1,200]
+```
+
+**View logs:**
+```bash
+docker logs sena-case-review         # once
+docker logs -f sena-case-review      # follow live
+```
+
+### Per-Endpoint Token Cost (typical)
+
+| Endpoint | Input | Output | Total | Notes |
+|----------|-------|--------|-------|-------|
+| `/draft/audio` | 2K–3K | 600–900 | 2.6K–3.9K | AWS Transcribe + summary |
+| `/shift-analysis` | 2.5K–3.5K | 800–1.2K | 3.3K–4.7K | Full pipeline (triage, RAG, evaluator, drafter) |
+| `/incidents/analyze` | 2.5K–3.5K | 800–1.2K | 3.3K–4.7K | Identical pipeline to /shift-analysis |
+
+Prompt caching reduces `input_tokens` on repeat calls (same note analyzed twice).
