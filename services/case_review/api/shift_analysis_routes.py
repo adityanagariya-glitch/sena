@@ -6,10 +6,10 @@ Single endpoint: the SENA shift case-note form (+ optional voice transcript) →
 three UI screens (AI Summary / Risk Summary / Incident Report).
 
 Engine split per field (see schemas.ShiftAnalysisResponse for the per-field map):
-  🤖 AI      — Bedrock Claude summary + evaluator + drafter (run_pipeline)
-  📚 RAG     — pgvector NDIS policy retrieval feeding the evaluator
-  🤖+📚      — AI judgement grounded in retrieved NDIS policy
-  🐍 Python  — deterministic derivations in this file (no LLM, no tokens)
+— Bedrock Claude summary + evaluator + drafter (run_pipeline)
+— pgvector NDIS policy retrieval feeding the evaluator
+— AI judgement grounded in retrieved NDIS policy
+Python  — deterministic derivations in this file (no LLM, no tokens)
 
 The Python derivations (progress_rating, suggested_attention, confidence_label,
 compliance timeframe) are hybrid: they consume the AI output and apply
@@ -50,7 +50,6 @@ shift_analysis_router = APIRouter(prefix="/v1/case-review", tags=["shift-analysi
 _HIGH_RISKS = {PolicyViolationRisk.HIGH, PolicyViolationRisk.CRITICAL}
 
 
-# ── 🐍 Python derivations (deterministic, no LLM) ──────────────────────────────
 
 
 def _confidence_label(conf: float) -> str:
@@ -91,7 +90,6 @@ def _derive_suggested_attention(
 ) -> list[str]:
     """Hybrid 🤖+🐍 — deterministic rules + the AI evaluator's action summary."""
     out: list[str] = []
-    # 🐍 Python rules
     if risk_level in ("High", "Critical"):
         out.append("Manager review recommended")
     if cross_check_unauthorised:
@@ -116,7 +114,6 @@ def _build_compliance_notes(
     """AI checks (from the drafter) + 🐍 timeframe check + 🤖+📚 restrictive-practice check."""
     notes: list[ComplianceNote] = []
 
-    # 🐍 Python — analysed at submission, so the documentation timeframe is met
     notes.append(ComplianceNote(
         label="Incident documented within the required timeframe",
         passed=True,
