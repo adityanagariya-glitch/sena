@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from api.routes import router
-from api.rp_routes import rp_router
+from api.routes import router  # ARCHIVED: not registered in active API
+from api.rp_routes import rp_router  # ARCHIVED: not registered in active API
 from api.voice_routes import voice_router
 from api.unified_incident_routes import unified_router
 from core.logging import configure_logging
@@ -121,10 +121,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(router)
-    app.include_router(rp_router)
-    app.include_router(voice_router)
-    app.include_router(unified_router)
+    # ACTIVE ROUTES (in Swagger):
+    app.include_router(rp_router)       # /v1/restrictive-practices/draft*, /draft/audio, /voice/session, /incidents/analyze
+    app.include_router(voice_router)    # /v1/case-review/voice/session, /draft, /health/live
+
+    # ARCHIVED ROUTES (preserved for future use, NOT in Swagger):
+    # - app.include_router(router)  # /health/ready, /v1/case-review/* (context, classify, review, incident/*)
+    # These are kept in code for future reference but not registered in the active API.
+    # See api/archived_routes.py for documentation.
+
+    # UNIFIED INCIDENT (main new endpoint):
+    app.include_router(unified_router)  # /v1/restrictive-practices/incidents/analyze
 
     # Browser voice demo harness (case_review voice dictation). Served
     # same-origin so its relative fetch + WS work without CORS. voice_demo.html
