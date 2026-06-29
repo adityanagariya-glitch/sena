@@ -587,12 +587,6 @@ Each API logs to both the structured logger and stdout (Docker):
 [api/POST /v1/restrictive-practices/incidents/analyze] client_id=abc-123 in=2,200 out=920 total=3,120 [cache_read=1,200]
 ```
 
-**View logs:**
-```bash
-docker logs sena-case-review         # once
-docker logs -f sena-case-review      # follow live
-```
-
 ### Per-Endpoint Token Cost (typical)
 
 | Endpoint | Input | Output | Total | Notes |
