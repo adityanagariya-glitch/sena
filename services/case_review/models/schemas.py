@@ -645,20 +645,6 @@ class UnifiedIncidentResponse(BaseModel):
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
-# ── Shift Analysis OUTPUT (POST /v1/case-review/shift-analysis) ────────────────
-#
-# Clean, UI-aligned response for the case-note → AI Summary / Risk Summary /
-# Incident Report flow. Each field is annotated with the engine that produces it:
-#   🤖 AI      — Bedrock Claude (LLM only)
-#   📚 RAG     — pgvector NDIS policy retrieval feeding the LLM
-#   🤖+📚      — AI judgement grounded in retrieved NDIS policy
-#   🐍 Python  — deterministic code / heuristics / math (no LLM)
-#
-# Human-only incident fields are intentionally EXCLUDED (the worker fills these
-# in the Incident Report UI): incident date & time, location, individuals
-# involved, witnesses, reported-to, additional notes.
-
-
 class ComplianceNote(BaseModel):
     """One AI-Check row in the Incident Report compliance panel."""
     label: str = Field(description="The compliance statement checked")
@@ -684,10 +670,10 @@ class ShiftAISummary(BaseModel):
 
 class ShiftRiskSummary(BaseModel):
     """Section 2 — Risk Summary. Null when triage did not flag the note."""
-    risk_category: str = Field(description="🤖+📚 AI+RAG — practice category vs NDIS taxonomy")
-    why_flagged: list[str] = Field(default=[], description="🤖 AI — trigger phrases")
-    current_risk_level: str = Field(description="🤖+📚 AI+RAG — Low | Medium | High | Critical")
-    suggested_attention: list[str] = Field(default=[], description="🤖+🐍 hybrid — rule base + AI action")
+    risk_category: str = Field(description="AI+RAG — practice category vs NDIS taxonomy")
+    why_flagged: list[str] = Field(default=[], description="AI — trigger phrases")
+    current_risk_level: str = Field(description="AI+RAG — Low | Medium | High | Critical")
+    suggested_attention: list[str] = Field(default=[], description=" hybrid — rule base + AI action")
 
 
 class ShiftIncidentReport(BaseModel):
