@@ -76,7 +76,7 @@ from case_review.voice.prompts import registry as _RP_VOICE_REGISTRY
 from case_review.voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
 
 logger = logging.getLogger(__name__)
-rp_router = APIRouter(prefix="/v1/case-review", tags=["case-review"])
+rp_router = APIRouter(prefix="/v1/restrictive-practices", tags=["case-review"])
 
 _security = HTTPBasic(auto_error=False)
 

@@ -33,7 +33,7 @@ from case_review.services.usage import get_usage, start_usage
 from case_review.services.pipeline.graph import run_pipeline
 
 logger = logging.getLogger(__name__)
-incidents_router = APIRouter(prefix="/v1/case-review", tags=["incidents"])
+incidents_router = APIRouter(prefix="/v1/restrictive-practices", tags=["incidents"])
 
 
 @incidents_router.post(
