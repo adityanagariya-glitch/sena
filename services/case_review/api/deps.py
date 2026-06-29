@@ -80,11 +80,14 @@ def _decode_jwt(token: str) -> dict:
 
 
 def _normalise_roles(raw: object) -> list[str]:
-    """Roles claim may be a list of strings or of {id, name} dicts."""
-    if not isinstance(raw, list):
+    """Roles claim is optional. May be a list of strings, a list of {id, name}
+    dicts, a single role string, or a single {id, name} dict. Missing/empty → []."""
+    if raw is None:
         return []
+    # Accept a bare singular role (string or dict) by wrapping it in a list.
+    items = raw if isinstance(raw, list) else [raw]
     out: list[str] = []
-    for r in raw:
+    for r in items:
         if isinstance(r, dict):
             val = r.get("name") or r.get("id")
             if val:
@@ -141,7 +144,8 @@ def _auth_from_jwt(token: str | None) -> AuthContext:
         return AuthContext(
             tenant_id=uuid.UUID(str(org_id)),
             user_id=uuid.UUID(str(user_id)),
-            roles=_normalise_roles(claims.get("roles")),
+            # Both "roles" (plural) and "role" (singular) accepted; both optional.
+            roles=_normalise_roles(claims.get("roles") or claims.get("role")),
         )
     except ValueError as exc:
         raise HTTPException(
