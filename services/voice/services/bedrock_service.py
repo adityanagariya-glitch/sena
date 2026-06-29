@@ -6,6 +6,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException, status
+from langfuse import observe, get_client
 
 # Phase 1 telemetry — opt-in by install. If sena_common isn't on the import
 # path, fall back to a no-op stub so the AI critical path never fails.
@@ -33,6 +34,21 @@ from voice.prompts.personal_details_prompt import (
 )
 from voice.services.usage_log import log_token_usage
 
+langfuse = get_client()
+_SERVICE = "voice"
+
+_lf_dictation_prompt = None
+try:
+    _lf_dictation_prompt = langfuse.get_prompt(f"{_SERVICE}/dictation-system")
+except Exception:
+    pass
+
+_lf_personal_details_prompt = None
+try:
+    _lf_personal_details_prompt = langfuse.get_prompt(f"{_SERVICE}/personal-details-system")
+except Exception:
+    pass
+
 
 class BedrockService:
     def __init__(self):
@@ -45,6 +61,7 @@ class BedrockService:
             ),
         )
 
+    @observe(as_type="generation", name="voice-bedrock-invoke", capture_input=False, capture_output=False)
     def _invoke_once(
         self,
         user_prompt: str,
@@ -74,8 +91,26 @@ class BedrockService:
         )
         payload = json.loads(response["body"].read())
         text = payload["content"][0]["text"]
+        usage = payload.get("usage", {}) or {}
+        lf_prompt = (
+            _lf_personal_details_prompt
+            if system_prompt is PERSONAL_DETAILS_SYSTEM_PROMPT
+            else _lf_dictation_prompt
+        )
+        langfuse.update_current_generation(
+            model=settings.bedrock_model_id,
+            input=user_prompt[:2000],
+            output=text[:2000],
+            usage_details={
+                "input": int(usage.get("input_tokens", 0) or 0),
+                "output": int(usage.get("output_tokens", 0) or 0),
+            },
+            prompt=lf_prompt,
+            metadata={"service": _SERVICE},
+        )
         return json.loads(text), payload
 
+    @observe(name="voice-dictation", capture_input=False, capture_output=False)
     def run_dictation_turn(
         self,
         transcript: str,
@@ -86,6 +121,10 @@ class BedrockService:
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> tuple[dict, int, dict]:
+        langfuse.update_current_span(
+            input={"transcript_len": len(transcript), "history_turns": len(history)},
+            metadata={"service": _SERVICE},
+        )
         prompt = build_user_prompt(
             transcript=transcript, session_snapshot=session_snapshot, history=history
         )
@@ -152,6 +191,7 @@ class BedrockService:
             },
         )
 
+    @observe(name="voice-personal-details", capture_input=False, capture_output=False)
     def run_personal_details_turn(
         self,
         transcript: str,
@@ -163,6 +203,10 @@ class BedrockService:
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> tuple[dict, int, dict]:
+        langfuse.update_current_span(
+            input={"transcript_len": len(transcript), "missing_field_count": len(missing_fields)},
+            metadata={"service": _SERVICE},
+        )
         prompt = build_personal_details_user_prompt(
             transcript=transcript,
             current_fields=current_fields,

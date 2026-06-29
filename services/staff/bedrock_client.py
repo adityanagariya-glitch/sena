@@ -7,9 +7,28 @@ Async variants: `call_bedrock_async` and `call_bedrock_stream_async` for paralle
 import asyncio
 import sys
 
+try:
+    from dotenv import find_dotenv, load_dotenv
+    _env = find_dotenv(usecwd=True)
+    if _env:
+        load_dotenv(_env, override=False)
+except ImportError:
+    pass
+
+from langfuse import observe, get_client
+
 from config import bedrock_runtime, MODEL_ID, GUARDRAILS, VERBOSE
 from guardrails import _last_user_text, _apply_guardrail
 from agents_types import StopReasonResponse
+
+langfuse = get_client()
+_SERVICE = "staff"
+
+_lf_prompt = None
+try:
+    _lf_prompt = langfuse.get_prompt(f"{_SERVICE}/system-prompt")
+except Exception:
+    pass
 
 # Anthropic prompt caching on Bedrock — Claude Sonnet 4.x supports it. Marking
 # the end of a stable prefix with a cachePoint block lets subsequent calls reuse
@@ -56,6 +75,7 @@ def _log_cache_usage(response: dict, label: str) -> None:
         print(f"[bedrock-cache] {label} read={read} write={write}", file=sys.stderr)
 
 
+@observe(as_type="generation", name="staff-generate-stream", capture_input=False, capture_output=False)
 def call_bedrock_stream(messages: list[dict], system_prompt: str | None = None, use_guardrail: bool = True, user_profile: str | None = None) -> str | None:
     """Streaming variant of call_bedrock. Prints tokens live and returns full text.
 
@@ -134,6 +154,18 @@ def call_bedrock_stream(messages: list[dict], system_prompt: str | None = None, 
         if not text:
             return None
 
+        langfuse.update_current_generation(
+            model=MODEL_ID,
+            input=_last_user_text(messages),
+            output=text[:2000],
+            usage_details={
+                "input": cache_usage.get("inputTokens", 0),
+                "output": cache_usage.get("outputTokens", 0),
+            },
+            prompt=_lf_prompt,
+            metadata={"service": _SERVICE},
+        )
+
         # Post-check: run extra guardrails on the full assembled output
         # Skip post-check if use_guardrail=False (same as pre-check)
         if use_guardrail and len(GUARDRAILS) > 1 and not intervened:
@@ -151,6 +183,7 @@ def call_bedrock_stream(messages: list[dict], system_prompt: str | None = None, 
         return None
 
 
+@observe(as_type="generation", name="staff-generate", capture_input=False, capture_output=False)
 def call_bedrock(messages: list[dict], system_prompt: str | None = None, user_profile: str | None = None, use_guardrail: bool = True) -> str | None:
     """Call Claude via Bedrock, wrapped with stacked AWS Bedrock Guardrails.
 
@@ -206,6 +239,19 @@ def call_bedrock(messages: list[dict], system_prompt: str | None = None, user_pr
         if not text:
             return None
 
+        usage = response.get("usage", {})
+        langfuse.update_current_generation(
+            model=MODEL_ID,
+            input=_last_user_text(messages),
+            output=text[:2000],
+            usage_details={
+                "input": usage.get("inputTokens", 0),
+                "output": usage.get("outputTokens", 0),
+            },
+            prompt=_lf_prompt,
+            metadata={"service": _SERVICE},
+        )
+
         # Post-check: run EXTRA guardrails on the response
         if use_guardrail and len(GUARDRAILS) > 1:
             for gid, ver in GUARDRAILS[1:]:
@@ -223,6 +269,7 @@ def call_bedrock(messages: list[dict], system_prompt: str | None = None, user_pr
 
 # ---- Async Variants (for parallelization) ----
 
+@observe(as_type="generation", name="staff-generate-async", capture_input=False, capture_output=False)
 async def call_bedrock_async(messages: list[dict], system_prompt: str | None = None, user_profile: str | None = None, use_guardrail: bool = True) -> str | None:
     """Async variant of call_bedrock using asyncio.to_thread to wrap sync boto3 calls."""
     import time
@@ -273,6 +320,19 @@ async def call_bedrock_async(messages: list[dict], system_prompt: str | None = N
         if not text:
             return None
 
+        usage = response.get("usage", {})
+        langfuse.update_current_generation(
+            model=MODEL_ID,
+            input=_last_user_text(messages),
+            output=text[:2000],
+            usage_details={
+                "input": usage.get("inputTokens", 0),
+                "output": usage.get("outputTokens", 0),
+            },
+            prompt=_lf_prompt,
+            metadata={"service": _SERVICE},
+        )
+
         # Post-check: run EXTRA guardrails on the response
         if use_guardrail and len(GUARDRAILS) > 1:
             for gid, ver in GUARDRAILS[1:]:
@@ -288,6 +348,7 @@ async def call_bedrock_async(messages: list[dict], system_prompt: str | None = N
         return None
 
 
+@observe(as_type="generation", name="staff-generate-stream-async", capture_input=False, capture_output=False)
 async def call_bedrock_stream_async(messages: list[dict], system_prompt: str | None = None, use_guardrail: bool = True, user_profile: str | None = None) -> str | None:
     """Async variant of call_bedrock_stream using asyncio.to_thread for streaming."""
     import time
@@ -353,6 +414,18 @@ async def call_bedrock_stream_async(messages: list[dict], system_prompt: str | N
 
         if not text:
             return None
+
+        langfuse.update_current_generation(
+            model=MODEL_ID,
+            input=_last_user_text(messages),
+            output=text[:2000],
+            usage_details={
+                "input": cache_usage.get("inputTokens", 0),
+                "output": cache_usage.get("outputTokens", 0),
+            },
+            prompt=_lf_prompt,
+            metadata={"service": _SERVICE},
+        )
 
         # Post-check: run extra guardrails on the full assembled output
         if use_guardrail and len(GUARDRAILS) > 1 and not intervened:

@@ -1,6 +1,15 @@
 from pydantic_settings import BaseSettings
 from typing import Literal
 
+# Load root .env so LANGFUSE_* keys reach os.environ before get_client() runs
+try:
+    from dotenv import find_dotenv, load_dotenv
+    _env = find_dotenv(usecwd=True)
+    if _env:
+        load_dotenv(_env, override=False)
+except ImportError:
+    pass
+
 
 class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────────────────────

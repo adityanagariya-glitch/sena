@@ -19,6 +19,7 @@ from typing import Any
 
 import boto3
 import structlog
+from langfuse import observe, get_client
 from pydantic import BaseModel
 
 from core.settings import settings
@@ -27,6 +28,16 @@ from case_review.prompts.summarize import PROMPT as _SUMMARIZE_PROMPT
 from case_review.services.usage import record_and_print_converse
 
 log = structlog.get_logger(__name__)
+
+langfuse = get_client()
+_SERVICE = "case_review"
+
+_lf_summarize_prompt = None
+try:
+    _lf_summarize_prompt = langfuse.get_prompt(f"{_SERVICE}/summarize-system")
+    _SUMMARIZE_PROMPT = _lf_summarize_prompt.compile()
+except Exception:
+    pass  # hardcoded _SUMMARIZE_PROMPT used as fallback
 
 # Singleton Bedrock client — avoids per-call connection overhead
 _bedrock_client = None
@@ -107,6 +118,7 @@ def _format_notes(notes: list[CaseNoteDTO]) -> str:
 
 # ── Core sync call (offloaded to thread pool) ─────────────────────────────────
 
+@observe(as_type="generation", name="summarize-case-notes", capture_input=False, capture_output=False)
 def _run_summarise(past_summary: str, new_notes: list[CaseNoteDTO]) -> SummaryResult:
     """Synchronous Bedrock Converse call — runs in a thread via asyncio.to_thread."""
     template = _load_prompt()
@@ -138,21 +150,35 @@ def _run_summarise(past_summary: str, new_notes: list[CaseNoteDTO]) -> SummaryRe
         inferenceConfig={"maxTokens": 2048, "temperature": 0.2},
     )
     record_and_print_converse("summarizer", response)
+    usage = (response or {}).get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.summarizer_model,
+        input=dynamic_content,
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        prompt=_lf_summarize_prompt,
+        metadata={"service": _SERVICE},
+    )
 
     # Extract structured output from tool use block
     for block in response["output"]["message"]["content"]:
         if block.get("toolUse", {}).get("name") == "summarize_case_notes":
             data = block["toolUse"]["input"]
             meta = SummaryMetadata(**data["metadata"])
-            return SummaryResult(
+            result = SummaryResult(
                 summary_text=data["summary_text"],
                 metadata=meta.model_dump(),
             )
+            langfuse.update_current_generation(output=result.summary_text[:500])
+            return result
     raise ValueError("Summarizer: no tool_use block in Bedrock response")
 
 
 # ── Public async entry point ──────────────────────────────────────────────────
 
+@observe(name="case-review-summarise", capture_input=False, capture_output=False)
 async def summarise(
     past_summary: str,
     new_notes: list[CaseNoteDTO],
@@ -169,6 +195,10 @@ async def summarise(
     api_key, model_id, and feature are accepted for backwards compatibility
     with existing route handler calls but are not used.
     """
+    langfuse.update_current_span(
+        input={"new_note_count": len(new_notes), "has_past_summary": bool(past_summary)},
+        metadata={"service": _SERVICE, "user_id": user_id, "session_id": session_id},
+    )
     log.info("summariser.call", model=settings.summarizer_model, new_note_count=len(new_notes))
     start = time.perf_counter()
 

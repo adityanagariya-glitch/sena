@@ -6,6 +6,7 @@ import time
 from fastapi import HTTPException, status
 from google import genai
 from google.genai import types
+from langfuse import observe, get_client
 
 from voice.core.settings import settings
 from voice.prompts.personal_details_prompt import (
@@ -14,12 +15,23 @@ from voice.prompts.personal_details_prompt import (
 )
 from voice.services.usage_log import log_token_usage
 
+langfuse = get_client()
+_SERVICE = "voice"
+
+_lf_personal_details_prompt = None
+try:
+    _lf_personal_details_prompt = langfuse.get_prompt(f"{_SERVICE}/personal-details-system")
+    PERSONAL_DETAILS_SYSTEM_PROMPT = _lf_personal_details_prompt.compile()
+except Exception:
+    pass
+
 
 class GeminiService:
     def __init__(self) -> None:
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model = settings.gemini_model_id
 
+    @observe(as_type="generation", name="personal-details-gemini", capture_input=False, capture_output=False)
     def _invoke_once(self, user_prompt: str, system_prompt: str) -> tuple[dict, dict]:
         """Invoke Gemini and capture token usage.
 
@@ -60,6 +72,14 @@ class GeminiService:
             input_tokens,
             output_tokens,
             cache_read_tokens=cache_read_tokens,
+        )
+        langfuse.update_current_generation(
+            model=self.model,
+            input=user_prompt[:2000],
+            output=text[:2000],
+            usage_details={"input": input_tokens, "output": output_tokens},
+            prompt=_lf_personal_details_prompt,
+            metadata={"service": _SERVICE},
         )
 
         usage_dict = {

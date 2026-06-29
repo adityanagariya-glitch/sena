@@ -24,6 +24,7 @@ from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from langfuse import get_client, observe, propagate_attributes
 
 import config
 from conversation_store import store_user_message, store_ai_response, get_recent_messages
@@ -31,6 +32,12 @@ from gateway_extensions import ServiceOrchestrator, health_check_services
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+try:
+    langfuse = get_client()
+except Exception:
+    langfuse = None  # type: ignore[assignment]
+_SERVICE = "ai-chatbot"
 
 # uvloop: 10-40% faster event loop (production default). Set the policy at import
 # time, before any event loop is created. Must come AFTER `logger` is defined.
@@ -375,6 +382,7 @@ bearer_scheme = HTTPBearer(
         401: {"description": "Missing or invalid JWT — no `Authorization: Bearer <token>` header."},
     },
 )
+@observe(name="ai-chatbot-route", capture_input=False, capture_output=False)
 async def route_query(
     req: RouteRequest,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
@@ -399,6 +407,17 @@ async def route_query(
     if not jwt_token:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization bearer token (JWT)")
     orchestrator: ServiceOrchestrator = app.state.orchestrator
+
+    if langfuse is not None:
+        try:
+            conv_id = (req.context or {}).get("conversation_id") or ""
+            with propagate_attributes(session_id=conv_id):
+                langfuse.update_current_span(
+                    input={"question": req.question[:500], "category": (req.context or {}).get("category")},
+                    metadata={"service": _SERVICE, "category": (req.context or {}).get("category")},
+                )
+        except Exception:
+            pass
 
     async def event_stream():
         try:

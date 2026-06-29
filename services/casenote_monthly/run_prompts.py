@@ -14,10 +14,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from langfuse import observe, get_client
+
 from config import bedrock_runtime, MODEL_ID
 from cleaner import clean
 
 import prompt as P
+
+langfuse = get_client()
+_SERVICE = "casenote_monthly"
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
@@ -52,6 +57,7 @@ def normalize_section(section) -> dict:
     return {}
 
 
+@observe(as_type="generation", name="casenote-section", capture_input=False, capture_output=False)
 def run_section(name: str, section: dict, subs: dict) -> dict:
     """Call Bedrock for one section. Returns {text, usage, elapsed}."""
     system = section.get("system", "")
@@ -73,6 +79,16 @@ def run_section(name: str, section: dict, subs: dict) -> dict:
             text += block["text"]
 
     usage = resp.get("usage") or {}
+    langfuse.update_current_generation(
+        model=MODEL_ID,
+        input=user[:2000],
+        output=text[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE, "section": name},
+    )
     return {"text": clean(text.strip()), "usage": usage, "elapsed": elapsed,
             "stopReason": resp.get("stopReason")}
 
