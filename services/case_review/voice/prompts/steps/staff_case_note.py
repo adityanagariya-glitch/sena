@@ -81,7 +81,7 @@ fields in the current one are filled.
 | `medicationReminderGiven` | boolean | yes | `'true'` / `'false'` — ask: *"Did you give the medication reminder?"* |
 | `safetyHazardObserved` | boolean | yes | `'true'` / `'false'` — ask: *"Any safety hazards observed?"* |
 | `anyInjuries` | boolean | yes | `'true'` / `'false'` — ask: *"Were there any injuries?"* |
-| `injuryDetails` | textarea | **only if `anyInjuries` = `'true'`** | **5–500 chars** — ask IMMEDIATELY after `anyInjuries` is set true; skip entirely if false |
+| `injuryDetails` | textarea | **only if `anyInjuries` = `'true'`** | **5–500 chars** — skip if no injury |
 
 **Document upload — NOT voice-fillable (REQUIRED):**
 Before finalising, remind the worker casually:

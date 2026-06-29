@@ -42,6 +42,7 @@ from sena_common.voice.screen_context import (
     payload_hash,
     render_injection_text,
 )
+from sena_common.voice.prompt_fragments import FragmentRegistry, InjectedFragmentTracker
 from sena_common.voice.screen_delta import DeltaLogBuffer, ScreenDeltaTracker
 from sena_common.voice.tools import FUNCTION_DECLS
 
@@ -150,6 +151,7 @@ class GeminiLiveSession:
         tenant_id: str | None = None,
         user_id: str | None = None,
         participant_id: str | None = None,
+        fragment_registry: FragmentRegistry | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -178,6 +180,10 @@ class GeminiLiveSession:
         self._turn_id = 0
         self._last_screen_hash: str | None = None
         self._screen_delta_tracker = ScreenDeltaTracker()
+        # Lazy prompt fragments — rules injected on-demand when their trigger
+        # field appears (see prompt_fragments.py). Empty registry → no-op, so a
+        # caller that passes nothing behaves exactly as before.
+        self._fragment_tracker = InjectedFragmentTracker(fragment_registry)
         self._last_audio_at: float = 0.0
         self._gemini_is_speaking: bool = False
         # Kickoff audio-suppression shield. gemini-3.1-flash-live-preview has a
@@ -330,6 +336,10 @@ class GeminiLiveSession:
                 log.debug("replay_context_injected", session=self._session_id)
                 # Reset delta tracker on resume so next screen_state sends full state
                 self._screen_delta_tracker.reset_baseline()
+                # Re-arm lazy fragments too: the system prompt is rebuilt fresh on
+                # reconnect (pointers present again), so any rule must be eligible
+                # to re-inject when its trigger field reappears.
+                self._fragment_tracker.reset()
             # Seed the live screen state as a hidden context turn so the model's
             # FIRST greeting already knows which fields are filled — no
             # get_current_state round-trip, no "these are already filled"
@@ -712,6 +722,9 @@ class GeminiLiveSession:
             )
             await session.send_realtime_input(text=injection)
             self._screen_delta_tracker.set_full_state(state_dict)
+            # No per-field delta on a full inject; lazy-fragment triggers fall
+            # back to field presence in state_dict (covers resume-mid-form).
+            frag_added: dict = {}
         else:  # delta
             delta, _ = self._screen_delta_tracker.compute_delta(state_dict)
             injection = delta.render()
@@ -740,6 +753,20 @@ class GeminiLiveSession:
             )
             await session.send_realtime_input(text=injection)
             self._screen_delta_tracker.set_full_state(state_dict)
+            frag_added = delta.added
+
+        # Lazy prompt fragments — inject any rule whose trigger field just
+        # appeared on screen (or is present on a full/resume inject), exactly
+        # once per connection. No-op when no fragment_registry was supplied.
+        for frag in self._fragment_tracker.fragments_to_inject(
+            {"added": frag_added}, state_dict
+        ):
+            await session.send_realtime_input(text=f"[RULE: {frag.key}]\n{frag.text}")
+            log.info(
+                "prompt_fragment_injected",
+                session=self._session_id,
+                key=frag.key,
+            )
 
         # N-4 fix: mirror v2 field_errors into state.pending_validation_errors so
         # advance_step's gate has a single source of truth regardless of whether

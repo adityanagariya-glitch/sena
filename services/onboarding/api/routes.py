@@ -28,6 +28,11 @@ class TokenUsage(BaseModel):
 
 log = structlog.get_logger(__name__)
 
+# Cap on how many recent steps are hydrated into prior_pages. Mirrors
+# cross_screen_context._RENDER_CAP so the JSON-dumped prior_steps block stays
+# bounded as a participant completes more onboarding steps (input-token guard).
+_PRIOR_STEPS_RENDER_CAP = 5
+
 
 router = APIRouter()
 
@@ -256,15 +261,33 @@ async def create_session(
         ctx_repo = UserContextRepo(repo._r)
         bucket = await ctx_repo.get_bucket(effective_tenant_id, req.participant_id)
         if not bucket.is_empty():
-            # New CSC layer only forwards the 5-field allowlist (name, dob,
-            # gender, goals, hobbies_interests). prior_pages now carries
-            # concept-keyed dicts — see services/cross_screen_context.py.
+            # Compact prior context (input-token reduction). Three moves, all
+            # behaviour-safe:
+            #   1. Cap to the most-recent N steps (matches render_for_prompt's
+            #      cap) so the JSON-dumped block stays bounded as onboarding
+            #      grows — it was previously uncapped on this path.
+            #   2. Strip identity keys (name/dob/gender) from per-step entries.
+            #      The mode prompts (prompts/modes/{fresh,update}.py) MANDATE
+            #      identity be recalled from `visible_fields`, NEVER from
+            #      prior_steps — so repeating them in every step is dead weight
+            #      the agent is told to ignore. They are lifted into ONE
+            #      `_participant` block below instead.
+            #   3. Drop null/empty verbatim keys (a step that captured no goals
+            #      must not emit "goals": null).
+            _IDENTITY_KEYS = ("name", "dob", "gender")
+            recent_summaries = sorted(
+                bucket.summaries, key=lambda s: s.step_number
+            )[-_PRIOR_STEPS_RENDER_CAP:]
             hydrated_prior = {
                 f"step:{s.step_number}": {
-                    **s.verbatim,
+                    **{
+                        k: v
+                        for k, v in s.verbatim.items()
+                        if k not in _IDENTITY_KEYS and v not in (None, "", [], {})
+                    },
                     "_step_label": s.step_label,
                 }
-                for s in bucket.summaries
+                for s in recent_summaries
             }
             # Resolve participant_display_name. Priority order (highest → lowest):
             #   1. `current_page_values["basics.full_name"]` from THIS bootstrap
@@ -306,15 +329,23 @@ async def create_session(
                         current_full_name_full = candidate.strip()
                         break
 
-            # Sweep `prior_pages`: overwrite every stale `name` in old summaries
-            # so the prompt's prior_steps block can't recall an outdated value
-            # when the agent answers "what's my name". The bucket is keyed by
-            # (tenant_id, participant_id) so all summaries belong to the same
-            # person — current name is the truthful one for every summary.
+            # Person-level identity, deduped into ONE `_participant` block
+            # instead of repeated in every step:N entry. The mode prompts route
+            # identity recall to `visible_fields`, so this is belt-and-braces
+            # context only — kept compact and seeded with the freshly-resolved
+            # name so it can never recall a stale value (the regression the old
+            # per-step sweep guarded against cannot recur when name lives in one
+            # place fed by the current bootstrap).
+            participant_block: dict[str, Any] = {}
             if current_full_name_full:
-                for step_key, step_payload in hydrated_prior.items():
-                    if isinstance(step_payload, dict) and "name" in step_payload:
-                        step_payload["name"] = current_full_name_full
+                participant_block["name"] = current_full_name_full
+            for s in sorted(bucket.summaries, key=lambda x: x.step_number, reverse=True):
+                if "dob" not in participant_block and s.verbatim.get("dob"):
+                    participant_block["dob"] = s.verbatim["dob"]
+                if "gender" not in participant_block and s.verbatim.get("gender"):
+                    participant_block["gender"] = s.verbatim["gender"]
+            if participant_block:
+                hydrated_prior["_participant"] = participant_block
 
             bootstrap = bootstrap.model_copy(update={
                 "mode": "page_handoff",

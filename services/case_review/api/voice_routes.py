@@ -30,6 +30,7 @@ from case_review.services.usage import get_usage, log_api_tokens, start_usage
 from voice.casenote_schema import CASE_NOTE_SCHEMA
 from voice.drafter import run_draft
 from voice.prompts import registry as _VOICE_REGISTRY
+from voice.prompts.fragments import CASE_NOTE_FRAGMENTS
 from voice.tool_decls import CASE_NOTE_FUNCTION_DECLS, CASE_NOTE_KNOWN_TOOLS
 from shared.src.sena_common.voice import (
     FormStateRepo,
@@ -307,6 +308,13 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
 
         cfg = _voice_config()
         initial_turn = _build_initial_turn(state)
+        # NOTE: fragment_registry is intentionally NOT passed here — we do not
+        # add a separate pointer block to the always-on prompt. The injuryDetails
+        # table row in staff_case_note already tells the agent the field is
+        # conditional-required, so it serves as the pointer. The full capture
+        # rule is injected on-demand by GeminiLiveSession (below) the moment the
+        # field appears — net win: the always-on prompt shrinks, the rich rule
+        # only costs tokens when an injury is actually reported.
         system_instruction = build_system_prompt(
             initial_turn,
             grounding_enabled=cfg.grounding_enabled,
@@ -345,6 +353,7 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
             function_decls=CASE_NOTE_FUNCTION_DECLS,
             tenant_id=tenant_id,
             participant_id=state.participant_id,
+            fragment_registry=CASE_NOTE_FRAGMENTS,
         )
         await live.run()
     except WebSocketDisconnect:

@@ -45,12 +45,12 @@ router = APIRouter()
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
-@router.get("/health/live", response_model=HealthResponse, tags=["health"])
+@router.get("/health/live", response_model=HealthResponse, tags=["health"], include_in_schema=False)
 async def health_live() -> HealthResponse:
     return HealthResponse(status="ok", version=settings.service_version)
 
 
-@router.get("/health/ready", response_model=HealthResponse, tags=["health"])
+@router.get("/health/ready", response_model=HealthResponse, tags=["health"], include_in_schema=False)
 async def health_ready() -> HealthResponse:
     # Phase A: DB check deferred — returns ok if service is up
     return HealthResponse(status="ok", version=settings.service_version)
@@ -62,6 +62,7 @@ async def health_ready() -> HealthResponse:
     "/v1/case-review/context",
     response_model=ContextResponse,
     tags=["context"],
+    include_in_schema=False,
     summary="Rolling case-note summary for the calling staff member + client",
     description=(
         "Fetches the most recent case notes for the **authenticated staff member** and a "
@@ -113,6 +114,7 @@ async def get_context(
     "/v1/case-review/classify",
     response_model=ClassifyResponse,
     tags=["classify"],
+    include_in_schema=False,
     summary="Classify paragraph into structured case-note fields",
     description=(
         "Extract and classify a free-text paragraph into structured case note fields.\n\n"
@@ -154,6 +156,7 @@ async def classify_paragraph(
     "/v1/case-review/review",
     response_model=ReviewResponse,
     tags=["review"],
+    include_in_schema=False,
     summary="Analyse case note for risks and compliance flags",
     description=(
         "Runs triage (cheap Haiku gate) followed by deep evaluator (Sonnet) analysis "
@@ -184,6 +187,7 @@ async def review_session(
     "/v1/case-review/incident/detect",
     response_model=IncidentDetectResponse,
     tags=["incident"],
+    include_in_schema=False,
     summary="Detect if case note describes a reportable incident",
     description=(
         "Binary classifier using triage + evaluator. Returns incident_detected (bool) and, "
@@ -212,6 +216,7 @@ async def detect_incident(
     "/v1/case-review/incident/draft",
     response_model=IncidentDraftResponse,
     tags=["incident"],
+    include_in_schema=False,
     summary="Autofill NDIS incident report fields from case note",
     description=(
         "Runs the NDIS Incident Drafter LLM (Bedrock Sonnet) on the case note. "
@@ -241,6 +246,7 @@ async def draft_incident(
     "/v1/case-review/incident/{incident_id}/confirm",
     response_model=IncidentConfirmResponse,
     tags=["incident"],
+    include_in_schema=False,
     summary="Staff confirms AI-drafted incident report",
     description=(
         "Staff explicitly confirms the AI-autofilled incident draft after review. "
@@ -270,6 +276,7 @@ async def confirm_incident(
     "/v1/case-review/submit",
     response_model=SubmitResponse,
     tags=["submit"],
+    include_in_schema=False,
     summary="Final submit gate for reviewed case note",
     description=(
         "Staff submits a reviewed case note after all flags are addressed. "
