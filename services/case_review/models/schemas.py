@@ -18,9 +18,10 @@ class AuthContext(BaseModel):
 
 
 class TokenUsage(BaseModel):
-    """LLM token usage metrics (input, output, total)."""
+    """Token usage metrics: Claude (input+output) + Cohere Embed (estimated)."""
     input_tokens: int = 0
     output_tokens: int = 0
+    embedding_tokens: int = 0
     total_tokens: int = 0
 
 

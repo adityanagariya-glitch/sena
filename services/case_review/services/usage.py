@@ -42,6 +42,7 @@ def _zero() -> dict[str, int]:
     return {
         "input_tokens": 0,
         "output_tokens": 0,
+        "embedding_tokens": 0,  # Cohere Embed (estimated)
         "total_tokens": 0,
         "cache_read_tokens": 0,  # Internal only, not in API response
         "cache_creation_tokens": 0,  # Internal only, not in API response
@@ -53,7 +54,7 @@ def start_usage() -> None:
     _usage_var.set(_zero())
 
 
-def _add(input_tokens: int, output_tokens: int, cache_read: int, cache_creation: int) -> None:
+def _add(input_tokens: int, output_tokens: int, cache_read: int, cache_creation: int, embedding_tokens: int = 0) -> None:
     acc = _usage_var.get()
     if acc is None:
         # Not started (e.g. called outside a request) — nothing to accumulate into.
@@ -62,15 +63,17 @@ def _add(input_tokens: int, output_tokens: int, cache_read: int, cache_creation:
     with _lock:
         acc["input_tokens"] += int(input_tokens or 0)
         acc["output_tokens"] += int(output_tokens or 0)
+        acc["embedding_tokens"] += int(embedding_tokens or 0)
         acc["cache_read_tokens"] += int(cache_read or 0)
         acc["cache_creation_tokens"] += int(cache_creation or 0)
+        # Total = (base_input + cache + embedding) + output
         # Cache is folded into the input cost (Bedrock inputTokens excludes the
-        # cache read/write counts), so total = (base_input + cache) + output.
-        # get_usage() applies the same fold for the API response.
+        # cache read/write counts). Embedding tokens are separate (Cohere Embed).
         acc["total_tokens"] = (
             acc["input_tokens"]
             + acc["cache_read_tokens"]
             + acc["cache_creation_tokens"]
+            + acc["embedding_tokens"]
             + acc["output_tokens"]
         )
 
@@ -157,19 +160,40 @@ def record_gemini(response: Any) -> None:
     )
 
 
+def record_embedding_tokens(text_length: int) -> None:
+    """Record estimated tokens for Cohere Embed (invoke_model doesn't return usage).
+
+    Bedrock's invoke_model API does not return token usage metadata for embeddings.
+    Estimate: ~4 characters per token (typical for English).
+
+    Args:
+        text_length: Length of text embedded (in characters)
+    """
+    estimated_tokens = max(1, text_length // 4)
+    _add(
+        input_tokens=0,
+        output_tokens=0,
+        cache_read=0,
+        cache_creation=0,
+        embedding_tokens=estimated_tokens,
+    )
+
+
 def get_usage() -> dict[str, int]:
-    """Snapshot the running total for the current request (API response format: 3 fields only).
+    """Snapshot the running total for the current request (API response format: 4 fields).
 
     Cache tokens are FOLDED INTO input. Bedrock's ``inputTokens`` excludes the
     cache read/write counts, so the true input cost is base + cache_read +
     cache_write:
 
         input_tokens = base_input + cache_read + cache_write
-        total_tokens = input_tokens + output_tokens
+        embedding_tokens = Cohere Embed (estimated, ~chars / 4)
+        output_tokens = Claude output
+        total_tokens = input_tokens + embedding_tokens + output_tokens
 
     The raw base/cache split is still tracked internally (see get_usage_full and
-    the per-stage stdout breakdown) for cost analysis; the API response only
-    exposes the 3 folded figures.
+    the per-stage stdout breakdown) for cost analysis; the API response exposes
+    the 4 folded figures.
     """
     acc = _usage_var.get()
     if acc is None:
@@ -180,7 +204,8 @@ def get_usage() -> dict[str, int]:
     return {
         "input_tokens": input_with_cache,
         "output_tokens": acc["output_tokens"],
-        "total_tokens": input_with_cache + acc["output_tokens"],
+        "embedding_tokens": acc["embedding_tokens"],
+        "total_tokens": input_with_cache + acc["output_tokens"] + acc["embedding_tokens"],
     }
 
 
@@ -252,14 +277,17 @@ def log_api_tokens(endpoint: str, method: str, client_id: str | None = None, sta
 
     client_str = f"client_id={client_id} " if client_id else ""
 
+    embed_str = f" embed={usage['embedding_tokens']:,}" if usage.get("embedding_tokens", 0) > 0 else ""
+
     logger.info(
-        "API tokens | %s %s | %sstatus=%d | in=%d out=%d total=%d%s",
+        "API tokens | %s %s | %sstatus=%d | in=%d out=%d embed=%d total=%d%s",
         method,
         endpoint,
         client_str,
         status,
         usage["input_tokens"],
         usage["output_tokens"],
+        usage.get("embedding_tokens", 0),
         usage["total_tokens"],
         cache_info,
     )
@@ -267,6 +295,6 @@ def log_api_tokens(endpoint: str, method: str, client_id: str | None = None, sta
     # Also print to stdout for Docker logs
     print(
         f"[api/{method:<4} {endpoint:<60}] {client_str}in={usage['input_tokens']:>5,} "
-        f"out={usage['output_tokens']:>4,} total={usage['total_tokens']:>6,}{cache_info}",
+        f"out={usage['output_tokens']:>4,} embed={usage.get('embedding_tokens', 0):>4,} total={usage['total_tokens']:>6,}{cache_info}",
         flush=True,
     )

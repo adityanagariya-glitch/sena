@@ -1,8 +1,8 @@
 """Embed document chunks via Bedrock (Cohere Embed English v3), rerank, and upsert into pgvector.
 
 Three operations:
-  embed_text()    — ingest-time: search_document input type
-  embed_query()   — query-time: search_query input type (asymmetric embeddings)
+  embed_text()    — ingest-time: search_document input type (tracks tokens)
+  embed_query()   — query-time: search_query input type (asymmetric embeddings, tracks tokens)
   rerank_chunks() — post-retrieval: Cohere Rerank v3.5 via Bedrock agent runtime
   upsert_chunks() — store chunks with embedding + search_vector (BM25 tsvector)
 """
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.settings import settings
 from models.db import NDISPolicyChunk
 from services.ingestion.chunker import DocumentChunk
+from services.usage import record_embedding_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,14 @@ def _embed_sync(text: str, input_type: str = "search_document") -> list[float]:
 
 
 async def embed_text(text: str) -> list[float]:
-    """Async-safe embedding for document ingest."""
+    """Async-safe embedding for document ingest (tracks tokens)."""
+    record_embedding_tokens(len(text))
     return await asyncio.to_thread(_embed_sync, text, "search_document")
 
 
 async def embed_query(query: str) -> list[float]:
-    """Async-safe embedding for RAG query-time retrieval."""
+    """Async-safe embedding for RAG query-time retrieval (tracks tokens)."""
+    record_embedding_tokens(len(query))
     return await asyncio.to_thread(_embed_sync, query, "search_query")
 
 
