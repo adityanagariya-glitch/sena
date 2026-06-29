@@ -38,6 +38,10 @@ services:
       - ../.env
     environment:
       # Voice uses Field(alias=...) which bypasses env_prefix — no SENA_AI_ here
+      # Pin PORT to the prod internal port so uvicorn binds where nginx + expose
+      # expect it. Without this, PORT=8082 leaks in from ../.env (the local-dev
+      # port) and uvicorn binds 8082 while nginx proxies :8008 → 502.
+      PORT: "8008"
       REDIS_URL: redis://redis-internal:6979/0
       AI_DB_URL: postgresql+asyncpg://sena_ai:sena_ai@ai-db-internal:5432/sena_ai
       SHARED_DB_URL: postgresql+asyncpg://shared:shared@shared-db-internal:5433/platform
