@@ -26,9 +26,12 @@ Design notes
 
 from __future__ import annotations
 
+import logging
 import threading
 from contextvars import ContextVar
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _usage_var: ContextVar[dict[str, int] | None] = ContextVar("cr_token_usage", default=None)
 _lock = threading.Lock()
@@ -220,3 +223,50 @@ def get_session_usage(session_id: str) -> dict[str, int]:
     if session_id not in totals:
         return {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
     return dict(totals[session_id])
+
+
+# ── API endpoint token logging ───────────────────────────────────────────────
+
+def log_api_tokens(endpoint: str, method: str, client_id: str | None = None, status: int = 200) -> None:
+    """Log token usage for an API endpoint.
+
+    Logs to structured format:
+    [API tokens] method=POST endpoint=/v1/restrictive-practices/incidents/analyze
+                 client_id=abc-123 status=200
+                 input=2500 output=850 total=3350
+
+    Args:
+        endpoint: API path (e.g., "/v1/restrictive-practices/incidents/analyze")
+        method: HTTP method (GET, POST, etc.)
+        client_id: Client/request ID for tracking
+        status: HTTP response status code
+    """
+    usage = get_usage()
+    full = get_usage_full()
+
+    cache_info = ""
+    if full.get("cache_read_tokens", 0) > 0:
+        cache_info = f" [cache_read={full['cache_read_tokens']:,}]"
+    elif full.get("cache_creation_tokens", 0) > 0:
+        cache_info = f" [cache_write={full['cache_creation_tokens']:,}]"
+
+    client_str = f"client_id={client_id} " if client_id else ""
+
+    logger.info(
+        "API tokens | %s %s | %sstatus=%d | in=%d out=%d total=%d%s",
+        method,
+        endpoint,
+        client_str,
+        status,
+        usage["input_tokens"],
+        usage["output_tokens"],
+        usage["total_tokens"],
+        cache_info,
+    )
+
+    # Also print to stdout for Docker logs
+    print(
+        f"[api/{method:<4} {endpoint:<60}] {client_str}in={usage['input_tokens']:>5,} "
+        f"out={usage['output_tokens']:>4,} total={usage['total_tokens']:>6,}{cache_info}",
+        flush=True,
+    )

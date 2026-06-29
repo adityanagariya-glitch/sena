@@ -26,7 +26,7 @@ from api.deps import get_auth_context, voice_redis_client
 from core.settings import settings
 from models.schemas import AuthContext, TokenUsage
 # Canonical import path (must match drafter.py + routes.py accumulator import — see usage.py).
-from case_review.services.usage import get_usage, start_usage
+from case_review.services.usage import get_usage, log_api_tokens, start_usage
 from voice.casenote_schema import CASE_NOTE_SCHEMA
 from voice.drafter import run_draft
 from voice.prompts import registry as _VOICE_REGISTRY
@@ -153,6 +153,7 @@ async def create_voice_session(
     auth: AuthContext = Depends(get_auth_context),
 ) -> CreateVoiceSessionResponse:
     if not _is_staff(auth.roles):
+        log_api_tokens("/v1/case-review/voice/session", "POST", body.client_id, 403)
         raise HTTPException(status_code=403, detail="Voice case notes are staff-only")
     tenant_id = str(auth.tenant_id)
     session_id = uuid.uuid4().hex
@@ -174,6 +175,7 @@ async def create_voice_session(
         client_id=body.client_id,
         shift_id=body.shift_id,
     )
+    log_api_tokens("/v1/case-review/voice/session", "POST", body.client_id, 200)
     return CreateVoiceSessionResponse(
         session_id=session_id,
         ws_url=f"/ws/case-review/voice/{session_id}",
@@ -217,25 +219,31 @@ async def draft_from_transcript(
     auth: AuthContext = Depends(get_auth_context),
 ) -> DraftTranscriptResponse:
     if not _is_staff(auth.roles):
+        log_api_tokens("/v1/case-review/voice/draft", "POST", None, 403)
         raise HTTPException(status_code=403, detail="Voice case notes are staff-only")
     start_usage()
-    initial_values, gaps_note = await run_draft(body.transcript)
-    filled_count = sum(len(fields) for fields in initial_values.values())
-    usage = get_usage()
-    log.info(
-        "voice_draft_done",
-        tenant_id=str(auth.tenant_id),
-        filled_count=filled_count,
-        input_tokens=usage["input_tokens"],
-        output_tokens=usage["output_tokens"],
-        total_tokens=usage["total_tokens"],
-    )
-    return DraftTranscriptResponse(
-        initial_values=initial_values,
-        gaps_note=gaps_note,
-        filled_count=filled_count,
-        token_usage=TokenUsage(**usage),
-    )
+    try:
+        initial_values, gaps_note = await run_draft(body.transcript)
+        filled_count = sum(len(fields) for fields in initial_values.values())
+        usage = get_usage()
+        log.info(
+            "voice_draft_done",
+            tenant_id=str(auth.tenant_id),
+            filled_count=filled_count,
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+            total_tokens=usage["total_tokens"],
+        )
+        log_api_tokens("/v1/case-review/voice/draft", "POST", None, 200)
+        return DraftTranscriptResponse(
+            initial_values=initial_values,
+            gaps_note=gaps_note,
+            filled_count=filled_count,
+            token_usage=TokenUsage(**usage),
+        )
+    except Exception as exc:
+        log_api_tokens("/v1/case-review/voice/draft", "POST", None, 500)
+        raise
 
 
 # ── Voice WebSocket ───────────────────────────────────────────────────────────

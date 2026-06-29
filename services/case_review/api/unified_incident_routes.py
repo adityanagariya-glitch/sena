@@ -29,7 +29,7 @@ from case_review.models.schemas import (
     UnifiedIncidentResponse,
     _SummarySection,
 )
-from case_review.services.usage import get_usage, start_usage
+from case_review.services.usage import get_usage, log_api_tokens, start_usage
 from case_review.services.pipeline.graph import run_pipeline
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,7 @@ async def analyze_incidents(
             worker_id=payload.case_note_form.shiftId,
         )
         resp.token_usage = TokenUsage(**get_usage())
+        log_api_tokens("/v1/restrictive-practices/incidents/analyze", "POST", payload.case_note_form.clientId, 200)
         return resp
 
     except Exception as exc:
@@ -101,6 +102,7 @@ async def analyze_incidents(
             exc,
             exc_info=True,
         )
+        log_api_tokens("/v1/restrictive-practices/incidents/analyze", "POST", payload.case_note_form.clientId, 500)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
 

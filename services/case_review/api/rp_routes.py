@@ -67,7 +67,7 @@ from case_review.models.schemas import (
     _VerdictSection,
     TokenUsage,
 )
-from case_review.services.usage import get_usage, start_usage
+from case_review.services.usage import get_usage, log_api_tokens, start_usage
 from case_review.services.pipeline.drafter import run_drafter
 from case_review.services.pipeline.graph import run_pipeline
 from case_review.services.pipeline.transcription import resolve_media_format, run_transcription
@@ -696,8 +696,10 @@ async def draft_case_note(
             exc,
             exc_info=True,
         )
+        log_api_tokens("/v1/restrictive-practices/draft", "POST", payload.client_id, 500)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
     result.token_usage = TokenUsage(**get_usage())
+    log_api_tokens("/v1/restrictive-practices/draft", "POST", payload.client_id, 200)
     return result
 
 
@@ -790,10 +792,12 @@ async def draft_case_note_audio(
         logger.error(
             "draft/audio: drafter failed case_note_id=%s: %s", resolved_id, exc, exc_info=True
         )
+        log_api_tokens("/v1/restrictive-practices/draft/audio", "POST", client_id, 500)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
     result.token_usage = TokenUsage(**get_usage())
     logger.info("draft/audio: done job=%s case_note_id=%s", job_name, resolved_id)
+    log_api_tokens("/v1/restrictive-practices/draft/audio", "POST", client_id, 200)
     return result
 
 
@@ -887,6 +891,7 @@ async def create_rp_voice_session(
     fields; the voice assistant fills the remaining gaps interactively.
     """
     if not _rp_is_staff(auth.roles):
+        log_api_tokens("/v1/restrictive-practices/voice/session", "POST", body.client_id, 403)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "not_staff", "message": "Voice case notes are staff-only"},
@@ -920,6 +925,7 @@ async def create_rp_voice_session(
     expires_at = (
         datetime.now(UTC) + timedelta(seconds=settings.voice_session_max_sec)
     ).isoformat()
+    log_api_tokens("/v1/restrictive-practices/voice/session", "POST", body.client_id, 201)
     return RPVoiceSessionResponse(
         session_id=session_id,
         ws_url=f"/v1/restrictive-practices/voice/ws/{session_id}",
