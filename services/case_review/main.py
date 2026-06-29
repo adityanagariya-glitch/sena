@@ -13,6 +13,7 @@ from api.routes import router  # ARCHIVED: not registered in active API
 from api.rp_routes import rp_router  # ARCHIVED: not registered in active API
 from api.voice_routes import voice_router
 from api.unified_incident_routes import unified_router
+from api.shift_analysis_routes import shift_analysis_router
 from core.logging import configure_logging
 from core.settings import settings
 
@@ -132,6 +133,9 @@ def create_app() -> FastAPI:
 
     # UNIFIED INCIDENT (main new endpoint):
     app.include_router(unified_router)  # /v1/restrictive-practices/incidents/analyze
+
+    # SHIFT ANALYSIS (JWT, visible in Swagger):
+    app.include_router(shift_analysis_router)  # /v1/case-review/shift-analysis
 
     # Browser voice demo harness (case_review voice dictation). Served
     # same-origin so its relative fetch + WS work without CORS. voice_demo.html

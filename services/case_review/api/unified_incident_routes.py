@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_auth_context, get_db, verify_signature_auth
+from api.deps import get_auth_context, get_db
 from case_review.core.settings import settings
 from case_review.services.caching import cache_verdict
 from case_review.models.schemas import (
@@ -65,7 +65,7 @@ unified_router = APIRouter(prefix="/v1/restrictive-practices", tags=["incidents"
 async def analyze_incidents(
     payload: UnifiedIncidentRequest,
     response,
-    auth: AuthContext = Depends(verify_signature_auth),
+    auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> UnifiedIncidentResponse:
     """

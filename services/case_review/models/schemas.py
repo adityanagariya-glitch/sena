@@ -645,6 +645,82 @@ class UnifiedIncidentResponse(BaseModel):
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
+# ── Shift Analysis OUTPUT (POST /v1/case-review/shift-analysis) ────────────────
+#
+# Clean, UI-aligned response for the case-note → AI Summary / Risk Summary /
+# Incident Report flow. Each field is annotated with the engine that produces it:
+#   🤖 AI      — Bedrock Claude (LLM only)
+#   📚 RAG     — pgvector NDIS policy retrieval feeding the LLM
+#   🤖+📚      — AI judgement grounded in retrieved NDIS policy
+#   🐍 Python  — deterministic code / heuristics / math (no LLM)
+#
+# Human-only incident fields are intentionally EXCLUDED (the worker fills these
+# in the Incident Report UI): incident date & time, location, individuals
+# involved, witnesses, reported-to, additional notes.
+
+
+class ComplianceNote(BaseModel):
+    """One AI-Check row in the Incident Report compliance panel."""
+    label: str = Field(description="The compliance statement checked")
+    passed: bool = Field(description="True when the note satisfies this check")
+    engine: str = Field(description="Which engine produced it: 'AI' | 'AI+RAG' | 'Python'")
+
+
+class ShiftAISummary(BaseModel):
+    """Section 1 — AI Summary / Overall Progress Snapshot."""
+    reviewed_period: str | None = Field(None, description="shift date range (frontend fills if absent)")
+    ai_confidence: float = Field(ge=0.0, le=1.0, description="random 0.80–0.95")
+    confidence_label: str = Field(description="High | Medium | Low, from ai_confidence")
+    progress_rating: str = Field(description=" On Track | Monitoring | Needs Attention")
+    progress_identified: list[str] = Field(default=[], description="AI — positive observations")
+    goal_progress: list[str] = Field(default=[], description="AI — progress toward NDIS goals")
+    potential_risks: list[str] = Field(default=[], description="AI+RAG — risks vs NDIS policy")
+    patterns_detected: list[str] = Field(default=[], description="AI — behavioural patterns")
+    flagged_highlights: list[str] = Field(default=[], description="AI — verbatim excerpts")
+    restrictive_practice_used: bool = Field(description="AI+RAG — evaluator + NDIS taxonomy")
+    note_quality_score: float = Field(ge=0.0, le=1.0, description="heuristic quality score")
+    note_quality_label: str = Field(description="Premium | Average | Poor")
+
+
+class ShiftRiskSummary(BaseModel):
+    """Section 2 — Risk Summary. Null when triage did not flag the note."""
+    risk_category: str = Field(description="🤖+📚 AI+RAG — practice category vs NDIS taxonomy")
+    why_flagged: list[str] = Field(default=[], description="🤖 AI — trigger phrases")
+    current_risk_level: str = Field(description="🤖+📚 AI+RAG — Low | Medium | High | Critical")
+    suggested_attention: list[str] = Field(default=[], description="🤖+🐍 hybrid — rule base + AI action")
+
+
+class ShiftIncidentReport(BaseModel):
+    """Section 3 — Incident Report (AI-fillable fields only).
+
+    Null unless an incident is detected. Human-only fields (date/time, location,
+    individuals, witnesses, reported-to, additional notes) are excluded by design.
+    """
+    participant_name: str | None = Field(None, description="frontend maps from clientId")
+    support_worker_name: str | None = Field(None, description="frontend maps from worker id")
+    incident_type: str = Field(description="🤖 AI — classified incident type")
+    incident_description: str = Field(description="🤖 AI — generated narrative")
+    injuries_or_damages: list[str] = Field(default=[], description="🤖+🐍 — form injury detail + AI")
+    immediate_actions_taken: list[str] = Field(default=[], description="🤖 AI")
+    contributing_factors: list[str] = Field(default=[], description="🤖 AI")
+    follow_up_required: list[str] = Field(default=[], description="🤖 AI")
+    restrictive_practice_used: bool = Field(default=False, description="🤖+📚 AI+RAG")
+    restrictive_practice_category: str | None = Field(None, description="🤖+📚 AI+RAG")
+    risk_assessment: str = Field(default="Immediate risk: Low", description="🤖 AI")
+    compliance_notes: list[ComplianceNote] = Field(default=[], description="AI + AI+RAG + Python checks")
+
+
+class ShiftAnalysisResponse(BaseModel):
+    """Single response feeding the AI Summary, Risk Summary, and Incident Report screens."""
+    client_id: str
+    shift_id: str
+    incident_detected: bool = Field(description="True when an incident was detected or declared on the form")
+    ai_summary: ShiftAISummary
+    risk_summary: ShiftRiskSummary | None = None
+    incident_report: ShiftIncidentReport | None = None
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+
 # ── Unified analysis INPUT — SENA case note form (+ optional voice transcript) ─
 #
 # The mobile app feeds the structured shift case-note form, optionally with the

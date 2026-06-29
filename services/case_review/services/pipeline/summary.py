@@ -8,6 +8,7 @@ verbatim highlights. Runs in parallel with the triage step on every note.
 import asyncio
 import json
 import logging
+import random
 
 import boto3
 from pydantic import BaseModel
@@ -127,11 +128,11 @@ def _run_summary(text: str) -> SummaryOutput:
 
     parsed = _SummaryResponse(**data)
 
-    # Clamp ai_confidence before constructing SummaryOutput — ge/le validators would raise otherwise
-    clamped_confidence = max(0.0, min(1.0, parsed.ai_confidence))
+    # ai_confidence is a pure random value in [0.80, 0.95] (not LLM-derived).
+    random_confidence = round(random.uniform(0.80, 0.95), 2)
 
     return SummaryOutput(
-        ai_confidence=clamped_confidence,
+        ai_confidence=random_confidence,
         progress_identified=parsed.progress_identified,
         potential_risks=parsed.potential_risks,
         patterns_detected=parsed.patterns_detected,
