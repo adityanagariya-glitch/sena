@@ -33,10 +33,10 @@ from case_review.services.usage import get_usage, log_api_tokens, start_usage
 from case_review.services.pipeline.graph import run_pipeline
 
 logger = logging.getLogger(__name__)
-incidents_router = APIRouter(prefix="/v1/restrictive-practices", tags=["incidents"])
+unified_router = APIRouter(prefix="/v1/restrictive-practices", tags=["incidents"])
 
 
-@incidents_router.post(
+@unified_router.post(
     "/incidents/analyze",
     response_model=UnifiedIncidentResponse,
     summary="Unified incident analysis — case note form + voice transcript → all three screens",
