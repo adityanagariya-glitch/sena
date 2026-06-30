@@ -29,9 +29,11 @@ _PUBLIC_KEY = None
 def _public_key():
     global _PUBLIC_KEY
     if _PUBLIC_KEY is None:
-        raw = os.environ.get("AI_SERVICE_PUBLIC_KEY", "").replace("\\n", "\n").strip()
+        raw = os.environ.get("AI_SERVICE_PUBLIC_KEY", "").strip()
         if not raw:
             return None  # Signature auth disabled
+        # Handle both literal \n (from .env) and real newlines
+        raw = raw.replace("\\n", "\n")
         _PUBLIC_KEY = serialization.load_pem_public_key(raw.encode())
     return _PUBLIC_KEY
 

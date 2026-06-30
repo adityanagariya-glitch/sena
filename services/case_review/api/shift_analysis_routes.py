@@ -9,7 +9,7 @@ Engine split per field (see schemas.ShiftAnalysisResponse for the per-field map)
 — Bedrock Claude summary + evaluator + drafter (run_pipeline)
 — pgvector NDIS policy retrieval feeding the evaluator
 — AI judgement grounded in retrieved NDIS policy
-Python  — deterministic derivations in this file (no LLM, no tokens)
+Python — deterministic derivations in this file (no LLM, no tokens)
 
 The Python derivations (progress_rating, suggested_attention, confidence_label,
 compliance timeframe) are hybrid: they consume the AI output and apply
@@ -70,7 +70,7 @@ def _derive_progress_rating(
     evaluator: EvaluatorOutput | None,
     incident_detected: bool,
 ) -> str:
-    """Hybrid 🤖+🐍 — quality score (Python) blended with AI risk signals.
+    """Hybrid + — quality score (Python) blended with AI risk signals.
 
     Returns: 'On Track' | 'Monitoring' | 'Needs Attention'.
     """
@@ -92,7 +92,7 @@ def _derive_suggested_attention(
     cross_check_unauthorised: bool,
     risk_level: str,
 ) -> list[str]:
-    """Hybrid 🤖+🐍 — deterministic rules + the AI evaluator's action summary."""
+    """Hybrid + — deterministic rules + the AI evaluator's action summary."""
     out: list[str] = []
     if risk_level in ("High", "Critical"):
         out.append("Manager review recommended")
@@ -101,7 +101,7 @@ def _derive_suggested_attention(
     if evaluator and evaluator.reporting_required:
         timeframe = evaluator.notification_timeframe or "the required timeframe"
         out.append(f"NDIS notification required within {timeframe}")
-    # 🤖 AI contribution
+    # AI contribution
     if evaluator and evaluator.action_summary:
         out.append(evaluator.action_summary)
 
@@ -115,7 +115,7 @@ def _build_compliance_notes(
     incident_draft: IncidentDraftOutput | None,
     cross_check_unauthorised: bool,
 ) -> list[ComplianceNote]:
-    """AI checks (from the drafter) + 🐍 timeframe check + 🤖+📚 restrictive-practice check."""
+    """AI checks (from the drafter) + timeframe check + restrictive-practice check."""
     notes: list[ComplianceNote] = []
 
     notes.append(ComplianceNote(
@@ -124,7 +124,7 @@ def _build_compliance_notes(
         engine="Python",
     ))
 
-    # 🤖 AI — checks the drafter produced (e.g. non-judgmental language)
+    # AI — checks the drafter produced (e.g. non-judgmental language)
     if incident_draft and incident_draft.compliance_checks:
         for chk in incident_draft.compliance_checks:
             label = str(chk.get("label", "")).strip()
@@ -136,7 +136,7 @@ def _build_compliance_notes(
                 engine="AI",
             ))
 
-    # 🤖+📚 AI+RAG — restrictive-practice authorisation check (evaluator + NDIS policy)
+    # AI+RAG — restrictive-practice authorisation check (evaluator + NDIS policy)
     notes.append(ComplianceNote(
         label="No unauthorised restrictive practice identified",
         passed=not cross_check_unauthorised,
@@ -157,7 +157,7 @@ def _build_ai_summary(
     incident_detected: bool,
     cc_unauth: bool,
 ) -> ShiftAISummary:
-    """AI Summary screen (🤖 AI + 🐍 Python) for one pipeline result."""
+    """AI Summary screen ( AI + Python) for one pipeline result."""
     summary = result.summary
     evaluator = result.evaluator
     incident_draft = result.incident_draft
@@ -168,7 +168,7 @@ def _build_ai_summary(
     )
     ai_conf = summary.ai_confidence if summary else 0.0
     return ShiftAISummary(
-        reviewed_period=None,  # 🐍 no date on the form — frontend fills from shift data
+        reviewed_period=None, # no date on the form — frontend fills from shift data
         ai_confidence=ai_conf,
         confidence_label=_confidence_label(ai_conf),
         progress_rating=_derive_progress_rating(summary, evaluator, incident_detected),
@@ -196,7 +196,7 @@ def _build_bundle(result: PipelineResult, form: CaseNoteForm) -> IncidentBundle:
 
     ai_summary = _build_ai_summary(result, form, incident_detected, cc_unauth)
 
-    # ── Risk Summary (🤖+📚 AI+RAG) — only if the evaluator ran ────────────────
+    # ── Risk Summary ( AI+RAG) — only if the evaluator ran ────────────────
     risk_summary: ShiftRiskSummary | None = None
     if evaluator:
         risk_level = (
@@ -211,17 +211,17 @@ def _build_bundle(result: PipelineResult, form: CaseNoteForm) -> IncidentBundle:
             suggested_attention=_derive_suggested_attention(evaluator, cc_unauth, risk_level),
         )
 
-    # ── Incident Report (🤖 AI, human-only fields excluded) ────────────────────
+    # ── Incident Report ( AI, human-only fields excluded) ────────────────────
     incident_report: ShiftIncidentReport | None = None
     if incident_draft:
         injuries: list[str] = []
         sh = form.safetyAndHealth
         if sh.anyInjuries and sh.injuryDetails:
-            injuries.append(sh.injuryDetails)  # 🐍 passthrough from form
+            injuries.append(sh.injuryDetails) # passthrough from form
 
         incident_report = ShiftIncidentReport(
-            participant_name=None,       # 🐍 frontend maps from clientId
-            support_worker_name=None,    # 🐍 frontend maps from worker id
+            participant_name=None, # frontend maps from clientId
+            support_worker_name=None, # frontend maps from worker id
             incident_type=incident_draft.incident_type,
             incident_description=incident_draft.incident_description,
             injuries_or_damages=injuries,
@@ -245,7 +245,7 @@ def _segment_to_input(base: CaseNoteInput, segment: str) -> CaseNoteInput:
     """Clone the base CaseNoteInput but focus the transcript on one incident segment."""
     return base.model_copy(update={
         "transcript": segment,
-        "incident_occurred": True,  # the splitter flagged this slice as an incident
+        "incident_occurred": True, # the splitter flagged this slice as an incident
     })
 
 
@@ -258,20 +258,29 @@ def _segment_to_input(base: CaseNoteInput, segment: str) -> CaseNoteInput:
     summary="Shift analysis — detect every incident, return a 3-screen bundle per incident",
     description=(
         "Feeds the SENA shift case-note form (+ optional raw voice transcript) through an "
-        "incident splitter, then runs the full pipeline once PER detected incident.\n\n"
+        "incident splitter, then runs the full pipeline once **per detected incident**. A single "
+        "shift often contains several incidents (e.g. a restraint at a shop, an environmental "
+        "restriction at home, and a separate emotional outburst) — each is analysed independently.\n\n"
+        "**Auth:** `X-Signature: <INTERNAL_API_KEY>` (server-to-server shared key).\n\n"
         "**Flow:**\n"
-        "1. **Split** (🤖 Haiku) — segment the transcript into N discrete incidents\n"
+        "1. **Split** — segment the transcript into N discrete incidents\n"
         "2. **Per incident** — run triage → RAG → evaluator → drafter\n"
         "3. **Assemble** — one bundle (AI Summary + Risk Summary + Incident Report) per incident\n\n"
         "**Response shape:**\n"
-        "- `incident_detected`: integer COUNT of incidents\n"
-        "- `incident_1` … `incident_N`: one :class:`IncidentBundle` each\n"
-        "- `ai_summary`: whole-shift summary, present ONLY when `incident_detected == 0`\n"
-        "- `token_usage`: one total for the whole call\n\n"
-        "**Engine per field:** 🤖 AI (Claude) · 📚 RAG (NDIS policy) · 🤖+📚 AI+RAG · 🐍 Python "
-        "(progress_rating, suggested_attention, confidence_label, scores, count).\n\n"
-        "_Human-only incident fields (date/time, location, individuals, witnesses, reported-to, "
-        "additional notes) are intentionally excluded — the worker fills them in the UI._"
+        "- `incident_detected`: integer **count** of incidents\n"
+        "- `incidents`: **array** of bundles, one per incident — each "
+        "`{ ai_summary, risk_summary, incident_report }`\n"
+        "- `ai_summary` (top level): whole-shift summary, present **only** when `incident_detected == 0` "
+        "(in which case `incidents` is empty)\n"
+        "- `token_usage`: one total for the whole call (all incidents combined)\n\n"
+        "**Per-incident bundle:**\n"
+        "- `ai_summary` — progress, risks, patterns, flagged highlights, progress rating, quality\n"
+        "- `risk_summary` — risk category + level (null when the incident is not a flagged risk)\n"
+        "- `incident_report` — AI-fillable incident fields (null when no incident report applies)\n\n"
+        "**Engine per field:** AI (Claude) · RAG (NDIS policy) · AI+RAG · Python "
+        "(progress_rating, suggested_attention, confidence_label, scores, count, token_usage).\n\n"
+        "_Human-only incident fields (date/time, location, individuals involved, witnesses, "
+        "reported-to, additional notes) are intentionally excluded — the worker fills them in the UI._"
     ),
 )
 async def analyze_shift(
@@ -288,7 +297,7 @@ async def analyze_shift(
         base_input = payload.to_case_note_input(worker_id=form.shiftId)
         full_text = base_input.to_text()
 
-        # ── Step 1: split the shift into discrete incidents (🤖 Haiku) ─────────
+        # ── Step 1: split the shift into discrete incidents ( Haiku) ─────────
         segments: list[IncidentSegment] = await split_incidents(full_text)
         logger.info(
             "shift-analysis split client=%s shift=%s → %d incident(s)",

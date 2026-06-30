@@ -100,7 +100,7 @@ def _run_splitter(transcript: str) -> list[IncidentSegment]:
     prompt = _SPLITTER_PROMPT.format(transcript=transcript)
 
     response = client.converse(
-        modelId=settings.triage_model,  # Haiku — cheap segmentation pass
+        modelId=settings.triage_model, # Haiku — cheap segmentation pass
         messages=[{"role": "user", "content": [{"text": prompt}]}],
         inferenceConfig={"maxTokens": 4096, "temperature": 0.0},
     )

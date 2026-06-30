@@ -22,7 +22,6 @@ import os
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from fastapi import HTTPException, Request
-from uuid import UUID
 
 _PUBLIC_KEY = None
 
@@ -30,9 +29,11 @@ _PUBLIC_KEY = None
 def _public_key():
     global _PUBLIC_KEY
     if _PUBLIC_KEY is None:
-        raw = os.environ.get("AI_SERVICE_PUBLIC_KEY", "").replace("\\n", "\n").strip()
+        raw = os.environ.get("AI_SERVICE_PUBLIC_KEY", "").strip()
         if not raw:
             return None  # Signature auth disabled
+        # Handle both literal \n (from .env) and real newlines
+        raw = raw.replace("\\n", "\n")
         _PUBLIC_KEY = serialization.load_pem_public_key(raw.encode())
     return _PUBLIC_KEY
 
@@ -66,9 +67,7 @@ async def verify_rsa(request: Request) -> None:
         raise HTTPException(status_code=401, detail=f"Signature verification failed: {e}")
 
 
-# ── case_review-specific: hand back a synthetic AuthContext ───────────────────
-# analyze / shift-analysis pass tenant_id into run_pipeline, so they need an
-# AuthContext. The key proves a trusted internal caller; tenant is synthetic.
+from uuid import UUID  # noqa: E402
 from models.schemas import AuthContext  # noqa: E402
 
 

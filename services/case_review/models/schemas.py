@@ -106,7 +106,7 @@ class ReviewRequest(BaseModel):
 class FlagItem(BaseModel):
     category: str
     description: str
-    severity: str  # low | medium | high | critical
+    severity: str # low | medium | high | critical
     ndis_reference: str | None = None
 
 
@@ -129,7 +129,7 @@ class IncidentDetectResponse(BaseModel):
     review_session_id: uuid.UUID
     incident_detected: bool
     incident_draft_id: uuid.UUID | None = None
-    markers: list[str]  # extracted evidence phrases
+    markers: list[str] # extracted evidence phrases
 
 
 # ── POST /v1/case-review/incident/draft ───────────────────────────────────────
@@ -361,7 +361,7 @@ class CaseNoteInput(BaseModel):
 class TriageResult(BaseModel):
     flagged: bool
     action_summary: str | None = None
-    triage_confidence: float = 0.5  # 0.0–1.0; drives Haiku vs Sonnet routing
+    triage_confidence: float = 0.5 # 0.0–1.0; drives Haiku vs Sonnet routing
 
 
 class PolicyChunk(BaseModel):
@@ -608,8 +608,8 @@ class CaseDraftResponse(BaseModel):
 # One call → the three mobile screens (AI Summary / Risk Summary / Incident Draft).
 # Built by reusing the SAME pipeline + _build_response() as /evaluate, then
 # regrouping. Reuses the tested section schemas:
-#   * AI Summary screen     → _SummarySection         (always present)
-#   * Incident Draft screen → _IncidentReportSection  (present only when an incident is drafted)
+# * AI Summary screen → _SummarySection (always present)
+# * Incident Draft screen → _IncidentReportSection (present only when an incident is drafted)
 # Only the Risk Summary screen needs a new shape (derived from verdict + detected practice).
 
 
@@ -630,8 +630,8 @@ class UnifiedIncidentResponse(BaseModel):
 
     Field availability mirrors the pipeline:
       * ``verdict`` + ``ai_summary`` — always present
-      * ``risk_summary``            — null unless triage flagged the note
-      * ``incident_draft``          — null unless an incident report was generated
+      * ``risk_summary`` — null unless triage flagged the note
+      * ``incident_draft`` — null unless an incident report was generated
     """
     case_note_id: UUID
     client_id: str
@@ -685,15 +685,15 @@ class ShiftIncidentReport(BaseModel):
     """
     participant_name: str | None = Field(None, description="frontend maps from clientId")
     support_worker_name: str | None = Field(None, description="frontend maps from worker id")
-    incident_type: str = Field(description="🤖 AI — classified incident type")
-    incident_description: str = Field(description="🤖 AI — generated narrative")
-    injuries_or_damages: list[str] = Field(default=[], description="🤖+🐍 — form injury detail + AI")
-    immediate_actions_taken: list[str] = Field(default=[], description="🤖 AI")
-    contributing_factors: list[str] = Field(default=[], description="🤖 AI")
-    follow_up_required: list[str] = Field(default=[], description="🤖 AI")
-    restrictive_practice_used: bool = Field(default=False, description="🤖+📚 AI+RAG")
-    restrictive_practice_category: str | None = Field(None, description="🤖+📚 AI+RAG")
-    risk_assessment: str = Field(default="Immediate risk: Low", description="🤖 AI")
+    incident_type: str = Field(description=" AI — classified incident type")
+    incident_description: str = Field(description=" AI — generated narrative")
+    injuries_or_damages: list[str] = Field(default=[], description="+ — form injury detail + AI")
+    immediate_actions_taken: list[str] = Field(default=[], description=" AI")
+    contributing_factors: list[str] = Field(default=[], description=" AI")
+    follow_up_required: list[str] = Field(default=[], description=" AI")
+    restrictive_practice_used: bool = Field(default=False, description=" AI+RAG")
+    restrictive_practice_category: str | None = Field(None, description=" AI+RAG")
+    risk_assessment: str = Field(default="Immediate risk: Low", description=" AI")
     compliance_notes: list[ComplianceNote] = Field(default=[], description="AI + AI+RAG + Python checks")
 
 
@@ -749,6 +749,139 @@ class MultiIncidentShiftResponse(BaseModel):
         None, description="Whole-shift summary — present only when incident_detected == 0"
     )
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "client_id": "client-123",
+                    "shift_id": "shift-789",
+                    "incident_detected": 2,
+                    "incidents": [
+                        {
+                            "ai_summary": {
+                                "reviewed_period": None,
+                                "ai_confidence": 0.93,
+                                "confidence_label": "High",
+                                "progress_rating": "Needs Attention",
+                                "progress_identified": ["Engaged in community outing"],
+                                "goal_progress": ["Community participation"],
+                                "potential_risks": ["Physical aggression toward members of the public"],
+                                "patterns_detected": ["Triggered by perceived disrespect in crowded settings"],
+                                "flagged_highlights": [
+                                    "tried to hit the customer",
+                                    "I used the approved physical restraint for about twenty seconds",
+                                ],
+                                "restrictive_practice_used": True,
+                                "note_quality_score": 0.88,
+                                "note_quality_label": "Good",
+                            },
+                            "risk_summary": {
+                                "risk_category": "Physical Restraint (Approved)",
+                                "why_flagged": ["Attempted to strike customer", "Physical restraint applied (~20s)"],
+                                "current_risk_level": "High",
+                                "suggested_attention": [
+                                    "Manager review recommended",
+                                    "NDIS notification required within 24 hours",
+                                ],
+                            },
+                            "incident_report": {
+                                "participant_name": None,
+                                "support_worker_name": None,
+                                "incident_type": "Physical Aggression — Assault Risk",
+                                "incident_description": "At the art store checkout a customer accidentally knocked the participant's basket. He became aggressive and attempted to strike the customer; the worker applied the approved physical restraint (~20s) until he calmed.",
+                                "injuries_or_damages": [],
+                                "immediate_actions_taken": ["Approved physical restraint (~20s)", "Moved participant outside"],
+                                "contributing_factors": ["Perceived disrespect", "Crowded environment"],
+                                "follow_up_required": ["Behaviour support plan review", "Manager debrief"],
+                                "restrictive_practice_used": True,
+                                "restrictive_practice_category": "Physical Restraint (Authorised)",
+                                "risk_assessment": "Immediate risk: Moderate (managed with restraint)",
+                                "compliance_notes": [
+                                    {"label": "Incident documented within the required timeframe", "passed": True, "engine": "Python"},
+                                    {"label": "Physical restraint authorised per behaviour support plan", "passed": True, "engine": "AI+RAG"},
+                                ],
+                            },
+                        },
+                        {
+                            "ai_summary": {
+                                "reviewed_period": None,
+                                "ai_confidence": 0.91,
+                                "confidence_label": "High",
+                                "progress_rating": "Needs Attention",
+                                "progress_identified": ["Self-soothed with music"],
+                                "goal_progress": ["Emotional regulation practised"],
+                                "potential_risks": ["Emotional dysregulation", "Property-directed aggression"],
+                                "patterns_detected": ["Sensitive to changes in family plans"],
+                                "flagged_highlights": [
+                                    "threw a handful of coloured pencils across the lounge room",
+                                    "kicked a dining chair and hit the wall",
+                                ],
+                                "restrictive_practice_used": False,
+                                "note_quality_score": 0.84,
+                                "note_quality_label": "Good",
+                            },
+                            "risk_summary": {
+                                "risk_category": "Emotional Dysregulation — Property Damage",
+                                "why_flagged": ["Threw pencils, kicked chair, hit wall after a distressing call"],
+                                "current_risk_level": "Medium",
+                                "suggested_attention": ["Develop coping strategies for disappointment"],
+                            },
+                            "incident_report": {
+                                "participant_name": None,
+                                "support_worker_name": None,
+                                "incident_type": "Emotional Dysregulation — Property Damage",
+                                "incident_description": "After his sister cancelled their weekend plans, the participant threw pencils, kicked a chair and hit the wall. The worker reduced stimulation and offered options; he chose music and calmed within ~15 minutes. No injuries.",
+                                "injuries_or_damages": [],
+                                "immediate_actions_taken": ["Reduced stimulation", "Offered calming options (music)", "Collaborative cleanup"],
+                                "contributing_factors": ["Disappointment over cancelled plans"],
+                                "follow_up_required": ["Reinforce music as a regulation tool"],
+                                "restrictive_practice_used": False,
+                                "restrictive_practice_category": None,
+                                "risk_assessment": "Immediate risk: Low (self-soothing achieved)",
+                                "compliance_notes": [
+                                    {"label": "Incident documented within the required timeframe", "passed": True, "engine": "Python"},
+                                    {"label": "No unauthorised restrictive practice identified", "passed": True, "engine": "AI+RAG"},
+                                ],
+                            },
+                        },
+                    ],
+                    "token_usage": {
+                        "input_tokens": 4200,
+                        "output_tokens": 3600,
+                        "embedding_tokens": 380,
+                        "total_tokens": 8180,
+                    },
+                },
+                {
+                    "client_id": "client-123",
+                    "shift_id": "shift-789",
+                    "incident_detected": 0,
+                    "incidents": [],
+                    "ai_summary": {
+                        "reviewed_period": None,
+                        "ai_confidence": 0.86,
+                        "confidence_label": "High",
+                        "progress_rating": "On Track",
+                        "progress_identified": ["Completed morning routine independently"],
+                        "goal_progress": ["Daily living skills"],
+                        "potential_risks": [],
+                        "patterns_detected": [],
+                        "flagged_highlights": [],
+                        "restrictive_practice_used": False,
+                        "note_quality_score": 0.82,
+                        "note_quality_label": "Good",
+                    },
+                    "token_usage": {
+                        "input_tokens": 2100,
+                        "output_tokens": 700,
+                        "embedding_tokens": 120,
+                        "total_tokens": 2920,
+                    },
+                },
+            ]
+        }
+    }
 
 
 # ── Unified analysis INPUT — SENA case note form (+ optional voice transcript) ─
@@ -838,7 +971,7 @@ class UnifiedIncidentRequest(BaseModel):
             case_note_id=uuid4(),
             client_id=f.clientId,
             worker_id=worker_id,
-            transcript=None,  # compose from structured fields first
+            transcript=None, # compose from structured fields first
             describe=f.summaryOfShift,
             assisted=a.assisted,
             practised_skill=a.practisedSkill,
