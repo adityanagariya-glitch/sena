@@ -35,7 +35,7 @@ try:
 except ImportError:
     pass  # Fall back to default event loop
 
-from auth import get_auth_headers
+from outbound_sign import sign_headers
 from rsa_auth import verify_rsa
 from bedrock_retry import converse_with_retry, sum_usage
 from cleaner import clean
@@ -172,14 +172,21 @@ class HealthResponse(BaseModel):
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _fetch_client_data(client_id: str, organization_id: str, date_from: str, date_to: str, token: str, page: int = 1) -> dict:
+def _fetch_client_data(client_id: str, organization_id: str, date_from: str, date_to: str, page: int = 1) -> dict:
     """Call GET /ai/client-data and return the inner data object.
 
     Raises ValueError if the backend returns a non-200 status or empty data.
     """
     url = f"{API_BASE_URL}/ai/client-data"
     params = {"clientId": client_id, "organizationId": organization_id, "dateFrom": date_from, "dateTo": date_to, "page": page}
-    resp = requests.get(url, params=params, headers=get_auth_headers(token), timeout=30)
+    # Authenticate as the trusted AI service: sign with our RSA private key
+    # (platform verifies with our public key). No per-user JWT is forwarded.
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        **sign_headers(),  # X-AI-Timestamp + X-AI-Signature (GET → empty body)
+    }
+    resp = requests.get(url, params=params, headers=headers, timeout=30)
     if resp.status_code != 200:
         raise ValueError(f"Backend returned {resp.status_code}: {resp.text[:200]}")
     body = resp.json()
@@ -194,7 +201,6 @@ def _fetch_client_data_all(
     organization_id: str,
     date_from: str,
     date_to: str,
-    token: str,
     max_pages: int = None  # No hard limit (handles quarterly/yearly data)
 ) -> dict:
     """Fetch ALL pages of client data, merging day lists and deduping by date.
@@ -214,7 +220,7 @@ def _fetch_client_data_all(
 
     for page_num in range(1, max_pages + 1):
         try:
-            data = _fetch_client_data(client_id, organization_id, date_from, date_to, token, page=page_num)
+            data = _fetch_client_data(client_id, organization_id, date_from, date_to, page=page_num)
         except ValueError as e:
             logger.warning(f"[{client_id}] Pagination stopped at page {page_num}: {e}")
             break
@@ -586,14 +592,14 @@ async def health() -> HealthResponse:
 )
 async def monthly_report(
     req: ReportRequest,
-    creds: HTTPAuthorizationCredentials | None = Security(_bearer),
     _: None = Depends(verify_rsa),
 ) -> HTMLResponse:
     """
     **What this does**
 
-    1. Validates your Bearer JWT (expiry check — no round-trip to the auth server).
-    2. Calls `GET /ai/client-data` on the SENA backend using your token to fetch all client data for the date range.
+    1. Authenticates the caller via the X-Signature key (verify_rsa).
+    2. Calls `GET /ai/client-data` on the SENA backend, signing the request with
+       our RSA private key (the backend verifies with our public key — no user JWT).
     3. Runs **sections 1–6 in parallel** through AWS Bedrock (Claude Sonnet `au.anthropic.claude-sonnet-4-6`).
     4. If a previous month's trend exists, it is automatically injected into Section 5 to produce ↑ ↓ → arrows.
     5. Runs **Section 7** after sections 3, 4, 5 are ready (it uses their output as context).
@@ -604,14 +610,12 @@ async def monthly_report(
 
     **Typical wall-clock time:** ~30–60 s (limited by slowest parallel Bedrock call).
     """
-    # Endpoint auth is the RSA signature (verify_rsa). The Bearer token, if
-    # present, is NOT used for auth here — it is forwarded downstream so the
-    # SENA backend client-data fetch is made on behalf of the user/service.
-    token = _token(creds)
-
+    # Endpoint auth is the X-Signature key (verify_rsa). The downstream
+    # /ai/client-data fetch authenticates as the service via its own RSA
+    # signature (see outbound_sign) — no per-user token is threaded through.
     try:
         data = await asyncio.to_thread(
-            _fetch_client_data_all, req.client_id, req.organization_id, req.date_from, req.date_to, token
+            _fetch_client_data_all, req.client_id, req.organization_id, req.date_from, req.date_to
         )
     except ValueError as exc:
         return HTMLResponse(f"<p>502 Backend error: {exc}</p>", status_code=502)

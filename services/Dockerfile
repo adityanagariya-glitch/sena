@@ -126,6 +126,8 @@ COPY casenote_monthly/api_main.py \
      casenote_monthly/linter.py \
      casenote_monthly/stats.py \
      casenote_monthly/trend_store.py \
+     casenote_monthly/rsa_auth.py \
+     casenote_monthly/outbound_sign.py \
      /app/
 
 WORKDIR /app
