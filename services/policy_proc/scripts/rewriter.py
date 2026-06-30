@@ -72,20 +72,23 @@ def rewrite_query(question: str, recent_turns: str = "") -> tuple:
     Returns (rewritten_query, usage_dict). Falls back to original question on error.
     """
     if not question or not question.strip():
-        return question, {"input_tokens": 0, "output_tokens": 0}
+        return question, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
     # Include recent turns context for follow-up questions
     context_section = ""
     if recent_turns:
-        context_section = f"\nRecent conversation context:\n{recent_turns}\n"
-    prompt = f"""{REWRITER_PROMPT}
-{context_section}
-User question: {question}
+        context_section = f"Recent conversation context:\n{recent_turns}\n\n"
 
-Rewritten search query:"""
     try:
         response = bedrock_runtime.converse(
             modelId=REWRITER_MODEL,
-            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            system=[
+                {
+                    "type": "text",
+                    "text": REWRITER_PROMPT,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
+            messages=[{"role": "user", "content": [{"text": f"{context_section}User question: {question}\n\nRewritten search query:"}]}],
             inferenceConfig={
                 "maxTokens": 30,
                 "temperature": 0.0
@@ -93,9 +96,12 @@ Rewritten search query:"""
         )
         rewritten  = response["output"]["message"]["content"][0]["text"].strip()
         raw_usage  = response.get("usage", {})
+        input_total = raw_usage.get("inputTokens", 0) + raw_usage.get("cacheReadInputTokens", 0) + raw_usage.get("cacheWriteInputTokens", 0)
+        output_total = raw_usage.get("outputTokens", 0)
         usage_dict = {
-            "input_tokens":  raw_usage.get("inputTokens",  0),
-            "output_tokens": raw_usage.get("outputTokens", 0),
+            "input_tokens":  input_total,
+            "output_tokens": output_total,
+            "total_tokens":  input_total + output_total,
         }
         final_query = question if not _is_valid_rewrite(rewritten) else rewritten
         if final_query == question:

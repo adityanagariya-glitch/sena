@@ -11,9 +11,10 @@ KB_ID = os.environ.get("KB_ID", "KFWSFMVU8U")
 DS_ID = os.environ.get("DS_ID", "CWJ8UCZSCY")
 
 # ── S3 ────────────────────────────────────────────────────────────────────────
-BUCKET_NAME = os.environ.get("BUCKET_NAME", "sena-policy-docs")
-ORG_PREFIX  = os.environ.get("ORG_PREFIX",  "sena/misty/orgs/")
-MD_PREFIX   = os.environ.get("MD_PREFIX",   "sena/misty/md/orgs/")
+BUCKET_NAME    = os.environ.get("BUCKET_NAME",    "sena-policy-docs")
+SOURCE_BUCKET  = os.environ.get("SOURCE_BUCKET",  "")  # Partner storage bucket (optional)
+ORG_PREFIX     = os.environ.get("ORG_PREFIX",     "sena/misty/orgs/")
+MD_PREFIX      = os.environ.get("MD_PREFIX",      "sena/misty/md/orgs/")
 
 # ── DynamoDB ──────────────────────────────────────────────────────────────────
 REGISTRY_TABLE = os.environ.get("REGISTRY_TABLE", "sena-doc-registry")

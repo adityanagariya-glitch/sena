@@ -233,10 +233,13 @@ _REPORT_USER_ENGAGEMENT_DECLARATION = types.FunctionDeclaration(
 )
 
 # ── Module-level system prompt cache (reused across all voice sessions) ───────
-# Voice prompt is static, so one cache serves every session. TTL 30 min;
-# refreshed automatically on expiry (next session that misses the cache
-# recreates it). Lock prevents double-creation under concurrent session starts.
+# 24-hour TTL on the Gemini cache; renewed 30 min before expiry so it never
+# lapses mid-session. Lock prevents double-creation under concurrent starts.
+_CACHE_TTL_SEC = 86400          # 24 h
+_CACHE_RENEW_BEFORE_SEC = 1800  # renew when <30 min remain
+
 _prompt_cache_name: str | None = None
+_prompt_cache_expires_at: float = 0.0  # epoch seconds
 _prompt_cache_lock: asyncio.Lock | None = None
 
 
@@ -248,10 +251,16 @@ def _prompt_cache_get_lock() -> asyncio.Lock:
 
 
 async def _get_or_create_prompt_cache(client: genai.Client, model: str) -> str | None:
-    """Return cached system prompt name, creating it once per process lifetime."""
-    global _prompt_cache_name
+    """Return cached system prompt name, creating/renewing as needed.
+
+    Renews automatically when fewer than 30 min remain on the 24-hour TTL so
+    sessions never start against a nearly-expired cache.
+    """
+    import time
+    global _prompt_cache_name, _prompt_cache_expires_at
     async with _prompt_cache_get_lock():
-        if _prompt_cache_name:
+        now = time.monotonic()
+        if _prompt_cache_name and now < _prompt_cache_expires_at - _CACHE_RENEW_BEFORE_SEC:
             return _prompt_cache_name
         try:
             cache = await client.aio.caches.create(
@@ -261,11 +270,15 @@ async def _get_or_create_prompt_cache(client: genai.Client, model: str) -> str |
                         role="user",
                         parts=[types.Part(text=_LIVE_SYSTEM_PROMPT)],
                     )],
-                    ttl="1800s",
+                    ttl=f"{_CACHE_TTL_SEC}s",
                 ),
             )
             _prompt_cache_name = cache.name
-            logger.info("voice_prompt_cache_created name=%s model=%s", _prompt_cache_name, model)
+            _prompt_cache_expires_at = now + _CACHE_TTL_SEC
+            logger.info(
+                "voice_prompt_cache_created name=%s model=%s ttl=%ds",
+                _prompt_cache_name, model, _CACHE_TTL_SEC,
+            )
             return _prompt_cache_name
         except Exception:
             logger.warning("voice_prompt_cache_failed — falling back to inline system_instruction")

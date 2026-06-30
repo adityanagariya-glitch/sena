@@ -250,7 +250,11 @@ def _call_bedrock(
             response = _get_client().converse(
                 modelId=config.bedrock.model_id,
                 system=[
-                    {"text": SYSTEM_PROMPT},
+                    {
+                        "type": "text",
+                        "text": SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"}
+                    },
                 ],
                 messages=[
                     {
@@ -273,10 +277,12 @@ def _call_bedrock(
 
             usage   = response.get("usage", {})
             metrics = response.get("metrics", {})
+            input_total = usage.get("inputTokens", 0) + usage.get("cacheReadInputTokens", 0) + usage.get("cacheWriteInputTokens", 0)
+            output_total = usage.get("outputTokens", 0)
             token_info = {
-                "input_tokens":  usage.get("inputTokens", 0),
-                "output_tokens": usage.get("outputTokens", 0),
-                "total_tokens":  usage.get("totalTokens", 0),
+                "input_tokens":  input_total,
+                "output_tokens": output_total,
+                "total_tokens":  input_total + output_total,
                 "latency_ms":    metrics.get("latencyMs", 0),
             }
             langfuse.update_current_generation(
@@ -284,7 +290,7 @@ def _call_bedrock(
                 input=f"[{bedrock_fmt} document]",
                 output=text[:2000],
                 usage_details={
-                    "input": usage.get("inputTokens", 0),
+                    "input": input_total,
                     "output": usage.get("outputTokens", 0),
                 },
                 prompt=_lf_prompt,

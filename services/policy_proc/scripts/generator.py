@@ -82,7 +82,9 @@ Do not use the NOT_IN_KB message for greetings.
             modelId=GENERATION_MODEL,
             system=[
                 {
-                    "text": SYSTEM_PROMPTS[ACTIVE_PROMPT_VERSION]
+                    "type": "text",
+                    "text": SYSTEM_PROMPTS[ACTIVE_PROMPT_VERSION],
+                    "cache_control": {"type": "ephemeral"}
                 }
             ],
             messages=[
@@ -142,16 +144,17 @@ Do not use the NOT_IN_KB message for greetings.
             # Token usage — emitted by Bedrock after messageStop
             elif "metadata" in event:
                 usage = event["metadata"].get("usage", {})
-                in_tok  = usage.get("inputTokens",  0)
+                in_tok  = usage.get("inputTokens",  0) + usage.get("cacheReadInputTokens", 0) + usage.get("cacheWriteInputTokens", 0)
                 out_tok = usage.get("outputTokens", 0)
                 langfuse.update_current_generation(
                     output="".join(_answer_parts),
-                    usage_details={"input": in_tok, "output": out_tok},
+                    usage_details={"input": in_tok, "output": out_tok, "total": in_tok + out_tok},
                 )
                 yield {
                     "type": "usage",
                     "input_tokens":  in_tok,
                     "output_tokens": out_tok,
+                    "total_tokens":  in_tok + out_tok,
                 }
     # Error handling
     except Exception as e:

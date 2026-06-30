@@ -102,18 +102,19 @@ def classify(question: str, recent_turns: str = "") -> dict:
 
     context_section = ""
     if recent_turns:
-        context_section = f"\nRecent conversation context (use this to understand follow-up questions):\n{recent_turns}\n"
-
-    prompt = f"""{CLASSIFIER_PROMPT}
-{context_section}
-User message: {question}
-
-Classification:"""
+        context_section = f"Recent conversation context (use this to understand follow-up questions):\n{recent_turns}\n\n"
 
     try:
         response = bedrock_runtime.converse(
             modelId=CLASSIFIER_MODEL,
-            messages=[{"role": "user", "content": [{"text": prompt}]}]
+            system=[
+                {
+                    "type": "text",
+                    "text": CLASSIFIER_PROMPT,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
+            messages=[{"role": "user", "content": [{"text": f"{context_section}User message: {question}\n\nClassification:"}]}]
         )
         raw  = response["output"]["message"]["content"][0]["text"].strip()
         data = json.loads(raw)
@@ -121,11 +122,13 @@ Classification:"""
         confidence = float(data.get("confidence", 0.5))
         reason     = data.get("reason", "")
         raw_usage  = response.get("usage", {})
+        input_total = raw_usage.get("inputTokens", 0) + raw_usage.get("cacheReadInputTokens", 0) + raw_usage.get("cacheWriteInputTokens", 0)
+        output_total = raw_usage.get("outputTokens", 0)
         langfuse.update_current_generation(
             model=CLASSIFIER_MODEL,
-            input=prompt,
+            input=question,
             output={"label": label, "confidence": confidence, "reason": reason},
-            usage_details={"input": raw_usage.get("inputTokens", 0), "output": raw_usage.get("outputTokens", 0)},
+            usage_details={"input": input_total, "output": output_total, "total": input_total + output_total},
         )
         logger.info(f"Classified: {label} ({confidence}) — {reason}")
         return {
@@ -133,8 +136,9 @@ Classification:"""
             "confidence": confidence,
             "reason":     reason,
             "usage": {
-                "input_tokens":  raw_usage.get("inputTokens",  0),
-                "output_tokens": raw_usage.get("outputTokens", 0),
+                "input_tokens":  input_total,
+                "output_tokens": output_total,
+                "total_tokens":  input_total + output_total,
             },
         }
 

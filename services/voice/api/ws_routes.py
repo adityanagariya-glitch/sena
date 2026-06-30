@@ -31,6 +31,10 @@ ws_router = APIRouter()
 _repo = VoiceRepository()
 _redis = RedisService(redis_client)
 
+# Cap concurrent Gemini Live sessions — beyond this limit Gemini degrades and
+# hallucinates. Users get a clean 4029 instead of a broken session.
+_GEMINI_LIVE_SEMAPHORE = asyncio.Semaphore(50)
+
 
 # ---------------------------------------------------------------------------
 # Auth helper
@@ -120,8 +124,13 @@ async def personal_details_live(websocket: WebSocket, session_id: UUID) -> None:
     final_fields: dict = dict(initial_fields)
 
     # -- Run bidirectional Gemini Live pipeline --
+    if not _GEMINI_LIVE_SEMAPHORE._value:  # no slots — fail fast with a clean error
+        await _ws_error(websocket, "Service at capacity — please try again shortly")
+        await websocket.close(code=4029)
+        return
+
     try:
-        async with GeminiLiveService(initial_fields=initial_fields) as live:
+        async with _GEMINI_LIVE_SEMAPHORE, GeminiLiveService(initial_fields=initial_fields) as live:
             client_task = asyncio.create_task(
                 _receive_from_client(websocket, live),
                 name=f"ws_client_{session_id}",

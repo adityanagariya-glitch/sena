@@ -107,13 +107,16 @@ def call_bedrock(
         # Record to Langfuse regardless of guardrail outcome
         usage = response.get("usage", {})
         user_text = _last_user_text(messages)
+        input_total = usage.get("inputTokens", 0) + usage.get("cacheReadInputTokens", 0) + usage.get("cacheWriteInputTokens", 0)
+        output_total = usage.get("outputTokens", 0)
         langfuse.update_current_generation(
             model=MODEL_ID,
             input=user_text[:2000] if user_text else None,
             output=text[:2000] if text else None,
             usage_details={
-                "input": usage.get("inputTokens", 0),
-                "output": usage.get("outputTokens", 0),
+                "input": input_total,
+                "output": output_total,
+                "total": input_total + output_total,
             },
             prompt=_lf_prompt,
             metadata={"service": _SERVICE},

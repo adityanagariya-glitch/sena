@@ -44,13 +44,21 @@ def _build_request_body(summaries: list[str]) -> dict:
     Build the Bedrock request body for Claude models (Messages API format).
     All model parameters are driven by config — nothing is hardcoded.
     The prompt is owned entirely by prompts.py.
+    Includes prompt caching on system prompt for cost optimization.
     """
     settings = get_settings()
+    system_prompt = get_system_prompt()
     return {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": settings.bedrock_max_tokens,
         "temperature": settings.bedrock_temperature,
-        "system": get_system_prompt(),
+        "system": [
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
         "messages": build_messages(summaries),
     }
 
@@ -98,7 +106,15 @@ async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
     try:
         response_body = json.loads(response["body"].read())
         consolidated = response_body["content"][0]["text"].strip()
-        usage = response_body.get("usage", {})
+        raw_usage = response_body.get("usage", {})
+        # Include cache tokens in input calculation
+        input_total = raw_usage.get("input_tokens", 0) + raw_usage.get("cache_read_input_tokens", 0) + raw_usage.get("cache_creation_input_tokens", 0)
+        output_total = raw_usage.get("output_tokens", 0)
+        usage = {
+            "input_tokens": input_total,
+            "output_tokens": output_total,
+            "total_tokens": input_total + output_total,
+        }
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
         logger.error("Failed to parse Bedrock response: %s", str(exc))
         raise HTTPException(
@@ -113,6 +129,7 @@ async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
         usage_details={
             "input": usage.get("input_tokens", 0),
             "output": usage.get("output_tokens", 0),
+            "total": usage.get("total_tokens", 0),
         },
         prompt=_lf_prompt,
         metadata={"service": _SERVICE},

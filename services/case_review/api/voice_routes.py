@@ -22,7 +22,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 
-from api.deps import get_auth_context, voice_redis_client
+from api.deps import _auth_from_jwt, get_auth_context, voice_redis_client
 from core.settings import settings
 from models.schemas import AuthContext, TokenUsage
 # Canonical import path (must match drafter.py + routes.py accumulator import — see usage.py).
@@ -44,11 +44,16 @@ from shared.src.sena_common.voice.form_state import FieldSource, FormState
 from shared.src.sena_common.voice.gemini_live import UsageFeature
 from shared.src.sena_common.voice.turn_payload import NextTarget, Participant, StepInfo, TurnPayload, VisibleField
 
+import asyncio
+
 log = structlog.get_logger(__name__)
 
 voice_router = APIRouter()
 
 _KEY_PREFIX = "sena:case_review"
+
+# Cap concurrent Gemini Live sessions — beyond this limit Gemini degrades.
+_GEMINI_LIVE_SEMAPHORE = asyncio.Semaphore(50)
 _STEP_ID = "staff_case_note"
 _STEP_LABEL = "Case Note"
 _STAFF_ROLES = {"worker", "staff", "support_worker", "admin"}
@@ -153,10 +158,16 @@ async def create_voice_session(
     body: CreateVoiceSessionRequest,
     auth: AuthContext = Depends(get_auth_context),
 ) -> CreateVoiceSessionResponse:
-    if not _is_staff(auth.roles):
-        log_api_tokens("/v1/case-review/voice/session", "POST", body.client_id, 403)
-        raise HTTPException(status_code=403, detail="Voice case notes are staff-only")
     tenant_id = str(auth.tenant_id)
+
+    # Rate limit: max 30 session starts per tenant per minute.
+    rl_key = f"rate_limit:voice_casenote:{tenant_id}"
+    count = await voice_redis_client.incr(rl_key)
+    if count == 1:
+        await voice_redis_client.expire(rl_key, 60)
+    if count > 30:
+        log_api_tokens("/v1/case-review/voice/session", "POST", body.client_id, 429)
+        raise HTTPException(status_code=429, detail="Too many voice sessions — try again shortly")
     session_id = uuid.uuid4().hex
     state = FormState(
         session_id=session_id,
@@ -267,16 +278,18 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
     # headers on a WS upgrade, so fall back to query params for the in-browser
     # demo harness (?tenant_id=&participant_id=&roles=worker). ──
     qp = websocket.query_params
-    tenant_id = websocket.headers.get("x-tenant-id") or qp.get("tenant_id")
+
+    # JWT from Authorization header or ?token= query param (browser demo harness).
+    raw_token = websocket.headers.get("authorization") or qp.get("token", "")
+    token = raw_token.removeprefix("Bearer ").strip()
+    try:
+        auth = _auth_from_jwt(token or None)
+    except Exception:
+        await _close(websocket, "unauthenticated", "Invalid or missing bearer token", 4401)
+        return
+
+    tenant_id = str(auth.tenant_id)
     participant_id = websocket.headers.get("x-participant-id") or qp.get("participant_id")
-    _roles_raw = websocket.headers.get("x-user-roles") or qp.get("roles", "")
-    roles = [r for r in _roles_raw.split(",") if r.strip()]
-    if not tenant_id:
-        await _close(websocket, "unauthenticated", "Missing X-Tenant-Id", 4401)
-        return
-    if not _is_staff(roles):
-        await _close(websocket, "not_staff", "Voice case notes are staff-only", 4403)
-        return
 
     repo = _repo_for(tenant_id)
 
@@ -298,64 +311,71 @@ async def case_review_voice_ws(websocket: WebSocket, session_id: str) -> None:
         await _close(websocket, "session_locked", "Another voice connection is active", 4009)
         return
 
+    # ── Concurrency cap — fail fast if Gemini Live slots are full ─────────────
+    if not _GEMINI_LIVE_SEMAPHORE._value:
+        await repo.release_ws_lock(session_id)
+        await _close(websocket, "at_capacity", "Service at capacity — please try again shortly", 4029)
+        return
+
     try:
-        await websocket.send_text(json.dumps({
-            "type": "ready",
-            "state": json.loads(state.model_dump_json()),
-            "prompt_version": "v2",
-            "coverage": CASE_NOTE_SCHEMA.voice_coverage,
-        }))
+        async with _GEMINI_LIVE_SEMAPHORE:
+            await websocket.send_text(json.dumps({
+                "type": "ready",
+                "state": json.loads(state.model_dump_json()),
+                "prompt_version": "v2",
+                "coverage": CASE_NOTE_SCHEMA.voice_coverage,
+            }))
 
-        cfg = _voice_config()
-        initial_turn = _build_initial_turn(state)
-        # NOTE: fragment_registry is intentionally NOT passed here — we do not
-        # add a separate pointer block to the always-on prompt. The injuryDetails
-        # table row in staff_case_note already tells the agent the field is
-        # conditional-required, so it serves as the pointer. The full capture
-        # rule is injected on-demand by GeminiLiveSession (below) the moment the
-        # field appears — net win: the always-on prompt shrinks, the rich rule
-        # only costs tokens when an injury is actually reported.
-        system_instruction = build_system_prompt(
-            initial_turn,
-            grounding_enabled=cfg.grounding_enabled,
-            voice_coverage=CASE_NOTE_SCHEMA.voice_coverage,
-            registry=_VOICE_REGISTRY,
-            tool_state_channel=cfg.tool_state_channel,
-        )
-
-        # Early exit optimization: if all required fields are filled, suggest completion
-        # This reduces tokens by 20-30% for typical sessions
-        required_filled = all(
-            f.value and f.value not in ("", [], {})
-            for f in initial_turn.visible_fields if f.required
-        )
-        if required_filled:
-            system_instruction += (
-                "\n\n[COMPLETION HINT] All required fields are now complete. "
-                "When the user is satisfied, suggest calling `finalize_note` to end the session quickly."
+            cfg = _voice_config()
+            initial_turn = _build_initial_turn(state)
+            # NOTE: fragment_registry is intentionally NOT passed here — we do not
+            # add a separate pointer block to the always-on prompt. The injuryDetails
+            # table row in staff_case_note already tells the agent the field is
+            # conditional-required, so it serves as the pointer. The full capture
+            # rule is injected on-demand by GeminiLiveSession (below) the moment the
+            # field appears — net win: the always-on prompt shrinks, the rich rule
+            # only costs tokens when an injury is actually reported.
+            system_instruction = build_system_prompt(
+                initial_turn,
+                grounding_enabled=cfg.grounding_enabled,
+                voice_coverage=CASE_NOTE_SCHEMA.voice_coverage,
+                registry=_VOICE_REGISTRY,
+                tool_state_channel=cfg.tool_state_channel,
             )
 
-        bridge = MobileBridge(websocket, timeout_sec=5.0)
-        dispatcher = ToolDispatcher(
-            bridge=bridge,
-            known_tools=CASE_NOTE_KNOWN_TOOLS,
-            submit_tool_name="finalize_note",
-        )
-        live = GeminiLiveSession(
-            websocket=websocket,
-            session_id=session_id,
-            system_instruction=system_instruction,
-            repo=repo,
-            tool_dispatcher=dispatcher,
-            mobile_bridge=bridge,
-            config=cfg,
-            usage_feature=UsageFeature.CASE_NOTE_DRAFTING,
-            function_decls=CASE_NOTE_FUNCTION_DECLS,
-            tenant_id=tenant_id,
-            participant_id=state.participant_id,
-            fragment_registry=CASE_NOTE_FRAGMENTS,
-        )
-        await live.run()
+            # Early exit optimization: if all required fields are filled, suggest completion
+            # This reduces tokens by 20-30% for typical sessions
+            required_filled = all(
+                f.value and f.value not in ("", [], {})
+                for f in initial_turn.visible_fields if f.required
+            )
+            if required_filled:
+                system_instruction += (
+                    "\n\n[COMPLETION HINT] All required fields are now complete. "
+                    "When the user is satisfied, suggest calling `finalize_note` to end the session quickly."
+                )
+
+            bridge = MobileBridge(websocket, timeout_sec=5.0)
+            dispatcher = ToolDispatcher(
+                bridge=bridge,
+                known_tools=CASE_NOTE_KNOWN_TOOLS,
+                submit_tool_name="finalize_note",
+            )
+            live = GeminiLiveSession(
+                websocket=websocket,
+                session_id=session_id,
+                system_instruction=system_instruction,
+                repo=repo,
+                tool_dispatcher=dispatcher,
+                mobile_bridge=bridge,
+                config=cfg,
+                usage_feature=UsageFeature.CASE_NOTE_DRAFTING,
+                function_decls=CASE_NOTE_FUNCTION_DECLS,
+                tenant_id=tenant_id,
+                participant_id=state.participant_id,
+                fragment_registry=CASE_NOTE_FRAGMENTS,
+            )
+            await live.run()
     except WebSocketDisconnect:
         log.info("voice_ws_disconnect", session_id=session_id)
     except Exception as exc:
