@@ -708,6 +708,49 @@ class ShiftAnalysisResponse(BaseModel):
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
+class IncidentBundle(BaseModel):
+    """One incident's full 3-screen bundle (AI Summary + Risk Summary + Incident Report).
+
+    The shift transcript is split into discrete incidents; one bundle is produced
+    per incident so the mobile app can render the three screens for each.
+    """
+    ai_summary: ShiftAISummary
+    risk_summary: ShiftRiskSummary | None = None
+    incident_report: ShiftIncidentReport | None = None
+
+
+class MultiIncidentShiftResponse(BaseModel):
+    """Multi-incident shift analysis response.
+
+    ``incident_detected`` is the COUNT of incidents; ``incidents`` is the array of
+    per-incident :class:`IncidentBundle` objects (one per detected incident).
+    When the shift has no incidents, the count is 0, ``incidents`` is empty, and a
+    single whole-shift ``ai_summary`` is returned instead.
+
+    Example (2 incidents)::
+
+        {
+          "client_id": "...", "shift_id": "...",
+          "incident_detected": 2,
+          "incidents": [
+            { "ai_summary": {...}, "risk_summary": {...}, "incident_report": {...} },
+            { "ai_summary": {...}, "risk_summary": {...}, "incident_report": {...} }
+          ],
+          "token_usage": {...}
+        }
+    """
+    client_id: str
+    shift_id: str
+    incident_detected: int = Field(description="Count of distinct incidents detected in the shift")
+    incidents: list[IncidentBundle] = Field(
+        default_factory=list, description="One bundle per detected incident (empty when count == 0)"
+    )
+    ai_summary: ShiftAISummary | None = Field(
+        None, description="Whole-shift summary — present only when incident_detected == 0"
+    )
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+
+
 # ── Unified analysis INPUT — SENA case note form (+ optional voice transcript) ─
 #
 # The mobile app feeds the structured shift case-note form, optionally with the

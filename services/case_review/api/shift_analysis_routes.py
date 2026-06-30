@@ -29,13 +29,15 @@ from case_review.models.schemas import (
     AuthContext,
     AuthorisationStatus,
     CaseNoteForm,
+    CaseNoteInput,
     ComplianceNote,
     EvaluatorOutput,
+    IncidentBundle,
     IncidentDraftOutput,
+    MultiIncidentShiftResponse,
     PipelineResult,
     PolicyViolationRisk,
     ShiftAISummary,
-    ShiftAnalysisResponse,
     ShiftIncidentReport,
     ShiftRiskSummary,
     SummaryOutput,
@@ -43,6 +45,7 @@ from case_review.models.schemas import (
     UnifiedIncidentRequest,
 )
 from case_review.services.pipeline.graph import run_pipeline
+from case_review.services.pipeline.incident_splitter import IncidentSegment, split_incidents
 from case_review.services.usage import get_usage, log_api_tokens, start_usage
 
 logger = logging.getLogger(__name__)
@@ -148,24 +151,23 @@ def _build_compliance_notes(
 # ── Response assembly ──────────────────────────────────────────────────────────
 
 
-def _build_response(result: PipelineResult, form: CaseNoteForm) -> ShiftAnalysisResponse:
+def _build_ai_summary(
+    result: PipelineResult,
+    form: CaseNoteForm,
+    incident_detected: bool,
+    cc_unauth: bool,
+) -> ShiftAISummary:
+    """AI Summary screen (🤖 AI + 🐍 Python) for one pipeline result."""
     summary = result.summary
     evaluator = result.evaluator
     incident_draft = result.incident_draft
-    cc_unauth = bool(
-        result.cross_check
-        and result.cross_check.authorisation_status == AuthorisationStatus.UNAUTHORISED
-    )
-    incident_detected = bool(form.anyIncident or (evaluator and evaluator.incident_detected))
 
     rp_used = bool(
         (incident_draft and incident_draft.restrictive_practice_used)
         or (evaluator and evaluator.incident_detected and cc_unauth)
     )
-
-    # ── Section 1: AI Summary (🤖 AI + 🐍 Python) ──────────────────────────────
     ai_conf = summary.ai_confidence if summary else 0.0
-    ai_summary = ShiftAISummary(
+    return ShiftAISummary(
         reviewed_period=None,  # 🐍 no date on the form — frontend fills from shift data
         ai_confidence=ai_conf,
         confidence_label=_confidence_label(ai_conf),
@@ -180,7 +182,21 @@ def _build_response(result: PipelineResult, form: CaseNoteForm) -> ShiftAnalysis
         note_quality_label=summary.note_quality_label if summary else "Average",
     )
 
-    # ── Section 2: Risk Summary (🤖+📚 AI+RAG) — only if the evaluator ran ──────
+
+def _build_bundle(result: PipelineResult, form: CaseNoteForm) -> IncidentBundle:
+    """Build one incident's full 3-screen bundle from a pipeline result."""
+    evaluator = result.evaluator
+    incident_draft = result.incident_draft
+    cc_unauth = bool(
+        result.cross_check
+        and result.cross_check.authorisation_status == AuthorisationStatus.UNAUTHORISED
+    )
+    # A split segment IS an incident, so treat it as detected for this bundle.
+    incident_detected = True
+
+    ai_summary = _build_ai_summary(result, form, incident_detected, cc_unauth)
+
+    # ── Risk Summary (🤖+📚 AI+RAG) — only if the evaluator ran ────────────────
     risk_summary: ShiftRiskSummary | None = None
     if evaluator:
         risk_level = (
@@ -195,9 +211,9 @@ def _build_response(result: PipelineResult, form: CaseNoteForm) -> ShiftAnalysis
             suggested_attention=_derive_suggested_attention(evaluator, cc_unauth, risk_level),
         )
 
-    # ── Section 3: Incident Report (🤖 AI, human-only fields excluded) ─────────
+    # ── Incident Report (🤖 AI, human-only fields excluded) ────────────────────
     incident_report: ShiftIncidentReport | None = None
-    if incident_detected and incident_draft:
+    if incident_draft:
         injuries: list[str] = []
         sh = form.safetyAndHealth
         if sh.anyInjuries and sh.injuryDetails:
@@ -218,14 +234,19 @@ def _build_response(result: PipelineResult, form: CaseNoteForm) -> ShiftAnalysis
             compliance_notes=_build_compliance_notes(incident_draft, cc_unauth),
         )
 
-    return ShiftAnalysisResponse(
-        client_id=form.clientId,
-        shift_id=form.shiftId,
-        incident_detected=incident_detected,
+    return IncidentBundle(
         ai_summary=ai_summary,
         risk_summary=risk_summary,
         incident_report=incident_report,
     )
+
+
+def _segment_to_input(base: CaseNoteInput, segment: str) -> CaseNoteInput:
+    """Clone the base CaseNoteInput but focus the transcript on one incident segment."""
+    return base.model_copy(update={
+        "transcript": segment,
+        "incident_occurred": True,  # the splitter flagged this slice as an incident
+    })
 
 
 # ── Endpoint ───────────────────────────────────────────────────────────────────
@@ -233,49 +254,88 @@ def _build_response(result: PipelineResult, form: CaseNoteForm) -> ShiftAnalysis
 
 @shift_analysis_router.post(
     "/shift-analysis",
-    response_model=ShiftAnalysisResponse,
-    summary="Shift analysis — case note form (+ voice) → AI Summary, Risk Summary, Incident Report",
+    response_model=MultiIncidentShiftResponse,
+    summary="Shift analysis — detect every incident, return a 3-screen bundle per incident",
     description=(
-        "Feeds the SENA shift case-note form (and optional raw voice transcript) through the "
-        "full pipeline and returns the three review screens in one JWT-authed call.\n\n"
-        "**Engine per field** (each response field's description names its source):\n"
-        "- 🤖 **AI** — Claude summary / evaluator / drafter\n"
-        "- 📚 **RAG** — pgvector NDIS policy retrieval\n"
-        "- 🤖+📚 **AI+RAG** — AI grounded in NDIS policy\n"
-        "- 🐍 **Python** — deterministic rules / heuristics (progress_rating, suggested_attention, "
-        "confidence_label, timeframe check)\n\n"
-        "**Sections:**\n"
-        "1. **AI Summary** — progress, risks, patterns, flagged highlights, progress rating\n"
-        "2. **Risk Summary** — risk category + level (null unless the note is flagged)\n"
-        "3. **Incident Report** — AI-fillable incident fields (null unless an incident is detected)\n\n"
-        "_Human-only incident fields are intentionally excluded — the worker fills date/time, "
-        "location, individuals involved, witnesses, reported-to, and additional notes in the UI._"
+        "Feeds the SENA shift case-note form (+ optional raw voice transcript) through an "
+        "incident splitter, then runs the full pipeline once PER detected incident.\n\n"
+        "**Flow:**\n"
+        "1. **Split** (🤖 Haiku) — segment the transcript into N discrete incidents\n"
+        "2. **Per incident** — run triage → RAG → evaluator → drafter\n"
+        "3. **Assemble** — one bundle (AI Summary + Risk Summary + Incident Report) per incident\n\n"
+        "**Response shape:**\n"
+        "- `incident_detected`: integer COUNT of incidents\n"
+        "- `incident_1` … `incident_N`: one :class:`IncidentBundle` each\n"
+        "- `ai_summary`: whole-shift summary, present ONLY when `incident_detected == 0`\n"
+        "- `token_usage`: one total for the whole call\n\n"
+        "**Engine per field:** 🤖 AI (Claude) · 📚 RAG (NDIS policy) · 🤖+📚 AI+RAG · 🐍 Python "
+        "(progress_rating, suggested_attention, confidence_label, scores, count).\n\n"
+        "_Human-only incident fields (date/time, location, individuals, witnesses, reported-to, "
+        "additional notes) are intentionally excluded — the worker fills them in the UI._"
     ),
 )
 async def analyze_shift(
     payload: UnifiedIncidentRequest,
     auth: AuthContext = Depends(verify_rsa_auth),
     db: AsyncSession = Depends(get_db),
-) -> ShiftAnalysisResponse:
-    """Shift analysis: case-note form (+ optional voice transcript) → three review screens."""
+) -> MultiIncidentShiftResponse:
+    """Multi-incident shift analysis: split the shift, then analyse each incident."""
     start_usage()
     form = payload.case_note_form
+    tenant_id = str(auth.tenant_id)
     logger.info("shift-analysis START client=%s shift=%s", form.clientId, form.shiftId)
     try:
-        case_note_input = payload.to_case_note_input(worker_id=form.shiftId)
-        logger.info("shift-analysis running pipeline client=%s shift=%s", form.clientId, form.shiftId)
-        result = await run_pipeline(case_note_input, db, tenant_id=str(auth.tenant_id))
-        resp = _build_response(result, form)
-        resp.token_usage = TokenUsage(**get_usage())
+        base_input = payload.to_case_note_input(worker_id=form.shiftId)
+        full_text = base_input.to_text()
 
-        usage = get_usage()
+        # ── Step 1: split the shift into discrete incidents (🤖 Haiku) ─────────
+        segments: list[IncidentSegment] = await split_incidents(full_text)
         logger.info(
-            "shift-analysis DONE client=%s shift=%s input=%d output=%d total=%d",
-            form.clientId, form.shiftId,
-            usage["input_tokens"], usage["output_tokens"], usage["total_tokens"],
+            "shift-analysis split client=%s shift=%s → %d incident(s)",
+            form.clientId, form.shiftId, len(segments),
         )
+
+        # ── Step 2: no incidents → single whole-shift summary ──────────────────
+        if not segments:
+            result = await run_pipeline(base_input, db, tenant_id=tenant_id)
+            cc_unauth = bool(
+                result.cross_check
+                and result.cross_check.authorisation_status == AuthorisationStatus.UNAUTHORISED
+            )
+            ai_summary = _build_ai_summary(result, form, incident_detected=False, cc_unauth=cc_unauth)
+            resp = MultiIncidentShiftResponse(
+                client_id=form.clientId,
+                shift_id=form.shiftId,
+                incident_detected=0,
+                ai_summary=ai_summary,
+                token_usage=TokenUsage(**get_usage()),
+            )
+            _log_done(form, 0)
+            log_api_tokens("/v1/case-review/shift-analysis", "POST", form.clientId, 200)
+            return resp
+
+        # ── Step 3: run the pipeline once per incident (sequential, shared db) ─
+        incidents: list[IncidentBundle] = []
+        for idx, seg in enumerate(segments, start=1):
+            logger.info(
+                "shift-analysis incident %d/%d client=%s '%s'",
+                idx, len(segments), form.clientId, seg.title,
+            )
+            seg_input = _segment_to_input(base_input, seg.segment)
+            result = await run_pipeline(seg_input, db, tenant_id=tenant_id)
+            incidents.append(_build_bundle(result, form))
+
+        resp = MultiIncidentShiftResponse(
+            client_id=form.clientId,
+            shift_id=form.shiftId,
+            incident_detected=len(incidents),
+            incidents=incidents,
+            token_usage=TokenUsage(**get_usage()),
+        )
+        _log_done(form, len(incidents))
         log_api_tokens("/v1/case-review/shift-analysis", "POST", form.clientId, 200)
         return resp
+
     except Exception as exc:
         logger.error(
             "shift-analysis error client=%s shift=%s: %s",
@@ -283,3 +343,13 @@ async def analyze_shift(
         )
         log_api_tokens("/v1/case-review/shift-analysis", "POST", form.clientId, 500)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
+
+
+def _log_done(form: CaseNoteForm, n_incidents: int) -> None:
+    usage = get_usage()
+    logger.info(
+        "shift-analysis DONE client=%s shift=%s incidents=%d input=%d output=%d embed=%d total=%d",
+        form.clientId, form.shiftId, n_incidents,
+        usage["input_tokens"], usage["output_tokens"],
+        usage.get("embedding_tokens", 0), usage["total_tokens"],
+    )
