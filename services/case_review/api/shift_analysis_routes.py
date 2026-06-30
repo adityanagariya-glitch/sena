@@ -23,7 +23,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_auth_context, get_db
+from api.deps import get_db
+from api.rsa_auth import verify_rsa_auth
 from case_review.models.schemas import (
     AuthContext,
     AuthorisationStatus,
@@ -253,7 +254,7 @@ def _build_response(result: PipelineResult, form: CaseNoteForm) -> ShiftAnalysis
 )
 async def analyze_shift(
     payload: UnifiedIncidentRequest,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext = Depends(verify_rsa_auth),
     db: AsyncSession = Depends(get_db),
 ) -> ShiftAnalysisResponse:
     """Shift analysis: case-note form (+ optional voice transcript) → three review screens."""

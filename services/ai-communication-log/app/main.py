@@ -1,11 +1,12 @@
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.api.sentiment_batch import router as sentiment_batch_router
 from app.models.schemas import HealthResponse
+from app.rsa_auth import verify_rsa
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -36,17 +37,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── API Key Middleware ────────────────────────────────────────────────────────
+# ── RSA signature middleware ──────────────────────────────────────────────────
+# Replaces the old X-API-Key check. Every non-public request must carry a valid
+# RSA signature (X-AI-Signature over "{ts}." + body); see app/rsa_auth.py.
 _PUBLIC_PATHS = {"/health", "/docs", "/redoc", "/openapi.json"}
 
 @app.middleware("http")
-async def api_key_middleware(request: Request, call_next):
+async def rsa_auth_middleware(request: Request, call_next):
     if request.url.path in _PUBLIC_PATHS:
         return await call_next(request)
-    if not settings.API_KEY:
-        return await call_next(request)
-    if request.headers.get("X-API-Key") != settings.API_KEY:
-        return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+    try:
+        await verify_rsa(request)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     return await call_next(request)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
