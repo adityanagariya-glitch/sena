@@ -162,3 +162,45 @@ def test_prompt_mode_ignores_readonly_filled_fields() -> None:
     )
     out = build_system_prompt(tp)
     assert "MODE: FRESH FORM" in out
+
+
+def _documents_turn() -> TurnPayload:
+    return TurnPayload(
+        participant=Participant(first_name="Jane", display_name="Jane Doe"),
+        step=StepInfo(id="documents", label="Documents", number=4),
+        bootstrap_mode="new_user",
+        prior_steps={},
+        visible_fields=[
+            VisibleField(
+                path="documents.abc123.document",
+                label="NDIS Plan Document",
+                type="file",
+                required=True,
+                readonly=False,
+                value=None,
+            ),
+        ],
+        next_target=NextTarget(
+            path="documents.abc123.document",
+            label="NDIS Plan Document",
+            reason="next_required",
+        ),
+    )
+
+
+def test_documents_step_forbids_all_mutation_tools_keeps_submit() -> None:
+    """Documents is informational + submit-only: the step fragment must forbid
+    every field-mutation tool (update_field, add_row, delete_row, clear_field)
+    so the model never fires a tool_request the documents screen can't ACK,
+    while submit_step stays the one allowed exception.
+    """
+    out = build_system_prompt(_documents_turn())
+    # The documents fragment loaded.
+    assert "Step-specific rules — Documents" in out
+    # The widened ban naming all four mutation tools is present.
+    assert "field-mutation tool" in out
+    assert "`add_row`, `delete_row`, or `clear_field`" in out
+    # submit_step explicitly preserved as the lone exception.
+    assert "is the single exception" in out
+    # Manual screen-edit must be acknowledged in words, never mirrored.
+    assert "never mirror their action with a tool call" in out
