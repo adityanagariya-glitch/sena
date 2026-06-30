@@ -35,11 +35,12 @@ STEPS: dict[str, str | Callable[[list[VisibleField]], str]] = {
     'documents': _step_documents,
     'lifestyle_requirements': _step_lifestyle_requirements,
     'medical_information': _step_medical_information,
+    'medical': _step_medical_information,              # client short form
     'ndis_plan_details': _step_ndis_plan_details,
-    # Client sends the short form 'ndis_plan'; alias it to the same prompt so the
-    # voice session doesn't KeyError on the registry lookup.
-    'ndis_plan': _step_ndis_plan_details,
+    'ndis_plan': _step_ndis_plan_details,              # client short form
     'personal_information': _step_personal_information,
+    'lifestyle_requirements': _step_lifestyle_requirements,
+    'participant_requirements': _step_lifestyle_requirements,  # fixture short form
     'staff_banking': _step_staff_banking,
     'staff_case_note': _step_staff_case_note,
     'staff_documents': _step_staff_documents,
