@@ -1,35 +1,65 @@
-"""Shared static-key auth for the AI services (server-to-server).
+"""RSA signature auth for the AI services (server-to-server).
 
-Other teams send one header — ``X-Signature: <key>`` — carrying the shared
-secret. We compare it (constant-time) against ``INTERNAL_API_KEY`` from the
-root ``.env``. Match -> request proceeds; mismatch/missing -> 401.
+Callers sign requests with their private key; we verify with their public key
+(which we have configured locally as AI_SERVICE_PUBLIC_KEY). If the signature
+is valid, the caller is trusted — no per-user JWT is needed.
 
-No signing, no timestamp: the header value IS the key. Identity is synthetic —
-a valid key proves the caller is a trusted internal team, not which tenant/user.
+Signature scheme:
+  POST/PUT: sign the request body (bytes)
+  GET/DELETE: sign canonical string f"METHOD /path?query"
 
-This file is copied verbatim across doc_service, casenote_monthly,
-shift-summary, ai-communication-log and case_review (no shared importable pkg).
+Both use RSA PKCS#1 v1.5 + SHA-256, with headers:
+  X-AI-Signature: base64(sig)
+  X-AI-Timestamp: unix timestamp (optional, not validated)
+
+If AI_SERVICE_PUBLIC_KEY is blank, signature auth is disabled (request passes).
 """
 from __future__ import annotations
 
-import hmac
+import base64
 import os
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 from fastapi import HTTPException, Request
 
-_HEADER = "X-Signature"
-_ENV_VAR = "INTERNAL_API_KEY"
+_PUBLIC_KEY = None
 
 
-def _expected_key() -> str:
-    return os.environ.get(_ENV_VAR, "").strip()
+def _public_key():
+    global _PUBLIC_KEY
+    if _PUBLIC_KEY is None:
+        raw = os.environ.get("AI_SERVICE_PUBLIC_KEY", "").replace("\\n", "\n").strip()
+        if not raw:
+            return None  # Signature auth disabled
+        _PUBLIC_KEY = serialization.load_pem_public_key(raw.encode())
+    return _PUBLIC_KEY
 
 
 async def verify_rsa(request: Request) -> None:
-    """FastAPI dependency — raises 401 unless the X-Signature key matches."""
-    expected = _expected_key()
-    if not expected:
-        raise HTTPException(status_code=503, detail=f"{_ENV_VAR} not configured")
-    provided = request.headers.get(_HEADER, "")
-    if not provided or not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail=f"Invalid or missing {_HEADER}")
+    """FastAPI dependency — verify X-AI-Signature or raise 401.
+
+    Signature covers the canonical request line (method + path + query),
+    NOT the body — this avoids consuming the body before FastAPI parses it.
+
+    Canonical message: "METHOD /path?query"
+    """
+    pub_key = _public_key()
+    if not pub_key:
+        return  # No public key configured; auth disabled
+
+    sig_b64 = request.headers.get("X-AI-Signature", "")
+    if not sig_b64:
+        raise HTTPException(status_code=401, detail="Missing X-AI-Signature")
+
+    # Reconstruct the canonical request line (method + path + optional query)
+    path = request.url.path
+    query = request.url.query
+    message = f"{request.method} {path}{'?' + query if query else ''}".encode()
+
+    # Verify the signature
+    try:
+        sig = base64.b64decode(sig_b64)
+        pub_key.verify(sig, message, padding.PKCS1v15(), hashes.SHA256())
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Signature verification failed: {e}")
