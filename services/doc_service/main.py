@@ -14,10 +14,11 @@ Endpoints:
 import logging
 import os
 
-from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, Depends, Header, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
 from auth import decode_token, require_admin, require_org_access
+from rsa_auth import verify_rsa
 from pipeline import run_upload, run_delete, poll_and_update, SUPPORTED_EXTENSIONS
 from registry import registry_get, registry_list_by_org, registry_update
 
@@ -52,7 +53,7 @@ async def upload_document(
     file:             UploadFile = File(...),
     org_id:           str        = Form(...),
     doc_type:         str        = Form("policy"),
-    authorization:    str        = Header(default=None),
+    _:                None       = Depends(verify_rsa),
 ):
     """
     Accept a document from the frontend, run the full ingestion pipeline:
@@ -62,11 +63,9 @@ async def upload_document(
       4. Write registry entry (status: INGESTING)
       5. Trigger Bedrock KB ingestion job
       6. Return 202 — background task polls until COMPLETE/FAILED
-    """
-    claims = decode_token(authorization)
-    require_admin(claims)
-    require_org_access(claims, org_id)
 
+    Auth: RSA request signature (X-AI-Signature over "{ts}." + raw body).
+    """
     if doc_type not in ("policy", "procedure"):
         raise HTTPException(status_code=400, detail="doc_type must be 'policy' or 'procedure'")
 
@@ -114,23 +113,19 @@ async def upload_document(
 def delete_document(
     doc_id:           str,
     background_tasks: BackgroundTasks,
-    authorization:    str = Header(default=None),
+    _:                None = Depends(verify_rsa),
 ):
     """
     Delete a document:
-      1. Validate admin + org access
-      2. Guard against double-delete
-      3. Mark registry as DELETING — return 202
-      4. Background: delete S3 raw + md + sidecar, remove from KB index, mark DELETED
-    """
-    claims = decode_token(authorization)
-    require_admin(claims)
+      1. Guard against double-delete
+      2. Mark registry as DELETING — return 202
+      3. Background: delete S3 raw + md + sidecar, remove from KB index, mark DELETED
 
+    Auth: RSA request signature (X-AI-Signature over "{ts}.DELETE {path}").
+    """
     item = registry_get(doc_id)
     if not item:
         raise HTTPException(status_code=404, detail=f"Document not found: {doc_id}")
-
-    require_org_access(claims, item["org_id"])
 
     if item["status"] in ("DELETING", "DELETED"):
         raise HTTPException(
@@ -177,13 +172,12 @@ def document_status(
 
 @app.get("/documents/list")
 def list_documents(
-    org_id:        str,
-    authorization: str = Header(default=None),
+    org_id: str,
+    _:      None = Depends(verify_rsa),
 ):
-    """List all registry entries for an organisation."""
-    claims = decode_token(authorization)
-    require_admin(claims)
-    require_org_access(claims, org_id)
+    """List all registry entries for an organisation.
 
+    Auth: RSA request signature (X-AI-Signature over "{ts}.GET {path}?org_id=...").
+    """
     docs = registry_list_by_org(org_id)
     return {"org_id": org_id, "count": len(docs), "documents": docs}

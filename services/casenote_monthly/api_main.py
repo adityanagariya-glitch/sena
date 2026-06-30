@@ -23,7 +23,7 @@ from pathlib import Path
 
 import markdown as md_lib
 import requests
-from fastapi import FastAPI, Header, HTTPException, Security
+from fastapi import Depends, FastAPI, Header, HTTPException, Security
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -35,7 +35,8 @@ try:
 except ImportError:
     pass  # Fall back to default event loop
 
-from auth import get_auth_headers, validate_jwt
+from auth import get_auth_headers
+from rsa_auth import verify_rsa
 from bedrock_retry import converse_with_retry, sum_usage
 from cleaner import clean
 from config import API_BASE_URL, bedrock_runtime, MODEL_ID
@@ -586,6 +587,7 @@ async def health() -> HealthResponse:
 async def monthly_report(
     req: ReportRequest,
     creds: HTTPAuthorizationCredentials | None = Security(_bearer),
+    _: None = Depends(verify_rsa),
 ) -> HTMLResponse:
     """
     **What this does**
@@ -602,10 +604,10 @@ async def monthly_report(
 
     **Typical wall-clock time:** ~30–60 s (limited by slowest parallel Bedrock call).
     """
+    # Endpoint auth is the RSA signature (verify_rsa). The Bearer token, if
+    # present, is NOT used for auth here — it is forwarded downstream so the
+    # SENA backend client-data fetch is made on behalf of the user/service.
     token = _token(creds)
-    valid, error_msg, _ = validate_jwt(token)
-    if not valid:
-        return HTMLResponse(f"<p>401 Unauthorized: {error_msg}</p>", status_code=401)
 
     try:
         data = await asyncio.to_thread(
@@ -674,7 +676,7 @@ class TrendSaveRequest(BaseModel):
 )
 async def trend_save(
     req: TrendSaveRequest,
-    creds: HTTPAuthorizationCredentials | None = Security(_bearer),
+    _: None = Depends(verify_rsa),
 ) -> TrendSaveResponse:
     """
     **When to use this**
@@ -689,11 +691,6 @@ async def trend_save(
     The saved entry will be picked up automatically the next time a report is generated
     for this client in a subsequent month.
     """
-    token = _token(creds)
-    valid, error_msg, _ = validate_jwt(token)
-    if not valid:
-        raise HTTPException(status_code=401, detail=error_msg)
-
     saved_at = datetime.now(timezone.utc).isoformat()
     path = await asyncio.to_thread(save_trend, req.client_id, req.period, req.trend_text, saved_at)
     return TrendSaveResponse(status="saved", period=req.period, file=str(path))
@@ -712,7 +709,7 @@ async def trend_save(
 )
 async def trend_list(
     client_id: str,
-    creds: HTTPAuthorizationCredentials | None = Security(_bearer),
+    _: None = Depends(verify_rsa),
 ) -> TrendListResponse:
     """
     Returns every stored monthly trend entry for the given client, sorted **newest first**.
@@ -729,11 +726,6 @@ async def trend_list(
     prompt context. This allows the model to output cross-month comparison arrows
     (↑ ↓ →) without needing full historical data in the client JSON.
     """
-    token = _token(creds)
-    valid, error_msg, _ = validate_jwt(token)
-    if not valid:
-        raise HTTPException(status_code=401, detail=error_msg)
-
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", client_id):
         raise HTTPException(status_code=422, detail="Invalid client_id format.")
 

@@ -5,6 +5,7 @@ from fastapi import FastAPI, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from auth import require_api_key
+from rsa_auth import verify_rsa
 from bedrock import consolidate_summaries
 from config import get_settings
 from schemas import SummarizeRequest, SummarizeResponse, ErrorResponse, TokenUsage
@@ -57,7 +58,7 @@ async def health_check():
         "Accepts a list of text summaries, sends them to AWS Bedrock (Claude), "
         "and returns a single consolidated summary."
     ),
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(verify_rsa)],
 )
 async def summarize(payload: SummarizeRequest) -> SummarizeResponse:
     logger.info("Received /summarize request with %d summaries.", len(payload.summaries))
