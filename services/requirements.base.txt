@@ -91,3 +91,4 @@ regex
 six
 rsa
 Pygments
+langfuse
