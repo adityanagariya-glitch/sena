@@ -108,11 +108,8 @@ def classify(question: str, recent_turns: str = "") -> dict:
         response = bedrock_runtime.converse(
             modelId=CLASSIFIER_MODEL,
             system=[
-                {
-                    "type": "text",
-                    "text": CLASSIFIER_PROMPT,
-                    "cache_control": {"type": "ephemeral"}
-                }
+                {"text": CLASSIFIER_PROMPT},
+                {"cachePoint": {"type": "default"}},
             ],
             messages=[{"role": "user", "content": [{"text": f"{context_section}User message: {question}\n\nClassification:"}]}]
         )

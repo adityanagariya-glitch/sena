@@ -82,11 +82,8 @@ def rewrite_query(question: str, recent_turns: str = "") -> tuple:
         response = bedrock_runtime.converse(
             modelId=REWRITER_MODEL,
             system=[
-                {
-                    "type": "text",
-                    "text": REWRITER_PROMPT,
-                    "cache_control": {"type": "ephemeral"}
-                }
+                {"text": REWRITER_PROMPT},
+                {"cachePoint": {"type": "default"}},
             ],
             messages=[{"role": "user", "content": [{"text": f"{context_section}User question: {question}\n\nRewritten search query:"}]}],
             inferenceConfig={

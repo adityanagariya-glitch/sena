@@ -81,11 +81,8 @@ Do not use the NOT_IN_KB message for greetings.
         response = bedrock_runtime.converse_stream(
             modelId=GENERATION_MODEL,
             system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPTS[ACTIVE_PROMPT_VERSION],
-                    "cache_control": {"type": "ephemeral"}
-                }
+                {"text": SYSTEM_PROMPTS[ACTIVE_PROMPT_VERSION]},
+                {"cachePoint": {"type": "default"}},
             ],
             messages=[
                 {

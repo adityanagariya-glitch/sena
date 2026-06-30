@@ -250,11 +250,8 @@ def _call_bedrock(
             response = _get_client().converse(
                 modelId=config.bedrock.model_id,
                 system=[
-                    {
-                        "type": "text",
-                        "text": SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"}
-                    },
+                    {"text": SYSTEM_PROMPT},
+                    {"cachePoint": {"type": "default"}},
                 ],
                 messages=[
                     {
@@ -291,7 +288,8 @@ def _call_bedrock(
                 output=text[:2000],
                 usage_details={
                     "input": input_total,
-                    "output": usage.get("outputTokens", 0),
+                    "output": output_total,
+                    "total": input_total + output_total,
                 },
                 prompt=_lf_prompt,
                 metadata={"service": _SERVICE, "format": bedrock_fmt},
