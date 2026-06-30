@@ -79,7 +79,7 @@ class OnboardingSettings(BaseSettings):
 
     # ── Screen state injection ────────────────────────────────────────────────
     # SENA_AI_SCREEN_STATE_MAX_BYTES — hard cap on screen_state payload size
-    screen_state_max_bytes: int = 8192
+    screen_state_max_bytes: int = 16384
 
     # ── Session resumption ────────────────────────────────────────────────────
     # SENA_AI_RESUMPTION_HANDLE_TTL_SEC — handle expiry (default 10 min)

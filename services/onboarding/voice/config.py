@@ -23,7 +23,7 @@ class VoiceEngineConfig:
     gemini_api_key: str
     gemini_live_model_id: str
     grounding_enabled: bool = False
-    screen_state_max_bytes: int = 8192
+    screen_state_max_bytes: int = 16384
     session_max_sec: int = 3600
     silence_timeout_sec: int = 8
     tool_state_channel: bool = True

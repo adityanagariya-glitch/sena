@@ -74,7 +74,7 @@ class CaseReviewSettings(BaseSettings):
     app_webhook_url: str = ""
     app_webhook_secret: str = ""
     # Voice session tuning (mirror onboarding defaults)
-    screen_state_max_bytes: int = 8192
+    screen_state_max_bytes: int = 16384
     voice_session_max_sec: int = 3600
     voice_silence_timeout_sec: int = 8
     voice_grounding_enabled: bool = False

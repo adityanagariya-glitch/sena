@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     voice_silence_timeout_sec: int = 8
     voice_validation_advisory: bool = True
     voice_grounding_enabled: bool = False
-    screen_state_max_bytes: int = 8192
+    screen_state_max_bytes: int = 16384
     resumption_handle_ttl_sec: int = 600
     debug: bool = False
 

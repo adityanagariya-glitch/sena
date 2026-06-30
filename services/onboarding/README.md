@@ -195,7 +195,7 @@ Returns `503` if Redis is unavailable.
 | Audio | Binary PCM16 16kHz mono | Continuous microphone audio |
 | Text input | JSON `{"type":"user_text","text":"..."}` | Alternative to audio (typed input) |
 | Tool response | JSON `{"type":"tool_response","id":"<tool_call_id>","result":{"success":true}}` | App confirms a field update |
-| Screen state | JSON `{"type":"screen_state","data":{...}}` | Current visible form state (max 8192 bytes) |
+| Screen state | JSON `{"type":"screen_state","data":{...}}` | Current visible form state (max 16384 bytes) |
 | Validation failed | JSON `{"type":"validation_failed","section_id":"...","field_id":"...","reason_human":"...","code":"..."}` | Inject validation error into agent context |
 | Validation cleared | JSON `{"type":"validation_cleared","section_id":"...","field_id":"..."}` | Notify agent validation error is resolved |
 | Stop | JSON `{"type":"stop"}` | Graceful disconnect |
