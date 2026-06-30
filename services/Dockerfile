@@ -57,7 +57,7 @@ ENV PYTHONPATH=/app
 EXPOSE 8008
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:'${PORT:-8008}'/health/live').status==200 else 1)"
+  CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT','8008'); sys.exit(0 if urllib.request.urlopen(f'http://localhost:{p}/health/live').status==200 else 1)"
 
 CMD uvicorn voice.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8008}
 
@@ -78,7 +78,7 @@ ENV PYTHONPATH=/app:/app/onboarding
 EXPOSE 8009
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:'${SENA_AI_ONBOARDING_PORT:-8009}'/health/live').status==200 else 1)"
+  CMD python -c "import os,urllib.request,sys; p=os.environ.get('SENA_AI_ONBOARDING_PORT','8009'); sys.exit(0 if urllib.request.urlopen(f'http://localhost:{p}/health/live').status==200 else 1)"
 
 CMD uvicorn onboarding.main:create_app --factory --host 0.0.0.0 --port ${SENA_AI_ONBOARDING_PORT:-8009}
 
@@ -99,7 +99,7 @@ ENV PYTHONPATH=/app:/app/case_review
 EXPOSE 8002
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:'${SENA_AI_CASE_REVIEW_PORT:-8002}'/v1/restrictive-practices/health').status==200 else 1)"
+  CMD python -c "import os,urllib.request,sys; p=os.environ.get('SENA_AI_CASE_REVIEW_PORT','8002'); sys.exit(0 if urllib.request.urlopen(f'http://localhost:{p}/v1/restrictive-practices/health').status==200 else 1)"
 
 CMD uvicorn main:create_app --factory --host 0.0.0.0 --port ${SENA_AI_CASE_REVIEW_PORT:-8002}
 

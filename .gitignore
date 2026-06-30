@@ -128,6 +128,10 @@ sena-ai/
 ai-sena/
 restrictive_practices/   # reference-only (Ritika's code); pushed in error — voice belongs in services/case_review
 services/8ef31cb1-1146-4775-923b-ce6a820208d5.zip
+SENA\.sentrux
+SENA\services\onboarding\DEV_SETUP.md
+SENA\services\onboarding\FLUTTER_HANDOFF_OPTION_D.md
+SENA\services\onboarding\ONBOARDING_VOICE_LOCAL_TESTING.md
 # ==========================================
 # Tool Configs
 # ==========================================

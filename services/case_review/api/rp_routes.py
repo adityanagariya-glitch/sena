@@ -669,6 +669,7 @@ async def draft_case_note_audio(
     )
 
     start_usage()
+    logger.info("draft/audio: running drafter job=%s case_note_id=%s", job_name, resolved_id)
     try:
         result = await run_drafter(payload)
     except Exception as exc:
@@ -679,7 +680,12 @@ async def draft_case_note_audio(
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
     result.token_usage = TokenUsage(**get_usage())
-    logger.info("draft/audio: done job=%s case_note_id=%s", job_name, resolved_id)
+    usage = get_usage()
+    logger.info(
+        "draft/audio: done job=%s case_note_id=%s input=%d output=%d total=%d",
+        job_name, resolved_id,
+        usage["input_tokens"], usage["output_tokens"], usage["total_tokens"],
+    )
     log_api_tokens("/v1/restrictive-practices/draft/audio", "POST", client_id, 200)
     return result
 

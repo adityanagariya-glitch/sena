@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_auth_context, get_db, verify_signature_auth
+from api.deps import get_auth_context, get_db
 from case_review.core.settings import settings
 from case_review.services.caching import cache_verdict
 from case_review.models.schemas import (
@@ -65,7 +65,7 @@ unified_router = APIRouter(prefix="/v1/restrictive-practices", tags=["incidents"
 async def analyze_incidents(
     payload: UnifiedIncidentRequest,
     response,
-    auth: AuthContext = Depends(verify_signature_auth),
+    auth: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> UnifiedIncidentResponse:
     """
@@ -78,31 +78,44 @@ async def analyze_incidents(
     response.headers["X-Data-Retention"] = "No-Retention-Session-Only"
     start_usage()
 
+    client_id = payload.case_note_form.clientId
+    shift_id = payload.case_note_form.shiftId
+
+    logger.info("incidents-analyze START client=%s shift=%s", client_id, shift_id)
     try:
         # Map form (+ voice transcript) → CaseNoteInput
-        case_note_input = payload.to_case_note_input(worker_id=payload.case_note_form.shiftId)
+        case_note_input = payload.to_case_note_input(worker_id=shift_id)
 
         # Run full pipeline
+        logger.info("incidents-analyze running pipeline client=%s shift=%s", client_id, shift_id)
         result = await run_pipeline(case_note_input, db, tenant_id=str(auth.tenant_id))
 
         # Build unified response (all three screens)
         resp = _build_unified_response(
             result,
             case_note_form=payload.case_note_form,
-            worker_id=payload.case_note_form.shiftId,
+            worker_id=shift_id,
         )
         resp.token_usage = TokenUsage(**get_usage())
-        log_api_tokens("/v1/restrictive-practices/incidents/analyze", "POST", payload.case_note_form.clientId, 200)
+
+        usage = get_usage()
+        logger.info(
+            "incidents-analyze DONE client=%s shift=%s input=%d output=%d total=%d",
+            client_id, shift_id,
+            usage["input_tokens"], usage["output_tokens"], usage["total_tokens"],
+        )
+        log_api_tokens("/v1/restrictive-practices/incidents/analyze", "POST", client_id, 200)
         return resp
 
     except Exception as exc:
         logger.error(
-            "Incidents analyze error case_note_id=%s: %s",
-            payload.case_note_form.shiftId,
+            "incidents-analyze error client=%s shift=%s: %s",
+            client_id,
+            shift_id,
             exc,
             exc_info=True,
         )
-        log_api_tokens("/v1/restrictive-practices/incidents/analyze", "POST", payload.case_note_form.clientId, 500)
+        log_api_tokens("/v1/restrictive-practices/incidents/analyze", "POST", client_id, 500)
         raise HTTPException(status_code=500, detail="An internal error occurred.") from exc
 
 

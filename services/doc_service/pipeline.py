@@ -11,11 +11,13 @@ import tempfile
 import time
 
 import boto3
+import httpx
 from markitdown import MarkItDown
 
 from config import (
     REGION, BUCKET_NAME, ORG_PREFIX, MD_PREFIX,
     KB_ID, DS_ID, POLL_INTERVAL_SECONDS, POLL_MAX_ATTEMPTS,
+    SOURCE_BUCKET,
 )
 from registry import registry_create, registry_update, now_iso
 
@@ -117,6 +119,79 @@ def poll_and_update(doc_id: str, job_id: str):
     logger.error(f"Ingestion polling timed out: {doc_id}")
 
 
+# ── Source fetch (partner S3 key or CDN URL) ──────────────────────────────────
+
+def _fetch_from_source(s3_key: str, cdn_url: str | None) -> bytes:
+    """
+    Retrieve file bytes from the partner's storage.
+    Prefers cdn_url (HTTP GET) when provided; falls back to cross-account
+    S3 read using SOURCE_BUCKET if configured.
+    """
+    if cdn_url:
+        resp = httpx.get(cdn_url, follow_redirects=True, timeout=60.0)
+        if resp.status_code != 200:
+            raise ValueError(f"CDN fetch returned HTTP {resp.status_code}: {cdn_url}")
+        return resp.content
+
+    if not SOURCE_BUCKET:
+        raise ValueError(
+            "cdn_url was not provided and SOURCE_BUCKET is not configured — "
+            "cannot fetch source file"
+        )
+    obj = s3.get_object(Bucket=SOURCE_BUCKET, Key=s3_key)
+    return obj["Body"].read()
+
+
+# ── S3-key ingestion entrypoint ───────────────────────────────────────────────
+
+def run_ingest_from_key(
+    s3_key:   str,
+    org_id:   str,
+    doc_type: str,
+    cdn_url:  str | None = None,
+) -> tuple[str, str]:
+    """
+    Ingestion pipeline triggered by a partner server — no file upload required.
+      1. Fetch file bytes from partner's CDN URL or S3 key
+      2. Convert to .md, upload to our S3
+      3. Upload metadata sidecar
+      4. Write registry entry (status: INGESTING, ingestion_source: s3_key)
+      5. Start KB ingestion job
+    Returns (doc_id, job_id). Caller adds poll_and_update as a BackgroundTask.
+    """
+    filename = s3_key.split("/")[-1]
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        raise ValueError(f"Unsupported file type: {ext}")
+
+    file_bytes = _fetch_from_source(s3_key, cdn_url)
+    if not file_bytes:
+        raise ValueError("Fetched document is empty")
+
+    md_key = None
+    try:
+        md_key = _convert_and_upload_md(file_bytes, filename, org_id)
+        _upload_sidecar(md_key, org_id, doc_type)
+    except Exception:
+        if md_key:
+            _safe_delete_s3(md_key)
+        raise
+
+    doc_id = md_key
+    registry_create(
+        doc_id=doc_id,
+        org_id=org_id,
+        filename=filename,
+        bucket=BUCKET_NAME,
+        source_s3_key=s3_key,
+        ingestion_source="s3_key",
+    )
+
+    job_id = _start_kb_ingestion()
+    registry_update(doc_id, {"ingestion_job_id": job_id})
+    return doc_id, job_id
+
+
 # ── Upload entrypoint ─────────────────────────────────────────────────────────
 
 def run_upload(
@@ -177,7 +252,8 @@ def _delete_from_kb(md_key: str) -> bool:
             knowledgeBaseId=KB_ID,
             dataSourceId=DS_ID,
             documentIdentifiers=[{
-                "s3Location": {"uri": f"s3://{BUCKET_NAME}/{md_key}"}
+                "dataSourceType": "S3",
+                "s3": {"uri": f"s3://{BUCKET_NAME}/{md_key}"}
             }],
         )
         logger.info(f"Deleted from KB index: {md_key}")
@@ -189,20 +265,17 @@ def _delete_from_kb(md_key: str) -> bool:
 
 # ── Delete background task ────────────────────────────────────────────────────
 
-def run_delete(doc_id: str, org_id: str, filename: str):
+def run_delete(doc_id: str, org_id: str, filename: str, ingestion_source: str = "direct_upload"):
     """
     Background task (runs after 202 is sent to frontend):
-      1. Delete raw file from S3
-      2. Delete .md from S3
-      3. Delete sidecar from S3
-      4. Remove document from KB index
-      5. Update registry → DELETED
+      1. Delete .md from S3
+      2. Delete sidecar from S3
+      3. Remove document from KB index
+      4. Update registry → DELETED
+    Raw S3 file is intentionally NOT deleted.
     doc_id == .md S3 key (e.g. sena/misty/md/orgs/org_sunrise/policy.md)
     """
-    raw_key     = f"{ORG_PREFIX}{org_id}/{filename}"
     sidecar_key = f"{doc_id}.metadata.json"
-
-    _safe_delete_s3(raw_key)
     _safe_delete_s3(doc_id)
     _safe_delete_s3(sidecar_key)
     kb_deleted = _delete_from_kb(doc_id)
