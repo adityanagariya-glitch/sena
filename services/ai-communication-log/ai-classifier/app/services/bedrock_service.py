@@ -5,6 +5,7 @@ from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
+from langfuse import observe, get_client
 
 from app.core.config import settings
 from app.models.schemas import (
@@ -17,6 +18,17 @@ from app.models.schemas import (
 from app.prompts.sentiment_batch_prompt import BATCH_SYSTEM_PROMPT, build_batch_user_prompt
 
 logger = logging.getLogger(__name__)
+
+langfuse = get_client()
+_SERVICE = "ai-communication-log"
+
+# Fetch prompt from Langfuse Prompt Management; fall back to hardcoded string
+_lf_prompt = None
+try:
+    _lf_prompt = langfuse.get_prompt(f"{_SERVICE}/sentiment-batch-system")
+    BATCH_SYSTEM_PROMPT = _lf_prompt.compile()
+except Exception:
+    pass  # _lf_prompt stays None; hardcoded BATCH_SYSTEM_PROMPT is used
 
 _VALID_SENTIMENT_LABELS = {
     "positive_satisfied",
@@ -127,6 +139,7 @@ class BedrockService:
 
     # ── Batch analysis ─────────────────────────────────────────────────────────
 
+    @observe(as_type="generation", name="sentiment-classify", capture_input=False, capture_output=False)
     def analyse_batch(self, messages: list[Message]) -> BatchOutput:
         """
         Sends a conversation window (up to BATCH_MAX_MESSAGES messages) to Bedrock
@@ -156,6 +169,17 @@ class BedrockService:
             input_tokens=usage_raw.get("inputTokens", 0),
             output_tokens=usage_raw.get("outputTokens", 0),
             total_tokens=usage_raw.get("totalTokens", 0),
+        )
+        langfuse.update_current_generation(
+            model=self.model_id,
+            input=user_prompt,
+            output=raw_text,
+            usage_details={
+                "input": usage_raw.get("inputTokens", 0),
+                "output": usage_raw.get("outputTokens", 0),
+            },
+            prompt=_lf_prompt,
+            metadata={"service": _SERVICE},
         )
         batch_output = self._parse_batch_response(raw_text)
         batch_output.token_usage = token_usage

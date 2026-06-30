@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 from fastapi import WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import types
+from langfuse import get_client, observe, propagate_attributes
 
 from .config import VoiceEngineConfig
 from .grounding import build_live_tools
@@ -99,6 +100,12 @@ import structlog
 from services.usage_log import log_token_usage
 
 log = structlog.get_logger(__name__)
+
+try:
+    langfuse = get_client()
+except Exception:
+    langfuse = None  # type: ignore[assignment]
+_SERVICE = "onboarding"
 
 _SILENCE_POLL_SEC = 2.0  # silence monitor check interval
 
@@ -244,10 +251,51 @@ class GeminiLiveSession:
             ("yes" if replay_context else "no"),
         )
 
+    # ── Langfuse per-turn logging ─────────────────────────────────────────────
+
+    @observe(as_type="generation", name="onboarding-turn", capture_input=False, capture_output=False)
+    def _log_turn_langfuse(
+        self,
+        turn_id: int,
+        model: str,
+        d_prompt: int,
+        d_response: int,
+        d_cached: int,
+        agent_text: str,
+        chunk_count: int,
+    ) -> None:
+        if langfuse is None:
+            return
+        langfuse.update_current_generation(
+            model=model,
+            input=None,
+            output=agent_text[:2000] if agent_text else None,
+            usage_details={"input": d_prompt, "output": d_response},
+            metadata={
+                "service": _SERVICE,
+                "turn_id": turn_id,
+                "cached_tokens": d_cached,
+                "audio_chunks": chunk_count,
+            },
+        )
+
     # ── Public ────────────────────────────────────────────────────────────────
 
+    @observe(name="onboarding-live-session", capture_input=False, capture_output=False)
     async def run(self) -> None:
         """Open Gemini connection and bridge until the client disconnects."""
+        if langfuse is not None:
+            try:
+                with propagate_attributes(
+                    session_id=self._session_id,
+                    user_id=self._user_id or "",
+                ):
+                    langfuse.update_current_span(
+                        input={"session_id": self._session_id},
+                        metadata={"service": _SERVICE},
+                    )
+            except Exception:
+                pass
         client = genai.Client(api_key=self._cfg.gemini_api_key)
 
         # NOTE: explicit prompt caching (client.aio.caches.create) is NOT
@@ -1060,6 +1108,7 @@ class GeminiLiveSession:
 
                         # ── Turn complete ──────────────────────────────────────
                         if sc.turn_complete:
+                            full_text = ""
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
                                 log.info(
@@ -1124,6 +1173,19 @@ class GeminiLiveSession:
                                 d_response,
                                 cache_read_tokens=d_cached,
                             )
+                            if langfuse is not None and (d_prompt or d_response):
+                                try:
+                                    self._log_turn_langfuse(
+                                        turn_id=self._turn_id,
+                                        model=self._cfg.gemini_live_model_id,
+                                        d_prompt=d_prompt,
+                                        d_response=d_response,
+                                        d_cached=d_cached,
+                                        agent_text=full_text,
+                                        chunk_count=chunk_count,
+                                    )
+                                except Exception:
+                                    pass
                             # Surface per-turn token usage to the client.
                             await self._ws.send_text(json.dumps({
                                 "type": "token_usage",

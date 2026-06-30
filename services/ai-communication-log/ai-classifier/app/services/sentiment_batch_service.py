@@ -1,6 +1,8 @@
 import logging
 from datetime import datetime
 
+from langfuse import observe, get_client
+
 from app.models.schemas import (
     MessageAnalysis,
     SentimentBatchRequest,
@@ -12,6 +14,9 @@ from app.models.schemas import (
 from app.services.bedrock_service import BedrockService, MessageAnalysisItem
 
 logger = logging.getLogger(__name__)
+
+langfuse = get_client()
+_SERVICE = "ai-communication-log"
 
 _FALLBACK_ANALYSIS = MessageAnalysisItem(
     sentiment=SentimentResult(label="neutral", confidence=0.0, reason="Analysis unavailable for this message."),
@@ -26,8 +31,13 @@ class SentimentBatchService:
     def __init__(self):
         self.bedrock = BedrockService()
 
+    @observe(name="sentiment-batch", capture_input=False, capture_output=False)
     def analyse(self, request: SentimentBatchRequest) -> SentimentBatchResponse:
         messages = request.messages
+        langfuse.update_current_span(
+            input={"conversation_id": request.conversation_id, "message_count": len(messages)},
+            metadata={"service": _SERVICE},
+        )
 
         logger.info(
             f"Batch analysis [{request.conversation_id}] "

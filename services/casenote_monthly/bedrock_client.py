@@ -7,8 +7,19 @@ import asyncio
 import sys
 import time
 
+from langfuse import observe, get_client
+
 from config import bedrock_runtime, MODEL_ID, GUARDRAILS, VERBOSE
 from guardrails import _last_user_text, _apply_guardrail
+
+langfuse = get_client()
+_SERVICE = "casenote_monthly"
+
+_lf_prompt = None
+try:
+    _lf_prompt = langfuse.get_prompt(f"{_SERVICE}/monthly-summary-system")
+except Exception:
+    pass  # prompt will be unlinked; hardcoded system prompt in callers is used
 
 # Anthropic prompt caching on Bedrock — marking the end of a stable prefix with a
 # cachePoint lets subsequent calls reuse the KV cache for ~10% of input cost.
@@ -36,6 +47,7 @@ def _log_cache_usage(response: dict, label: str) -> None:
         print(f"[bedrock-cache] {label} read={read} write={write}", file=sys.stderr)
 
 
+@observe(as_type="generation", name="casenote-generate", capture_input=False, capture_output=False)
 def call_bedrock(
     messages: list[dict],
     system_prompt: str | None = None,
@@ -91,6 +103,21 @@ def call_bedrock(
             content = response["output"]["message"].get("content", [])
             if content and isinstance(content, list):
                 text = content[0].get("text", "")
+
+        # Record to Langfuse regardless of guardrail outcome
+        usage = response.get("usage", {})
+        user_text = _last_user_text(messages)
+        langfuse.update_current_generation(
+            model=MODEL_ID,
+            input=user_text[:2000] if user_text else None,
+            output=text[:2000] if text else None,
+            usage_details={
+                "input": usage.get("inputTokens", 0),
+                "output": usage.get("outputTokens", 0),
+            },
+            prompt=_lf_prompt,
+            metadata={"service": _SERVICE},
+        )
 
         if not text:
             return None

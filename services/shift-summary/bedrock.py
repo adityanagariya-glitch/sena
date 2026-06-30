@@ -6,11 +6,21 @@ from functools import lru_cache
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException, status
+from langfuse import observe, get_client
 
 from config import get_settings
 from prompts import build_messages, get_system_prompt
 
 logger = logging.getLogger(__name__)
+
+langfuse = get_client()
+_SERVICE = "shift-summary"
+
+_lf_prompt = None
+try:
+    _lf_prompt = langfuse.get_prompt(f"{_SERVICE}/consolidate-system")
+except Exception:
+    pass
 
 
 @lru_cache
@@ -45,6 +55,7 @@ def _build_request_body(summaries: list[str]) -> dict:
     }
 
 
+@observe(as_type="generation", name="shift-summary-consolidate", capture_input=False, capture_output=False)
 async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
     """
     Call AWS Bedrock with Claude to consolidate the provided summaries.
@@ -95,5 +106,16 @@ async def consolidate_summaries(summaries: list[str]) -> tuple[str, dict]:
             detail=f"Unexpected Bedrock response format: {str(exc)}",
         ) from exc
 
+    langfuse.update_current_generation(
+        model=settings.bedrock_model_id,
+        input="\n\n".join(summaries)[:2000],
+        output=consolidated[:2000],
+        usage_details={
+            "input": usage.get("input_tokens", 0),
+            "output": usage.get("output_tokens", 0),
+        },
+        prompt=_lf_prompt,
+        metadata={"service": _SERVICE},
+    )
     logger.info("Successfully consolidated %d summaries.", len(summaries))
     return consolidated, usage

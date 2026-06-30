@@ -21,6 +21,7 @@ from typing import Any
 
 import boto3
 import structlog
+from langfuse import observe, get_client
 from pydantic import BaseModel
 
 from core.settings import settings
@@ -29,6 +30,16 @@ from case_review.prompts.classify import PROMPT as _CLASSIFY_PROMPT
 from case_review.services.usage import record_and_print_converse
 
 log = structlog.get_logger(__name__)
+
+langfuse = get_client()
+_SERVICE = "case_review"
+
+_lf_classify_prompt = None
+try:
+    _lf_classify_prompt = langfuse.get_prompt(f"{_SERVICE}/classify-system")
+    _CLASSIFY_PROMPT = _lf_classify_prompt.compile()
+except Exception:
+    pass  # hardcoded _CLASSIFY_PROMPT used as fallback
 
 # Singleton Bedrock client — avoids per-call connection overhead
 _bedrock_client = None
@@ -129,6 +140,7 @@ class ClassifyResult(BaseModel):
 
 # ── Core sync call (offloaded to thread pool) ─────────────────────────────────
 
+@observe(as_type="generation", name="classify-case-note", capture_input=False, capture_output=False)
 def _run_classify(raw_paragraph: str) -> ClassifyResult:
     """Synchronous Bedrock Converse call — runs in a thread via asyncio.to_thread."""
     template = _load_prompt().replace("{field_schema}", schema_as_text())
@@ -158,22 +170,38 @@ def _run_classify(raw_paragraph: str) -> ClassifyResult:
         inferenceConfig={"maxTokens": 2048, "temperature": 0.1},
     )
     record_and_print_converse("classifier", response)
+    usage = (response or {}).get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.classifier_model,
+        input=dynamic_content,
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        prompt=_lf_classify_prompt,
+        metadata={"service": _SERVICE},
+    )
 
     # Extract structured output from tool use block
     for block in response["output"]["message"]["content"]:
         if block.get("toolUse", {}).get("name") == "classify_case_note":
             parsed = _ClassifyOutput(**block["toolUse"]["input"])
-            return ClassifyResult(
+            result = ClassifyResult(
                 classified_fields={fc.field_id: fc.value for fc in parsed.field_classifications},
                 confidence={fc.field_id: fc.confidence for fc in parsed.field_classifications},
                 missing_required=parsed.missing_required,
                 reask_prompts=[rp.model_dump() for rp in parsed.reask_prompts],
             )
+            langfuse.update_current_generation(
+                output={"missing_required": result.missing_required, "field_count": len(result.classified_fields)}
+            )
+            return result
     raise ValueError("Classifier: no tool_use block in Bedrock response")
 
 
 # ── Public async entry point ──────────────────────────────────────────────────
 
+@observe(name="case-review-classify", capture_input=False, capture_output=False)
 async def classify(
     raw_paragraph: str,
     *,
@@ -189,6 +217,10 @@ async def classify(
     route handler calls but are not used — Bedrock authenticates via IAM/env vars
     and the model is controlled by settings.classifier_model.
     """
+    langfuse.update_current_span(
+        input={"paragraph_len": len(raw_paragraph)},
+        metadata={"service": _SERVICE, "user_id": user_id, "session_id": session_id},
+    )
     log.info("classifier.call", model=settings.classifier_model, paragraph_len=len(raw_paragraph))
     start = time.perf_counter()
 

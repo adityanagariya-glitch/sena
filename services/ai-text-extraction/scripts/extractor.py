@@ -20,12 +20,22 @@ import time
 
 import boto3
 from botocore.exceptions import ClientError
+from langfuse import observe, get_client
 
 from scripts.config import config
 from scripts.converter import DocumentFormat
 from scripts.models import ExtractionResult, TokenUsage
 
 logger = logging.getLogger(__name__)
+
+langfuse = get_client()
+_SERVICE = "ai-text-extraction"
+
+_lf_prompt = None
+try:
+    _lf_prompt = langfuse.get_prompt(f"{_SERVICE}/extraction-system")
+except Exception:
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +207,7 @@ def _build_content_block(
 # Bedrock call
 # ---------------------------------------------------------------------------
 
+@observe(as_type="generation", name="document-extract", capture_input=False, capture_output=False)
 def _call_bedrock(
     raw_bytes: bytes,
     fmt: DocumentFormat,
@@ -268,6 +279,17 @@ def _call_bedrock(
                 "total_tokens":  usage.get("totalTokens", 0),
                 "latency_ms":    metrics.get("latencyMs", 0),
             }
+            langfuse.update_current_generation(
+                model=config.bedrock.model_id,
+                input=f"[{bedrock_fmt} document]",
+                output=text[:2000],
+                usage_details={
+                    "input": usage.get("inputTokens", 0),
+                    "output": usage.get("outputTokens", 0),
+                },
+                prompt=_lf_prompt,
+                metadata={"service": _SERVICE, "format": bedrock_fmt},
+            )
             return text, token_info
 
         except ClientError as exc:
@@ -381,6 +403,7 @@ def _sanity_check_dates(mapped: dict) -> None:
 # Public interface
 # ---------------------------------------------------------------------------
 
+@observe(name="text-extraction", capture_input=False, capture_output=False)
 def extract(
     raw_bytes: bytes,
     fmt: DocumentFormat,
@@ -407,6 +430,10 @@ def extract(
     """
     from scripts.token_logger import log_run  # lazy import to avoid circular deps
 
+    langfuse.update_current_span(
+        input={"document_name": document_name, "format": bedrock_fmt, "source": source},
+        metadata={"service": _SERVICE},
+    )
     if not raw_bytes:
         raise ValueError("raw_bytes is empty — nothing to extract from.")
 
