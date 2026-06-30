@@ -82,7 +82,6 @@ ORG_ADMIN   = os.environ.get("ORG_ADMIN", "superadmin,admin,coordinator").split(
 
 
 BACKEND_API_BASE = os.environ.get("BACKEND_API_BASE", "")
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 
 # ── Langfuse ──────────────────────────────────────────────────────────────────
 # load_dotenv() here ensures env vars are available when config is imported

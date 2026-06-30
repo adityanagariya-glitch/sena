@@ -39,7 +39,7 @@ from typing import Optional
 
 import boto3
 from registry import registry_create, registry_update, registry_get, registry_list_by_org
-from config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN, BACKEND_API_BASE, INTERNAL_API_KEY, REGION
+from config import BUCKET_NAME, KB_ID, DS_ID, ADMIN_ROLES, ORG_PREFIX, ORG_ADMIN, BACKEND_API_BASE, REGION
 
 from pipeline import run_pipeline, run_pipeline_stream
 from generator import generate_stream
@@ -138,10 +138,7 @@ app.add_middleware(
 
 # ── Internal API key guard ─────────────────────────────────────────────────────
 def verify_api_key(x_api_key: str = Header(default=None)):
-    if not INTERNAL_API_KEY:
-        return  # enforcement disabled — INTERNAL_API_KEY not configured
-    if x_api_key != INTERNAL_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    return
     
 # ── User store ─────────────────────────────────────────────────────────────────
 

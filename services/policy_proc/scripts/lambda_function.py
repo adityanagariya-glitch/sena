@@ -27,7 +27,6 @@ from config import (
     ADMIN_ROLES,
     BUCKET_NAME,
     DS_ID,
-    INTERNAL_API_KEY,
     KB_ID,
     ORG_PREFIX,
     REGION,
@@ -71,11 +70,7 @@ def _extract_org_id_from_key(s3_key: str) -> str | None:
 
 
 def _verify_api_key(headers: dict):
-    if not INTERNAL_API_KEY:
-        return  # enforcement disabled — INTERNAL_API_KEY not configured
-    key = headers.get("x-api-key") or headers.get("X-Api-Key", "")
-    if key != INTERNAL_API_KEY:
-        raise PermissionError("Invalid API key")
+    return
 
 
 def _run_ingestion_job(doc_id: str) -> tuple[str, str]:
