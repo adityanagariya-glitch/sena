@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db
+from api.rp_routes import _build_response
 from api.rsa_auth import verify_rsa_auth
 from case_review.core.settings import settings
 from case_review.services.caching import cache_verdict
@@ -127,42 +128,34 @@ def _build_unified_response(
 ) -> UnifiedIncidentResponse:
     """Build unified response feeding all three mobile screens.
 
-    Reuses existing pipeline logic, then adds risk_summary and incident_draft
-    derived from the pipeline result.
+    Reuses the tested _build_response mapping (PipelineResult → EvaluateResponse)
+    for the verdict / summary / incident sections, then derives risk_summary from
+    the detected practice. Field types therefore match the response schema exactly
+    (_VerdictSection, _SummarySection, _IncidentReportSection).
     """
-    # AI Summary screen
-    ai_summary = _SummarySection(
-        quality_score=result.cross_check.final_score if result.cross_check else 0.9,
-        progress=result.improved_factors or [],
-        risks=result.risks or [],
-        anomalies=result.anomalies or [],
-        quality_gaps=result.quality_gaps or [],
-    )
+    er = _build_response(result, worker_id)
 
-    # Risk Summary screen (only if evaluator flagged something)
+    # Risk Summary screen — present only when triage flagged and a practice was detected
     risk_summary = None
-    if result.evaluator:
+    if er.detected_practice is not None:
+        dp = er.detected_practice
+        why_flagged = list(dp.trigger_phrases)
+        if dp.reasoning:
+            why_flagged.append(dp.reasoning)
         risk_summary = RiskSummaryView(
-            risk_category=result.evaluator.practice_category or "No Restrictive Practice Detected",
-            why_flagged=result.evaluator.trigger_phrases or [],
-            current_risk_level=result.evaluator.policy_violation_risk.value if result.evaluator.policy_violation_risk else "Low",
-            suggested_attention=(
-                [result.evaluator.action_summary] if result.evaluator.action_summary else []
-            ),
+            risk_category=dp.category or "No Restrictive Practice Detected",
+            why_flagged=why_flagged,
+            current_risk_level=er.verdict.risk_level,
+            suggested_attention=er.verdict.next_steps,
         )
 
-    # Incident Draft screen (only if incident detected and drafted)
-    incident_draft = None
-    if result.evaluator and result.evaluator.incident_detected and result.incident_report:
-        incident_draft = result.incident_report
-
     return UnifiedIncidentResponse(
-        case_note_id=case_note_form.shiftId,
-        client_id=case_note_form.clientId,
+        case_note_id=result.case_note_id,
+        client_id=result.client_id,
         shift_id=case_note_form.shiftId,
         incident_detected=bool(result.evaluator and result.evaluator.incident_detected),
-        verdict=result.evaluator,
-        ai_summary=ai_summary,
+        verdict=er.verdict,
+        ai_summary=er.summary,
         risk_summary=risk_summary,
-        incident_draft=incident_draft,
+        incident_draft=er.incident_report,
     )
