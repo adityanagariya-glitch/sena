@@ -4,9 +4,14 @@ Callers sign requests with their private key; we verify with their public key
 (which we have configured locally as AI_SERVICE_PUBLIC_KEY). If the signature
 is valid, the caller is trusted — no per-user JWT is needed.
 
-Signature scheme:
-  POST/PUT: sign the request body (bytes)
-  GET/DELETE: sign canonical string f"METHOD /path?query"
+Signature scheme (ALL methods — GET/POST/PUT/DELETE):
+  sign the canonical request line: f"METHOD /path?query"
+  The BODY is NOT signed (verifying it would consume the stream before
+  FastAPI parses it).
+  IMPORTANT: /path is the SERVICE-INTERNAL path. nginx strips the
+  /<service>/ prefix before the request reaches the app, so sign e.g.
+  "/v1/restrictive-practices/incidents/analyze" — NOT
+  "/case-review/v1/restrictive-practices/incidents/analyze".
 
 Both use RSA PKCS#1 v1.5 + SHA-256, with headers:
   X-AI-Signature: base64(sig)

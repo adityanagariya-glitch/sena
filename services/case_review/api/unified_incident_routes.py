@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db
@@ -65,7 +65,7 @@ unified_router = APIRouter(prefix="/v1/restrictive-practices", tags=["incidents"
 @cache_verdict
 async def analyze_incidents(
     payload: UnifiedIncidentRequest,
-    response,
+    response: Response,
     auth: AuthContext = Depends(verify_rsa_auth),
     db: AsyncSession = Depends(get_db),
 ) -> UnifiedIncidentResponse:
