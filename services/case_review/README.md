@@ -25,6 +25,10 @@
 
 An NDIS support worker finishes a shift and either types or dictates their case note. This service:
 
+> **NEW (2026-07)**: Voice input has been optimized via lazy-load rule fragments. See [Lazy Prompt Fragments](#lazy-prompt-fragments) below.
+
+**For a complete architecture overview**, including how the voice services (case_review + onboarding) share a common Gemini Live engine, see [VOICE_ARCHITECTURE.md](../VOICE_ARCHITECTURE.md).
+
 1. **Screens** the note for any of the 5 regulated restrictive practices (physical, chemical, mechanical, environmental restraint, seclusion)
 2. **Retrieves** the relevant NDIS policy chunks from a vector database
 3. **Evaluates** whether a violation occurred and at what risk level
@@ -466,6 +470,38 @@ triage.action_summary  →  embed (search_query)  +  (low-confidence: Haiku quer
 - **pgvector HNSW** (`embedding`) — cosine, approximate nearest neighbour. O(log n) query vs O(n) brute force; scales cleanly from ~300 to 300K chunks. Only child/flat chunks are embedded (parents are fetched by FK).
 - **GIN** (`search_vector`) — PostgreSQL tsvector for BM25 full-text search, populated at ingest via `to_tsvector('english', text)`.
 - **Partial B-tree** (`parent_chunk_id WHERE NOT NULL`) — fast parent lookups during retrieval.
+
+---
+
+## Lazy Prompt Fragments
+
+**NEW (2026-07)**: On-demand rule injection to reduce system-prompt size on every turn.
+
+### How it works
+
+Some rules are only relevant when a condition is met. Example: "How to capture injury details" is only needed *after* an injury is reported (`anyInjuries=true`). Instead of carrying that rule in the system prompt **every turn** (cost = rule_size × 50 turns), we:
+
+1. **Keep a compact pointer** in the system prompt (one line in the table row)
+2. **Detect when the trigger fires** (injury field appears on screen)
+3. **Inject the full rule just-in-time** (only that turn, only when needed)
+
+### Implementation
+
+**Files involved**:
+
+- `shared/.../voice/prompt_fragments.py` — Framework (PromptFragment, FragmentRegistry, InjectedFragmentTracker)
+- `case_review/voice/prompts/fragments.py` — case_review's fragments (_INJURY_DETAILS)
+- `shared/.../voice/gemini_live.py` — Runtime injection in _handle_screen_state()
+- `api/voice_routes.py` — Passes fragment_registry to GeminiLiveSession
+
+**Token math**:
+
+- Injury rule: ~120 chars always-on → now 0 chars when injury absent
+- Pointer in table: "how to capture injury specifics — loads if reported" (existing row, no overhead)
+- Savings: ~67 tokens/turn when no injury; full rule fires only on turns where injury field exists
+- Per-session (50 turns, no injury): ~3,350 tokens saved (modest, because the rule is small)
+
+**Trade-off**: Lazy-loading only pays off when rule_size >> pointer_cost. The injury rule is small, so savings are marginal. The framework is in place for bigger rules.
 
 ---
 
