@@ -39,7 +39,6 @@ STEPS: dict[str, str | Callable[[list[VisibleField]], str]] = {
     'ndis_plan_details': _step_ndis_plan_details,
     'ndis_plan': _step_ndis_plan_details,              # client short form
     'personal_information': _step_personal_information,
-    'lifestyle_requirements': _step_lifestyle_requirements,
     'participant_requirements': _step_lifestyle_requirements,  # fixture short form
     'staff_banking': _step_staff_banking,
     'staff_case_note': _step_staff_case_note,

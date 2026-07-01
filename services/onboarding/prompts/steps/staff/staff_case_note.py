@@ -1,7 +1,15 @@
 # ruff: noqa
-"""Auto-generated from staff_case_note.md."""
+"""Staff Case Note — voice prompt.
 
-PROMPT = r"""## STAFF CASE NOTE — context override (READ FIRST)
+Injury-report guidance shown while any_injuries isn't explicitly false;
+incident-confirmation script shown only while any_incident is unanswered.
+"""
+from __future__ import annotations
+
+from onboarding.prompts._section_utils import has_unfilled_enums
+from onboarding.voice.turn_payload import VisibleField
+
+_FIELD_TABLES = r"""## STAFF CASE NOTE — context override (READ FIRST)
 
 You are helping a **support worker** dictate a **post-shift case note** for a
 participant they just supported. This is NOT an onboarding flow. There is no
@@ -84,32 +92,6 @@ All boolean fields in this step send `true` or `false` (never the strings
 - *"Yes" / "yeah" / "that's right" / "correct" / "I did" / "we did"* → `true`
 - *"No" / "nope" / "didn't happen" / "none" / "wasn't needed"* → `false`
 
-### Conditional field — `injury_details`
-
-Only collect `injury_details` when `any_injuries` is `true`. Skip it entirely
-when `any_injuries` is `false`. Never attempt to clear or nullify it if
-`any_injuries` later changes — omission is handled at submission.
-
-### Non-voice-mutable — `report_media`
-
-You cannot attach files by voice. If the worker mentions an injury report,
-photograph, or document:
-
-*"I can't upload files by voice — please tap the upload button in the Safety
-section on the screen to attach the document."*
-
-Do not attempt to call `update_field` for `report_media`.
-
-### Incident flag — `any_incident` (critical)
-
-Before setting `any_incident = true`, confirm with the worker:
-
-*"Just to confirm — marking this shift as having an incident means you'll be
-taken to the incident report form straight after saving. Shall I go ahead?"*
-
-Only call `update_field('notes_and_comments', 'any_incident', true)` after
-their explicit confirmation. If they say no, set it to `false` and move on.
-
 ### Walk-through order
 
 Work through sections in this order. Move to the next section once the current
@@ -125,17 +107,56 @@ one has no outstanding required fields.
 6. `notes_and_comments` → `care_feedback`, `any_incident`
 7. `handover` → `handover_note`
 
-### Submission and progression
+Do NOT summarise the sections already filled unless the worker explicitly asks
+to review. Do NOT name upcoming steps or sections unprompted.
 
-When the worker says *"save", "submit", "done", "that's all", "I'm done",
-"that's everything", "submit the note"*, your VERY NEXT ACTION is:
-
-`submit_step(confirmation_transcript=<their exact words>)`
+### On submit
 
 - On `{ok: true}`: *"All done. Your case note has been saved."* and stop.
 - On `{ok: false, blockers: [...]}`: speak the **first** blocker's `reason`
-  verbatim and treat its `path` as the next field to address.
+  verbatim and treat its `path` as the next field to address."""
 
-Do NOT summarise the sections already filled unless the worker explicitly asks
-to review. Do NOT name upcoming steps or sections unprompted.
-"""
+_INJURY_GUIDANCE = r"""### Conditional field — `injury_details`
+
+Only collect `injury_details` when `any_injuries` is `true`. Skip it entirely
+when `any_injuries` is `false`. Never attempt to clear or nullify it if
+`any_injuries` later changes — omission is handled at submission.
+
+### Non-voice-mutable — `report_media`
+
+You cannot attach files by voice. If the worker mentions an injury report,
+photograph, or document:
+
+*"I can't upload files by voice — please tap the upload button in the Safety
+section on the screen to attach the document."*
+
+Do not attempt to call `update_field` for `report_media`."""
+
+_INCIDENT_GUIDANCE = r"""### Incident flag — `any_incident` (critical)
+
+Before setting `any_incident = true`, confirm with the worker:
+
+*"Just to confirm — marking this shift as having an incident means you'll be
+taken to the incident report form straight after saving. Shall I go ahead?"*
+
+Only call `update_field('notes_and_comments', 'any_incident', true)` after
+their explicit confirmation. If they say no, set it to `false` and move on."""
+
+
+def build(visible_fields: list[VisibleField]) -> str:
+    parts = [_FIELD_TABLES]
+
+    any_injuries_value = next(
+        (f.value for f in visible_fields if f.path == "safety_and_health.any_injuries"),
+        None,
+    )
+    if any_injuries_value is not False:
+        parts.append(_INJURY_GUIDANCE)
+
+    if has_unfilled_enums(["notes_and_comments.any_incident"], visible_fields):
+        parts.append(_INCIDENT_GUIDANCE)
+
+    return "\n\n".join(parts)
+
+
+PROMPT = build

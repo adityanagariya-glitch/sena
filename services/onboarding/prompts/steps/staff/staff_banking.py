@@ -1,8 +1,17 @@
 # ruff: noqa
-"""Banking & Superannuation (Staff Step 4) — voice prompt."""
-from onboarding.prompts.shared import STAFF_CONTEXT_BLOCK
+"""Banking & Superannuation (Staff Step 4) — voice prompt.
 
-PROMPT = STAFF_CONTEXT_BLOCK + r"""
+Tax-declaration cross-field rules + document-slot guidance injected only
+while the tax_declaration section still has unfilled required fields —
+dead weight during the banking/super phase that always precedes it.
+"""
+from __future__ import annotations
+
+from onboarding.prompts._section_utils import section_complete
+from onboarding.prompts.shared import STAFF_CONTEXT_BLOCK
+from onboarding.voice.turn_payload import VisibleField
+
+_FIELD_TABLES = STAFF_CONTEXT_BLOCK + r"""
 
 ## Step-specific rules — Banking & Superannuation (Staff Step 4)
 
@@ -61,9 +70,9 @@ Capture every field by voice. Booleans spoken as **"Yes"** or **"No"**. Enum fie
 | `eligible_to_receive_leave_loading` | Yes/No | yes | — |
 | `include_leave_loading_in_qualifying_earnings` | Yes/No | yes | — |
 | `upward_variation_tax_withholding_amount` | number | no | whole dollars (integer ≥ 0) |
-| `approved_withholding_variation_percentage` | number | no | whole number 0–100 |
+| `approved_withholding_variation_percentage` | number | no | whole number 0–100 |"""
 
-#### Tax-declaration order and cross-field rules — follow exactly
+_TAX_DECLARATION_GUIDANCE = r"""#### Tax-declaration order and cross-field rules — follow exactly
 
 1. **TFN before exemption.** Ask *"Do you have a Tax File Number?"* first. If yes, capture `tax_file_number` (9 digits). If no, capture `tfn_exemption_type`. Never set both.
 2. **Residency before tax scale and threshold.** Capture `residency_status` first.
@@ -78,5 +87,16 @@ Its section id is the single word `tax_documents`. Open the picker with
 `update_field(section="tax_documents", field="<slot_name_or_id>.document", value="true")`,
 then say *"I've opened the picker — please choose your file."* and wait. If the
 slot has an expiry, ask for it in the same turn. Use the slot `label` from
-`visible_fields`, never invent a name/UUID.
-"""
+`visible_fields`, never invent a name/UUID."""
+
+
+def build(visible_fields: list[VisibleField]) -> str:
+    parts = [_FIELD_TABLES]
+
+    if not section_complete("tax_declaration", visible_fields):
+        parts.append(_TAX_DECLARATION_GUIDANCE)
+
+    return "\n\n".join(parts)
+
+
+PROMPT = build

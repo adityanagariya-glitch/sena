@@ -1,7 +1,14 @@
 # ruff: noqa
-"""Auto-generated from consent.md."""
+"""Consent Sharing (the voice screen) — voice prompt.
 
-PROMPT = r"""## Step-specific rules — Consent Sharing (the voice screen)
+Per-role access_control note injected only once those fields actually appear
+in visible_fields (i.e. after the participant has chosen selected_roles).
+"""
+from __future__ import annotations
+
+from onboarding.voice.turn_payload import VisibleField
+
+_FIELD_TABLES = r"""## Step-specific rules — Consent Sharing (the voice screen)
 
 This is the SECOND consent screen — the one you actively help fill. It has TWO
 classes of field. Some you fill BY VOICE. Some are SCREEN-ONLY — the participant
@@ -49,18 +56,6 @@ of wire values. Read the human labels aloud; send UPPER_SNAKE_CASE wire values.
 - `selected_roles` wire: `MANAGER`, `SUPPORT_WORKER`, `SUPPORT_COORDINATOR`, `CASE_MANAGER`
 - `allowed_media_usage` wire: `SERVICE_DELIVERY`, `INTERNAL_RECORDS`, `SOCIAL_MEDIA`, `WEBSITE`, `PROMOTIONAL`, `EDUCATION_TRAINING`
 
-### SCREEN-ONLY fields — DIRECT the participant, NEVER call `update_field`
-
-**Per-role access detail** — anything whose path contains `access_control`
-(e.g. `access_control.MANAGER.allowed_information`, `…purpose`, `…timeframe`,
-`…until_date`). Choosing roles in `selected_roles` makes the screen reveal a
-detail panel per role. Say once, after roles are set:
-> "Great — now please tap each role on your screen and choose what they can see,
-> why, and for how long. I can't set those by voice, but I'll wait."
-
-IGNORE every `access_control.*` entry that appears in `visible_fields` — they are
-screen-only and are NOT yours to capture. Do not read them as questions.
-
 ### Consent booleans — `false` means NOT YET ANSWERED, not "answered no"
 
 Every consent boolean starts at `false`. A `false` value does NOT mean the
@@ -76,7 +71,7 @@ explicitly ask, and only set it `true` if the participant clearly agrees.
 
 - Ask the field in `next_target` when it is set and voice-fillable. If
   `next_target` points at an `access_control.*` path, do NOT voice-fill it —
-  give the screen-only direction above and move on.
+  give the screen-only direction below and move on.
 - One or two sentences per turn. Do not read long option lists in one breath —
   ask the short question; only read the full list if the participant asks "what
   are the options?". Long turns get talked over and break the mic.
@@ -105,5 +100,28 @@ per-role detail completed):
    opened or navigated any screen — only state where the next step is.)
 4. On `{ok: false}` WITH a per-role / `access_control` blocker: read the blocker's
    `reason`, tell the participant to finish that detail ON SCREEN, then retry
-   `submit_step` ONCE after they confirm.
-"""
+   `submit_step` ONCE after they confirm."""
+
+_ACCESS_CONTROL_NOTE = r"""### SCREEN-ONLY fields — DIRECT the participant, NEVER call `update_field`
+
+**Per-role access detail** — anything whose path contains `access_control`
+(e.g. `access_control.MANAGER.allowed_information`, `…purpose`, `…timeframe`,
+`…until_date`). Choosing roles in `selected_roles` makes the screen reveal a
+detail panel per role. Say once, after roles are set:
+> "Great — now please tap each role on your screen and choose what they can see,
+> why, and for how long. I can't set those by voice, but I'll wait."
+
+IGNORE every `access_control.*` entry that appears in `visible_fields` — they are
+screen-only and are NOT yours to capture. Do not read them as questions."""
+
+
+def build(visible_fields: list[VisibleField]) -> str:
+    parts = [_FIELD_TABLES]
+
+    if any(f.path.startswith("access_control.") for f in visible_fields):
+        parts.append(_ACCESS_CONTROL_NOTE)
+
+    return "\n\n".join(parts)
+
+
+PROMPT = build

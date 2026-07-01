@@ -1,7 +1,15 @@
 # ruff: noqa
-"""Auto-generated from ndis_plan_details.md."""
+"""NDIS Plan Details (Step 3) — voice prompt.
 
-PROMPT = r"""## Step-specific rules — NDIS Plan Details (Step 3)
+Plan-manager fields shown only while actually visible; goals/schedule
+walk-throughs injected only while those repeatable sections are incomplete.
+"""
+from __future__ import annotations
+
+from onboarding.prompts._section_utils import has_incomplete_rows
+from onboarding.voice.turn_payload import VisibleField
+
+_FIELD_TABLES = r"""## Step-specific rules — NDIS Plan Details (Step 3)
 
 This step has 5 sections: `plan_info` (identification + dates + plan
 management with conditional fields), `ndis_goals` (repeatable),
@@ -25,33 +33,11 @@ section ids and field ids for `update_field`.
 
 Default: `PLAN_MANAGED`.
 
-#### Conditional fields — visible ONLY when `plan_management == PLAN_MANAGED`
-
-If `plan_management` is anything else, these fields DO NOT exist for this
-turn — do NOT ask for them.
-
-| field id | type | required (when visible) | validation |
-|---|---|---|---|
-| `plan_manager_name` | text | yes | letters and spaces only; min 3, max 25 chars |
-| `plan_manager_contact_email` | email | yes | valid email; max 50 chars |
-| `plan_manager_billing_email` | email | yes | valid email; max 50 chars |
-
 ### Section: `ndis_goals` (repeatable, min 1, max 10)
 
 | field id (per row) | type | required | validation |
 |---|---|---|---|
 | `goal_text` | textarea | yes | required |
-
-Walk-through: after `add_row` returns `{ok:true, index:N}`, ask for
-`goal_text` and call `update_field` with `repeatable_index=N`. Then ask
-*"Want to add another goal, or are we good to move on?"*
-
-**IMPORTANT — always ask after EVERY goal, including the first.**
-The first row (index 0) is pre-populated in the form — you will NOT call
-`add_row` for it. After you call `update_field` for that first
-`goal_text`, you MUST still ask *"Would you like to add another NDIS
-goal, or shall we move on?"* before proceeding. Never skip this prompt
-regardless of which row was just filled.
 
 ### Section: `support_coordinator` (READONLY)
 
@@ -112,40 +98,6 @@ in the UI until the upstream is chosen — setting them out of order will be
 rejected. After the participant picks an upstream, the downstream's
 `enum_values` list will refresh on the next `visible_fields` payload.
 
-#### Reading options for the 3 catalog dropdowns
-
-For `support_purpose` / `support_category` / `support_item`, inspect the
-matching field's `enum_values` in this turn's `visible_fields`:
-
-- `enum_values` is a **non-empty list** → read those labels VERBATIM when
-  the participant asks "what are the options?". When they name one, match
-  case-insensitively against this list, repeat the closest label back
-  ONCE for confirmation, then call `update_field`. Never auto-correct a
-  fuzzy match without confirmation.
-- `enum_values` is **null** → the catalog hasn't loaded into your view yet
-  (or the upstream cascade isn't chosen). Say honestly:
-  *"The list is on your screen — could you read me a couple, or tap one
-  and I'll go from there?"* Do NOT list options from memory. Do NOT
-  pattern-match against old NDIS price-guide names.
-- `enum_values` is an **empty list `[]`** → no options currently apply
-  (usually means the upstream cascade was just cleared). Route the
-  participant back to the upstream field.
-
-For `frequency`: the 6 values above are fixed — always read them verbatim.
-
-#### Handling a participant-named value (all 4 enum-shaped fields)
-
-1. If `enum_values` is available, compare against it (or the 6 fixed
-   frequency labels). If exact match → call `update_field` with the
-   matching wire id.
-2. If close but not exact → repeat the closest 2-3 labels back and ask
-   "did you mean X or Y?". Never auto-correct.
-3. If no match → say *"I'm not seeing that one — the options I can see are
-   [read them]. Which one would you like?"*
-4. If `enum_values` was null and you called `update_field` on the
-   participant's spoken value, the server may reject with a fuzzy-match
-   failure. Surface the rejection reason verbatim.
-
 #### `preferred_schedule` — VOICE-MUTABLE (set days + times by voice)
 
 You CAN set the schedule by voice — do NOT tell the participant to use the
@@ -156,7 +108,7 @@ screen. Call `update_field` with `field="preferred_schedule"`,
 "<DAY>[, <DAY>...] <START>-<END>[; <DAY> <START>-<END>...]"
 ```
 
-- Days share the SAME time range are comma-joined; different time ranges are
+- Days sharing the SAME time range are comma-joined; different time ranges are
   separated by a semicolon `;`.
 - Times are 24-hour `HH:mm`. `END` must be strictly after `START`.
 - Days: `Mon Tue Wed Thu Fri Sat Sun` (or `MO TU WE TH FR SA SU`).
@@ -205,6 +157,64 @@ times to 24-hour `HH:mm` ("9am"→`09:00`, "half past 2 in the
 afternoon"→`14:30`, "10:25 pm"→`22:25`). Build the single string, run the
 overlap check above, then make ONE `update_field` call.
 
+### Cross-field rules to enforce
+
+- `plan_end_date > plan_start_date` (strict).
+- Plan manager fields exist ONLY when `plan_management == PLAN_MANAGED`.
+- Each `support_schedule` row must have ≥1 time slot in `preferred_schedule`.
+- Same-day time slots for the same support item MUST NOT overlap."""
+
+_PLAN_MANAGER_FIELDS = r"""#### Conditional fields — visible ONLY when `plan_management == PLAN_MANAGED`
+
+If `plan_management` is anything else, these fields DO NOT exist for this
+turn — do NOT ask for them.
+
+| field id | type | required (when visible) | validation |
+|---|---|---|---|
+| `plan_manager_name` | text | yes | letters and spaces only; min 3, max 25 chars |
+| `plan_manager_contact_email` | email | yes | valid email; max 50 chars |
+| `plan_manager_billing_email` | email | yes | valid email; max 50 chars |"""
+
+_GOALS_WALKTHROUGH = r"""### Walk-through — new ndis_goals row
+
+After `add_row` returns `{ok:true, index:N}`, ask for `goal_text` and call
+`update_field` with `repeatable_index=N`. The first row (index 0) is
+pre-populated in the form — you will NOT call `add_row` for it."""
+
+_SCHEDULE_CASCADE_GUIDANCE = r"""### Reading options for the 3 catalog dropdowns
+
+For `support_purpose` / `support_category` / `support_item`, inspect the
+matching field's `enum_values` in this turn's `visible_fields`:
+
+- `enum_values` is a **non-empty list** → read those labels VERBATIM when
+  the participant asks "what are the options?". When they name one, match
+  case-insensitively against this list, repeat the closest label back
+  ONCE for confirmation, then call `update_field`. Never auto-correct a
+  fuzzy match without confirmation.
+- `enum_values` is **null** → the catalog hasn't loaded into your view yet
+  (or the upstream cascade isn't chosen). Say honestly:
+  *"The list is on your screen — could you read me a couple, or tap one
+  and I'll go from there?"* Do NOT list options from memory. Do NOT
+  pattern-match against old NDIS price-guide names.
+- `enum_values` is an **empty list `[]`** → no options currently apply
+  (usually means the upstream cascade was just cleared). Route the
+  participant back to the upstream field.
+
+For `frequency`: the 6 values above are fixed — always read them verbatim.
+
+#### Handling a participant-named value (all 4 enum-shaped fields)
+
+1. If `enum_values` is available, compare against it (or the 6 fixed
+   frequency labels). If exact match → call `update_field` with the
+   matching wire id.
+2. If close but not exact → repeat the closest 2-3 labels back and ask
+   "did you mean X or Y?". Never auto-correct.
+3. If no match → say *"I'm not seeing that one — the options I can see are
+   [read them]. Which one would you like?"*
+4. If `enum_values` was null and you called `update_field` on the
+   participant's spoken value, the server may reject with a fuzzy-match
+   failure. Surface the rejection reason verbatim.
+
 ### Walk-through order for a new support_schedule row
 
 After `add_row(section="support_schedule")`, ask IN ORDER:
@@ -214,12 +224,22 @@ After `add_row(section="support_schedule")`, ask IN ORDER:
 3. `support_item` — same cascade pattern.
 4. `frequency` — read all 6 fixed options verbatim.
 5. At least one day + time slot for `preferred_schedule`.
-6. Optional `description`.
+6. Optional `description`."""
 
-### Cross-field rules to enforce
 
-- `plan_end_date > plan_start_date` (strict).
-- Plan manager fields exist ONLY when `plan_management == PLAN_MANAGED`.
-- Each `support_schedule` row must have ≥1 time slot in `preferred_schedule`.
-- Same-day time slots for the same support item MUST NOT overlap.
-"""
+def build(visible_fields: list[VisibleField]) -> str:
+    parts = [_FIELD_TABLES]
+
+    if any(f.path.startswith("plan_info.plan_manager") for f in visible_fields):
+        parts.append(_PLAN_MANAGER_FIELDS)
+
+    if has_incomplete_rows("ndis_goals", 1, visible_fields):
+        parts.append(_GOALS_WALKTHROUGH)
+
+    if has_incomplete_rows("support_schedule", 1, visible_fields):
+        parts.append(_SCHEDULE_CASCADE_GUIDANCE)
+
+    return "\n\n".join(parts)
+
+
+PROMPT = build
