@@ -26,8 +26,10 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, Any, Optional
-import boto3
-from botocore.config import Config as BotoConfig
+# Bedrock free-text classification is DISABLED — routing is chip-driven (see
+# route_query). boto3 imports kept commented for easy re-enable.
+# import boto3
+# from botocore.config import Config as BotoConfig
 
 logger = logging.getLogger(__name__)
 
@@ -47,46 +49,47 @@ try:
 except ImportError:
     print("bedrock api not found", flush=True)
 
-_BEDROCK_API_KEY = os.getenv("BEDROCK_API_KEY", "")
-if _BEDROCK_API_KEY:
-    # setdefault: don't clobber a token already exported by the environment.
-    os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", _BEDROCK_API_KEY)
-    logger.info("[router] using Bedrock API key (bearer token) from staff/.env")
+# ── Bedrock classification DISABLED (chip-driven routing only) ──────────────────
+# _BEDROCK_API_KEY = os.getenv("BEDROCK_API_KEY", "")
+# if _BEDROCK_API_KEY:
+#     # setdefault: don't clobber a token already exported by the environment.
+#     os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", _BEDROCK_API_KEY)
+#     logger.info("[router] using Bedrock API key (bearer token) from staff/.env")
 
-# Same region + active inference-profile model as the staff service, via the
-# Converse API (legacy claude-3-haiku invoke_model is access-denied here).
-REGION = "ap-southeast-2"
-MODEL_ID = "au.anthropic.claude-sonnet-4-5-20250929-v1:0"
+# # Same region + active inference-profile model as the staff service, via the
+# # Converse API (legacy claude-3-haiku invoke_model is access-denied here).
+# REGION = "ap-southeast-2"
+# MODEL_ID = "au.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
-# ── Classification cache
-_CACHE_MAX = 1024            # max distinct questions cached
-_CACHE_TTL = 3600.0          # seconds before a cached label is considered stale
-_classify_cache: "OrderedDict[str, tuple[Dict[str, Any], float]]" = OrderedDict()
-
-
-def _cache_key(question: str) -> str:
-    return " ".join((question or "").lower().split())
-
-
-def _cache_get(question: str) -> Optional[Dict[str, Any]]:
-    key = _cache_key(question)
-    hit = _classify_cache.get(key)
-    if hit is None:
-        return None
-    value, ts = hit
-    if (time.monotonic() - ts) > _CACHE_TTL:
-        _classify_cache.pop(key, None)
-        return None
-    _classify_cache.move_to_end(key)  # mark most-recently-used
-    return dict(value)
-
-
-def _cache_put(question: str, value: Dict[str, Any]) -> None:
-    key = _cache_key(question)
-    _classify_cache[key] = (dict(value), time.monotonic())
-    _classify_cache.move_to_end(key)
-    while len(_classify_cache) > _CACHE_MAX:
-        _classify_cache.popitem(last=False)  # evict least-recently-used
+# # ── Classification cache
+# _CACHE_MAX = 1024            # max distinct questions cached
+# _CACHE_TTL = 3600.0          # seconds before a cached label is considered stale
+# _classify_cache: "OrderedDict[str, tuple[Dict[str, Any], float]]" = OrderedDict()
+#
+#
+# def _cache_key(question: str) -> str:
+#     return " ".join((question or "").lower().split())
+#
+#
+# def _cache_get(question: str) -> Optional[Dict[str, Any]]:
+#     key = _cache_key(question)
+#     hit = _classify_cache.get(key)
+#     if hit is None:
+#         return None
+#     value, ts = hit
+#     if (time.monotonic() - ts) > _CACHE_TTL:
+#         _classify_cache.pop(key, None)
+#         return None
+#     _classify_cache.move_to_end(key)  # mark most-recently-used
+#     return dict(value)
+#
+#
+# def _cache_put(question: str, value: Dict[str, Any]) -> None:
+#     key = _cache_key(question)
+#     _classify_cache[key] = (dict(value), time.monotonic())
+#     _classify_cache.move_to_end(key)
+#     while len(_classify_cache) > _CACHE_MAX:
+#         _classify_cache.popitem(last=False)  # evict least-recently-used
 
 # ── UI chip → service + scope (instant, no LLM) ─────────────────────────────────
 # The frontend sends a `category` when a chip is tapped. Each chip maps to a
@@ -156,136 +159,136 @@ def route_category(category: str) -> Optional[str]:
 
 
 # ── Bedrock client ──────
-_bedrock_client = None
-
-
-def get_bedrock_client():
-    """Lazy-load Bedrock runtime client with a tuned connection pool.
-
-    - keep-alive connection pool (max_pool_connections) so concurrent classify
-      calls reuse TCP/TLS instead of re-handshaking;
-    - adaptive retries to ride out transient throttling without manual backoff;
-    - tight connect/read timeouts so a stalled call fails fast instead of
-      holding a worker.
-    """
-    global _bedrock_client
-    if _bedrock_client is None:
-        _bedrock_client = boto3.client(
-            "bedrock-runtime",
-            region_name=REGION,
-            config=BotoConfig(
-                max_pool_connections=32,
-                retries={"max_attempts": 3, "mode": "adaptive"},
-                connect_timeout=3,
-                read_timeout=12,
-            ),
-        )
-    return _bedrock_client
-
-
-_SYSTEM_PROMPT = """You route questions for an NDIS (Australian disability services) staff assistant to ONE service. Decide from MEANING — handle typos, slang and terse phrasing; never rely on exact keywords.
-
-Services:
-- "staff": the worker's own work and identity. Covers:
-    • shifts, rosters, payroll, payslips, allowances, timesheets, leave balances/requests, availability;
-    • CLIENTS — who their clients are, client details, care, medical/medication/support info, client schedules, client search;
-    • profile/identity/memory/time — "who am I", "my profile", "remember my name", "what do you know about me", "set my timezone", "what time is it", "my organisations".
-  "my clients", "who are my clients", "client information" are ALWAYS staff. General/personal questions the assistant can answer about the user are staff.
-- "policy": ANYTHING about policy, compliance, procedures, rules, guidelines, restrictive practices, codes of conduct, NDIS standards/legislation, what is/isn't allowed or required, how to handle/report something — INCLUDING when it concerns staff or clients (e.g. "staff leave policy", "client confidentiality policy", "am I allowed to give a client medication", "what should I do if a client falls"). If the question is about a rule, permission, obligation or correct procedure, it is "policy" even with no literal policy word and even when it mentions staff/clients.
-- "both": genuinely needs the worker's OWN data AND a policy rule together (e.g. "can I take leave during my rostered shift?").
-- "none": clearly unrelated to NDIS work and not about the user's own profile — bare greetings, weather, sport, recipes, math, general chit-chat.
-
-Priority when a query has both a personal/operational angle AND a rule/permission angle: if it asks what is allowed/required or how to follow a procedure → "policy". Otherwise → "staff".
-
-Examples:
-Q: "who are my cloents" → staff
-Q: "what are my shifts this week" → staff
-Q: "my payroll" → staff
-Q: "client information for John" → staff
-Q: "clients with autism" → staff
-Q: "remember my name is Jake" → staff
-Q: "what time is it" → staff
-Q: "who am I" → staff
-Q: "what is the leave policy" → policy
-Q: "staff leave policy" → policy
-Q: "client confidentiality policy" → policy
-Q: "am I allowed to restrain a client" → policy
-Q: "what should I do if a client falls" → policy
-Q: "what procedures must I follow" → policy
-Q: "can I take leave during my shift" → both
-Q: "what's the weather" → none
-Q: "hi" → none
-Q: "2+2" → none
-
-Respond with ONLY a JSON object, no prose:
-{"service":"staff|policy|both|none","confidence":0.0-1.0,"reason":"short","priority":"staff|policy"}"""
-
-
-def _bedrock_classify_sync(question: str, model_id: str) -> Dict[str, Any]:
-    """Blocking Bedrock classify call. Run via asyncio.to_thread (see below)."""
-    client = get_bedrock_client()
-    resp = client.converse(
-        modelId=model_id,
-        system=[{"text": _SYSTEM_PROMPT}],
-        messages=[{"role": "user", "content": [{"text": f"Q: {question}"}]}],
-        inferenceConfig={"maxTokens": 200, "temperature": 0},
-    )
-    text = "".join(
-        b["text"] for b in resp["output"]["message"]["content"] if "text" in b
-    ).strip()
-    start, end = text.find("{"), text.rfind("}")
-    data = json.loads(text[start:end + 1] if start != -1 else text)
-    service = data.get("service", "staff")
-    if service not in ("staff", "policy", "both", "none"):
-        service = "staff"
-    return {
-        "service": service,
-        "confidence": float(data.get("confidence", 0.5)),
-        "reason": data.get("reason", ""),
-        "priority": data.get("priority", "staff"),
-    }
-
-
-async def classify_query(
-    question: str,
-    model_id: str = MODEL_ID,
-) -> Dict[str, Any]:
-    """Classify a free-text query dynamically via Bedrock.
-
-    Performance:
-      • deterministic (temp=0) → results are LRU-cached, so repeat questions
-        skip Bedrock entirely (0 latency, 0 cost);
-      • the blocking boto3 call runs in a worker thread (asyncio.to_thread) so it
-        NEVER stalls the event loop — other concurrent requests keep flowing.
-
-    Returns: {"service": "staff|policy|both|none", "confidence": float,
-              "reason": str, "priority": "staff|policy"}.
-    """
-    if not (question or "").strip():
-        return {"service": "none", "confidence": 1.0,
-                "reason": "Empty question.", "priority": "staff"}
-
-    cached = _cache_get(question)
-    if cached is not None:
-        cached["cached"] = True
-        return cached
-
-    try:
-        # Offload the synchronous boto3 call to a thread → event loop stays free.
-        result = await asyncio.to_thread(_bedrock_classify_sync, question, model_id)
-        _cache_put(question, result)
-        return result
-    except (json.JSONDecodeError, ValueError) as e:
-        # Parse failure is rare; don't silently drop a likely-valid query —
-        # default to staff (the primary work surface) rather than "none".
-        logger.warning(f"Failed to parse classifier response: {e}")
-        return {"service": "staff", "confidence": 0.3,
-                "reason": "Unparseable classifier output; defaulting to staff.",
-                "priority": "staff"}
-    except Exception as e:
-        logger.exception(f"Bedrock classification failed: {e}")
-        return {"service": "none", "confidence": 0.0,
-                "reason": f"Classifier error: {e}", "priority": "staff"}
+# _bedrock_client = None
+#
+#
+# def get_bedrock_client():
+#     """Lazy-load Bedrock runtime client with a tuned connection pool.
+#
+#     - keep-alive connection pool (max_pool_connections) so concurrent classify
+#       calls reuse TCP/TLS instead of re-handshaking;
+#     - adaptive retries to ride out transient throttling without manual backoff;
+#     - tight connect/read timeouts so a stalled call fails fast instead of
+#       holding a worker.
+#     """
+#     global _bedrock_client
+#     if _bedrock_client is None:
+#         _bedrock_client = boto3.client(
+#             "bedrock-runtime",
+#             region_name=REGION,
+#             config=BotoConfig(
+#                 max_pool_connections=32,
+#                 retries={"max_attempts": 3, "mode": "adaptive"},
+#                 connect_timeout=3,
+#                 read_timeout=12,
+#             ),
+#         )
+#     return _bedrock_client
+#
+#
+# _SYSTEM_PROMPT = """You route questions for an NDIS (Australian disability services) staff assistant to ONE service. Decide from MEANING — handle typos, slang and terse phrasing; never rely on exact keywords.
+#
+# Services:
+# - "staff": the worker's own work and identity. Covers:
+#     • shifts, rosters, payroll, payslips, allowances, timesheets, leave balances/requests, availability;
+#     • CLIENTS — who their clients are, client details, care, medical/medication/support info, client schedules, client search;
+#     • profile/identity/memory/time — "who am I", "my profile", "remember my name", "what do you know about me", "set my timezone", "what time is it", "my organisations".
+#   "my clients", "who are my clients", "client information" are ALWAYS staff. General/personal questions the assistant can answer about the user are staff.
+# - "policy": ANYTHING about policy, compliance, procedures, rules, guidelines, restrictive practices, codes of conduct, NDIS standards/legislation, what is/isn't allowed or required, how to handle/report something — INCLUDING when it concerns staff or clients (e.g. "staff leave policy", "client confidentiality policy", "am I allowed to give a client medication", "what should I do if a client falls"). If the question is about a rule, permission, obligation or correct procedure, it is "policy" even with no literal policy word and even when it mentions staff/clients.
+# - "both": genuinely needs the worker's OWN data AND a policy rule together (e.g. "can I take leave during my rostered shift?").
+# - "none": clearly unrelated to NDIS work and not about the user's own profile — bare greetings, weather, sport, recipes, math, general chit-chat.
+#
+# Priority when a query has both a personal/operational angle AND a rule/permission angle: if it asks what is allowed/required or how to follow a procedure → "policy". Otherwise → "staff".
+#
+# Examples:
+# Q: "who are my cloents" → staff
+# Q: "what are my shifts this week" → staff
+# Q: "my payroll" → staff
+# Q: "client information for John" → staff
+# Q: "clients with autism" → staff
+# Q: "remember my name is Jake" → staff
+# Q: "what time is it" → staff
+# Q: "who am I" → staff
+# Q: "what is the leave policy" → policy
+# Q: "staff leave policy" → policy
+# Q: "client confidentiality policy" → policy
+# Q: "am I allowed to restrain a client" → policy
+# Q: "what should I do if a client falls" → policy
+# Q: "what procedures must I follow" → policy
+# Q: "can I take leave during my shift" → both
+# Q: "what's the weather" → none
+# Q: "hi" → none
+# Q: "2+2" → none
+#
+# Respond with ONLY a JSON object, no prose:
+# {"service":"staff|policy|both|none","confidence":0.0-1.0,"reason":"short","priority":"staff|policy"}"""
+#
+#
+# def _bedrock_classify_sync(question: str, model_id: str) -> Dict[str, Any]:
+#     """Blocking Bedrock classify call. Run via asyncio.to_thread (see below)."""
+#     client = get_bedrock_client()
+#     resp = client.converse(
+#         modelId=model_id,
+#         system=[{"text": _SYSTEM_PROMPT}],
+#         messages=[{"role": "user", "content": [{"text": f"Q: {question}"}]}],
+#         inferenceConfig={"maxTokens": 200, "temperature": 0},
+#     )
+#     text = "".join(
+#         b["text"] for b in resp["output"]["message"]["content"] if "text" in b
+#     ).strip()
+#     start, end = text.find("{"), text.rfind("}")
+#     data = json.loads(text[start:end + 1] if start != -1 else text)
+#     service = data.get("service", "staff")
+#     if service not in ("staff", "policy", "both", "none"):
+#         service = "staff"
+#     return {
+#         "service": service,
+#         "confidence": float(data.get("confidence", 0.5)),
+#         "reason": data.get("reason", ""),
+#         "priority": data.get("priority", "staff"),
+#     }
+#
+#
+# async def classify_query(
+#     question: str,
+#     model_id: str = MODEL_ID,
+# ) -> Dict[str, Any]:
+#     """Classify a free-text query dynamically via Bedrock.
+#
+#     Performance:
+#       • deterministic (temp=0) → results are LRU-cached, so repeat questions
+#         skip Bedrock entirely (0 latency, 0 cost);
+#       • the blocking boto3 call runs in a worker thread (asyncio.to_thread) so it
+#         NEVER stalls the event loop — other concurrent requests keep flowing.
+#
+#     Returns: {"service": "staff|policy|both|none", "confidence": float,
+#               "reason": str, "priority": "staff|policy"}.
+#     """
+#     if not (question or "").strip():
+#         return {"service": "none", "confidence": 1.0,
+#                 "reason": "Empty question.", "priority": "staff"}
+#
+#     cached = _cache_get(question)
+#     if cached is not None:
+#         cached["cached"] = True
+#         return cached
+#
+#     try:
+#         # Offload the synchronous boto3 call to a thread → event loop stays free.
+#         result = await asyncio.to_thread(_bedrock_classify_sync, question, model_id)
+#         _cache_put(question, result)
+#         return result
+#     except (json.JSONDecodeError, ValueError) as e:
+#         # Parse failure is rare; don't silently drop a likely-valid query —
+#         # default to staff (the primary work surface) rather than "none".
+#         logger.warning(f"Failed to parse classifier response: {e}")
+#         return {"service": "staff", "confidence": 0.3,
+#                 "reason": "Unparseable classifier output; defaulting to staff.",
+#                 "priority": "staff"}
+#     except Exception as e:
+#         logger.exception(f"Bedrock classification failed: {e}")
+#         return {"service": "none", "confidence": 0.0,
+#                 "reason": f"Classifier error: {e}", "priority": "staff"}
 
 
 # Human-readable label for each chip (what the user taps in the UI).

@@ -35,6 +35,8 @@ try:
 except ImportError:
     pass  # Fall back to default event loop
 
+from langfuse import observe, get_client
+
 from outbound_sign import sign_headers
 from rsa_auth import verify_rsa
 from bedrock_retry import converse_with_retry, sum_usage
@@ -47,6 +49,12 @@ import prompt as P
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+langfuse = get_client()
+# Distinct from bedrock_client.py's "casenote_monthly" tag — this is the
+# per-section report generation loop in api_main.py's _call_bedrock, a
+# separate call path from that module's functions.
+_SERVICE = "casenote_monthly_report"
 
 HERE = Path(__file__).resolve().parent
 
@@ -382,6 +390,7 @@ def _build_subs(data: dict, section_outputs: dict[int, str], stats: dict | None 
     }
 
 
+@observe(as_type="generation", name="casenote-monthly-section", capture_input=False, capture_output=False)
 def _call_bedrock(section: dict, subs: dict) -> tuple[str, dict]:
     system = section.get("system", "")
     user = _fill(section.get("user", ""), subs)
@@ -403,7 +412,18 @@ def _call_bedrock(section: dict, subs: dict) -> tuple[str, dict]:
     text, violations = lint(text)
     if violations:
         logger.info("Language violations found and corrected: %s", violations[:3])
-    return text, resp.get("usage") or {}
+    usage = resp.get("usage") or {}
+    langfuse.update_current_generation(
+        model=MODEL_ID,
+        input=user[:2000],
+        output=text[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE, "section": section.get("id") or section.get("title")},
+    )
+    return text, usage
 
 
 async def _run_one(i: int, sec: dict, subs: dict, client_id: str) -> tuple[int, str, dict]:

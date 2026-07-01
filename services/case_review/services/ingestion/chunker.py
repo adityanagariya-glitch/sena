@@ -29,8 +29,12 @@ from typing import Any
 
 import fitz  # PyMuPDF
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langfuse import observe, get_client
 
 from core.settings import settings
+
+langfuse = get_client()
+_SERVICE = "case_review_ingest_chunker"
 
 # Regex patterns for NDIS policy PDF section headers
 _SECTION_PATTERN = re.compile(
@@ -103,6 +107,7 @@ async def detect_sections_with_llm(text: str, *, api_key: str, model_id: str) ->
     # Sample: LLM reads first 12000 chars to detect the pattern, then we apply globally
     sample = text[:12000]
 
+    @observe(as_type="generation", name="case-review-ingest-section-detect", capture_input=False, capture_output=False)
     def _call_llm() -> list[int]:
         kwargs: dict[str, Any] = {"region_name": settings.aws_region}
         if settings.aws_access_key_id and settings.aws_secret_access_key:
@@ -126,6 +131,17 @@ async def detect_sections_with_llm(text: str, *, api_key: str, model_id: str) ->
             inferenceConfig={"maxTokens": 1024, "temperature": 0.0},
         )
         raw = response["output"]["message"]["content"][0]["text"]
+        usage = response.get("usage", {})
+        langfuse.update_current_generation(
+            model=model_id,
+            input=sample[:2000],
+            output=raw[:2000],
+            usage_details={
+                "input": usage.get("inputTokens", 0),
+                "output": usage.get("outputTokens", 0),
+            },
+            metadata={"service": _SERVICE},
+        )
         start = raw.find("[")
         end = raw.rfind("]") + 1
         if start == -1 or end == 0:

@@ -12,6 +12,8 @@ import json
 import sys
 import time
 
+from langfuse import observe, get_client
+
 from config import (
     VERBOSE,
     MODEL_ID,
@@ -25,6 +27,11 @@ from tools.registry import bedrock_tool_config, tool_names_for_scope
 from tools.dispatcher import run_tool
 from agents_types import StopReasonResponse
 
+langfuse = get_client()
+# Distinct from bedrock_client.py's "staff" tag — this is the tool-calling
+# agent loop (process_query_agent), a separate feature from that module's
+# call_bedrock/call_bedrock_stream helpers.
+_SERVICE = "staff_client_agent"
 
 # How many tool-call iterations to allow before giving up (prevents infinite loops).
 _MAX_TOOL_ITERATIONS = 6
@@ -169,6 +176,7 @@ def _content_blocks_with_tool_use(message: dict) -> tuple[list[str], list[dict]]
     return text_blocks, tool_use_blocks
 
 
+@observe(as_type="generation", name="staff-agent-query", capture_input=False, capture_output=False)
 def process_query_agent(user_question: str, scope: str = "staff", usage_sink: dict | None = None) -> str:
     """Agentic processing of a user query, scoped to ONE section.
 
@@ -374,6 +382,13 @@ def process_query_agent(user_question: str, scope: str = "staff", usage_sink: di
     if usage_sink is not None:
         usage_sink["input_tokens"] = total_in_tokens
         usage_sink["output_tokens"] = total_out_tokens
+    langfuse.update_current_generation(
+        model=MODEL_ID,
+        input=user_question[:2000],
+        output=final_text[:2000],
+        usage_details={"input": total_in_tokens, "output": total_out_tokens},
+        metadata={"service": _SERVICE, "scope": scope, "iterations": iterations},
+    )
     _persist_turn(
         user_question, final_text,
         mode="AGENT" if not leak_kind else f"OUTPUT_FILTERED_{leak_kind.upper()}",

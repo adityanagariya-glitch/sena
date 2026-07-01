@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 from fastapi import WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import types
+from langfuse import get_client, observe
 
 from sena_common.voice.config import VoiceEngineConfig
 from sena_common.voice.grounding import build_live_tools
@@ -95,6 +96,11 @@ if TYPE_CHECKING:
 import structlog
 
 log = structlog.get_logger(__name__)
+
+try:
+    langfuse = get_client()
+except Exception:
+    langfuse = None  # type: ignore[assignment]
 
 _SILENCE_POLL_SEC = 2.0  # silence monitor check interval
 _delta_log_buffer = DeltaLogBuffer(ttl_seconds=1800)
@@ -243,6 +249,49 @@ class GeminiLiveSession:
             instruction_chars=len(system_instruction),
             tools_count=(len(self._function_decls) if tool_dispatcher else 0),
             replay_context=("yes" if replay_context else "no"),
+        )
+
+    # ── Langfuse per-turn logging ─────────────────────────────────────────────
+
+    @observe(as_type="generation", name="gemini-live-turn", capture_input=False, capture_output=False)
+    def _log_turn_langfuse(
+        self,
+        turn_id: int,
+        model: str,
+        d_prompt: int,
+        d_response: int,
+        d_cached: int,
+        d_prompt_audio: int,
+        d_response_audio: int,
+        agent_text: str,
+        chunk_count: int,
+    ) -> None:
+        if langfuse is None:
+            return
+        # Gemini Live bills audio tokens at a different (much higher) rate than
+        # text tokens. Reporting everything under generic "input"/"output"
+        # prices it all at the text rate and silently undercounts cost, since
+        # voice sessions are almost entirely audio. Split into 4 usage types
+        # matching the model's Langfuse `prices` map (input/output cover text,
+        # input_audio/output_audio are the audio-only surcharge).
+        d_prompt_text = max(0, d_prompt - d_prompt_audio)
+        d_response_text = max(0, d_response - d_response_audio)
+        langfuse.update_current_generation(
+            model=model,
+            input=None,
+            output=agent_text[:2000] if agent_text else None,
+            usage_details={
+                "input": d_prompt_text,
+                "output": d_response_text,
+                "input_audio": d_prompt_audio,
+                "output_audio": d_response_audio,
+            },
+            metadata={
+                "service": self._usage_feature.value,
+                "turn_id": turn_id,
+                "cached_tokens": d_cached,
+                "audio_chunks": chunk_count,
+            },
         )
 
     # ── Public ────────────────────────────────────────────────────────────────
@@ -863,6 +912,21 @@ class GeminiLiveSession:
         d_response_audio = max(
             0, self._usage_cum_response_audio - self._usage_emitted_response_audio
         )
+        if langfuse is not None:
+            try:
+                self._log_turn_langfuse(
+                    turn_id=self._turn_id,
+                    model=self._cfg.gemini_live_model_id,
+                    d_prompt=d_prompt,
+                    d_response=d_response,
+                    d_cached=d_cached,
+                    d_prompt_audio=d_prompt_audio,
+                    d_response_audio=d_response_audio,
+                    agent_text="",
+                    chunk_count=0,
+                )
+            except Exception:
+                pass
         emit_usage(
             tenant_id=self._tenant_id or "unknown",
             user_id=self._user_id,
@@ -1063,6 +1127,7 @@ class GeminiLiveSession:
 
                         # ── Turn complete ──────────────────────────────────────
                         if sc.turn_complete:
+                            full_text = ""
                             if agent_transcript_buf:
                                 full_text = "".join(agent_transcript_buf)
                                 log.info(
@@ -1126,6 +1191,21 @@ class GeminiLiveSession:
                                 self._usage_cum_response_audio
                                 - self._usage_emitted_response_audio,
                             )
+                            if langfuse is not None and (d_prompt or d_response):
+                                try:
+                                    self._log_turn_langfuse(
+                                        turn_id=self._turn_id,
+                                        model=self._cfg.gemini_live_model_id,
+                                        d_prompt=d_prompt,
+                                        d_response=d_response,
+                                        d_cached=d_cached,
+                                        d_prompt_audio=d_prompt_audio,
+                                        d_response_audio=d_response_audio,
+                                        agent_text=full_text,
+                                        chunk_count=chunk_count,
+                                    )
+                                except Exception:
+                                    pass
                             if d_prompt or d_response or d_cached or chunk_count or self._tool_calls_in_turn:
                                 # Telemetry MUST NOT crash the critical path — guard every call site.
                                 try:

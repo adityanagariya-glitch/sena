@@ -30,7 +30,8 @@ from case_review.services.usage import record_and_print_converse
 log = structlog.get_logger(__name__)
 
 langfuse = get_client()
-_SERVICE = "case_review"
+_SERVICE = "case_review"  # Langfuse prompt namespace — do not rename, breaks managed prompt lookup
+_DASHBOARD_TAG = "case_review_summarizer"  # distinct from classifier.py's tag
 
 _lf_summarize_prompt = None
 try:
@@ -159,7 +160,7 @@ def _run_summarise(past_summary: str, new_notes: list[CaseNoteDTO]) -> SummaryRe
             "output": usage.get("outputTokens", 0),
         },
         prompt=_lf_summarize_prompt,
-        metadata={"service": _SERVICE},
+        metadata={"service": _DASHBOARD_TAG},
     )
 
     # Extract structured output from tool use block
@@ -197,7 +198,7 @@ async def summarise(
     """
     langfuse.update_current_span(
         input={"new_note_count": len(new_notes), "has_past_summary": bool(past_summary)},
-        metadata={"service": _SERVICE, "user_id": user_id, "session_id": session_id},
+        metadata={"service": _DASHBOARD_TAG, "user_id": user_id, "session_id": session_id},
     )
     log.info("summariser.call", model=settings.summarizer_model, new_note_count=len(new_notes))
     start = time.perf_counter()

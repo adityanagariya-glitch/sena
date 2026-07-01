@@ -126,6 +126,7 @@ def classify(question: str, recent_turns: str = "") -> dict:
             input=question,
             output={"label": label, "confidence": confidence, "reason": reason},
             usage_details={"input": input_total, "output": output_total, "total": input_total + output_total},
+            metadata={"service": "policy_proc_classifier"},
         )
         logger.info(f"Classified: {label} ({confidence}) — {reason}")
         return {

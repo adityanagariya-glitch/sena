@@ -11,6 +11,7 @@ import logging
 
 import boto3
 from pydantic import BaseModel
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.models.schemas import CaseNoteInput, TriageResult
@@ -18,6 +19,8 @@ from case_review.services.pipeline.style_examples import FEW_SHOT_TRIAGE
 from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_triage"
 
 _TRIAGE_PROMPT = """\
 You are a compliance auditor for an Australian NDIS (National Disability Insurance Scheme) service provider.
@@ -73,6 +76,7 @@ def _make_client():
     return boto3.client("bedrock-runtime", **kwargs)
 
 
+@observe(as_type="generation", name="case-review-triage", capture_input=False, capture_output=False)
 def _run_triage(transcript: str) -> TriageResult:
     """Synchronous Bedrock call — runs in a thread via asyncio.to_thread."""
     client = _make_client()
@@ -102,6 +106,18 @@ def _run_triage(transcript: str) -> TriageResult:
     text = response["output"]["message"]["content"][0]["text"]
     if not text:
         raise ValueError(f"Empty triage response. stopReason={response.get('stopReason', 'NONE')}")
+
+    usage = response.get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.triage_model,
+        input=transcript[:2000],
+        output=text[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
 
     try:
         data = _extract_json(text)

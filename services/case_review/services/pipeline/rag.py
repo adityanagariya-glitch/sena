@@ -30,12 +30,15 @@ import re
 import boto3
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.models.db import NDISPolicyChunk
 from case_review.models.schemas import CaseNoteInput, PolicyChunk, TriageResult
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_rag_query_expansion"
 
 # ── Adaptive retrieval depth thresholds ──────────────────────────────────────
 # Driven by triage_confidence so high-confidence cases pay fewer RAG tokens.
@@ -203,6 +206,7 @@ async def _fetch_parent_chunks(
     return upgraded
 
 
+@observe(as_type="generation", name="case-review-rag-query-expansion", capture_input=False, capture_output=False)
 def _expand_query_sync(action_summary: str) -> list[str]:
     """Haiku rewrites the action_summary into 2-3 alternative regulatory search queries.
 
@@ -237,6 +241,17 @@ def _expand_query_sync(action_summary: str) -> list[str]:
         inferenceConfig={"maxTokens": 200, "temperature": 0.0},
     )
     raw = response["output"]["message"]["content"][0]["text"]
+    usage = response.get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.classifier_model,
+        input=action_summary,
+        output=raw,
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
     start = raw.find("[")
     end = raw.rfind("]") + 1
     if start == -1 or end == 0:

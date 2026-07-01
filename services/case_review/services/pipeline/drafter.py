@@ -12,6 +12,7 @@ import logging
 import boto3
 from botocore.config import Config
 from pydantic import BaseModel
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.models.schemas import CaseDraftResponse, CaseNoteInput, DraftInput
@@ -20,6 +21,10 @@ from case_review.services.pipeline.style_examples import FEW_SHOT_DRAFTER, STYLE
 from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+# Distinct from voice/drafter.py's "case_review_voice" tag (voice transcript →
+# case note draft) — this is the text-based restrictive-practices drafter.
+_SERVICE = "case_review_rp_drafter"
 
 _DRAFT_PROMPT = """\
 You are an experienced NDIS case note writer assisting a support worker to complete their post-shift case note.
@@ -130,6 +135,7 @@ def _make_client():
     return boto3.client("bedrock-runtime", **kwargs)
 
 
+@observe(as_type="generation", name="case-review-rp-drafter", capture_input=False, capture_output=False)
 def _run_drafter(transcript: str) -> _DrafterResponse:
     """Synchronous Bedrock call — runs in a thread via asyncio.to_thread."""
     client = _make_client()
@@ -165,6 +171,18 @@ def _run_drafter(transcript: str) -> _DrafterResponse:
         raise ValueError(
             f"Empty drafter response. stopReason={response.get('stopReason', 'NONE')}"
         )
+
+    usage = response.get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.evaluator_model,
+        input=transcript[:2000],
+        output=text[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
 
     try:
         data = _extract_json(text)

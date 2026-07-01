@@ -49,6 +49,54 @@ POST /query/stream
 
 ---
 
+## Pipeline Components
+
+The query-to-response pipeline is broken into 5 core stages, each with its own module for testability and independent scaling:
+
+### 1. **classifier.py** — Intent Classification
+
+- **Function:** `classify(question: str) → Dict[str, Any]`
+- **Role:** Determines question type before retrieval
+- **Classes:** `NDIS` (policy questions), `GREETING`, `SENSITIVE`, `OFF_TOPIC`, `HARMFUL`
+- **Model:** AWS Bedrock — Nova Micro
+- **Logic:** Blocks sensitive/harmful queries early; greetings get direct responses (no KB retrieval)
+
+### 2. **rewriter.py** — Query Rewriting
+
+- **Function:** `rewrite_query(question: str, history: list) → str`
+- **Role:** Rewrites user query for better retrieval signal
+- **Techniques:** Expands abbreviations, corrects typos, adds context from conversation history
+- **Model:** AWS Bedrock — Nova Lite
+- **Benefit:** Improves KB hit rates by ~15–20% (e.g., "WHS" → "workplace health and safety")
+
+### 3. **generator.py** — Response Generation
+
+- **Function:** `generate_stream(reranked_docs: list, history: list, question: str) → AsyncIterator[str]`
+- **Role:** Generates streamed SSE response token-by-token
+- **Model:** AWS Bedrock — Claude Haiku
+- **Features:**
+  - Streaming (never returns full response; yields tokens as they arrive)
+  - Citation tracking (marks which docs informed each claim)
+  - Conversation context (uses last 5 turns from DynamoDB)
+  - Usage telemetry (token count, latency, cost)
+
+### 4. **amazon_reranker.py** — Semantic Reranking (Primary)
+
+- **Function:** `rerank_with_amazon(docs: list[Dict], question: str, top_k: int = 8) → list[Dict]`
+- **Role:** Re-scores top 20 retrieved docs, returns top 8 most relevant
+- **Model:** AWS Bedrock — Amazon Reranker (`amazon.rerank-v1:0`)
+- **Region:** `ap-northeast-1` (Tokyo — latency-optimized for this model)
+- **Score:** Semantic relevance (0–1 float, higher = more relevant)
+
+### 5. **nova_reranker.py** — Semantic Reranking (Fallback)
+
+- **Function:** `rerank_with_nova(docs: list[Dict], question: str, top_k: int = 8) → list[Dict]`
+- **Role:** Fallback reranker if Amazon Reranker is unavailable
+- **Model:** AWS Bedrock — Nova Micro (`amazon.nova-micro-v1:0`)
+- **Tradeoff:** Slower than Amazon Reranker but runs in same region (ap-southeast-2), no cross-region latency
+
+---
+
 ## Tech Stack
 
 | Component | Technology |

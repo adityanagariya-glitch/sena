@@ -14,6 +14,7 @@ import logging
 
 import boto3
 from pydantic import BaseModel
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.models.schemas import (
@@ -28,6 +29,8 @@ from case_review.services.pipeline.style_examples import FEW_SHOT_EVAL_REASONING
 from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_evaluator"
 
 # ── Tool schema — replaces "Respond with JSON" prompt instruction ─────────────
 # Claude must call this tool with all required fields before the response ends.
@@ -215,6 +218,7 @@ def _format_policy_context(chunks: list[PolicyChunk]) -> str:
     return "\n\n".join(parts)
 
 
+@observe(as_type="generation", name="case-review-evaluator", capture_input=False, capture_output=False)
 def _run_evaluator(
     transcript: str,
     action_summary: str,
@@ -261,11 +265,23 @@ def _run_evaluator(
     )
     record_and_print_converse("evaluator", response)
 
+    usage = response.get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.evaluator_model,
+        input={"transcript": transcript[:2000], "action_summary": action_summary},
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
+
     # Extract structured output from tool use block — no JSON parsing needed
     for block in response["output"]["message"]["content"]:
         tool_use = block.get("toolUse", {})
         if tool_use.get("name") == "compliance_verdict":
             data = tool_use["input"]
+            langfuse.update_current_generation(output=data)
 
             try:
                 risk = PolicyViolationRisk(data.get("policy_violation_risk", "Medium"))

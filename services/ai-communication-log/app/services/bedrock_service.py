@@ -5,6 +5,7 @@ from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
+from langfuse import observe, get_client
 
 from app.core.config import settings
 from app.models.schemas import (
@@ -16,6 +17,8 @@ from app.models.schemas import (
 from app.prompts.sentiment_batch_prompt import BATCH_SYSTEM_PROMPT, build_batch_user_prompt
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "ai_communication_log"
 
 _VALID_SENTIMENT_LABELS = {
     "positive_satisfied",
@@ -125,6 +128,7 @@ class BedrockService:
 
     # ── Batch analysis ─────────────────────────────────────────────────────────
 
+    @observe(as_type="generation", name="ai-comm-log-sentiment-batch", capture_input=False, capture_output=False)
     def analyse_batch(self, messages: list[Message]) -> BatchOutput:
         """
         Sends a conversation window (up to BATCH_MAX_MESSAGES messages) to Bedrock
@@ -149,6 +153,17 @@ class BedrockService:
             raise RuntimeError(f"Bedrock API error: {error_code}") from e
 
         raw_text = self._extract_text(response)
+        usage = response.get("usage") or {}
+        langfuse.update_current_generation(
+            model=self.model_id,
+            input=user_prompt[:2000],
+            output=raw_text[:2000],
+            usage_details={
+                "input": usage.get("inputTokens", 0),
+                "output": usage.get("outputTokens", 0),
+            },
+            metadata={"service": _SERVICE, "batch_size": len(messages)},
+        )
         return self._parse_batch_response(raw_text)
 
     def _parse_batch_response(self, raw_text: str) -> BatchOutput:

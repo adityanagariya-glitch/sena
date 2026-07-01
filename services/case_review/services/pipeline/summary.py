@@ -12,6 +12,7 @@ import random
 
 import boto3
 from pydantic import BaseModel
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.models.schemas import CaseNoteInput, SummaryOutput
@@ -20,6 +21,8 @@ from case_review.services.pipeline.style_examples import FEW_SHOT_SUMMARY, STYLE
 from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_shift_summary"
 
 _SUMMARY_PROMPT = """\
 You are summarising a single NDIS (National Disability Insurance Scheme) support shift for \
@@ -84,6 +87,7 @@ def _make_client():
     return boto3.client("bedrock-runtime", **kwargs)
 
 
+@observe(as_type="generation", name="case-review-shift-summary", capture_input=False, capture_output=False)
 def _run_summary(text: str) -> SummaryOutput:
     """Synchronous Bedrock call — offloaded to thread pool."""
     client = _make_client()
@@ -118,6 +122,18 @@ def _run_summary(text: str) -> SummaryOutput:
         raise ValueError(
             f"Empty summary response. stopReason={response.get('stopReason', 'NONE')}"
         )
+
+    usage = response.get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.triage_model,
+        input=text[:2000],
+        output=raw_text[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
 
     try:
         data = _extract_json(raw_text)

@@ -110,6 +110,7 @@ def rewrite_query(question: str, recent_turns: str = "") -> tuple:
             input={"question": question, "recent_turns": recent_turns[:300] if recent_turns else None},
             output=final_query,
             usage_details={"input": usage_dict["input_tokens"], "output": usage_dict["output_tokens"]},
+            metadata={"service": "policy_proc_rewriter"},
         )
         return final_query, usage_dict
     except Exception as e:

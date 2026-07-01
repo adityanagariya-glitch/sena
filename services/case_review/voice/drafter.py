@@ -14,11 +14,14 @@ from typing import Any
 import boto3
 import structlog
 from pydantic import BaseModel
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.services.usage import record_and_print_converse
 
 log = structlog.get_logger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_voice"
 
 _STYLE_GUIDE = """\
 WRITING STYLE — MANDATORY:
@@ -151,6 +154,7 @@ def _make_client() -> Any:
     return boto3.client("bedrock-runtime", **kwargs)
 
 
+@observe(as_type="generation", name="case-review-voice-draft", capture_input=False, capture_output=False)
 def _run_sync(transcript: str) -> _Extracted:
     """Synchronous Bedrock call — offloaded via asyncio.to_thread."""
     client = _make_client()
@@ -175,6 +179,7 @@ def _run_sync(transcript: str) -> _Extracted:
     )
     record_and_print_converse("voice_drafter", response)
     text = response["output"]["message"]["content"][0]["text"]
+    usage = response.get("usage", {})
     if not text:
         raise ValueError(
             f"Empty drafter response. stopReason={response.get('stopReason', 'NONE')}"
@@ -189,6 +194,16 @@ def _run_sync(transcript: str) -> _Extracted:
         v = data[key]
         if isinstance(v, dict) and len(v) == 1 and key in v:
             data[key] = v[key]
+    langfuse.update_current_generation(
+        model=settings.bedrock_model_id,
+        input=transcript[:2000],
+        output=text[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
     return _Extracted(**data)
 
 

@@ -146,6 +146,7 @@ Do not use the NOT_IN_KB message for greetings.
                 langfuse.update_current_generation(
                     output="".join(_answer_parts),
                     usage_details={"input": in_tok, "output": out_tok, "total": in_tok + out_tok},
+                    metadata={"service": "policy_proc_generator"},
                 )
                 yield {
                     "type": "usage",

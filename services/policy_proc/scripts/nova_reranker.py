@@ -3,13 +3,17 @@ import boto3
 import json
 import logging
 
+from langfuse import observe, get_client
+
 from config import REGION, RERANK_TOP, RERANKER_MODEL
 
 logger = logging.getLogger(__name__)
 
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
+langfuse = get_client()
 
 
+@observe(as_type="generation", name="nova-rerank", capture_input=False, capture_output=False)
 def rerank_with_nova(question: str, chunks: list) -> list:
     """
     Uses Nova Micro to rerank chunks by relevance to the question.
@@ -52,6 +56,18 @@ Chunks:
         raw = response["output"]["message"]["content"][0]["text"].strip()
         indices = json.loads(raw)
         reranked = [chunks[i] for i in indices if i < len(chunks)]
+
+        usage = response.get("usage") or {}
+        langfuse.update_current_generation(
+            model=RERANKER_MODEL,
+            input={"question": question, "chunk_count": len(chunks)},
+            output=raw,
+            usage_details={
+                "input": usage.get("inputTokens", 0),
+                "output": usage.get("outputTokens", 0),
+            },
+            metadata={"service": "policy_proc_reranker_nova"},
+        )
 
         logger.info(
             f"Nova reranked {len(chunks)} chunks -> top {len(reranked)} | "

@@ -8,6 +8,7 @@ from typing import Any
 
 from google import genai
 from google.genai import types
+from langfuse import get_client, observe
 
 from voice.core.settings import settings
 from voice.services.personal_details_service import (
@@ -19,6 +20,29 @@ from voice.services.usage_log import log_token_usage
 from voice.services.response_manager import ResponseManager
 
 logger = logging.getLogger(__name__)
+
+try:
+    langfuse = get_client()
+except Exception:
+    langfuse = None  # type: ignore[assignment]
+_SERVICE = "voice_live"
+
+
+def _sum_audio_tokens(details: object) -> int:
+    """Sum AUDIO-modality token_count from a usage_metadata *_tokens_details list.
+
+    Gemini reports per-modality breakdowns as a list of ModalityTokenCount
+    (each with `.modality` + `.token_count`). We pull the AUDIO slice so the
+    cost calculator can price audio at the real rate instead of the flat
+    text rate — Gemini Live bills audio tokens far higher than text.
+    """
+    total = 0
+    for item in details or []:  # type: ignore[union-attr]
+        modality = getattr(item, "modality", None)
+        name = getattr(modality, "name", None) or str(modality or "")
+        if "AUDIO" in name.upper():
+            total += int(getattr(item, "token_count", 0) or 0)
+    return total
 
 
 def _get_voice_for_persona(persona: str) -> str:
@@ -311,6 +335,14 @@ class GeminiLiveService:
         self._usage_cum_response = 0
         self._usage_emitted_prompt = 0
         self._usage_emitted_response = 0
+        # Audio-modality subset of the cumulative prompt/response tokens — Gemini
+        # Live bills audio far higher than text, so this must be tracked
+        # separately for accurate Langfuse cost calculation.
+        self._usage_cum_prompt_audio = 0
+        self._usage_cum_response_audio = 0
+        self._usage_emitted_prompt_audio = 0
+        self._usage_emitted_response_audio = 0
+        self._turn_id = 0
         # UX improvements: track user engagement and interruption patterns
         self._sentiment_history: list[dict] = []
         self._interruption_count = 0
@@ -412,6 +444,35 @@ class GeminiLiveService:
         except Exception as e:
             logger.warning("interruption_signal_failed error=%s", str(e))
 
+    @observe(as_type="generation", name="voice-live-turn", capture_input=False, capture_output=False)
+    def _log_turn_langfuse(
+        self,
+        turn_id: int,
+        d_prompt: int,
+        d_response: int,
+        d_prompt_audio: int,
+        d_response_audio: int,
+    ) -> None:
+        if langfuse is None:
+            return
+        # Gemini Live bills audio tokens at a different (much higher) rate than
+        # text tokens. Reporting everything under generic "input"/"output"
+        # prices it all at the text rate and silently undercounts cost, since
+        # this session is almost entirely audio. Split into 4 usage types
+        # matching the model's Langfuse `prices` map.
+        d_prompt_text = max(0, d_prompt - d_prompt_audio)
+        d_response_text = max(0, d_response - d_response_audio)
+        langfuse.update_current_generation(
+            model=self._model,
+            usage_details={
+                "input": d_prompt_text,
+                "output": d_response_text,
+                "input_audio": d_prompt_audio,
+                "output_audio": d_response_audio,
+            },
+            metadata={"service": _SERVICE, "turn_id": turn_id},
+        )
+
     async def receive_events(self) -> AsyncGenerator[dict, None]:
         """
         Yield structured events from Gemini Live (STREAMING):
@@ -456,6 +517,13 @@ class GeminiLiveService:
                         or getattr(_um, "candidates_token_count", 0)
                         or 0
                     )
+                    self._usage_cum_prompt_audio = _sum_audio_tokens(
+                        getattr(_um, "prompt_tokens_details", None)
+                    )
+                    self._usage_cum_response_audio = _sum_audio_tokens(
+                        getattr(_um, "candidates_tokens_details", None)
+                        or getattr(_um, "response_tokens_details", None)
+                    )
 
                 if msg.server_content:
                     sc = msg.server_content
@@ -486,9 +554,29 @@ class GeminiLiveService:
                         # This turn's delta (cumulative minus what we already reported).
                         d_in = max(0, self._usage_cum_prompt - self._usage_emitted_prompt)
                         d_out = max(0, self._usage_cum_response - self._usage_emitted_response)
+                        d_in_audio = max(
+                            0, self._usage_cum_prompt_audio - self._usage_emitted_prompt_audio
+                        )
+                        d_out_audio = max(
+                            0, self._usage_cum_response_audio - self._usage_emitted_response_audio
+                        )
                         self._usage_emitted_prompt = self._usage_cum_prompt
                         self._usage_emitted_response = self._usage_cum_response
+                        self._usage_emitted_prompt_audio = self._usage_cum_prompt_audio
+                        self._usage_emitted_response_audio = self._usage_cum_response_audio
                         log_token_usage("voice_live", d_in, d_out)
+                        if langfuse is not None and (d_in or d_out):
+                            try:
+                                self._log_turn_langfuse(
+                                    turn_id=self._turn_id,
+                                    d_prompt=d_in,
+                                    d_response=d_out,
+                                    d_prompt_audio=d_in_audio,
+                                    d_response_audio=d_out_audio,
+                                )
+                            except Exception:
+                                pass
+                        self._turn_id += 1
                         yield {
                             "type": "turn_complete",
                             "token_usage": {

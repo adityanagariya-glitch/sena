@@ -90,6 +90,7 @@ def rerank_with_amazon(question: str, chunks: list) -> list:
         langfuse.update_current_generation(
             output={"reranked_count": len(reranked_chunks)},
             usage_details={"queries": query_units},
+            metadata={"service": "policy_proc_reranker_amazon"},
         )
 
         logger.info(
@@ -102,6 +103,7 @@ def rerank_with_amazon(question: str, chunks: list) -> list:
         langfuse.update_current_generation(
             output={"error": str(e)},
             usage_details={"queries": 0},
+            metadata={"service": "policy_proc_reranker_amazon"},
         )
         logger.warning(
             f"Amazon Bedrock reranker error: {e} -> falling back to Nova reranker | "

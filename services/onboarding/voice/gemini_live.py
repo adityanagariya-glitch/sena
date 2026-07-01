@@ -261,16 +261,33 @@ class GeminiLiveSession:
         d_prompt: int,
         d_response: int,
         d_cached: int,
+        d_prompt_audio: int,
+        d_response_audio: int,
         agent_text: str,
         chunk_count: int,
     ) -> None:
         if langfuse is None:
             return
+        # Gemini Live bills audio tokens at a different rate than text tokens
+        # (e.g. gemini-3.1-flash-live-preview: $3.00/$12.00 audio vs $0.75/$4.50
+        # text, per 1M). Reporting everything under generic "input"/"output"
+        # prices it all at the text rate and silently undercounts cost, since
+        # onboarding sessions are almost entirely audio. Split into 4 usage
+        # types so the matching Langfuse model `prices` map can price each
+        # correctly — see the "prices" map on the gemini-3.1-flash-live-preview
+        # model definition.
+        d_prompt_text = max(0, d_prompt - d_prompt_audio)
+        d_response_text = max(0, d_response - d_response_audio)
         langfuse.update_current_generation(
             model=model,
             input=None,
             output=agent_text[:2000] if agent_text else None,
-            usage_details={"input": d_prompt, "output": d_response},
+            usage_details={
+                "input": d_prompt_text,
+                "output": d_response_text,
+                "input_audio": d_prompt_audio,
+                "output_audio": d_response_audio,
+            },
             metadata={
                 "service": _SERVICE,
                 "turn_id": turn_id,
@@ -908,6 +925,21 @@ class GeminiLiveSession:
         d_response_audio = max(
             0, self._usage_cum_response_audio - self._usage_emitted_response_audio
         )
+        if langfuse is not None:
+            try:
+                self._log_turn_langfuse(
+                    turn_id=self._turn_id,
+                    model=self._cfg.gemini_live_model_id,
+                    d_prompt=d_prompt,
+                    d_response=d_response,
+                    d_cached=d_cached,
+                    d_prompt_audio=d_prompt_audio,
+                    d_response_audio=d_response_audio,
+                    agent_text="",
+                    chunk_count=0,
+                )
+            except Exception:
+                pass
         emit_usage(
             tenant_id=self._tenant_id or "unknown",
             user_id=self._user_id,
@@ -1173,6 +1205,16 @@ class GeminiLiveSession:
                                 d_response,
                                 cache_read_tokens=d_cached,
                             )
+                            d_prompt_audio = max(
+                                0,
+                                self._usage_cum_prompt_audio
+                                - self._usage_emitted_prompt_audio,
+                            )
+                            d_response_audio = max(
+                                0,
+                                self._usage_cum_response_audio
+                                - self._usage_emitted_response_audio,
+                            )
                             if langfuse is not None and (d_prompt or d_response):
                                 try:
                                     self._log_turn_langfuse(
@@ -1181,6 +1223,8 @@ class GeminiLiveSession:
                                         d_prompt=d_prompt,
                                         d_response=d_response,
                                         d_cached=d_cached,
+                                        d_prompt_audio=d_prompt_audio,
+                                        d_response_audio=d_response_audio,
                                         agent_text=full_text,
                                         chunk_count=chunk_count,
                                     )
@@ -1193,16 +1237,6 @@ class GeminiLiveSession:
                                 "output_tokens": d_response,
                                 "total_tokens": d_prompt + d_response,
                             }))
-                            d_prompt_audio = max(
-                                0,
-                                self._usage_cum_prompt_audio
-                                - self._usage_emitted_prompt_audio,
-                            )
-                            d_response_audio = max(
-                                0,
-                                self._usage_cum_response_audio
-                                - self._usage_emitted_response_audio,
-                            )
                             if d_prompt or d_response or d_cached or chunk_count or self._tool_calls_in_turn:
                                 emit_usage(
                                     tenant_id=self._tenant_id or "unknown",

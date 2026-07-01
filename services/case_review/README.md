@@ -9,6 +9,7 @@
 - [Architecture Overview](#architecture-overview)
 - [AI Models Used](#ai-models-used)
 - [7-Stage Pipeline (LangGraph)](#7-stage-pipeline-langgraph)
+- [Pipeline & Ingestion Components](#pipeline--ingestion-components)
 - [RAG — How Policy Retrieval Works](#rag--how-policy-retrieval-works)
 - [Cost Optimisation — Everything We Built](#cost-optimisation--everything-we-built)
 - [Token Tracking](#token-tracking)
@@ -231,6 +232,209 @@ Generates a structured NDIS Commission incident report. Only fires when the eval
 **Model**: Claude Sonnet | **Standalone endpoint: POST /draft**
 
 Converts a raw voice transcript into the 6-section NDIS case note form. Completely separate from the evaluation pipeline — used post-dictation to structure what the worker said.
+
+---
+
+## Pipeline & Ingestion Components
+
+All 9 core modules and their responsibilities:
+
+### **Evaluation Pipeline (7 stages)**
+
+#### 1. **triage.py** — `_run_triage()` [Langfuse tag: `case_review_triage`]
+
+**Role**: Binary gate + confidence score for restrictive practices.
+
+- **Model**: Claude Haiku (cheap screening)
+- **Function**: Reads full case note; returns `{flagged: bool, confidence: 0.0–1.0, action_summary: str|null}`
+- **Output drives**: `confidence` score adapts RAG retrieval depth (high confidence = fewer chunks, low = more chunks + query expansion)
+- **Example**:
+  - Input: *"I held Sarah's arms to stop her from pulling her feeding tube"*
+  - Output: `{flagged: true, confidence: 0.94, action_summary: "Physical restraint applied during self-injury attempt"}`
+- **Cost**: ~$0.002/call (Haiku)
+- **Benefit**: ~70% of notes exit here (no RAG, no Sonnet)
+
+---
+
+#### 2. **rag.py** — `_expand_query_sync()` [Langfuse tag: `case_review_rag_query_expansion`]
+
+**Role**: Adaptive query expansion + hybrid retrieval (vector + BM25 + reranking).
+
+- **Model**: Cohere Embed v3 (embeddings), Cohere Rerank v3.5 (cross-encoder)
+- **Function**: 
+  - If triage `confidence < 0.7`: Haiku expands action_summary into multi-faceted query
+  - Vector cosine search in pgvector HNSW + BM25 full-text search
+  - Reciprocal Rank Fusion (merge ranked lists) → Cohere rerank → return top-N chunks
+  - Swap matched child chunks for parent sections (full policy context)
+- **Retrieval depth adapts**:
+  - High confidence (0.9+): top 1–3 chunks
+  - Medium (0.6–0.9): top 3–5 chunks
+  - Low (<0.6): top 5–8 chunks + query expansion
+- **Example**:
+  - Triage: `action_summary="Physical restraint applied during self-injury"`
+  - RAG returns: 3 matched chunks from NDIS Safeguarding Framework, Behaviour Support Policy, etc.
+  - Parent chunks swapped in (full section context, not just matched snippet)
+- **Cost**: ~$0.01/call (embeddings + reranking cheap)
+- **Indexes**: HNSW (vector), GIN (BM25), B-tree (parent lookups)
+
+---
+
+#### 3. **evaluator.py** — `_run_evaluator()` [Langfuse tag: `case_review_evaluator`]
+
+**Role**: Structured compliance analysis using LLM reasoning + tool-use.
+
+- **Model**: Claude Sonnet (complex reasoning)
+- **Function**: Reads transcript + policy chunks + client context; returns structured incident verdict
+- **Tool-use output schema**: 
+  ```json
+  {
+    "incidents_detected": [
+      {
+        "type": "PHYSICAL_RESTRAINT|SECLUSION|CHEMICAL|MECHANICAL|ENVIRONMENTAL",
+        "severity": "LOW|MEDIUM|HIGH",
+        "evidence": "...",
+        "risk_level": 0–10,
+        "violates_framework": bool,
+        "requires_bsp_check": bool
+      }
+    ],
+    "alert_required": bool,
+    "escalation_reason": "..."
+  }
+  ```
+- **Example**:
+  - Input: *"Staff held arms for 5 mins; client in room for 20 mins; on Risperidone"*
+  - Detects: Physical Restraint (HIGH) + Seclusion (HIGH); Chemical Restraint (NO — medication prescribed)
+  - Output: `alert_required=true` (2 unauthorized practices)
+- **Cost**: ~$0.08/call (Sonnet only runs on flagged notes ~30% of traffic)
+- **Prompt caching**: Static few-shot + policy context cached; only transcript varies
+
+---
+
+#### 4. **cross_check.py** — SQL lookup (implicit in evaluation pipeline)
+
+**Role**: Deterministic authorization check against Behaviour Support Plan database.
+
+- **Model**: None (pure SQL)
+- **Function**: Query `BehaviourSupportPlan` table for client + practice type + validity window
+- **Returns**: `AUTHORISED_USE | UNAUTHORISED | NO_INCIDENT`
+- **Cost**: $0 (database query only)
+
+---
+
+#### 5. **summary.py** — `_run_summary()` [Langfuse tag: `case_review_shift_summary`]
+
+**Role**: Supervisor-facing shift overview (runs in parallel, non-blocking).
+
+- **Model**: Claude Haiku
+- **Function**: Generates `{shift_overview, risk_patterns, note_quality_score, improvement_suggestions}`
+- **Runs**: Parallel with stages 2–4 (doesn't block response latency)
+- **Example output**:
+  - *"Sarah had elevated agitation; physical + seclusion intervention applied. Medication efficacy may need review."*
+- **Cost**: ~$0.002/call (Haiku; parallel execution)
+
+---
+
+#### 6. **incident_draft.py** — `_run_incident_draft()` [Langfuse tag: `case_review_incident_draft`]
+
+**Role**: Formal NDIS Commission incident report generation.
+
+- **Model**: Claude Sonnet
+- **Trigger**: Only runs if `alert_required=true AND cross_check=UNAUTHORISED`
+- **Output schema**:
+  ```json
+  {
+    "report_type": "Restrictive Practice Incident",
+    "date_incident": "YYYY-MM-DD",
+    "practices_used": ["PHYSICAL_RESTRAINT", "SECLUSION"],
+    "incident_description": "...",
+    "bsp_reference": "AUTHORISED_USE|UNAUTHORISED|NO_BSP",
+    "risk_level": "LOW|MEDIUM|HIGH",
+    "required_notifications": {
+      "ndis_commission": "within 24 hours|within 5 business days",
+      "participant_guardian": "...",
+      "provider_executive": "..."
+    }
+  }
+  ```
+- **Cost**: ~$0.08/call (Sonnet; ~5–10% of cases)
+- **Prompt caching**: Same pattern as evaluator
+
+---
+
+#### 7. **drafter.py** — `_run_drafter()` [Langfuse tag: `case_review_rp_drafter`]
+
+**Role**: Convert raw voice transcript → structured 6-section NDIS case note form.
+
+- **Model**: Claude Sonnet
+- **Endpoint**: Standalone `POST /v1/restrictive-practices/draft` (not part of main pipeline)
+- **Input**: Rambling voice transcript from Gemini Live
+- **Output**: 6-section form:
+  1. Incident Summary
+  2. Antecedent (what triggered it)
+  3. Behaviour (what the participant did)
+  4. Intervention (what staff did)
+  5. Outcome (how it resolved)
+  6. Staff Notes (context, observations)
+- **Example**: Voice ramble *"Um, Sarah had a rough morning, she was scratching, I held her arms"* → structured form with clear sections
+- **Cost**: ~$0.08/call (Sonnet; called independently)
+
+---
+
+### **Ingestion Pipeline (2 stages)**
+
+#### 8. **incident_splitter.py** — `_run_splitter()` [Langfuse tag: `case_review_incident_splitter`]
+
+**Role**: Pre-process multi-incident transcripts into individual incident records.
+
+- **Model**: Claude Haiku
+- **Function**: Detects incident boundaries (date changes, topic shifts, distinct events)
+- **Example**:
+  - Input: *"Monday Sarah had a meltdown, I held her arms. Wednesday she was worse, locked in bathroom for 15 mins. Thursday was quiet."*
+  - Output: 3 separate incidents:
+    1. Physical restraint (Monday)
+    2. Seclusion (Wednesday)
+    3. Clean note (Thursday)
+  - Each then processed independently through triage → evaluation
+- **Cost**: ~$0.005/call (Haiku; only when transcript covers multiple shifts/incidents)
+- **Benefit**: Prevents conflation of separate incidents; fine-grained compliance tracking
+
+---
+
+#### 9. **embedder.py** — `_embed_sync()` + `_rerank_sync()` [Langfuse tag: `case_review_embed`]
+
+**Role**: One-time PDF ingestion: text extraction → semantic chunking → embedding → pgvector upsert.
+
+- **Model**: Cohere Embed English v3 (embeddings)
+- **Function**:
+  1. Parse PDF text
+  2. Detect semantic sections (regex or Haiku-assisted)
+  3. Split each section:
+     - **Parent chunk**: Full section (~800–1500 chars); NOT embedded; used for final context
+     - **Child chunks**: ~300-char splits; embedded for retrieval
+  4. Embed child chunks via Cohere (input_type="search_document")
+  5. Upsert to PostgreSQL `rp_ndis_policy_chunks` table:
+     - `embedding` column → pgvector HNSW index (cosine, ~O(log n) query)
+     - `text` column → tsvector for BM25 GIN index
+- **Process example**:
+  - Raw PDF section: *"A Behaviour Support Plan must be developed before any restrictive practice is used..."*
+  - Becomes 1 parent + 3–4 child chunks in DB
+  - Child chunks embedded; parents fetched by FK during retrieval
+- **Cost**: One-time (~$0.50 to ingest 500 PDF pages)
+- **Query cost**: $0.0001 per case note query (embeddings fast; reranking free-tier eligible)
+
+---
+
+#### 10. **chunker.py** — `_call_llm()` [Langfuse tag: `case_review_ingest_chunker`]
+
+**Role**: Intelligent PDF sectioning for complex/scanned documents (optional during ingest).
+
+- **Model**: Claude Haiku
+- **Trigger**: `ingest_ndis_policies.py --llm-assist` flag (default is regex-based for well-formatted PDFs)
+- **Function**: When regex sectioning fails (scanned PDFs, reformatted documents), Haiku identifies natural section boundaries using context
+- **Output**: Section boundaries → pass to embedder for chunking
+- **Cost**: ~$0.01 per PDF (one-time; skipped for well-formatted PDFs with clear heading structure)
+- **Benefit**: Handles irregular PDF layouts without manual markup
 
 ---
 

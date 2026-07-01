@@ -15,6 +15,7 @@ import boto3
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from langfuse import observe, get_client
 
 from core.settings import settings
 from models.db import NDISPolicyChunk
@@ -22,6 +23,8 @@ from services.ingestion.chunker import DocumentChunk
 from services.usage import record_embedding_tokens
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_embed"
 
 
 # ── Bedrock clients (singletons) ──────────────────────────────────────────────
@@ -55,6 +58,7 @@ def _get_rerank_client():
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
 
+@observe(as_type="generation", name="case-review-embed", capture_input=False, capture_output=False)
 def _embed_sync(text: str, input_type: str = "search_document") -> list[float]:
     """Synchronous Cohere embed call via Bedrock invoke_model.
 
@@ -69,7 +73,19 @@ def _embed_sync(text: str, input_type: str = "search_document") -> list[float]:
         accept="application/json",
     )
     result = _json.loads(response["body"].read())
-    return result["embeddings"][0]
+    embedding = result["embeddings"][0]
+    # Cohere's invoke_model response has no usage/token field — estimate at
+    # ~4 chars/token (same heuristic used by the smoke-test scripts) since
+    # billing is per input token.
+    estimated_tokens = max(1, len(text) // 4)
+    langfuse.update_current_generation(
+        model=settings.embedding_model,
+        input=text[:500],
+        output=f"[embedding dim={len(embedding)}]",
+        usage_details={"input": estimated_tokens},
+        metadata={"service": _SERVICE, "input_type": input_type},
+    )
+    return embedding
 
 
 async def embed_text(text: str) -> list[float]:
@@ -86,6 +102,7 @@ async def embed_query(query: str) -> list[float]:
 
 # ── Reranking ─────────────────────────────────────────────────────────────────
 
+@observe(as_type="generation", name="case-review-rerank", capture_input=False, capture_output=False)
 def _rerank_sync(query: str, chunks: list[DocumentChunk], top_n: int) -> list[tuple[DocumentChunk, float]]:
     """Rerank chunks using Cohere Rerank v3.5 via Bedrock agent runtime.
 
@@ -127,11 +144,26 @@ def _rerank_sync(query: str, chunks: list[DocumentChunk], top_n: int) -> list[tu
         )
         # Bedrock Rerank returns "results": [{"index", "relevanceScore", "document"}]
         ranked = response.get("results", [])
+        # Billed per query, and one query covers up to 100 document chunks —
+        # a request with more chunks counts as multiple queries.
+        query_units = -(-len(chunks) // 100)  # ceil division, no extra import
+        langfuse.update_current_generation(
+            model="cohere.rerank-v3-5:0",
+            input=query,
+            output={"reranked_count": len(ranked)},
+            usage_details={"queries": query_units},
+            metadata={"service": _SERVICE},
+        )
         return [(chunks[r["index"]], r["relevanceScore"]) for r in ranked]
 
     except Exception as exc:
         # Rerank not available in this region or quota exceeded — degrade gracefully
         logger.warning("rerank unavailable (%s) — using original order", type(exc).__name__)
+        langfuse.update_current_generation(
+            output={"error": type(exc).__name__},
+            usage_details={"queries": 0},
+            metadata={"service": _SERVICE},
+        )
         return [(c, 1.0 - i * 0.01) for i, c in enumerate(chunks[:top_n])]
 
 

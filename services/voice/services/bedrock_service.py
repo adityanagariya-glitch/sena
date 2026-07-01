@@ -35,7 +35,9 @@ from voice.prompts.personal_details_prompt import (
 from voice.services.usage_log import log_token_usage
 
 langfuse = get_client()
-_SERVICE = "voice"
+_SERVICE = "voice"  # Langfuse prompt namespace — do not rename, breaks managed prompt lookup
+_TAG_DICTATION = "voice_dictation"
+_TAG_PERSONAL_DETAILS = "voice_personal_details_bedrock"
 
 _lf_dictation_prompt = None
 try:
@@ -92,11 +94,9 @@ class BedrockService:
         payload = json.loads(response["body"].read())
         text = payload["content"][0]["text"]
         usage = payload.get("usage", {}) or {}
-        lf_prompt = (
-            _lf_personal_details_prompt
-            if system_prompt is PERSONAL_DETAILS_SYSTEM_PROMPT
-            else _lf_dictation_prompt
-        )
+        is_personal_details = system_prompt is PERSONAL_DETAILS_SYSTEM_PROMPT
+        lf_prompt = _lf_personal_details_prompt if is_personal_details else _lf_dictation_prompt
+        tag = _TAG_PERSONAL_DETAILS if is_personal_details else _TAG_DICTATION
         langfuse.update_current_generation(
             model=settings.bedrock_model_id,
             input=user_prompt[:2000],
@@ -106,7 +106,7 @@ class BedrockService:
                 "output": int(usage.get("output_tokens", 0) or 0),
             },
             prompt=lf_prompt,
-            metadata={"service": _SERVICE},
+            metadata={"service": tag},
         )
         return json.loads(text), payload
 
@@ -123,7 +123,7 @@ class BedrockService:
     ) -> tuple[dict, int, dict]:
         langfuse.update_current_span(
             input={"transcript_len": len(transcript), "history_turns": len(history)},
-            metadata={"service": _SERVICE},
+            metadata={"service": _TAG_DICTATION},
         )
         prompt = build_user_prompt(
             transcript=transcript, session_snapshot=session_snapshot, history=history
@@ -191,91 +191,93 @@ class BedrockService:
             },
         )
 
-    @observe(name="voice-personal-details", capture_input=False, capture_output=False)
-    def run_personal_details_turn(
-        self,
-        transcript: str,
-        current_fields: dict,
-        missing_fields: list[str],
-        history: list[dict],
-        *,
-        tenant_id: str = "phase1_tbd",
-        user_id: str | None = None,
-        session_id: str | None = None,
-    ) -> tuple[dict, int, dict]:
-        langfuse.update_current_span(
-            input={"transcript_len": len(transcript), "missing_field_count": len(missing_fields)},
-            metadata={"service": _SERVICE},
-        )
-        prompt = build_personal_details_user_prompt(
-            transcript=transcript,
-            current_fields=current_fields,
-            missing_fields=missing_fields,
-            history=history,
-        )
-        start = time.perf_counter()
-        last_error: Exception | None = None
-        attempts = settings.provider_max_retries + 1
-        for _ in range(attempts):
-            try:
-                data, payload = self._invoke_once(prompt, system_prompt=PERSONAL_DETAILS_SYSTEM_PROMPT)
-                latency_ms = int((time.perf_counter() - start) * 1000)
-                usage = payload.get("usage", {}) or {}
-                input_tokens = int(usage.get("input_tokens", 0) or 0)
-                output_tokens = int(usage.get("output_tokens", 0) or 0)
-                cache_read_tokens = int(usage.get("cache_read_input_tokens", 0) or 0)
-                cache_creation_tokens = int(usage.get("cache_creation_input_tokens", 0) or 0)
-                emit_usage(
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    # Personal-details flow rolls up under VOICE_ONBOARDING for billing —
-                    # it's the client-facing onboarding voice agent, just routed through
-                    # Bedrock instead of Gemini Live for this particular sub-flow.
-                    feature=UsageFeature.VOICE_ONBOARDING,
-                    model=settings.bedrock_model_id,
-                    session_id=session_id,
-                    prompt_tokens=input_tokens,
-                    response_tokens=output_tokens,
-                    cache_read_tokens=cache_read_tokens,
-                    cache_write_tokens=cache_creation_tokens,
-                    latency_ms=latency_ms,
-                    success=True,
-                    history_turns=len(history),
-                    missing_field_count=len(missing_fields),
-                )
-                log_token_usage(
-                    "voice_personal_details_bedrock",
-                    input_tokens,
-                    output_tokens,
-                    cache_read_tokens=cache_read_tokens,
-                    cache_write_tokens=cache_creation_tokens,
-                )
-                token_usage = {
-                    "input_tokens": input_tokens + cache_read_tokens + cache_creation_tokens,
-                    "output_tokens": output_tokens,
-                    "total_tokens": input_tokens + cache_read_tokens + cache_creation_tokens + output_tokens,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_creation_tokens": cache_creation_tokens,
-                }
-                return data, latency_ms, token_usage
-            except (ValueError, KeyError, BotoCoreError, ClientError) as exc:
-                last_error = exc
-        emit_usage(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            feature=UsageFeature.VOICE_ONBOARDING,
-            model=settings.bedrock_model_id,
-            session_id=session_id,
-            latency_ms=int((time.perf_counter() - start) * 1000),
-            success=False,
-            failure_reason="bedrock_provider_unavailable",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "AI provider unavailable",
-                "fallback_used": False,
-                "retryable": True,
-                "cause": str(last_error),
-            },
-        )
+#    @observe(name="voice-personal-details", capture_input=False, capture_output=False)
+    # TODO: This method is dead code — never called (personal details uses Gemini instead).
+    # Commented out pending test verification. If tests pass, delete this method entirely.
+    # See: voice/services/personal_details_service.py which routes to gemini.run_personal_details_turn()
+    #
+    # def run_personal_details_turn(
+    #     self,
+    #     transcript: str,
+    #     current_fields: dict,
+    #     missing_fields: list[str],
+    #     history: list[dict],
+    #     *,
+    #     tenant_id: str = "phase1_tbd",
+    #     user_id: str | None = None,
+    #     session_id: str | None = None,
+    # ) -> tuple[dict, int, dict]:
+    #     langfuse.update_current_span(
+    #         input={"transcript_len": len(transcript), "missing_field_count": len(missing_fields)},
+    #         metadata={"service": _TAG_PERSONAL_DETAILS},
+    #     )
+    #     prompt = build_personal_details_user_prompt(
+    #         transcript=transcript,
+    #         current_fields=current_fields,
+    #         missing_fields=missing_fields,
+    #         history=history,
+    #     )
+    #     start = time.perf_counter()
+    #     last_error: Exception | None = None
+    #     attempts = settings.provider_max_retries + 1
+    #     for _ in range(attempts):
+    #         try:
+    #             data, payload = self._invoke_once(prompt, system_prompt=PERSONAL_DETAILS_SYSTEM_PROMPT)
+    #             latency_ms = int((time.perf_counter() - start) * 1000)
+    #             usage = payload.get("usage", {}) or {}
+    #             input_tokens = int(usage.get("input_tokens", 0) or 0)
+    #             output_tokens = int(usage.get("output_tokens", 0) or 0)
+    #             cache_read_tokens = int(usage.get("cache_read_input_tokens", 0) or 0)
+    #             cache_creation_tokens = int(usage.get("cache_creation_input_tokens", 0) or 0)
+    #             emit_usage(
+    #                 tenant_id=tenant_id,
+    #                 user_id=user_id,
+    #                 feature=UsageFeature.VOICE_ONBOARDING,
+    #                 model=settings.bedrock_model_id,
+    #                 session_id=session_id,
+    #                 prompt_tokens=input_tokens,
+    #                 response_tokens=output_tokens,
+    #                 cache_read_tokens=cache_read_tokens,
+    #                 cache_write_tokens=cache_creation_tokens,
+    #                 latency_ms=latency_ms,
+    #                 success=True,
+    #                 history_turns=len(history),
+    #                 missing_field_count=len(missing_fields),
+    #             )
+    #             log_token_usage(
+    #                 "voice_personal_details_bedrock",
+    #                 input_tokens,
+    #                 output_tokens,
+    #                 cache_read_tokens=cache_read_tokens,
+    #                 cache_write_tokens=cache_creation_tokens,
+    #             )
+    #             token_usage = {
+    #                 "input_tokens": input_tokens + cache_read_tokens + cache_creation_tokens,
+    #                 "output_tokens": output_tokens,
+    #                 "total_tokens": input_tokens + cache_read_tokens + cache_creation_tokens + output_tokens,
+    #                 "cache_read_tokens": cache_read_tokens,
+    #                 "cache_creation_tokens": cache_creation_tokens,
+    #             }
+    #             return data, latency_ms, token_usage
+    #         except (ValueError, KeyError, BotoCoreError, ClientError) as exc:
+    #             last_error = exc
+    #     emit_usage(
+    #         tenant_id=tenant_id,
+    #         user_id=user_id,
+    #         feature=UsageFeature.VOICE_ONBOARDING,
+    #         model=settings.bedrock_model_id,
+    #         session_id=session_id,
+    #         latency_ms=int((time.perf_counter() - start) * 1000),
+    #         success=False,
+    #         failure_reason="bedrock_provider_unavailable",
+    #     )
+    #     raise HTTPException(
+    #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    #         detail={
+    #             "error": "AI provider unavailable",
+    #             "fallback_used": False,
+    #             "retryable": True,
+    #             "cause": str(last_error),
+    #         },
+    #
+    #)

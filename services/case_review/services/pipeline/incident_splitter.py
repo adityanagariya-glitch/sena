@@ -23,11 +23,14 @@ from typing import Any
 
 import boto3
 from pydantic import BaseModel
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_incident_splitter"
 
 _SPLITTER_PROMPT = """\
 You are reading a single NDIS (National Disability Insurance Scheme) support-shift \
@@ -94,6 +97,7 @@ def _extract_json_array(text: str) -> list[dict]:
     return data if isinstance(data, list) else []
 
 
+@observe(as_type="generation", name="case-review-incident-splitter", capture_input=False, capture_output=False)
 def _run_splitter(transcript: str) -> list[IncidentSegment]:
     """Synchronous Bedrock call — offloaded to a thread pool."""
     client = _make_client()
@@ -107,6 +111,17 @@ def _run_splitter(transcript: str) -> list[IncidentSegment]:
     record_and_print_converse("incident_split", response)
 
     raw = response["output"]["message"]["content"][0]["text"]
+    usage = response.get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.triage_model,
+        input=transcript[:2000],
+        output=raw[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
     items = _extract_json_array(raw)
 
     segments: list[IncidentSegment] = []

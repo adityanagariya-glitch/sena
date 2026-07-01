@@ -16,7 +16,8 @@ from voice.prompts.personal_details_prompt import (
 from voice.services.usage_log import log_token_usage
 
 langfuse = get_client()
-_SERVICE = "voice"
+_SERVICE = "voice"  # Langfuse prompt namespace — do not rename, breaks managed prompt lookup
+_DASHBOARD_TAG = "voice_personal_details_gemini"  # distinct from bedrock_service.py's "voice_*" tags
 
 _lf_personal_details_prompt = None
 try:
@@ -79,7 +80,7 @@ class GeminiService:
             output=text[:2000],
             usage_details={"input": input_tokens, "output": output_tokens},
             prompt=_lf_personal_details_prompt,
-            metadata={"service": _SERVICE},
+            metadata={"service": _DASHBOARD_TAG},
         )
 
         usage_dict = {

@@ -32,7 +32,8 @@ from case_review.services.usage import record_and_print_converse
 log = structlog.get_logger(__name__)
 
 langfuse = get_client()
-_SERVICE = "case_review"
+_SERVICE = "case_review"  # Langfuse prompt namespace — do not rename, breaks managed prompt lookup
+_DASHBOARD_TAG = "case_review_classifier"  # distinct from summarizer.py's tag
 
 _lf_classify_prompt = None
 try:
@@ -179,7 +180,7 @@ def _run_classify(raw_paragraph: str) -> ClassifyResult:
             "output": usage.get("outputTokens", 0),
         },
         prompt=_lf_classify_prompt,
-        metadata={"service": _SERVICE},
+        metadata={"service": _DASHBOARD_TAG},
     )
 
     # Extract structured output from tool use block
@@ -219,7 +220,7 @@ async def classify(
     """
     langfuse.update_current_span(
         input={"paragraph_len": len(raw_paragraph)},
-        metadata={"service": _SERVICE, "user_id": user_id, "session_id": session_id},
+        metadata={"service": _DASHBOARD_TAG, "user_id": user_id, "session_id": session_id},
     )
     log.info("classifier.call", model=settings.classifier_model, paragraph_len=len(raw_paragraph))
     start = time.perf_counter()

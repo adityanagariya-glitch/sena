@@ -12,6 +12,7 @@ import logging
 
 import boto3
 from pydantic import BaseModel
+from langfuse import observe, get_client
 
 from core.settings import settings
 from case_review.models.schemas import (
@@ -23,6 +24,8 @@ from case_review.services.pipeline.style_examples import FEW_SHOT_INCIDENT, STYL
 from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
+langfuse = get_client()
+_SERVICE = "case_review_incident_draft"
 
 _INCIDENT_DRAFT_PROMPT = """\
 You are an NDIS compliance officer drafting an incident report for submission to the NDIS Quality \
@@ -153,6 +156,7 @@ def _validate_compliance_checks(raw: object) -> list[dict]:
     return safe
 
 
+@observe(as_type="generation", name="case-review-incident-draft", capture_input=False, capture_output=False)
 def _run_incident_draft(
     case_note_text: str,
     evaluator_findings: str,
@@ -194,6 +198,18 @@ def _run_incident_draft(
         raise ValueError(
             f"Empty incident draft response. stopReason={response.get('stopReason', 'NO_CANDIDATES')}"
         )
+
+    usage = response.get("usage", {})
+    langfuse.update_current_generation(
+        model=settings.evaluator_model,
+        input={"case_note_text": case_note_text[:2000], "evaluator_findings": evaluator_findings[:500]},
+        output=text[:2000],
+        usage_details={
+            "input": usage.get("inputTokens", 0),
+            "output": usage.get("outputTokens", 0),
+        },
+        metadata={"service": _SERVICE},
+    )
 
     try:
         data = _extract_json(text)
