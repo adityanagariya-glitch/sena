@@ -62,8 +62,12 @@ class VoiceSettings(BaseSettings):
     gemini_live_model_id: str = Field(
         default="gemini-3.1-flash-live-preview", alias="GEMINI_LIVE_MODEL_ID"
     )
+    # Valid values: MINIMAL, LOW, MEDIUM, HIGH (per google.genai.types.ThinkingLevel).
+    # "EXTENDED" was never a real value — the SDK silently warned and ignored it on
+    # every connect. LOW favors the low-latency turn-taking a Live voice call needs;
+    # raise to MEDIUM/HIGH via env if field-extraction accuracy needs more reasoning.
     gemini_thinking_level: str = Field(
-        default="EXTENDED", alias="GEMINI_THINKING_LEVEL"
+        default="MEDIUM", alias="GEMINI_THINKING_LEVEL"
     )
     voice_persona: str = Field(default="friendly_australian", alias="VOICE_PERSONA")
 

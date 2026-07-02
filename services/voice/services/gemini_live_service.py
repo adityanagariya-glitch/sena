@@ -411,9 +411,22 @@ class GeminiLiveService:
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
                 )
             ),
-            # VAD (Voice Activity Detection): Auto-interrupt when user speaks
-            voice_config=types.VoiceConfig(
-                prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
+            # VAD (Voice Activity Detection): explicit config so mic audio
+            # auto-interrupts Gemini mid-response. LiveConnectConfig has no
+            # top-level `voice_config` field (that was a duplicate of
+            # speech_config.voice_config above and raised
+            # pydantic.ValidationError: extra_forbidden on every connect —
+            # this realtime_input_config block is the actual VAD control).
+            realtime_input_config=types.RealtimeInputConfig(
+                automatic_activity_detection=types.AutomaticActivityDetection(
+                    disabled=False,
+                    start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
+                    end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
+                    prefix_padding_ms=200,
+                    silence_duration_ms=3000,
+                ),
+                activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+                turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
             ),
         )
         self._ctx = self._client.aio.live.connect(model=self._model, config=config)
