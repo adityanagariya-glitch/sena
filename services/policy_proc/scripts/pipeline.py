@@ -75,161 +75,159 @@ def run_pipeline(
     logger.info(f"Pipeline started — user: {user_id} | session: {session_id} | q: {question[:80]}")
 
     with propagate_attributes(user_id=user_id, session_id=session_id):
+        # Create new session in DynamoDB if new chat
+        if is_new_chat:
+            create_session(user_id, session_id, question)
 
-    # Create new session in DynamoDB if new chat
-    if is_new_chat:
-        create_session(user_id, session_id, question)
+        # Step 1: Read memory context (recent turns + AgentCore)
+        try:
+            memory_ctx = get_memory_context(user_id, session_id, question)
+            recent_turns  = memory_ctx["recent_turns"]
+            agentcore_ctx = memory_ctx["agentcore_ctx"]
+        except Exception as e:
+            logger.error(f"Memory read failed: {e}")
+            recent_turns  = ""
+            agentcore_ctx = ""
 
-    # Step 1: Read memory context (recent turns + AgentCore)
-    try:
-        memory_ctx = get_memory_context(user_id, session_id, question)
-        recent_turns  = memory_ctx["recent_turns"]
-        agentcore_ctx = memory_ctx["agentcore_ctx"]
-    except Exception as e:
-        logger.error(f"Memory read failed: {e}")
-        recent_turns  = ""
-        agentcore_ctx = ""
+        # Step 2: Classify
+        try:
+            classification = classify(question, recent_turns=recent_turns)
+        except Exception as e:
+            logger.error(f"Classification failed: {e}")
+            classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error"}
 
-    # Step 2: Classify
-    try:
-        classification = classify(question, recent_turns=recent_turns)
-    except Exception as e:
-        logger.error(f"Classification failed: {e}")
-        classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error"}
+        # Step 3: Block if needed
+        blocked, block_message = should_block(classification)
+        if blocked:
+            logger.info(f"Blocked — {classification['label']}")
+            return {
+                "question":    question,
+                "answer":      block_message,
+                "blocked":     True,
+                "block_reason":classification["label"],
+                "classification": classification,
+                "sources":     [],
+                "session_id":  session_id
+            }
 
-    # Step 3: Block if needed
-    blocked, block_message = should_block(classification)
-    if blocked:
-        logger.info(f"Blocked — {classification['label']}")
-        return {
-            "question":    question,
-            "answer":      block_message,
-            "blocked":     True,
-            "block_reason":classification["label"],
-            "classification": classification,
-            "sources":     [],
-            "session_id":  session_id
-        }
+        # Step 3a: Handle greetings — skip retrieval, generate warm response directly
+        if classification.get("label") == "GREETING":
+            logger.info("Greeting detected — skipping retrieval, generating direct response")
+            full_answer = []
+            for chunk in generate_stream(
+                question=question,
+                context="",
+                recent_turns=recent_turns,
+                agentcore_ctx=agentcore_ctx
+            ):
+                if chunk.get("type") == "token":
+                    full_answer.append(chunk.get("text", ""))
+            answer = "".join(full_answer).strip()
+            try:
+                save_memory(user_id, session_id, question, answer, [])
+            except Exception as e:
+                logger.error(f"Memory save failed for greeting: {e}")
+            return {
+                "question":       question,
+                "answer":         answer,
+                "blocked":        False,
+                "block_reason":   None,
+                "classification": classification,
+                "sources":        [],
+                "session_id":     session_id
+            }
 
-    # Step 3a: Handle greetings — skip retrieval, generate warm response directly
-    if classification.get("label") == "GREETING":
-        logger.info("Greeting detected — skipping retrieval, generating direct response")
-        full_answer = []
+        # Step 3.5: Rewrite query for better retrieval
+        try:
+            rewritten_query, _ = rewrite_query(question, recent_turns)
+        except Exception as e:
+            logger.warning(f"Query rewriting failed: {e} — using original")
+            rewritten_query = question
+
+        # Step 4: Retrieve from KB
+        try:
+            _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
+        except Exception as e:
+            logger.error(f"Retrieval failed: {e}")
+            return {
+                "question":    question,
+                "answer":      MESSAGES["ERROR"],
+                "blocked":     False,
+                "block_reason":"RETRIEVAL_ERROR",
+                "classification": classification,
+                "sources":     [],
+                "session_id":  session_id
+            }
+
+        # Step 5: Check empty context
+        if is_context_empty(context):
+            logger.info("Context empty — returning NOT_IN_KB")
+            return {
+                "question":    question,
+                "answer":      MESSAGES["NOT_IN_KB"],
+                "blocked":     False,
+                "block_reason":"NOT_IN_KB",
+                "classification": classification,
+                "sources":     [],
+                "session_id":  session_id
+            }
+
+        # Step 6: Generate with memory injected
+        full_answer  = []
+        blocked      = False
+        block_reason = None
+
         for chunk in generate_stream(
             question=question,
-            context="",
+            context=context,
             recent_turns=recent_turns,
             agentcore_ctx=agentcore_ctx
         ):
-            if chunk.get("type") == "token":
+            ctype = chunk.get("type")
+            if ctype == "token":
                 full_answer.append(chunk.get("text", ""))
-        answer = "".join(full_answer).strip()
+            elif ctype == "blocked":
+                blocked      = True
+                block_reason = "GUARDRAIL_BLOCKED"
+                full_answer.append(chunk.get("text", MESSAGES["BLOCKED"]))
+            elif ctype == "error":
+                blocked      = True
+                block_reason = "GENERATION_ERROR"
+                full_answer.append(chunk.get("text", MESSAGES["ERROR"]))
+            elif ctype == "done":
+                pass
+
+        final_answer = "".join(full_answer).strip()
+        result = {
+            "answer":  final_answer,
+            "blocked": blocked,
+        }
+
+        # Step 7: Save memory
         try:
-            save_memory(user_id, session_id, question, answer, [])
+            clean_sources = [s.split("/")[-1] for s in sources]
+            if result["answer"]:
+                save_memory(
+                    user_id,
+                    session_id,
+                    question,
+                    result["answer"],
+                    clean_sources
+                )
         except Exception as e:
-            logger.error(f"Memory save failed for greeting: {e}")
-        return {
-            "question":       question,
-            "answer":         answer,
-            "blocked":        False,
-            "block_reason":   None,
-            "classification": classification,
-            "sources":        [],
-            "session_id":     session_id
-        }
-    
-    # Step 3.5: Rewrite query for better retrieval
-    try:
-        rewritten_query, _ = rewrite_query(question, recent_turns)
-    except Exception as e:
-        logger.warning(f"Query rewriting failed: {e} — using original")
-        rewritten_query = question
+            logger.error(f"Memory save failed: {e}")
 
-    # Step 4: Retrieve from KB
-    try:
-        _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
-    except Exception as e:
-        logger.error(f"Retrieval failed: {e}")
+        logger.info(f"Pipeline complete — blocked: {result['blocked']}")
+
         return {
             "question":    question,
-            "answer":      MESSAGES["ERROR"],
-            "blocked":     False,
-            "block_reason":"RETRIEVAL_ERROR",
+            "answer":      result["answer"],
+            "blocked":     result["blocked"],
+            "block_reason":block_reason,
             "classification": classification,
-            "sources":     [],
+            "sources":     clean_sources,
             "session_id":  session_id
         }
-
-    # Step 5: Check empty context
-    if is_context_empty(context):
-        logger.info("Context empty — returning NOT_IN_KB")
-        return {
-            "question":    question,
-            "answer":      MESSAGES["NOT_IN_KB"],
-            "blocked":     False,
-            "block_reason":"NOT_IN_KB",
-            "classification": classification,
-            "sources":     [],
-            "session_id":  session_id
-        }   
-    
-    # Step 6: Generate with memory injected
-    full_answer  = []
-    blocked      = False
-    block_reason = None
-
-    for chunk in generate_stream(
-        question=question,
-        context=context,
-        recent_turns=recent_turns,
-        agentcore_ctx=agentcore_ctx
-    ):
-        ctype = chunk.get("type")
-        if ctype == "token":
-            full_answer.append(chunk.get("text", ""))
-        elif ctype == "blocked":
-            blocked      = True
-            block_reason = "GUARDRAIL_BLOCKED"
-            full_answer.append(chunk.get("text", MESSAGES["BLOCKED"]))
-        elif ctype == "error":
-            blocked      = True
-            block_reason = "GENERATION_ERROR"
-            full_answer.append(chunk.get("text", MESSAGES["ERROR"]))
-        elif ctype == "done":
-            pass
-
-    final_answer = "".join(full_answer).strip()
-    result = {
-        "answer":  final_answer,
-        "blocked": blocked,
-}
-
-    # Step 7: Save memory
-    try:
-        clean_sources = [s.split("/")[-1] for s in sources]
-        if result["answer"]:
-            save_memory(
-                user_id,
-                session_id,
-                question,
-                result["answer"],
-                clean_sources
-            )
-    except Exception as e:
-        logger.error(f"Memory save failed: {e}")
-
-    logger.info(f"Pipeline complete — blocked: {result['blocked']}")
-
-
-    return {
-        "question":    question,
-        "answer":      result["answer"],
-        "blocked":     result["blocked"],
-        "block_reason":block_reason,
-        "classification": classification,
-        "sources":     clean_sources,
-        "session_id":  session_id
-    }
 
 
 @observe(name="rag-pipeline", capture_input=False, capture_output=False)
@@ -273,137 +271,136 @@ def run_pipeline_stream(
     user_id    = user_id    or "anonymous"
 
     with propagate_attributes(user_id=user_id, session_id=session_id):
+        logger.info(f"Stream pipeline — user: {user_id} | session: {session_id} | q: {question[:80]}")
 
-    logger.info(f"Stream pipeline — user: {user_id} | session: {session_id} | q: {question[:80]}")
+        if is_new_chat:
+            try:
+                create_session(user_id, session_id, question)
+            except Exception as e:
+                logger.error(f"Session create failed: {e}")
 
-    if is_new_chat:
+        # ── Step 1: Memory ──────────────────────────────────────────────────────────
         try:
-            create_session(user_id, session_id, question)
+            memory_ctx    = get_memory_context(user_id, session_id, question)
+            recent_turns  = memory_ctx["recent_turns"]
+            agentcore_ctx = memory_ctx["agentcore_ctx"]
         except Exception as e:
-            logger.error(f"Session create failed: {e}")
+            logger.error(f"Memory read failed: {e}")
+            recent_turns  = ""
+            agentcore_ctx = ""
 
-    # ── Step 1: Memory ──────────────────────────────────────────────────────────
-    try:
-        memory_ctx    = get_memory_context(user_id, session_id, question)
-        recent_turns  = memory_ctx["recent_turns"]
-        agentcore_ctx = memory_ctx["agentcore_ctx"]
-    except Exception as e:
-        logger.error(f"Memory read failed: {e}")
-        recent_turns  = ""
-        agentcore_ctx = ""
+        # ── Step 2: Classify ────────────────────────────────────────────────────────
+        try:
+            classification = classify(question, recent_turns=recent_turns)
+            _add(classification.get("usage", {}))
+        except Exception as e:
+            logger.error(f"Classification failed: {e}")
+            classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error", "usage": {}}
 
-    # ── Step 2: Classify ────────────────────────────────────────────────────────
-    try:
-        classification = classify(question, recent_turns=recent_turns)
-        _add(classification.get("usage", {}))
-    except Exception as e:
-        logger.error(f"Classification failed: {e}")
-        classification = {"label": "NDIS", "confidence": 0.5, "reason": "Classifier error", "usage": {}}
+        label = classification.get("label")
 
-    label = classification.get("label")
+        # Add intent + org to span metadata for filtering in Langfuse UI
+        langfuse.update_current_span(metadata={"intent": label, "org_id": org_id, "role": role})
 
-    # Add intent + org to span metadata for filtering in Langfuse UI
-    langfuse.update_current_span(metadata={"intent": label, "org_id": org_id, "role": role})
+        # ── Step 3: Block ───────────────────────────────────────────────────────────
+        blocked, block_message = should_block(classification)
+        if blocked:
+            logger.info(f"Blocked — {label}")
+            yield {"type": "meta",    "session_id": session_id, "label": label, "sources": []}
+            yield {"type": "blocked", "text": block_message, "label": label}
+            yield {"type": "usage",   "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+            return
 
-    # ── Step 3: Block ───────────────────────────────────────────────────────────
-    blocked, block_message = should_block(classification)
-    if blocked:
-        logger.info(f"Blocked — {label}")
-        yield {"type": "meta",    "session_id": session_id, "label": label, "sources": []}
-        yield {"type": "blocked", "text": block_message, "label": label}
-        yield {"type": "usage",   "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
-        return
+        # ── Step 3a: Greeting ────────────────────────────────────────────────────────
+        if label == "GREETING":
+            logger.info("Greeting — skipping retrieval, streaming direct response")
+            yield {"type": "meta", "session_id": session_id, "label": label, "sources": []}
+            full_answer = []
+            for chunk in generate_stream(question=question, context="", recent_turns=recent_turns, agentcore_ctx=agentcore_ctx):
+                ctype = chunk.get("type")
+                if ctype == "token":
+                    full_answer.append(chunk.get("text", ""))
+                    yield chunk
+                elif ctype == "usage":
+                    _add(chunk)
+                elif ctype in ("done", "blocked", "error"):
+                    yield chunk
+            yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+            try:
+                greeting_answer = "".join(full_answer).strip()
+                save_memory(user_id, session_id, question, greeting_answer, [])
+            except Exception as e:
+                logger.error(f"Memory save failed for greeting: {e}")
+            return
 
-    # ── Step 3a: Greeting ────────────────────────────────────────────────────────
-    if label == "GREETING":
-        logger.info("Greeting — skipping retrieval, streaming direct response")
-        yield {"type": "meta", "session_id": session_id, "label": label, "sources": []}
-        full_answer = []
-        for chunk in generate_stream(question=question, context="", recent_turns=recent_turns, agentcore_ctx=agentcore_ctx):
+        # ── Step 3.5: Rewrite ───────────────────────────────────────────────────────
+        try:
+            rewritten_query, rewriter_usage = rewrite_query(question, recent_turns)
+            _add(rewriter_usage)
+        except Exception as e:
+            logger.warning(f"Query rewriting failed: {e} — using original")
+            rewritten_query = question
+
+        # ── Step 4: Retrieve ────────────────────────────────────────────────────────
+        try:
+            _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
+        except Exception as e:
+            logger.error(f"Retrieval failed: {e}")
+            yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
+            yield {"type": "error", "text": MESSAGES["ERROR"]}
+            return
+
+        # ── Step 5: Empty context ───────────────────────────────────────────────────
+        if is_context_empty(context):
+            logger.info("Context empty — returning NOT_IN_KB")
+            yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
+            yield {"type": "token", "text": MESSAGES["NOT_IN_KB"]}
+            yield {"type": "done",  "stop_reason": "end_turn"}
+            yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+            return
+
+        # ── Meta event (sources now known) ──────────────────────────────────────────
+        clean_sources = [s.split("/")[-1] for s in sources]
+        yield {"type": "meta", "session_id": session_id, "label": label, "sources": clean_sources}
+
+        # ── Step 6: Stream generation ───────────────────────────────────────────────
+        full_answer  = []
+        is_blocked   = False
+
+        for chunk in generate_stream(
+            question      = question,
+            context       = context,
+            recent_turns  = recent_turns,
+            agentcore_ctx = agentcore_ctx,
+        ):
             ctype = chunk.get("type")
             if ctype == "token":
                 full_answer.append(chunk.get("text", ""))
                 yield chunk
             elif ctype == "usage":
                 _add(chunk)
-            elif ctype in ("done", "blocked", "error"):
+            elif ctype == "blocked":
+                is_blocked = True
+                full_answer.append(chunk.get("text", MESSAGES["BLOCKED"]))
                 yield chunk
+            elif ctype == "done":
+                yield chunk
+            elif ctype == "error":
+                is_blocked = True
+                full_answer.append(chunk.get("text", MESSAGES["ERROR"]))
+                yield chunk
+
         yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
+
+        # ── Step 7: Save memory (after all events are yielded) ──────────────────────
         try:
-            greeting_answer = "".join(full_answer).strip()
-            save_memory(user_id, session_id, question, greeting_answer, [])
+            final_answer = "".join(full_answer).strip()
+            if final_answer and not is_blocked:
+                save_memory(user_id, session_id, question, final_answer, clean_sources)
         except Exception as e:
-            logger.error(f"Memory save failed for greeting: {e}")
-        return
+            logger.error(f"Memory save failed: {e}")
 
-    # ── Step 3.5: Rewrite ───────────────────────────────────────────────────────
-    try:
-        rewritten_query, rewriter_usage = rewrite_query(question, recent_turns)
-        _add(rewriter_usage)
-    except Exception as e:
-        logger.warning(f"Query rewriting failed: {e} — using original")
-        rewritten_query = question
-
-    # ── Step 4: Retrieve ────────────────────────────────────────────────────────
-    try:
-        _, context, sources = retrieve(rewritten_query, org_id=org_id, role=role, doc_type=doc_type)
-    except Exception as e:
-        logger.error(f"Retrieval failed: {e}")
-        yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
-        yield {"type": "error", "text": MESSAGES["ERROR"]}
-        return
-
-    # ── Step 5: Empty context ───────────────────────────────────────────────────
-    if is_context_empty(context):
-        logger.info("Context empty — returning NOT_IN_KB")
-        yield {"type": "meta",  "session_id": session_id, "label": label, "sources": []}
-        yield {"type": "token", "text": MESSAGES["NOT_IN_KB"]}
-        yield {"type": "done",  "stop_reason": "end_turn"}
-        yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
-        return
-
-    # ── Meta event (sources now known) ──────────────────────────────────────────
-    clean_sources = [s.split("/")[-1] for s in sources]
-    yield {"type": "meta", "session_id": session_id, "label": label, "sources": clean_sources}
-
-    # ── Step 6: Stream generation ───────────────────────────────────────────────
-    full_answer  = []
-    is_blocked   = False
-
-    for chunk in generate_stream(
-        question      = question,
-        context       = context,
-        recent_turns  = recent_turns,
-        agentcore_ctx = agentcore_ctx,
-    ):
-        ctype = chunk.get("type")
-        if ctype == "token":
-            full_answer.append(chunk.get("text", ""))
-            yield chunk
-        elif ctype == "usage":
-            _add(chunk)
-        elif ctype == "blocked":
-            is_blocked = True
-            full_answer.append(chunk.get("text", MESSAGES["BLOCKED"]))
-            yield chunk
-        elif ctype == "done":
-            yield chunk
-        elif ctype == "error":
-            is_blocked = True
-            full_answer.append(chunk.get("text", MESSAGES["ERROR"]))
-            yield chunk
-
-    yield {"type": "usage", "input_tokens": total_usage["input_tokens"], "output_tokens": total_usage["output_tokens"]}
-
-    # ── Step 7: Save memory (after all events are yielded) ──────────────────────
-    try:
-        final_answer = "".join(full_answer).strip()
-        if final_answer and not is_blocked:
-            save_memory(user_id, session_id, question, final_answer, clean_sources)
-    except Exception as e:
-        logger.error(f"Memory save failed: {e}")
-
-    logger.info(f"Stream pipeline complete — blocked: {is_blocked}")
+        logger.info(f"Stream pipeline complete — blocked: {is_blocked}")
 
 
 if __name__ == "__main__":
