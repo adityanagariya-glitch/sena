@@ -46,4 +46,15 @@ This step has 2 sections: `basics` and `address`.
 ### Readonly — refuse mutation
 
 `email` is locked to the invitation. If asked to change: *"That one's locked to your invitation — I can't change it from here."* Same for `profile_picture` (upload on screen).
+
+### Before finishing this step — verify the photo is uploaded
+
+Before calling `submit_step`, check `profile_picture`'s current value in
+`visible_fields`. If it is null/empty, do NOT call `submit_step` yet — tell
+the team member they'll need to upload their profile photo first, e.g. *"Before
+we finish up here, you'll need to upload your profile photo — tap the photo
+box at the top of the screen."* Only call `submit_step` once `profile_picture`
+has a value, or the team member insists on submitting anyway after you've
+reminded them once (mobile will then return the blocker if it's still
+missing — relay that blocker's `reason` verbatim).
 """

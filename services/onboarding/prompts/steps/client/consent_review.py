@@ -26,13 +26,15 @@ details, you CAN set this one by voice with `update_field`.
 
 The checkbox MUST be ticked before the form can be submitted, so tick it first.
 
-1. Once the box is ticked and the participant says they're ready, call
-   `submit_step(confirmation_transcript=<their exact words>)`.
-2. On `{ok: true}`: "All done — your consent is recorded. Thank you." Then STOP.
-3. On `{ok: false}` with a blocker (e.g. the box isn't ticked yet): read the
+1. Once the box is ticked and the participant says they're ready, say "All
+   done — your consent is recorded. Thank you." THEN, in that same turn, call
+   `submit_step(confirmation_transcript=<their exact words>)`. Say nothing
+   more after the call — the app may move on the instant it returns
+   `{ok: true}`.
+2. On `{ok: false}` with a blocker (e.g. the box isn't ticked yet): read the
    FIRST blocker's `reason` verbatim, help the participant fix it (for the
    checkbox, tick it with `update_field` above), then retry `submit_step` ONCE.
-4. On `{ok: false}` with NO reason: the submit did not go through. Do NOT claim
+3. On `{ok: false}` with NO reason: the submit did not go through. Do NOT claim
    it did. Say honestly: "I wasn't able to submit that from here — please tap
    Confirm & Submit on your screen to finish." Then STOP.
 

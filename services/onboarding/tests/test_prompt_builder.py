@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from voice.prompt_builder import build_system_prompt
 from voice.turn_payload import (
     NextTarget,
     Participant,
@@ -9,7 +10,6 @@ from voice.turn_payload import (
     TurnPayload,
     VisibleField,
 )
-from voice.prompt_builder import build_system_prompt
 
 
 def _minimal_turn() -> TurnPayload:
@@ -186,6 +186,103 @@ def _documents_turn() -> TurnPayload:
             reason="next_required",
         ),
     )
+
+
+def test_global_boolean_false_rule_present() -> None:
+    """§1 boolean-false-!=-answered rule must render on every step."""
+    out = build_system_prompt(_minimal_turn())
+    assert 'does NOT mean "already answered."' in out
+
+
+def test_global_speak_before_submit_rule_present() -> None:
+    """§5 speak-before-submit_step rule must render on every step."""
+    out = build_system_prompt(_minimal_turn())
+    assert "Speak BEFORE calling" in out
+
+
+def test_staff_personal_information_checks_photo_before_submit() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "staff_personal_information"
+    out = build_system_prompt(tp)
+    assert "Before finishing this step — verify the photo is uploaded" in out
+    assert "upload their profile photo first" in out
+
+
+def test_staff_banking_reconfirms_prefilled_toggles() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "staff_banking"
+    out = build_system_prompt(tp)
+    assert "Pre-filled does not mean confirmed" in out
+
+
+def test_ndis_plan_details_support_fields_informational_only() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "ndis_plan_details"
+    out = build_system_prompt(tp)
+    assert "HARD RULE — never call `update_field` for support_purpose" in out
+    # frequency / preferred_schedule voice-fill guidance must remain unchanged.
+    assert "the ONE fixed enum on this row (voice-fillable)" in out
+    assert "VOICE-MUTABLE (set days + times by voice)" in out
+
+
+def test_consent_step_orders_all_seven_fields_before_submit() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "consent"
+    out = build_system_prompt(tp)
+    assert "ask all 7 fields below, in this order" in out
+    assert (
+        '`medication_support_consent` — screen section "Special Consent" (TWO fields, ask both)'
+        in out
+    )
+    assert (
+        '`financial_help_consent` — screen section "Special Consent" (TWO fields, ask both)' in out
+    )
+
+
+def test_consent_speaks_before_confirm_dialog() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "consent"
+    out = build_system_prompt(tp)
+    assert 'call `confirm_dialog(decision="yes")`' in out
+    assert "the app advances to the Review screen the instant it succeeds" in out
+    # No unverified outcome claim before the call resolves (business-reviewer FAIL, 2026-07-02)
+    assert "Let's review and finish on the next screen" not in out
+    assert "Never\n   claim to have opened, navigated to, or reached any screen" in out
+
+
+def test_staff_policies_speaks_before_final_submit() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "staff_policies"
+    out = build_system_prompt(tp)
+    assert "Say nothing more" in out
+    assert "the app may move on the instant it returns" in out
+
+
+def test_staff_case_note_speaks_before_final_submit() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "staff_case_note"
+    out = build_system_prompt(tp)
+    assert (
+        "your VERY NEXT ACTION is\n`submit_step(confirmation_transcript=<their exact words>)`"
+        in out
+    )
+
+
+def test_consent_review_speaks_before_submit() -> None:
+    tp = _minimal_turn()
+    tp.step.id = "consent_review"
+    out = build_system_prompt(tp)
+    assert "Say nothing" in out
+    assert "the app may move on the instant it returns" in out
+
+
+def test_consent_review_written_consent_protected_by_global_rule() -> None:
+    """has_given_written_consent has no local ordering rule (Review only has
+    this one field) — it must rely on the global §1 boolean-false rule."""
+    tp = _minimal_turn()
+    tp.step.id = "consent_review"
+    out = build_system_prompt(tp)
+    assert 'does NOT mean "already answered."' in out
 
 
 def test_documents_step_forbids_all_mutation_tools_keeps_submit() -> None:

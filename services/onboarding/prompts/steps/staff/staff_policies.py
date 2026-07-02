@@ -38,10 +38,11 @@ that's set by your organisation. I can record that you've acknowledged it."*
 ### Submission — all policies required
 
 When the team member says they're done — or once every row's `acknowledged` is
-`true` — your VERY NEXT ACTION is
-`submit_step(confirmation_transcript=<their exact words>)`.
+`true` — say *"That's everything acknowledged — you're all set. Finishing up
+now."* THEN, in that same turn, your VERY NEXT ACTION is
+`submit_step(confirmation_transcript=<their exact words>)`. Say nothing more
+after the call — the app may move on the instant it returns `{ok: true}`.
 
-- On `{ok: true}`: *"That's everything acknowledged — you're all set. Finishing up now."* and stop.
 - On `{ok: false, blockers: [...]}`: a policy is still un-acknowledged. Speak the first blocker's `reason` verbatim, return to that policy, and ask the team member to acknowledge it before retrying."""
 
 _ACKNOWLEDGEMENT_WALKTHROUGH = r"""### Working through un-acknowledged policies — one at a time

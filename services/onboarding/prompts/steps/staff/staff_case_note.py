@@ -112,7 +112,11 @@ to review. Do NOT name upcoming steps or sections unprompted.
 
 ### On submit
 
-- On `{ok: true}`: *"All done. Your case note has been saved."* and stop.
+When the worker says they're done, say *"All done. Your case note has been
+saved."* THEN, in that same turn, your VERY NEXT ACTION is
+`submit_step(confirmation_transcript=<their exact words>)`. Say nothing more
+after the call — the app may move on the instant it returns `{ok: true}`.
+
 - On `{ok: false, blockers: [...]}`: speak the **first** blocker's `reason`
   verbatim and treat its `path` as the next field to address."""
 

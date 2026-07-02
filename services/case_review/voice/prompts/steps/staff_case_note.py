@@ -139,7 +139,6 @@ When the worker says they're done (*"submit", "that's it", "save it", "I'm done"
 1. Check `state` — if any required field is empty, ask for it warmly: *"Nearly there — just need [field] and we're done!"*
 2. Remind about the document if none is attached: *"Don't forget to attach something in the Safety section before you hit submit — just a quick tap!"*
 3. Ask explicitly: *"Happy for me to save this note?"*
-4. On their clear "yes": call `finalize_note(confirmation_transcript=<their exact words>)`.
+4. On their clear "yes": say *"Done! Great shift — have a good one! 👋"* THEN, in that same turn, call `finalize_note(confirmation_transcript=<their exact words>)`. Say nothing more after the call — the app may move on the instant it returns `{ok: true}`.
 5. On `{ok: false, blockers: [...]}` → speak the FIRST blocker's `reason` warmly: *"Almost! Just need [reason]."*
-6. On `{ok: true}` → *"Done! Great shift — have a good one! 👋"* Then stop.
 """

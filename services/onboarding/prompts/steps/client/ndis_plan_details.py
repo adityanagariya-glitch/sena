@@ -61,22 +61,45 @@ If provided, must parse as positive number, integer part ≤9 digits.
 
 ### Section: `support_schedule` (repeatable, min 1, max 5)
 
-This row uses three cascading NDIS-catalog dropdowns
-(purpose → category → item). The catalog is dynamic and is NOT in this
-prompt — options are loaded from the NDIS catalog API at runtime and
-surfaced via the per-turn `visible_fields` block. **You MUST NOT invent
-options.**
+This row has 6 fields. **`support_purpose`, `support_category`, and
+`support_item` are SCREEN-ONLY — explain them, never voice-fill them**
+(confirmed 2026-07-01: mobile sends no state echo after these are selected,
+so voice-fill would go stale). `description`, `frequency`, and
+`preferred_schedule` remain voice-fillable.
 
-| field id (per row) | type | required | options source |
+| field id (per row) | type | required | voice-fillable? |
 |---|---|---|---|
-| `support_purpose` | text/enum | yes | NDIS catalog (live, read from `visible_fields[support_schedule[i].support_purpose].enum_values`) |
-| `support_category` | text/enum | yes | NDIS catalog, filtered by chosen `support_purpose` |
-| `support_item` | text/enum | yes | NDIS catalog, filtered by chosen `support_category` |
-| `description` | textarea | no | — (if filled: min 5, max 255 chars) |
-| `frequency` | enum | yes | fixed list below |
-| `preferred_schedule` | string | yes | DSL — see block below |
+| `support_purpose` | text/enum | yes | **NO — screen only** |
+| `support_category` | text/enum | yes | **NO — screen only** |
+| `support_item` | text/enum | yes | **NO — screen only** |
+| `description` | textarea | no | yes (if filled: min 5, max 255 chars) |
+| `frequency` | enum | yes | yes — fixed list below |
+| `preferred_schedule` | string | yes | yes — DSL, see block below |
 
-#### `frequency` — the ONE fixed enum on this row
+#### HARD RULE — never call `update_field` for support_purpose / support_category / support_item
+
+These three form a live cascading NDIS-catalog lookup (purpose → category →
+item, each filtered by the one before it) that only the mobile app's own
+picker can resolve — the catalog loads dynamically and voice-set values here
+can go stale against what the participant sees on screen. Do NOT call
+`update_field` on any of `support_purpose`, `support_category`, or
+`support_item`, even if the participant tells you their answer.
+
+Explain what each one is if asked (Purpose = why they need the support,
+Category = the NDIS budget category it falls under, Item = the specific
+support line item) and why Category/Item stay locked until the field above is
+picked. If they ask what's on screen, read the live options from
+`visible_fields[...].enum_values` — a **non-empty list** is real options to
+read verbatim; **null** means the catalog hasn't loaded yet or the upstream
+hasn't been chosen (say so honestly, do NOT list options from memory); an
+**empty list `[]`** means the upstream cascade was just cleared. Then direct
+them to pick each one on screen:
+
+> "This bit's a live NDIS catalog lookup, so I'll need you to tap through it
+> on screen — pick your Support Purpose first, then Category and Item unlock
+> one at a time. I'm right here if anything's unclear."
+
+#### `frequency` — the ONE fixed enum on this row (voice-fillable)
 
 Wire values (use EXACTLY) → display labels:
 
@@ -87,16 +110,13 @@ Wire values (use EXACTLY) → display labels:
 - `MONTHLY` → "Monthly"
 - `ONCE_OFF` → "Once-off"
 
-Default new row: `{frequency: AS_REQUIRED}`. Purpose/category/item have NO
-defaults — the participant chooses from the live catalog.
+Default new row: `{frequency: AS_REQUIRED}`.
 
-#### Cascade enforcement
-
-Always set `support_purpose` BEFORE `support_category`, and
-`support_category` BEFORE `support_item`. Downstream dropdowns are disabled
-in the UI until the upstream is chosen — setting them out of order will be
-rejected. After the participant picks an upstream, the downstream's
-`enum_values` list will refresh on the next `visible_fields` payload.
+Match the participant's spoken value against these 6 fixed labels. Exact
+match → call `update_field`. Close but not exact → repeat the closest 2-3
+labels back and ask "did you mean X or Y?" — never auto-correct. No match →
+say *"I'm not seeing that one — the options are [read them]. Which one would
+you like?"*
 
 #### `preferred_schedule` — VOICE-MUTABLE (set days + times by voice)
 
@@ -181,50 +201,17 @@ After `add_row` returns `{ok:true, index:N}`, ask for `goal_text` and call
 `update_field` with `repeatable_index=N`. The first row (index 0) is
 pre-populated in the form — you will NOT call `add_row` for it."""
 
-_SCHEDULE_CASCADE_GUIDANCE = r"""### Reading options for the 3 catalog dropdowns
+_SCHEDULE_CASCADE_GUIDANCE = r"""### Walk-through order for a new support_schedule row
 
-For `support_purpose` / `support_category` / `support_item`, inspect the
-matching field's `enum_values` in this turn's `visible_fields`:
+After `add_row(section="support_schedule")`, in this order:
 
-- `enum_values` is a **non-empty list** → read those labels VERBATIM when
-  the participant asks "what are the options?". When they name one, match
-  case-insensitively against this list, repeat the closest label back
-  ONCE for confirmation, then call `update_field`. Never auto-correct a
-  fuzzy match without confirmation.
-- `enum_values` is **null** → the catalog hasn't loaded into your view yet
-  (or the upstream cascade isn't chosen). Say honestly:
-  *"The list is on your screen — could you read me a couple, or tap one
-  and I'll go from there?"* Do NOT list options from memory. Do NOT
-  pattern-match against old NDIS price-guide names.
-- `enum_values` is an **empty list `[]`** → no options currently apply
-  (usually means the upstream cascade was just cleared). Route the
-  participant back to the upstream field.
-
-For `frequency`: the 6 values above are fixed — always read them verbatim.
-
-#### Handling a participant-named value (all 4 enum-shaped fields)
-
-1. If `enum_values` is available, compare against it (or the 6 fixed
-   frequency labels). If exact match → call `update_field` with the
-   matching wire id.
-2. If close but not exact → repeat the closest 2-3 labels back and ask
-   "did you mean X or Y?". Never auto-correct.
-3. If no match → say *"I'm not seeing that one — the options I can see are
-   [read them]. Which one would you like?"*
-4. If `enum_values` was null and you called `update_field` on the
-   participant's spoken value, the server may reject with a fuzzy-match
-   failure. Surface the rejection reason verbatim.
-
-### Walk-through order for a new support_schedule row
-
-After `add_row(section="support_schedule")`, ask IN ORDER:
-
-1. `support_purpose` — read live options from `visible_fields[...].enum_values`; if null, ask the participant to read what's on screen.
-2. `support_category` — wait for the next `visible_fields` payload (the cascade will refresh `enum_values`), then read those.
-3. `support_item` — same cascade pattern.
-4. `frequency` — read all 6 fixed options verbatim.
-5. At least one day + time slot for `preferred_schedule`.
-6. Optional `description`."""
+1. Direct the participant to pick `support_purpose` on screen (see the HARD
+   RULE above — do not voice-fill it).
+2. Direct them to pick `support_category` on screen once it unlocks.
+3. Direct them to pick `support_item` on screen once it unlocks.
+4. `frequency` — read all 6 fixed options verbatim and voice-fill it.
+5. At least one day + time slot for `preferred_schedule` — voice-fill it.
+6. Optional `description` — voice-fill it."""
 
 
 def build(visible_fields: list[VisibleField]) -> str:

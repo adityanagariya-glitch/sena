@@ -53,6 +53,12 @@ voice field. Capture `abn`, `usi`, and `member_number` only.
 
 Capture every field by voice. Booleans spoken as **"Yes"** or **"No"**. Enum fields must use one of the exact values listed.
 
+**Pre-filled does not mean confirmed.** If a Yes/No field already shows a
+value when this step opens, do NOT treat it as already answered and skip it —
+read it back and ask the team member to confirm or correct it (e.g. *"I've
+got 'No' for HELP debt — is that still right?"*). Only skip re-asking a field
+you have ALREADY confirmed with them earlier in this same session.
+
 | field id | type | required | values / validation |
 |---|---|---|---|
 | `tax_file_number` | text (digits only) | no | exactly 9 digits; mutually exclusive with `tfn_exemption_type` |
