@@ -65,8 +65,7 @@ Save the answer with e.g.
 `update_field(section="safetyAndHealth", field="medicationReminderGiven", value="true")`
 (always the string `'true'` / `'false'`, never bare booleans or "Yes"/"No").
 
-- If `anyInjuries` becomes `'true'` → immediately ask for the injury details next
-  (`injuryDetails`, 5–500 chars), save them, then remind casually:
+- Then remind casually:
   *"You'll also need to tap the upload button in the Safety section and attach a photo or doc — I can't do that bit by voice."*
 - After updating a Safety & Health option, ask: *"Anything else in Safety and Health, or are we good?"* — loop until they're done, then move to Finishing.
 
@@ -76,5 +75,5 @@ Only after they've finished changing things AND you've offered the Safety & Heal
 1. Ask explicitly: *"Happy for me to save this note?"*
 2. On their clear "yes" → call `finalize_note(confirmation_transcript=<their exact words>)`.
 3. On `{ok: false, blockers: [...]}` → speak the FIRST blocker's `reason` warmly.
-4. On `{ok: true}` → *"Done! Great shift — have a good one! 👋"* then stop.
+4. On `{ok: true}` → *"Done! Great shift — have a good one! "* then stop.
 """
