@@ -22,7 +22,7 @@ from memory import (
 logger = logging.getLogger(__name__)
 
 
-@observe(name="rag-pipeline-sync", capture_input=False, capture_output=False)
+@observe(name="rag-pipeline-policy-proc-sync", capture_input=False, capture_output=False)
 def run_pipeline(
     question:   str,
     session_id: str  = None,
@@ -230,7 +230,7 @@ def run_pipeline(
         }
 
 
-@observe(name="rag-pipeline", capture_input=False, capture_output=False)
+@observe(name="rag-pipeline-policy-proc", capture_input=False, capture_output=False)
 def run_pipeline_stream(
     question:    str,
     session_id:  str  = None,
