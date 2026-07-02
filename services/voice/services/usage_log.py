@@ -45,3 +45,12 @@ def log_token_usage(
         "[tokens/%s] in=%s  out=%s  %s  billed=%s",
         stage, f"{inp:,}", f"{out:,}", cache_str, f"{billed:,}",
     )
+    
+    cache_str_stdout = ""
+    if cached_read > 0 or cached_write > 0:
+        cache_str_stdout = f" cache_read={cached_read:,} cache_write={cached_write:,}"
+
+    print(
+        f"[tokens/{stage}] input={inp:,} output={out:,}{cache_str_stdout} billed={billed:,}",
+        flush=True,
+    )

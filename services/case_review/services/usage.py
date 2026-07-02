@@ -293,8 +293,16 @@ def log_api_tokens(endpoint: str, method: str, client_id: str | None = None, sta
     )
 
     # Also print to stdout for Docker logs
+    cache_read = full.get("cache_read_tokens", 0)
+    cache_write = full.get("cache_creation_tokens", 0)
+    total_billed = usage['input_tokens'] + usage['output_tokens'] + cache_write
+
+    cache_str = ""
+    if cache_read > 0 or cache_write > 0:
+        cache_str = f" cache_read={cache_read:,} cache_write={cache_write:,}"
+
     print(
-        f"[api/{method} {endpoint}] in={usage['input_tokens']:,} "
-        f"out={usage['output_tokens']:,} embed={usage.get('embedding_tokens', 0):,} total={usage['total_tokens']:,}{cache_info}",
+        f"[api/{method} {endpoint}] input={usage['input_tokens']:,} output={usage['output_tokens']:,}"
+        f"{cache_str} billed={total_billed:,}",
         flush=True,
     )
