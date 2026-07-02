@@ -223,6 +223,10 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 "policy_proc_reranker_nova"       # Nova Rerank alternative path — obs: "policy-proc-rerank-nova"
 "policy_proc_rag"                 # RAG retrieval (implicit, not tagged separately)
 
+# High-level pipeline orchestration (Langfuse @observe names)
+"rag-pipeline-policy-proc-sync"   # Synchronous RAG pipeline — validate → classify → block-check → memory → retrieve → generate → save
+"rag-pipeline-policy-proc"        # Streaming RAG pipeline — same 7-step flow but yields tokens real-time (better UX for long answers)
+
 # Main policy_proc namespace (Langfuse managed prompts)
 "policy_proc"                     # Prompt namespace — do NOT rename
 ```
@@ -234,8 +238,9 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 "staff-client"               # Staff agent service — complete query → response flow
 
 # Observation span (Langfuse @observe name) — individual operation trace
-"staff-query"                # Client query processing — tool-calling agent loop + response generation
-                             # (Covers all variants: sync, streaming, async, async+streaming)
+"staff-client-query"         # Client query → agent decides tools → Bedrock generates response
+                             # (Agent loop: classify intent → select tools → run → loop back until done)
+                             # (Covers all variants: sync, streaming, async, async+streaming internally)
 ```
 
 ### casenote_monthly

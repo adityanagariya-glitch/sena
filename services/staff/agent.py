@@ -177,7 +177,7 @@ def _content_blocks_with_tool_use(message: dict) -> tuple[list[str], list[dict]]
     return text_blocks, tool_use_blocks
 
 
-@observe(as_type="generation", name="staff-query", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="staff-client-query", capture_input=False, capture_output=False)
 def process_query_agent(user_question: str, scope: str = "staff", usage_sink: dict | None = None) -> str:
     """Agentic processing of a user query, scoped to ONE section.
 
