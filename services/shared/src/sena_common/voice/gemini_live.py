@@ -253,7 +253,7 @@ class GeminiLiveSession:
 
     # ── Langfuse per-turn logging ─────────────────────────────────────────────
 
-    @observe(as_type="generation", name="gemini-live-turn", capture_input=False, capture_output=False)
+    @observe(as_type="generation", name="case-review-update", capture_input=False, capture_output=False)
     def _log_turn_langfuse(
         self,
         turn_id: int,

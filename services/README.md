@@ -143,14 +143,19 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 
 ### onboarding
 ```python
-# Service-level tags (metadata.service)
-"onboarding"              # Generic onboarding (role unknown)
-"onboarding_staff_voice"  # Staff member using onboarding voice
-"onboarding_client_voice" # Client/participant using onboarding voice
+# Service-level tags (metadata.service) — distinguished by JWT typeContext
+"onboarding_staff_voice"  # Staff member using onboarding voice (userType="organizationMember" AND staffType not null)
+"onboarding_client_voice" # Client/participant using onboarding voice (else)
 
-# Extracted from JWT typeContext.userType:
-#   "organizationMember" → "onboarding_staff_voice"
-#   "serviceProvider"    → "onboarding_client_voice"
+# Session-level observations (dynamic names)
+"onboarding-live-session_staff"   # Session span for staff
+"onboarding-live-session_client"  # Session span for client
+"onboarding-live-session_all"     # Fallback (if user type cannot be determined)
+
+# Turn-level observations (dynamic names)
+"onboarding-turn_staff"           # Per-turn generation for staff
+"onboarding-turn_client"          # Per-turn generation for client
+"onboarding-turn_all"             # Fallback (if user type cannot be determined)
 ```
 
 ### voice
@@ -162,10 +167,16 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 
 ### case_review (Pipeline)
 ```python
+# Turn-level observation (shared engine)
+"case-review-update"              # Per-turn generation for voice case-note dictation
+
+# Service-level tags (metadata.service) — Gemini Live audio/text split
+"case_review_voice"               # Voice dictation feature (Gemini Live 3.1)
+                                  # Usage split: input/output (text), input_audio/output_audio (audio surcharge)
+
 # Ingestion & embedding
 "case_review_ingest_chunker"      # LLM-assisted section detection on ingest
 "case_review_embed"               # Cohere Embed (search_document + search_query)
-                                  # Usage split: input/output (text), input_audio/output_audio (audio surcharge)
 
 # RAG retrieval
 "case_review_rag_query_expansion" # Query expansion for low-confidence retrievals
@@ -178,7 +189,6 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 "case_review_shift_summary"       # Shift context summarization
 "case_review_classifier"          # Classify incident type (DISTINCT from summarizer)
 "case_review_summarizer"          # Summarize support/safeguarding (DISTINCT from classifier)
-"case_review_voice"               # Voice integration (if applicable)
 "case_review_rp_drafter"          # Restrictive practice drafting (if applicable)
 
 # Main case_review namespace (Langfuse managed prompts)
@@ -217,7 +227,9 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 
 ### ai_chatbot
 ```python
-"ai-chatbot"                 # Gateway routing tag (NO direct LLM — LLM code commented out)
+# NO LANGFUSE INSTRUMENTATION
+# Pure routing gateway — no direct LLM invocation (code is commented out)
+# Downstream services (staff, policy_proc, etc.) have their own Langfuse tags
 ```
 
 ### ai-communication-log
