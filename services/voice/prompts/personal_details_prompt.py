@@ -94,11 +94,16 @@ Required fields (for score): first_name, last_name, phone, date_of_birth, addres
 def build_personal_details_user_prompt(
     transcript: str, current_fields: dict, missing_fields: list[str], history: list[dict]
 ) -> str:
+    # Drop unset fields instead of sending "field: null" for ~24 fields every
+    # turn — STILL_MISSING already lists which required fields are outstanding,
+    # and the system prompt already lists the full field set, so an absent key
+    # here is unambiguous: not yet captured.
+    filled_fields = {k: v for k, v in current_fields.items() if v is not None}
     return (
         "LATEST_TRANSCRIPT:\n"
         f"{transcript}\n\n"
-        "CURRENT_FIELDS_JSON:\n"
-        f"{current_fields}\n\n"
+        "CURRENT_FIELDS_JSON (only fields captured so far; anything absent has not been given yet):\n"
+        f"{filled_fields}\n\n"
         "STILL_MISSING:\n"
         f"{missing_fields}\n\n"
         "RECENT_HISTORY_JSON:\n"

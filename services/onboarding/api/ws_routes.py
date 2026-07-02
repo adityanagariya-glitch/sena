@@ -259,9 +259,10 @@ async def onboarding_ws(
                 + _action
             )
 
-        # Extract user type from JWT for Langfuse service tag (staff vs client onboarding)
+        # Extract user type + staff type from JWT for Langfuse service tag (staff vs client onboarding)
         type_context = jwt_claims.get("typeContext", {})
         user_type = type_context.get("userType")  # "organizationMember" or "serviceProvider"
+        staff_type = type_context.get("staffType")  # non-null if staff
 
         live_session = GeminiLiveSession(
             websocket=websocket,
@@ -281,6 +282,7 @@ async def onboarding_ws(
             user_id=None,  # Phase 1.6 — thread once route handler exposes user_id
             participant_id=(state.participant_id if state else None),
             user_type=user_type,
+            staff_type=staff_type,
         )
         await live_session.run()
 

@@ -54,11 +54,17 @@ Never return markdown.
 
 
 def build_user_prompt(transcript: str, session_snapshot: dict, history: list[dict]) -> str:
+    # Drop sections with no content yet instead of sending "section: ''" for
+    # all 6 sections every turn — section_coverage/missing_topics already say
+    # what's outstanding, so an absent key here is unambiguous: not started.
+    existing_draft = session_snapshot.get("existing_draft", {})
+    filled_draft = {k: v for k, v in existing_draft.items() if v}
+    snapshot = {**session_snapshot, "existing_draft": filled_draft}
     return (
         "LATEST_TRANSCRIPT:\n"
         f"{transcript}\n\n"
-        "SESSION_SNAPSHOT_JSON:\n"
-        f"{session_snapshot}\n\n"
+        "SESSION_SNAPSHOT_JSON (existing_draft only lists sections with content so far):\n"
+        f"{snapshot}\n\n"
         "RECENT_HISTORY_JSON:\n"
         f"{history}"
     )
