@@ -36,7 +36,6 @@ from langfuse import get_client, observe, propagate_attributes
 
 from .config import VoiceEngineConfig
 from .grounding import build_live_tools
-from .prompt_cache import get_or_create_cache
 from .screen_context import (
     ScreenStateMessage,
     ScreenStateV2Message,
@@ -155,7 +154,6 @@ class GeminiLiveSession:
         replay_context: str | None = None,
         mobile_bridge: MobileBridge | None = None,
         initial_state_text: str | None = None,
-        bootstrap_message: str | None = None,
         *,
         config: VoiceEngineConfig,
         usage_feature: UsageFeature = UsageFeature.VOICE_ONBOARDING,
@@ -191,12 +189,6 @@ class GeminiLiveSession:
         # REAL screen state without the participant having to say "these are
         # already filled" and without waiting for a get_current_state round-trip.
         self._initial_state_text = initial_state_text
-        # Session-specific bootstrap state (participant name, prior_steps —
-        # see prompt_builder.build_bootstrap_message). Kept OUT of
-        # system_instruction so that string can be identical, and therefore
-        # cacheable, across every session of the same step/mode; injected as
-        # its own realtime text turn right after connecting instead.
-        self._bootstrap_message = bootstrap_message
         self._current_turn: TurnPayload | None = None
         self._turn_id = 0
         self._last_screen_hash: str | None = None
@@ -248,25 +240,16 @@ class GeminiLiveSession:
         self._usage_cum_prompt_audio: int = 0
         self._usage_cum_response_audio: int = 0
         self._tool_calls_in_turn: int = 0
-        # Diagnostic — system_instruction is now the STATIC prompt (see
-        # prompt_cache.py): it is EXPECTED to repeat the same sha8 across
-        # every session of the same (step_id, mode, voice_coverage,
-        # grounding) combination — that repetition is exactly what makes it
-        # cache-eligible, not a leak. The thing that must stay unique per
-        # session is the bootstrap message (participant name, prior_steps),
-        # logged separately below. SHA-only — full prompt never hits the log.
+        # Diagnostic — proves the system_instruction is unique per session.
+        # If two consecutive sessions log the same sha8, the prompt builder
+        # is leaking state across requests; that would be the cross-screen
+        # leak source. SHA-only — full prompt never hits the log.
         _instruction_sha8 = hashlib.sha256(system_instruction.encode("utf-8")).hexdigest()[:8]
-        _bootstrap_sha8 = (
-            hashlib.sha256(bootstrap_message.encode("utf-8")).hexdigest()[:8]
-            if bootstrap_message
-            else "none"
-        )
         log.info(
             "gemini_bridge_constructed session=%s system_instruction_sha8=%s "
-            "bootstrap_sha8=%s instruction_chars=%d tools_count=%d replay_context=%s",
+            "instruction_chars=%d tools_count=%d replay_context=%s",
             session_id,
             _instruction_sha8,
-            _bootstrap_sha8,
             len(system_instruction),
             (len(self._function_decls) if tool_dispatcher else 0),
             ("yes" if replay_context else "no"),
@@ -364,31 +347,11 @@ class GeminiLiveSession:
                 pass
         client = genai.Client(api_key=self._cfg.gemini_api_key)
 
-        # Explicit prompt caching (client.aio.caches.create) IS supported for
-        # Live sessions — proven by voice/services/gemini_live_service.py in
-        # this codebase, which uses it successfully. self._system_instruction
-        # here is the STATIC prompt only (session-specific bootstrap state
-        # was moved to self._bootstrap_message, injected separately below) —
-        # see prompt_builder.build_static_system_prompt / prompt_cache.py for
-        # why that split is required (unlike voice's single fixed prompt,
-        # onboarding's static prompt varies by step/mode, so this caches per
-        # distinct content, not globally). Falls back to inline
-        # system_instruction transparently on any cache failure.
-        cache_name = await get_or_create_cache(
-            client, self._cfg.gemini_live_model_id, self._system_instruction
-        )
-        prompt_kwargs: dict = (
-            {"cached_content": cache_name}
-            if cache_name
-            else {"system_instruction": types.Content(
-                parts=[types.Part(text=self._system_instruction)],
-            )}
-        )
-        log.info(
-            "onboarding_prompt_cache=%s session=%s",
-            "hit" if cache_name else "miss_inline",
-            self._session_id,
-        )
+        # NOTE: explicit prompt caching (client.aio.caches.create) is NOT
+        # supported for the Live API / -live-preview models. It also wouldn't
+        # help: a Live connection is stateful — the system instruction is sent
+        # once at connect and kept for the whole session, not re-counted per
+        # turn the way generateContent is. So we pass it inline and never cache.
 
         # Long-session compression — official Gemini Live mechanism for sessions
         # that would otherwise exceed the model's native window. Sliding window
@@ -417,7 +380,9 @@ class GeminiLiveSession:
 
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
-            **prompt_kwargs,
+            system_instruction=types.Content(
+                parts=[types.Part(text=self._system_instruction)],
+            ),
             **({"context_window_compression": compression_cfg} if compression_cfg else {}),
             # language_code="en-AU" sets TTS accent to Australian English (SDK >= 1.10).
             # voice_name="Aoede" pins ASR to English so the native-audio model does not
@@ -472,14 +437,6 @@ class GeminiLiveSession:
                 self._session_id,
                 self._cfg.gemini_live_model_id,
             )
-            # Bootstrap state (participant name, prior_steps — see
-            # prompt_builder.build_bootstrap_message) was deliberately kept
-            # out of system_instruction so the cached prompt above stays
-            # session-independent. Deliver it now, before anything else, so
-            # it's available exactly where §8 of the system prompt expects it.
-            if self._bootstrap_message:
-                await session.send_realtime_input(text=self._bootstrap_message)
-                log.debug("bootstrap_message_injected session=%s", self._session_id)
             # Phase E — inject replay context so model continues without reintroducing
             if self._replay_context:
                 await session.send_realtime_input(text=self._replay_context)

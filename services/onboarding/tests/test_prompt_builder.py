@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from voice.prompt_builder import (
-    build_bootstrap_message,
-    build_static_system_prompt,
-    build_system_prompt,
-)
+from voice.prompt_builder import build_system_prompt
 from voice.turn_payload import (
     NextTarget,
     Participant,
@@ -101,69 +97,6 @@ def test_prompt_includes_voice_coverage_block_when_provided() -> None:
     out = build_system_prompt(_minimal_turn(), voice_coverage=["basics.full_name"])
     assert "VOICE COVERAGE" in out
     assert "basics.full_name" in out
-
-
-def _turn_with_participant(first_name: str, display_name: str) -> TurnPayload:
-    tp = _minimal_turn()
-    tp.participant.first_name = first_name
-    tp.participant.display_name = display_name
-    return tp
-
-
-def test_static_prompt_excludes_bootstrap_json() -> None:
-    """The cacheable static prompt must NOT contain session-specific data —
-    that's the whole point of splitting it out (see prompt_cache.py). Note:
-    the bare word "first_name" legitimately appears in the template's own
-    instructional prose (e.g. "If `participant.first_name` is empty...") —
-    that's static and must stay; only the actual JSON *value* is checked here.
-    """
-    out = build_static_system_prompt(_minimal_turn())
-    assert "Jane" not in out
-    assert '"first_name":"Jane"' not in out
-    assert "__TURN_JSON__" not in out
-    assert "Bootstrap state follows as a separate message" in out
-
-
-def test_static_prompt_identical_across_different_participants_same_step() -> None:
-    """Core cacheability property: two sessions for the same step/mode must
-    produce a BYTE-IDENTICAL static prompt even with different participants —
-    otherwise prompt_cache.py's content-hash key would never hit."""
-    out_a = build_static_system_prompt(_turn_with_participant("Jane", "Jane Doe"))
-    out_b = build_static_system_prompt(_turn_with_participant("Bilal", "Bilal Khan"))
-    assert out_a == out_b
-
-
-def test_static_prompt_differs_when_step_differs() -> None:
-    """Sanity check the other direction — genuinely different steps must NOT
-    collide onto the same cache entry."""
-    tp_a = _minimal_turn()
-    tp_b = _minimal_turn()
-    tp_b.step.id = "staff_personal_information"
-    tp_b.step.label = "Staff Personal Details"
-    out_a = build_static_system_prompt(tp_a)
-    out_b = build_static_system_prompt(tp_b)
-    assert out_a != out_b
-
-
-def test_bootstrap_message_contains_session_specific_data() -> None:
-    msg = build_bootstrap_message(_minimal_turn())
-    assert msg.startswith("[BOOTSTRAP]")
-    assert '"first_name":"Jane"' in msg
-
-
-def test_static_prompt_and_bootstrap_together_cover_same_ground_as_combined() -> None:
-    """No content lost in the split — everything build_system_prompt() puts
-    in one string is still present, just spread across the two pieces."""
-    combined = build_system_prompt(_minimal_turn())
-    static = build_static_system_prompt(_minimal_turn())
-    bootstrap = build_bootstrap_message(_minimal_turn())
-    # Static-only content still there
-    assert "Personal Details" in static
-    assert "Personal Details" in combined
-    # Session-specific content moved OUT of static, INTO bootstrap
-    assert "Jane" not in static
-    assert "Jane" in bootstrap
-    assert "Jane" in combined  # combined form still has it inline, unaffected
 
 
 def test_prompt_includes_per_step_fragment_when_present() -> None:

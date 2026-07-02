@@ -163,13 +163,6 @@ def build_system_prompt(
     registry: PromptRegistry | None = None,
     tool_state_channel: bool = True,
 ) -> str:
-    """Full inline system prompt (static sections + bootstrap JSON baked in).
-
-    Kept for backward compatibility / tests. The live WS path
-    (api/ws_routes.py) uses build_static_system_prompt() + build_bootstrap_message()
-    instead, so the (cacheable) static portion never embeds session-specific
-    data — see prompt_cache.py for why that split exists.
-    """
     reg = registry if registry is not None else _default_registry()
     template = reg.TEMPLATE
     mode = _detect_form_mode(turn.visible_fields)
@@ -181,55 +174,3 @@ def build_system_prompt(
         .replace("__STEP_RULES__", _step_rules_section(turn.step.id, turn.visible_fields, reg))
         .replace("__TURN_JSON__", _bootstrap_state_json(turn, tool_state_channel))
     )
-
-
-# Placeholder for the bootstrap block in the CACHEABLE static prompt — points
-# the model at the message that follows, instead of embedding session-specific
-# data (participant name, prior_steps) where every session would otherwise
-# produce a distinct, uncacheable system-prompt string.
-_BOOTSTRAP_POINTER = (
-    "[Bootstrap state follows as a separate message immediately after this "
-    "system prompt — treat it exactly as instructed above.]"
-)
-
-
-def build_static_system_prompt(
-    turn: TurnPayload,
-    *,
-    grounding_enabled: bool = False,
-    voice_coverage: list[str] | None = None,
-    registry: PromptRegistry | None = None,
-) -> str:
-    """Build the step/mode-dependent but session-INDEPENDENT portion of the
-    system prompt — every section except the bootstrap state block (§8).
-
-    This string is safe to hand to Gemini's explicit cache
-    (client.aio.caches.create) and reuse across every session that produces
-    the identical (step_id, mode, voice_coverage, grounding) combination —
-    explicit caching IS supported for Live sessions, proven by
-    voice/services/gemini_live_service.py in this same codebase; see
-    prompt_cache.py. Pair with build_bootstrap_message() for the
-    session-specific part, injected as a realtime text turn after connecting
-    instead of being embedded here.
-    """
-    reg = registry if registry is not None else _default_registry()
-    template = reg.TEMPLATE
-    mode = _detect_form_mode(turn.visible_fields)
-    return (
-        template.replace("__STEP_LABEL__", turn.step.label)
-        .replace("__VOICE_COVERAGE_SECTION__", _voice_coverage_section(voice_coverage))
-        .replace("__GROUNDING_SECTION__", _grounding_section(grounding_enabled))
-        .replace("__MODE_RULES__", _mode_rules_section(mode, reg))
-        .replace("__STEP_RULES__", _step_rules_section(turn.step.id, turn.visible_fields, reg))
-        .replace("__TURN_JSON__", _BOOTSTRAP_POINTER)
-    )
-
-
-def build_bootstrap_message(turn: TurnPayload, tool_state_channel: bool = True) -> str:
-    """The session-specific bootstrap state (§8's JSON) as a standalone
-    message, sent via session.send_realtime_input(text=...) immediately after
-    connecting — kept OUT of the system instruction so
-    build_static_system_prompt()'s output stays identical, and therefore
-    cacheable, across every session of the same step/mode.
-    """
-    return f"[BOOTSTRAP]\n{_bootstrap_state_json(turn, tool_state_channel)}"

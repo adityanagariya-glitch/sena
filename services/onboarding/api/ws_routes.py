@@ -46,7 +46,7 @@ from onboarding.core.settings import settings
 from voice.config import VoiceEngineConfig
 from voice.gemini_live import GeminiLiveSession
 from voice.mobile_bridge import MobileBridge
-from voice.prompt_builder import build_bootstrap_message, build_static_system_prompt
+from voice.prompt_builder import build_system_prompt
 from voice.resumption import build_replay_context, issue_handle, redeem_handle
 from voice.state_repo import FormStateRepo
 from voice.tools import ToolDispatcher
@@ -191,19 +191,12 @@ async def onboarding_ws(
             debug=settings.debug,
         )
 
-        # Split static (cacheable) prompt from the session-specific bootstrap
-        # state, instead of build_system_prompt()'s single combined string —
-        # see prompt_cache.py for why: the combined form embeds the
-        # participant's name/prior_steps, making every session's system
-        # prompt unique and therefore never cache-eligible.
-        static_system_prompt = build_static_system_prompt(
+        system_instruction = build_system_prompt(
             initial_turn,
             grounding_enabled=settings.onboarding_grounding_enabled,
             voice_coverage=(schema.voice_coverage if schema and schema.voice_coverage else None),
             registry=onb_registry,
-        )
-        bootstrap_message = build_bootstrap_message(
-            initial_turn, tool_state_channel=voice_cfg.tool_state_channel
+            tool_state_channel=voice_cfg.tool_state_channel,
         )
 
         mobile_bridge = MobileBridge(
@@ -274,13 +267,12 @@ async def onboarding_ws(
         live_session = GeminiLiveSession(
             websocket=websocket,
             session_id=session_id,
-            system_instruction=static_system_prompt,
+            system_instruction=system_instruction,
             repo=repo,
             tool_dispatcher=tool_dispatcher,
             replay_context=replay_context or None,
             mobile_bridge=mobile_bridge,
             initial_state_text=initial_state_text,
-            bootstrap_message=bootstrap_message,
             config=voice_cfg,
             # Phase 1.5 — pass auth context for per-turn usage logging. Sourced
             # from FormState (populated by POST /session from request headers,
