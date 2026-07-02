@@ -257,7 +257,7 @@ class GeminiLiveSession:
 
     # ── Langfuse per-turn logging ─────────────────────────────────────────────
 
-    @observe(as_type="generation", name="onboarding-turn", capture_input=False, capture_output=False)
+    @observe(as_type="generation", name="onboarding-turn_all", capture_input=False, capture_output=False)
     def _log_turn_langfuse(
         self,
         turn_id: int,
@@ -272,6 +272,17 @@ class GeminiLiveSession:
     ) -> None:
         if langfuse is None:
             return
+        # Update observation name based on user type (staff vs client)
+        if self._user_type == "organizationMember" and self._staff_type is not None:
+            turn_obs_name = "onboarding-turn_staff"
+        elif self._user_type == "serviceProvider" or self._staff_type is None:
+            turn_obs_name = "onboarding-turn_client"
+        else:
+            turn_obs_name = "onboarding-turn_all"
+        try:
+            langfuse.update_current_generation(name=turn_obs_name)
+        except Exception:
+            pass
         # Gemini Live bills audio tokens at a different rate than text tokens
         # (e.g. gemini-3.1-flash-live-preview: $3.00/$12.00 audio vs $0.75/$4.50
         # text, per 1M). Reporting everything under generic "input"/"output"
@@ -307,9 +318,21 @@ class GeminiLiveSession:
 
     # ── Public ────────────────────────────────────────────────────────────────
 
-    @observe(name="onboarding-live-session", capture_input=False, capture_output=False)
+    @observe(name="onboarding-live-session_all", capture_input=False, capture_output=False)
     async def run(self) -> None:
         """Open Gemini connection and bridge until the client disconnects."""
+        # Update observation name based on user type (staff vs client)
+        if langfuse is not None:
+            if self._user_type == "organizationMember" and self._staff_type is not None:
+                obs_name = "onboarding-live-session_staff"
+            elif self._user_type == "serviceProvider" or self._staff_type is None:
+                obs_name = "onboarding-live-session_client"
+            else:
+                obs_name = "onboarding-live-session_all"
+            try:
+                langfuse.update_current_span(name=obs_name)
+            except Exception:
+                pass
         if langfuse is not None:
             try:
                 with propagate_attributes(
