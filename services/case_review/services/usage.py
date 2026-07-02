@@ -294,7 +294,7 @@ def log_api_tokens(endpoint: str, method: str, client_id: str | None = None, sta
 
     # Also print to stdout for Docker logs
     print(
-        f"[api/{method:<4} {endpoint:<60}] {client_str}in={usage['input_tokens']:>5,} "
-        f"out={usage['output_tokens']:>4,} embed={usage.get('embedding_tokens', 0):>4,} total={usage['total_tokens']:>6,}{cache_info}",
+        f"[api/{method} {endpoint}] in={usage['input_tokens']:,} "
+        f"out={usage['output_tokens']:,} embed={usage.get('embedding_tokens', 0):,} total={usage['total_tokens']:,}{cache_info}",
         flush=True,
     )

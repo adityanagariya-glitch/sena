@@ -220,7 +220,7 @@ async def classify(
     """
     langfuse.update_current_span(
         input={"paragraph_len": len(raw_paragraph)},
-        metadata={"service": _DASHBOARD_TAG, "user_id": user_id, "session_id": session_id},
+        metadata={"service": _DASHBOARD_TAG},
     )
     log.info("classifier.call", model=settings.classifier_model, paragraph_len=len(raw_paragraph))
     start = time.perf_counter()

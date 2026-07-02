@@ -75,7 +75,7 @@ If the question is a greeting or conversational message (hi, hello, good morning
 with no policy context available — respond warmly in 1 sentence and invite a policy question.
 Do not use the NOT_IN_KB message for greetings.
 """
-    langfuse.update_current_generation(model=GENERATION_MODEL, input=question)
+    langfuse.update_current_generation(model=GENERATION_MODEL)
     _answer_parts = []
     _first_token = True
 

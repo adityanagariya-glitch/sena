@@ -281,7 +281,6 @@ def _run_evaluator(
         tool_use = block.get("toolUse", {})
         if tool_use.get("name") == "compliance_verdict":
             data = tool_use["input"]
-            langfuse.update_current_generation(output=data)
 
             try:
                 risk = PolicyViolationRisk(data.get("policy_violation_risk", "Medium"))

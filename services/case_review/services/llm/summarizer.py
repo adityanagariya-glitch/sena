@@ -172,7 +172,6 @@ def _run_summarise(past_summary: str, new_notes: list[CaseNoteDTO]) -> SummaryRe
                 summary_text=data["summary_text"],
                 metadata=meta.model_dump(),
             )
-            langfuse.update_current_generation(output=result.summary_text[:500])
             return result
     raise ValueError("Summarizer: no tool_use block in Bedrock response")
 
@@ -198,7 +197,7 @@ async def summarise(
     """
     langfuse.update_current_span(
         input={"new_note_count": len(new_notes), "has_past_summary": bool(past_summary)},
-        metadata={"service": _DASHBOARD_TAG, "user_id": user_id, "session_id": session_id},
+        metadata={"service": _DASHBOARD_TAG},
     )
     log.info("summariser.call", model=settings.summarizer_model, new_note_count=len(new_notes))
     start = time.perf_counter()
