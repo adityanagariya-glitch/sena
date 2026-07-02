@@ -113,3 +113,24 @@ def test_build_replay_skips_empty_text():
     result = build_replay_context(transcript, last_n=4)
     assert 'user="hello"' in result
     assert result.count(";") == 0  # only one turn
+
+
+def test_build_replay_strips_fillers_from_asr_turns():
+    # Gemini's input transcription can carry vocalized hesitations — strip them
+    # from the injected replay text without touching meaning-bearing words.
+    transcript = [
+        {"speaker": "user", "text": "Um, my name is, uh, Jane."},
+        {"speaker": "agent", "text": "Got it, Jane."},
+    ]
+    result = build_replay_context(transcript, last_n=4)
+    assert 'user="my name is, Jane."' in result
+    assert "Um" not in result
+    assert "uh" not in result
+    # meaning-bearing content survives
+    assert "Jane" in result
+
+
+def test_build_replay_preserves_content_lookalikes():
+    transcript = [{"speaker": "user", "text": "We met here at the museum."}]
+    result = build_replay_context(transcript, last_n=4)
+    assert 'user="We met here at the museum."' in result

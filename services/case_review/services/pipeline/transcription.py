@@ -17,6 +17,7 @@ All boto3 calls are synchronous and offloaded via asyncio.to_thread.
 import asyncio
 import json
 import logging
+import re
 import time
 
 import boto3
@@ -26,6 +27,26 @@ from botocore.config import Config
 from core.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Vocalized hesitation sounds only — "um / uh / er / erm / err" and their
+# elongations. Never lexical content in English, so removing them cannot change
+# clinical meaning. Deliberately NOT stripping "ah / oh / hmm / mm / like /
+# you know / well / so" — in a support-work record those can carry meaning.
+# NOTE: kept byte-identical with voice/services/transcribe_service.py's
+# strip_fillers; the two services are intentionally isolated (no shared import
+# path), so this small pure helper is duplicated rather than shared.
+_FILLER_RE = re.compile(r"\b(?:um+|uh+|erm+|err+|er+)\b", re.IGNORECASE)
+
+
+def _strip_fillers(text: str) -> str:
+    """Remove vocalized filler sounds from an ASR transcript (meaning-preserving)."""
+    cleaned = _FILLER_RE.sub("", text)
+    cleaned = re.sub(r",(?:\s*,)+", ",", cleaned)       # collapse commas orphaned by removal
+    cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)  # drop space before punctuation
+    cleaned = re.sub(r",\s*([.!?])", r"\1", cleaned)    # drop comma stranded before sentence end
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)           # collapse runs of whitespace
+    cleaned = re.sub(r"^[\s,]+", "", cleaned)           # trim leading space/comma
+    return cleaned.strip()
 
 # Supported MIME type → Transcribe media format
 _MIME_TO_FORMAT: dict[str, str] = {
@@ -201,7 +222,12 @@ async def run_transcription(
         await asyncio.to_thread(_start_job, job_name, s3_uri, media_format)
         transcript_uri = await asyncio.to_thread(_poll_job, job_name)
         transcript = await _fetch_transcript(transcript_uri)
-        logger.info("transcription: extracted %d chars from job %s", len(transcript), job_name)
+        raw_len = len(transcript)
+        transcript = _strip_fillers(transcript)
+        logger.info(
+            "transcription: extracted %d chars from job %s (%d after filler strip)",
+            raw_len, job_name, len(transcript),
+        )
         return transcript
     finally:
         await asyncio.to_thread(_delete_s3_key, bucket, s3_key)

@@ -1,5 +1,47 @@
 from voice.prompts.dictation_prompt import build_user_prompt
 from voice.prompts.personal_details_prompt import build_personal_details_user_prompt
+from voice.services.transcribe_service import strip_fillers
+
+
+def test_strip_fillers_removes_vocalized_hesitations():
+    assert strip_fillers("Um, the participant was calm.") == "the participant was calm."
+    assert strip_fillers("She was, uh, quite tired today.") == "She was, quite tired today."
+    assert strip_fillers("Er, we went to the shops.") == "we went to the shops."
+    assert strip_fillers("Ummm the medication uhh was given.") == "the medication was given."
+    assert strip_fillers("So, um, erm, he had lunch.") == "So, he had lunch."
+
+
+def test_strip_fillers_preserves_content_lookalikes():
+    # "um/uh/er" embedded in real words must survive untouched.
+    assert strip_fillers("We sat here in the museum.") == "We sat here in the museum."
+    assert strip_fillers("He chewed gum during the album review.") == (
+        "He chewed gum during the album review."
+    )
+    assert strip_fillers("The number was under the counter.") == (
+        "The number was under the counter."
+    )
+
+
+def test_strip_fillers_keeps_meaningful_discourse_words():
+    # These are NOT stripped — they can carry meaning in a clinical record.
+    text = "He said he would like to, you know, hurt himself. Well, hmm, ah."
+    assert "like" in strip_fillers(text)
+    assert "you know" in strip_fillers(text)
+    assert "Well" in strip_fillers(text)
+    assert "hmm" in strip_fillers(text)
+
+
+def test_strip_fillers_handles_valid_word_repetition():
+    # "had had" (past perfect) is valid English — must not be collapsed.
+    assert strip_fillers("He had had lunch before the shift.") == (
+        "He had had lunch before the shift."
+    )
+
+
+def test_strip_fillers_empty_and_whitespace():
+    assert strip_fillers("") == ""
+    assert strip_fillers("   ") == ""
+    assert strip_fillers("um uh er erm") == ""
 
 
 def test_personal_details_prompt_drops_null_fields():

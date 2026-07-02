@@ -11,6 +11,7 @@ to prevent handle leak via log aggregation.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,28 @@ import structlog
 
 if TYPE_CHECKING:
     from state_repo import FormStateRepo
+
+# Vocalized hesitation sounds only — "um / uh / er / erm / err" and elongations.
+# Never lexical content in English, so removing them cannot change meaning.
+# Deliberately NOT stripping "ah / oh / hmm / mm / like / you know / well / so".
+# Applied ONLY to the resume-replay text (the one text-token surface in this
+# audio-native Live service); the stored/displayed transcript is left intact.
+# NOTE: kept byte-identical with voice/services/transcribe_service.py and
+# case_review/services/pipeline/transcription.py; these services are
+# intentionally isolated (no shared import path), so this small pure helper is
+# duplicated rather than shared.
+_FILLER_RE = re.compile(r"\b(?:um+|uh+|erm+|err+|er+)\b", re.IGNORECASE)
+
+
+def _strip_fillers(text: str) -> str:
+    """Remove vocalized filler sounds from an ASR transcript (meaning-preserving)."""
+    cleaned = _FILLER_RE.sub("", text)
+    cleaned = re.sub(r",(?:\s*,)+", ",", cleaned)       # collapse commas orphaned by removal
+    cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)  # drop space before punctuation
+    cleaned = re.sub(r",\s*([.!?])", r"\1", cleaned)    # drop comma stranded before sentence end
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)           # collapse runs of whitespace
+    cleaned = re.sub(r"^[\s,]+", "", cleaned)           # trim leading space/comma
+    return cleaned.strip()
 
 log = structlog.get_logger(__name__)
 
@@ -86,7 +109,7 @@ def build_replay_context(transcript: list[dict], last_n: int) -> str:
     parts: list[str] = []
     for entry in window:
         speaker = entry.get("speaker", "")
-        text = (entry.get("text") or "").strip()
+        text = _strip_fillers((entry.get("text") or "").strip())
         if not text:
             continue
         label = "user" if speaker == "user" else "agent"
