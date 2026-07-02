@@ -92,6 +92,28 @@ def error_hint_for_status(code: int | None) -> str | None:
     )
 
 
+def unknown_user_type_result() -> "ToolResult":
+    """Standard ToolResult for when /auth/user-type returned non-200 and the
+    user's role is unknown. JWT is valid — account just isn't configured yet.
+
+    Import and return this in any tool that needs role-specific routing but
+    can't resolve the user's type. Roles are optional; a valid JWT always gets
+    through — this is only used where routing genuinely can't proceed without
+    knowing the role.
+    """
+    from tools.base import ToolResult  # local import avoids circular deps
+    return ToolResult(
+        error="User account type could not be determined from the backend.",
+        next_hint=(
+            "The user's JWT is valid but /auth/user-type returned no role. "
+            "Tell them: 'Your account doesn't seem to have a role set up in "
+            "SENA yet — please contact your organisation admin to confirm your "
+            "account is fully configured.' Do NOT say their session expired."
+        ),
+        meta={"user_type": "unknown", "status_code": 401},
+    )
+
+
 def parallel_fetch(
     fetchers: list[dict[str, Any]],
     max_workers: int | None = None,

@@ -9,6 +9,7 @@ process_query handlers.
 """
 import asyncio
 import json
+import re
 import sys
 import time
 
@@ -294,15 +295,21 @@ def process_query_agent(user_question: str, scope: str = "staff", usage_sink: di
         # Pattern match on stop_reason — handle guardrail intervention early
         match stop_reason:
             case "guardrail_intervened":
-                message = response.get("output", {}).get("message", {})
-                text_blocks, _ = _content_blocks_with_tool_use(message)
-                guardrail_text = " ".join(text_blocks).strip()
-                if _looks_like_work_query(user_question):
-                    final_text = _work_query_snag_message(user_question)
+                # Strip the frontend-injected context prefix
+                # ("Regarding staff and shift information (...): <actual question>")
+                # before classifying — the prefix always contains work terms which
+                # would otherwise make every guardrail block look like a work query.
+                bare_q = re.sub(r'^Regarding [^:]+:\s*', '', user_question, flags=re.IGNORECASE).strip()
+                if _looks_like_work_query(bare_q):
+                    # Guardrail fired on what looks like a real NDIS query —
+                    # this is a transient model/guardrail issue, not an off-topic block.
+                    final_text = _work_query_snag_message(bare_q)
                 else:
-                    final_text = guardrail_text or (
-                        "I can only help with SENA and NDIS-related questions. Please ask "
-                        "about shifts, clients, payroll, policies, or other NDIS topics."
+                    # Off-topic or identity question — redirect helpfully.
+                    final_text = (
+                        "I'm the SENA assistant — I'm here to help with shifts, "
+                        "rosters, clients, staff, and NDIS-related queries. "
+                        "What can I help you with?"
                     )
                 break
             case _:

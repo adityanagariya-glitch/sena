@@ -14,17 +14,6 @@ from typing import Any, Dict
 from tools.base import ToolResult
 from tools.registry import TOOLS_BY_NAME
 from tools._common import error_hint_for_status
-from state import user_context
-
-# Tools that work regardless of user_type (utility / diagnostic tools).
-# Everything else is blocked when the backend can't resolve the user's role.
-_USER_TYPE_EXEMPT = frozenset({
-    "cannot_help",
-    "get_current_time",
-    "clarify_with_user",
-    "get_user_type",
-    "set_my_timezone",
-})
 
 
 # Terminal-direct — bypasses any redirect_stderr() context manager,
@@ -73,28 +62,6 @@ def run_tool(
         return ToolResult(
             error=f"Tool '{name}' is not available in the {scope or 'current'} section.",
             next_hint="That tool belongs to a different section — use a tool from this section instead.",
-        )
-
-    # Block data tools when the backend couldn't resolve the user's role.
-    # user_type stays "unknown" when /auth/user-type returns non-200 (account not
-    # configured). Falling through to a random endpoint would give a misleading
-    # "session expired" message — instead surface the real issue immediately.
-    if (
-        name not in _USER_TYPE_EXEMPT
-        and user_context.get("authenticated")
-        and (user_context.get("user_type") or "").lower() == "unknown"
-    ):
-        print(f"[TOOL] X {name}  blocked (user_type=unknown)", file=_TERMINAL, flush=True)
-        return ToolResult(
-            error="User account type could not be determined from the backend.",
-            next_hint=(
-                "The user's token is valid but their account role was not returned "
-                "by the backend. Tell them: 'Your account doesn't seem to have a "
-                "role set up in SENA yet — please contact your organisation admin "
-                "to confirm your account is fully configured.' "
-                "Do NOT say their session expired."
-            ),
-            meta={"user_type": "unknown", "status_code": 401},
         )
 
     # find_person searches BOTH the staff and client directories. Pin it to the
