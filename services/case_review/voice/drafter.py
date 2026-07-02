@@ -39,12 +39,12 @@ You are an experienced NDIS case note writer assisting a support worker to docum
 
 A support worker has dictated their shift notes. Extract relevant information and map it into the
 standard NDIS case note form. Produce field content that is professional, specific, and clinically
-appropriate (2–4 sentences for narrative fields; specific observable indicators throughout).
+appropriate (2-4 sentences for narrative fields; specific observable indicators throughout).
 
 FORM FIELDS TO EXTRACT:
 
 Section: summary
-  summaryOfShift: Concise 2–4 sentence overview of the shift focus, activities, and participant
+  summaryOfShift: Concise 2-4 sentence overview of the shift focus, activities, and participant
                   presentation.
 
 Section: activitiesAndSkill
@@ -75,13 +75,13 @@ Section: feedback
   anyIncident: true if any incident (behavioural, safety, or other) occurred, false otherwise.
 
 Section: handover
-  handover: Handover note for the next worker — 2–4 sentences summarising what they need to know.
+  handover: Handover note for the next worker — 2-4 sentences summarising what they need to know.
 
 INSTRUCTIONS:
 - Extract only from what is explicitly stated or clearly implied. Never invent details.
 - Use null for string fields that cannot be determined from the transcript.
 - Boolean fields: set based on explicit mentions; default false if no mention.
-- gaps_note: 1–2 sentences identifying absent or ambiguous fields the worker should clarify with voice.
+- gaps_note: 1-2 sentences identifying absent or ambiguous fields the worker should clarify with voice.
              null if the transcript is comprehensive.
 
 Transcript:

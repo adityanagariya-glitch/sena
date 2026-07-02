@@ -16,7 +16,7 @@ NOTE = CaseNoteInput(
     worker_position="Support Worker",
     describe=(
         "Sarah's shift for Liam. Arrived 8:00 AM, mom left for work. "
-        "Attended art program at community centre 9:30 AM–12:30 PM. "
+        "Attended art program at community centre 9:30 AM-12:30 PM. "
         "Returned home early due to behavioural incident. Dave arrived 6:00 PM for sleepover shift."
     ),
     assisted=(

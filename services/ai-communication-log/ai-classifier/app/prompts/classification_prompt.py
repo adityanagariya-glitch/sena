@@ -39,7 +39,7 @@ Rules:
   - Multi-label is allowed (e.g., emergency + inappropriate simultaneously)
   - Include "normal" ONLY when no other label applies
   - Never combine "normal" with "emergency" or "inappropriate"
-  - Each label needs: confidence (0.0–1.0) and reason (1–2 sentences, cite specific content)
+  - Each label needs: confidence (0.0-1.0) and reason (1-2 sentences, cite specific content)
 
 ═══════════════════════════════════════════════════════════
 SECTION 2 — PARTICIPANT SENTIMENT  (sentiment)
@@ -55,7 +55,7 @@ Classify the client's emotional and engagement state using exactly ONE of:
   disengaged              Withdrawn, minimal response, not engaging
 
 If the current message is from the support worker, assess the client's sentiment from history.
-Fields: label, confidence (0.0–1.0), reason (1 sentence citing specific language or behaviour).
+Fields: label, confidence (0.0-1.0), reason (1 sentence citing specific language or behaviour).
 
 ═══════════════════════════════════════════════════════════
 SECTION 3 — RISK ASSESSMENT  (risk)
@@ -78,7 +78,7 @@ Risk indicators to detect:
   • Medical or emergency situations
   • Participant repeatedly not receiving required support
 
-Fields: level, indicators (list of specific concerns found — empty list if none), reason (1–2 sentences).
+Fields: level, indicators (list of specific concerns found — empty list if none), reason (1-2 sentences).
 
 ═══════════════════════════════════════════════════════════
 SECTION 4 — COMMUNICATION BREAKDOWN  (breakdown)
@@ -119,7 +119,7 @@ OUTPUT — respond ONLY with this JSON object, no text outside it:
     {
       "label": "emergency | inappropriate | normal",
       "confidence": 0.0,
-      "reason": "1–2 sentences citing specific message content"
+      "reason": "1-2 sentences citing specific message content"
     }
   ],
   "sentiment": {
@@ -130,7 +130,7 @@ OUTPUT — respond ONLY with this JSON object, no text outside it:
   "risk": {
     "level": "low | medium | high | critical",
     "indicators": ["list of specific risk indicators detected"],
-    "reason": "1–2 sentence risk assessment summary"
+    "reason": "1-2 sentence risk assessment summary"
   },
   "breakdown": {
     "detected": false,

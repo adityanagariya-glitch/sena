@@ -47,13 +47,13 @@ Respond with a single flat JSON object only — no markdown, no extra text, no p
 Required keys (all at the top level — no nesting):
 - "ai_confidence": float between 0.0 and 1.0 representing how complete and clear the case note is \
 (1.0 = comprehensive and unambiguous; 0.0 = critically sparse or unreadable)
-- "progress_identified": list of 2–5 short strings describing positive observations about \
+- "progress_identified": list of 2-5 short strings describing positive observations about \
 participant progress during this shift; return [] only if absolutely nothing positive is present
-- "potential_risks": list of 0–4 short strings identifying risk indicators or concerns noted in \
+- "potential_risks": list of 0-4 short strings identifying risk indicators or concerns noted in \
 this shift; return [] if no risks are evident
-- "patterns_detected": list of 0–3 short strings describing behavioural or situational patterns \
+- "patterns_detected": list of 0-3 short strings describing behavioural or situational patterns \
 visible in this note (recurring themes, triggers, or trends); return [] if no patterns are evident
-- "flagged_highlights": list of 2–4 strings that are direct verbatim quotes (exact words) from \
+- "flagged_highlights": list of 2-4 strings that are direct verbatim quotes (exact words) from \
 the case note that most warrant a supervisor's attention; do NOT paraphrase — copy the exact text
 
 If any list would be empty, return [] for that key.

@@ -33,7 +33,7 @@ class Message(BaseModel):
 
 class SentimentResult(BaseModel):
     label: SentimentLabel = Field(..., description="Participant wellbeing/engagement category")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score 0.0–1.0")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score 0.0-1.0")
     reason: str = Field(..., description="One sentence citing specific participant language or behaviour")
 
 

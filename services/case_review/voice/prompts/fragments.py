@@ -30,7 +30,7 @@ _INJURY_DETAILS = PromptFragment(
     text=(
         "INJURY DETAILS (`safetyAndHealth.injuryDetails`)\n"
         "The worker has confirmed an injury, so the `injuryDetails` field is now "
-        "on screen (textarea, 5–500 chars). Ask for it straight away — e.g. "
+        "on screen (textarea, 5-500 chars). Ask for it straight away — e.g. "
         '"Can you walk me through what happened with the injury?" — then call '
         'update_field(section="safetyAndHealth", field="injuryDetails", '
         "value=<their account>). Keep it factual and concise."

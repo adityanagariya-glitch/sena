@@ -28,7 +28,7 @@ Assign exactly ONE label from:
   engaged                 Actively and constructively participating
   disengaged              Withdrawn, minimal response, not fully present
 
-Fields: label (one of the seven above), confidence (0.0–1.0), reason (1 sentence citing specific language in THIS message)
+Fields: label (one of the seven above), confidence (0.0-1.0), reason (1 sentence citing specific language in THIS message)
 
 ── risk ───────────────────────────────────────────────────
 Assign exactly ONE risk level based on THIS message in context:
@@ -37,7 +37,7 @@ Assign exactly ONE risk level based on THIS message in context:
   high      Significant risk — distress, escalating conflict, safeguarding indicators.
   critical  Immediate action required — self-harm, abuse, medical emergency.
 
-Fields: level, indicators (list of specific concerns found — empty list if none), reason (1–2 sentences)
+Fields: level, indicators (list of specific concerns found — empty list if none), reason (1-2 sentences)
 
 ── breakdown ──────────────────────────────────────────────
 Does THIS message indicate or contribute to a communication breakdown?
@@ -71,7 +71,7 @@ OUTPUT — respond ONLY with this JSON object, no text outside it:
       "risk": {
         "level": "low | medium | high | critical",
         "indicators": ["specific concerns found"],
-        "reason": "1–2 sentence risk summary for this message"
+        "reason": "1-2 sentence risk summary for this message"
       },
       "breakdown": {
         "detected": false,

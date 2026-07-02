@@ -69,7 +69,7 @@ def week_buckets(date_from: str, date_to: str) -> list[dict]:
         while current <= dt:
             bucket_end = min(current + timedelta(days=6), dt)
             buckets.append({
-                "label": f"{current.strftime('%d–%d %b')} {'(partial)' if bucket_end < current + timedelta(days=6) else ''}".strip(),
+                "label": f"{current.strftime('%d-%d %b')} {'(partial)' if bucket_end < current + timedelta(days=6) else ''}".strip(),
                 "start": current.isoformat(),
                 "end": bucket_end.isoformat(),
             })
@@ -377,7 +377,7 @@ def feedback_complaint_stats(feedback: list[dict], complaints: list[dict]) -> di
 
 
 def data_quality(stats: dict) -> dict:
-    """Data quality score 0–1 from malformed/unbucketed counters."""
+    """Data quality score 0-1 from malformed/unbucketed counters."""
     issues = []
     total_counters = 0
     problem_count = 0

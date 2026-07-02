@@ -150,7 +150,7 @@ with patch("api_main.validate_jwt", return_value=(True, None, {"sub": "test-user
         results["report"] = None
     else:
         info(f"client={CLIENT_ID}  period={PERIOD}")
-        info("sections 1–6 parallel, then 7; per-section usage captured")
+        info("sections 1-6 parallel, then 7; per-section usage captured")
         print()
         t0 = time.time()
         try:

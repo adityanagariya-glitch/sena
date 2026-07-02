@@ -3,8 +3,8 @@
 Scores a CaseNoteInput against Premium/Average/Poor word-count and language
 baselines derived from 2026May_Casenote_CIR-DummyExamples_Feedback.md.
 
-Returns (score: float 0.0–1.0, label: str, gaps: list[str]).
-Labels: "Premium" (≥0.75), "Average" (0.45–0.74), "Poor" (<0.45).
+Returns (score: float 0.0-1.0, label: str, gaps: list[str]).
+Labels: "Premium" (≥0.75), "Average" (0.45-0.74), "Poor" (<0.45).
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def _word_count(text: str | None) -> int:
 
 
 def _richness_sub_score(note: CaseNoteInput) -> float:
-    """Compare word counts against Premium baselines; returns 0.0–1.0."""
+    """Compare word counts against Premium baselines; returns 0.0-1.0."""
     scores: list[float] = []
     for field, baseline in _PREMIUM_BASELINES.items():
         value = getattr(note, field, None)
@@ -73,7 +73,7 @@ def _richness_sub_score(note: CaseNoteInput) -> float:
 
 
 def _completeness_sub_score(note: CaseNoteInput) -> float:
-    """Fraction of the 9 scored sections that have any content; returns 0.0–1.0."""
+    """Fraction of the 9 scored sections that have any content; returns 0.0-1.0."""
     filled = sum(
         1 for field in _PREMIUM_BASELINES
         if _word_count(getattr(note, field, None)) > 0
@@ -82,7 +82,7 @@ def _completeness_sub_score(note: CaseNoteInput) -> float:
 
 
 def _tone_sub_score(note: CaseNoteInput) -> float:
-    """Presence of clinical markers minus penalty for poor markers; returns 0.0–1.0."""
+    """Presence of clinical markers minus penalty for poor markers; returns 0.0-1.0."""
     all_text = note.to_text().lower()
 
     premium_hits = sum(1 for marker in _PREMIUM_MARKERS if marker in all_text)
@@ -115,7 +115,7 @@ def _gap_messages(note: CaseNoteInput) -> list[str]:
 def score_note(note: CaseNoteInput) -> tuple[float, str, list[str]]:
     """Return (score, label, gaps) for the given case note.
 
-    score: 0.0–1.0
+    score: 0.0-1.0
     label: "Premium" | "Average" | "Poor"
     gaps: list of actionable gap messages for the worker
     """

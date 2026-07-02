@@ -140,7 +140,7 @@ _FIELD_SECTION_CHUNKS = [
             "FIELD GUIDANCE — Section 1: Summary of Shift\n\n"
             "Describe: Brief summary of what the support worker focused on, what activities occurred, "
             "how the participant presented, and how the participant responded. Should reference relevant "
-            "NDIS goals where applicable. 2–4 sentences minimum. Third-person, clinical voice."
+            "NDIS goals where applicable. 2-4 sentences minimum. Third-person, clinical voice."
         ),
     },
     {

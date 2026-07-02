@@ -27,7 +27,7 @@ confirm before moving on.
 | `bank_name` | text | yes | max 50 chars |
 | `account_holder_name` | text | yes | max 50 chars |
 | `bsb` | text (digits only) | yes | **exactly 6 digits** (`^\d{6}$`) |
-| `account_number` | text (digits only) | yes | **6–9 digits** (`^\d{6,9}$`) |
+| `account_number` | text (digits only) | yes | **6-9 digits** (`^\d{6,9}$`) |
 
 ### Section: `superannuation`
 
@@ -43,7 +43,7 @@ voice field. Capture `abn`, `usi`, and `member_number` only.
 ### Numbers — capture digits only, read back to confirm
 
 - `bsb`: digits only, exactly 6 (e.g. spoken "zero-six-two, one-one-two" → `062112`). If they give fewer/more than 6, say so and re-ask.
-- `account_number`: digits only, 6–9 digits. If out of range, say "Account Number must be 6–9 digits" and re-ask.
+- `account_number`: digits only, 6-9 digits. If out of range, say "Account Number must be 6-9 digits" and re-ask.
 - `abn`: digits only, exactly 11.
 - `usi`: mixed letters-and-digits (e.g. `STA0100AU`). Read back character by character to confirm.
 - `tax_file_number`: digits only, exactly 9. Read back grouped (e.g. *"123 456 789"*). Sensitive — do not repeat more than needed.
@@ -70,7 +70,7 @@ Capture every field by voice. Booleans spoken as **"Yes"** or **"No"**. Enum fie
 | `eligible_to_receive_leave_loading` | Yes/No | yes | — |
 | `include_leave_loading_in_qualifying_earnings` | Yes/No | yes | — |
 | `upward_variation_tax_withholding_amount` | number | no | whole dollars (integer ≥ 0) |
-| `approved_withholding_variation_percentage` | number | no | whole number 0–100 |"""
+| `approved_withholding_variation_percentage` | number | no | whole number 0-100 |"""
 
 _TAX_DECLARATION_GUIDANCE = r"""#### Tax-declaration order and cross-field rules — follow exactly
 

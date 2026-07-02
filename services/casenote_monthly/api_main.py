@@ -3,7 +3,7 @@
 **Flow**
 1. Caller sends ``POST /casenote/monthly-report`` with a client ID, date range, and Bearer JWT.
 2. Service fetches all client data from the SENA backend (``GET /ai/client-data``).
-3. Sections 1–6 run in parallel via Bedrock; section 7 runs after (needs 3/4/5).
+3. Sections 1-6 run in parallel via Bedrock; section 7 runs after (needs 3/4/5).
 4. Section 5 automatically loads the previous month's trend for cross-month comparison.
 5. Section 5 output is auto-saved to ``trends/{client_id}/{YYYY-MM}.json``.
 6. Merged report saved as ``reports/{client_id}_report.md`` and returned as raw HTML.
@@ -620,7 +620,7 @@ async def monthly_report(
     1. Authenticates the caller via the X-Signature key (verify_rsa).
     2. Calls `GET /ai/client-data` on the SENA backend, signing the request with
        our RSA private key (the backend verifies with our public key — no user JWT).
-    3. Runs **sections 1–6 in parallel** through AWS Bedrock (Claude Sonnet `au.anthropic.claude-sonnet-4-6`).
+    3. Runs **sections 1-6 in parallel** through AWS Bedrock (Claude Sonnet `au.anthropic.claude-sonnet-4-6`).
     4. If a previous month's trend exists, it is automatically injected into Section 5 to produce ↑ ↓ → arrows.
     5. Runs **Section 7** after sections 3, 4, 5 are ready (it uses their output as context).
     6. Strips internal model reasoning/verification blocks from all output.
@@ -628,7 +628,7 @@ async def monthly_report(
     8. Auto-saves Section 5 (Trend Analysis) to the trend store for next month's comparison.
     9. Returns the report as **raw HTML** — pass directly to `innerHTML` on the frontend.
 
-    **Typical wall-clock time:** ~30–60 s (limited by slowest parallel Bedrock call).
+    **Typical wall-clock time:** ~30-60 s (limited by slowest parallel Bedrock call).
     """
     # Endpoint auth is the X-Signature key (verify_rsa). The downstream
     # /ai/client-data fetch authenticates as the service via its own RSA

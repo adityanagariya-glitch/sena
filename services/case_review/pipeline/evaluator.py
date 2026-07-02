@@ -89,10 +89,10 @@ Determine:
    - "Low": wording is ambiguous and could reasonably describe non-restrictive support
      (e.g. general supervision, prompting, accompanying, standby assistance)
 
-7. For "trigger_phrases": list exact short phrases (3–10 words) from the case note that indicate
+7. For "trigger_phrases": list exact short phrases (3-10 words) from the case note that indicate
    a restrictive practice was used.
 
-8. For "suppression_factors": list exact short phrases (3–10 words) from the case note that argue
+8. For "suppression_factors": list exact short phrases (3-10 words) from the case note that argue
    against escalation — e.g. participant agency, reference to a BSP or approved protocol,
    medical/emergency context, voluntary nature of the activity, or staff following prescribed care.
    Empty list if there are none.

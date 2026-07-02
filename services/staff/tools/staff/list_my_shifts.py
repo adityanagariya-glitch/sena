@@ -522,7 +522,7 @@ def _run(inputs: dict | None) -> ToolResult:
             calendar_params["to"] = ed
 
         # /organization/shift/list-view/type expects:
-        #   type=thisweek   → no from/to (server computes Mon–Sun UTC week)
+        #   type=thisweek   → no from/to (server computes Mon-Sun UTC week)
         #   type=scheduled  → from+to required, future shifts excluding this week
         #   type=completed  → from+to required, past completed shifts
         list_view_calls = []
@@ -533,7 +533,7 @@ def _run(inputs: dict | None) -> ToolResult:
                     {"type": "completed", "from": from_iso, "to": to_iso, "page": 1, "limit": 50},
                 ))
         elif timeframe in ("this_week", "today", "arvo", "sarvo"):
-            # Server computes current Mon–Sun UTC week
+            # Server computes current Mon-Sun UTC week
             list_view_calls.append(("shifts_thisweek", {"type": "thisweek", "page": 1, "limit": 50}))
         else:
             # Future timeframes (tomorrow, next_week, next_month, this_month, date_range)

@@ -34,7 +34,7 @@ FORM SECTIONS AND FIELDS:
 
 Section 1 — Summary of Shift
   describe: What activities and community access opportunities did the worker and participant engage in together?
-            Summarise the shift in 2–4 sentences.
+            Summarise the shift in 2-4 sentences.
 
 Section 2 — Activities Completed & Skill-Building
   assisted: What tasks or activities did the worker assist the participant with?
@@ -71,7 +71,7 @@ INSTRUCTIONS:
 - Do not invent or embellish details not present in the transcript.
 - Use null for fields that cannot be determined from the transcript.
 - Set boolean fields based on explicit mentions (e.g. "I gave him his medication" → medication_reminders_given: true).
-- draft_note: Write 1–3 sentences identifying any fields that are absent or ambiguous in the transcript,
+- draft_note: Write 1-3 sentences identifying any fields that are absent or ambiguous in the transcript,
               so the worker knows what to check or add before submitting. If the transcript is comprehensive,
               set to null.
 

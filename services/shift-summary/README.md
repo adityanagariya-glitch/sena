@@ -96,7 +96,7 @@ All settings live in `.env`. Nothing is hardcoded.
 | `AWS_REGION` | `us-east-1` | Bedrock region |
 | `BEDROCK_MODEL_ID` | `anthropic.claude-3-5-sonnet-20241022-v2:0` | Claude model on Bedrock |
 | `BEDROCK_MAX_TOKENS` | `1024` | Max tokens in model response |
-| `BEDROCK_TEMPERATURE` | `0.3` | Model temperature (0.0–1.0) |
+| `BEDROCK_TEMPERATURE` | `0.3` | Model temperature (0.0-1.0) |
 | `PROMPT_TEMPLATE` | *(see .env.example)* | Prompt with `{count}` and `{summaries}` placeholders |
 | `MIN_SUMMARIES` | `1` | Minimum summaries per request |
 | `MAX_SUMMARIES` | `20` | Maximum summaries per request |

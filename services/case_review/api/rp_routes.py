@@ -359,7 +359,7 @@ def _build_response(result: PipelineResult, worker_id: str) -> EvaluateResponse:
         "(2) base64-encode the signature, (3) pass it in the X-Signature header.\n"
         "**Note:** Either `transcript` (voice) OR `describe` (manual) — one is sufficient.\n\n"
         "**Results:** cached by transcript (SHA256). Repeated notes return in ~10ms. "
-        "Cache TTL: 24 hours. Non-cached first run: ~4–5 seconds."
+        "Cache TTL: 24 hours. Non-cached first run: ~4-5 seconds."
     ),
 )
 @cache_verdict
@@ -372,7 +372,7 @@ async def evaluate_case_note(
     """Run a case note through the full restrictive practice detection pipeline.
 
     Results are cached by transcript (SHA256). Repeated notes return in ~10ms.
-    Cache TTL: 24 hours. Non-cached first run: ~4–5 seconds.
+    Cache TTL: 24 hours. Non-cached first run: ~4-5 seconds.
     """
     response.headers["X-Privacy-Classification"] = "Sensitive-Health-Information-APP3"
     response.headers["X-Data-Retention"] = "No-Retention-Session-Only"

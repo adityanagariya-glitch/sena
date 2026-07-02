@@ -41,21 +41,21 @@ POST /psr-report/monthly-report
   ├─ Compute stats: fulfillment rate, risk register, milestones, quotes, trends
   │
   ├─ [PARALLEL — asyncio.gather]
-  │   ├─ Section 1: Participant Information  (~3–5s)
-  │   ├─ Section 2: Introduction             (~8–12s)
-  │   ├─ Section 3: Strengths & Progress     (~10–15s)
-  │   ├─ Section 4: Risk Factors             (~8–12s)
-  │   ├─ Section 5: Trend Analysis           (~5–8s)
-  │   └─ Section 6: Support & Approach       (~8–12s)
+  │   ├─ Section 1: Participant Information  (~3-5s)
+  │   ├─ Section 2: Introduction             (~8-12s)
+  │   ├─ Section 3: Strengths & Progress     (~10-15s)
+  │   ├─ Section 4: Risk Factors             (~8-12s)
+  │   ├─ Section 5: Trend Analysis           (~5-8s)
+  │   └─ Section 6: Support & Approach       (~8-12s)
   │
   ├─ [SEQUENTIAL — waits for sections 3, 4, 5]
-  │   └─ Section 7: Summary & Recommendations (~10–15s)
+  │   └─ Section 7: Summary & Recommendations (~10-15s)
   │
   ├─ Lint each section (SBLC + TILA language enforcement)
   ├─ Convert Markdown → HTML
   └─ Return HTML response with X-*-Tokens headers
 
-Total: ~50–70 seconds
+Total: ~50-70 seconds
 ```
 
 ---
@@ -122,7 +122,7 @@ X-Total-Tokens: 4273
 | `400` | Missing required fields |
 | `500` | Bedrock failure or backend data fetch error |
 
-> **Note:** Report generation takes 50–70 seconds. Frontend must use a long timeout and show a loading state.
+> **Note:** Report generation takes 50-70 seconds. Frontend must use a long timeout and show a loading state.
 
 ---
 
@@ -288,7 +288,7 @@ final response = await http.post(
 // Display in WebView with htmlData parameter
 ```
 
-**Set timeout to at least 90 seconds.** Reports take 50–70 seconds to generate.
+**Set timeout to at least 90 seconds.** Reports take 50-70 seconds to generate.
 
 ---
 
@@ -307,7 +307,7 @@ final response = await http.post(
 
 1. **`/ai/client-data` endpoint shape** — The service expects a specific paginated response structure. Confirm the backend response exactly matches what the service expects (see `api_main.py` pagination logic).
 2. **JWT sharing** — The frontend JWT is forwarded to the backend data endpoint. Confirm the same token is valid for both the report service and the data endpoint.
-3. **Report storage** — Does the backend store the generated HTML, or does it regenerate on every view? Reports take 50–70s, so re-generation on every page view is expensive.
+3. **Report storage** — Does the backend store the generated HTML, or does it regenerate on every view? Reports take 50-70s, so re-generation on every page view is expensive.
 4. **Trend persistence** — Trend JSON files are written to the local filesystem. This will not persist across container restarts. Confirm if PostgreSQL or S3-backed trend storage is needed.
 
 ---
@@ -327,7 +327,7 @@ python test.py
 
 | Scenario | Expected |
 |----------|----------|
-| Valid request with full month of data | HTML report returned in 50–70s with all 7 sections |
+| Valid request with full month of data | HTML report returned in 50-70s with all 7 sections |
 | Valid request with no data (empty month) | Report generated with "no data" language in each section |
 | Missing `client_id` | `400 Bad Request` |
 | Expired JWT | `401 Unauthorized` |
@@ -348,7 +348,7 @@ python test.py
 
 ### Done
 - All 4 REST endpoints (monthly-report, health, trend/save, trend/{client_id})
-- 7-section report generation (sections 1–6 parallel, section 7 sequential)
+- 7-section report generation (sections 1-6 parallel, section 7 sequential)
 - Deterministic Python metrics engine (`stats.py`)
 - Anti-hallucination guardrails (LLM only sees pre-computed facts)
 - SBLC + TILA language linting
@@ -376,7 +376,7 @@ python test.py
 1. **Update `API_BASE_URL`** in `config.py` to production backend URL
 2. **Backend `/ai/client-data` endpoint** — must be implemented and match the expected paginated response shape
 3. **AWS IAM permissions** — `bedrock:InvokeModel` for Claude Sonnet in `ap-southeast-2`
-4. **Frontend 90-second timeout** — report generation takes 50–70s; shorter timeouts will abort the request
+4. **Frontend 90-second timeout** — report generation takes 50-70s; shorter timeouts will abort the request
 5. **Trend storage migration** — move from local JSON files to persistent storage (S3 or PostgreSQL) for container deployments
 
 **Nice to have:**

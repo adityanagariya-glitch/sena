@@ -361,7 +361,7 @@ class CaseNoteInput(BaseModel):
 class TriageResult(BaseModel):
     flagged: bool
     action_summary: str | None = None
-    triage_confidence: float = 0.5 # 0.0–1.0; drives Haiku vs Sonnet routing
+    triage_confidence: float = 0.5 # 0.0-1.0; drives Haiku vs Sonnet routing
 
 
 class PolicyChunk(BaseModel):
@@ -489,7 +489,7 @@ class _SubmissionSection(BaseModel):
 
 
 class _SummarySection(BaseModel):
-    ai_confidence: float = Field(description="AI confidence score 0.0–1.0")
+    ai_confidence: float = Field(description="AI confidence score 0.0-1.0")
     confidence_label: str = Field(description="e.g. 'High', 'Medium', 'Low'")
     progress_identified: list[str] = Field(default=[], description="Positive observations from the shift")
     potential_risks: list[str] = Field(default=[], description="Risk indicators noted")
@@ -497,7 +497,7 @@ class _SummarySection(BaseModel):
     flagged_highlights: list[str] = Field(
         default=[], description="Verbatim excerpts from the case note that warranted attention"
     )
-    note_quality_score: float = Field(0.0, description="Heuristic quality score 0.0–1.0")
+    note_quality_score: float = Field(0.0, description="Heuristic quality score 0.0-1.0")
     note_quality_label: str = Field("Average", description="'Premium' | 'Average' | 'Poor'")
     quality_gaps: list[str] = Field(default=[], description="Actionable suggestions for improving the note")
 
@@ -656,7 +656,7 @@ class ComplianceNote(BaseModel):
 class ShiftAISummary(BaseModel):
     """Section 1 — AI Summary / Overall Progress Snapshot."""
     reviewed_period: str | None = Field(None, description="shift date range (frontend fills if absent)")
-    ai_confidence: float = Field(ge=0.0, le=1.0, description="random 0.80–0.95")
+    ai_confidence: float = Field(ge=0.0, le=1.0, description="random 0.80-0.95")
     confidence_label: str = Field(description="High | Medium | Low, from ai_confidence")
     progress_rating: str = Field(description=" On Track | Monitoring | Needs Attention")
     progress_identified: list[str] = Field(default=[], description="AI — positive observations")

@@ -75,5 +75,5 @@ Only after they've finished changing things AND you've offered the Safety & Heal
 1. Ask explicitly: *"Happy for me to save this note?"*
 2. On their clear "yes" → call `finalize_note(confirmation_transcript=<their exact words>)`.
 3. On `{ok: false, blockers: [...]}` → speak the FIRST blocker's `reason` warmly.
-4. On `{ok: true}` → *"Done! Great shift — have a good one! "* then stop.
+4. On `{ok: true}` → *"Done! Have good day ahmead! "* then stop.
 """

@@ -364,7 +364,7 @@ class GeminiLiveSession:
             # Option D Layer 3 — aggressive sliding-window compression so
             # stale conversational drift gets summarised away faster, leaving
             # recent function_response.state payloads to dominate the model's
-            # attention. 4000 tokens ≈ 5–7 min of voice — long enough to keep
+            # attention. 4000 tokens ≈ 5-7 min of voice — long enough to keep
             # recent exchanges, short enough to evict stale drift fast.
             # See .claude/plans/per-screen-session-model/ISSUE_AND_SOLUTION.md §7.12.
             compression_cfg = types.ContextWindowCompressionConfig(

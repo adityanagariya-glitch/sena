@@ -29,7 +29,7 @@ This step has 2 sections: `basics` and `address`.
 | `address` | text (autocomplete) | yes | max 100 chars |
 | `state` | text (autocomplete) | yes | max 25 chars (free text — do NOT force an abbreviation) |
 | `city` | text (autocomplete) | yes | max 25 chars |
-| `zip_code` | text (digits only) | yes | **1 to 4 digits**, range 0–9999 (do NOT force exactly 4 digits) |
+| `zip_code` | text (digits only) | yes | **1 to 4 digits**, range 0-9999 (do NOT force exactly 4 digits) |
 
 ### Enum — closest spoken form → wire value
 
@@ -41,7 +41,7 @@ This step has 2 sections: `basics` and `address`.
 - `phone`: convert spoken digits to `+61` E.164, then save.
 - `date_of_birth`: any spoken form → ISO `YYYY-MM-DD`; refuse if age < 18 or date in the future.
 - `languages_spoken`: send the FULL new list as an array (e.g. `["English","Hindi"]`), never one item at a time.
-- `zip_code`: digits only; 1–4 digits valid (e.g. `200`, `3000`).
+- `zip_code`: digits only; 1-4 digits valid (e.g. `200`, `3000`).
 
 ### Readonly — refuse mutation
 

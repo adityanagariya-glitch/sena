@@ -15,7 +15,7 @@ Your job is to produce a concise, factual rolling summary of a support worker's 
    - Highlights: goals worked on, progress made, behavioural patterns, support strategies used, any incidents or risk flags
    - Stays factual — do NOT infer or speculate beyond what is stated
    - Is written in third-person professional tone (e.g. "The participant demonstrated...")
-   - Is 150–300 words maximum
+   - Is 150-300 words maximum
 4. Also extract METADATA as structured JSON.
 
 ## Output format

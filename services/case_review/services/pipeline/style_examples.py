@@ -68,7 +68,7 @@ communication, and independence. The shift focused on community engagement and e
 following interpersonal conflict at home."
   POOR: "Participant was ok today. We did some cleaning and talked for a while."
 
-Rule: Premium describe fields are 2–4 sentences, name specific NDIS goals, describe the participant's \
+Rule: Premium describe fields are 2-4 sentences, name specific NDIS goals, describe the participant's \
 presentation and the shift focus. Poor describe fields are vague, use first person, and lack clinical detail.
 
 OBSERVATIONS field — what good looks like:

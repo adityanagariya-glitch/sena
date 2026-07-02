@@ -39,7 +39,7 @@ END FUNCTION
 FUNCTION BuildSupports(formal_list[], informal_list[]):
   formal_out = []
   FOR each entry IN formal_list:
-    formal_out.append("- " + entry.name + " (" + entry.role + " – " + entry.focus + ")")
+    formal_out.append("- " + entry.name + " (" + entry.role + " - " + entry.focus + ")")
   IF formal_out IS EMPTY:
     formal_out = ["Not yet recorded"]
  
@@ -96,8 +96,8 @@ EXAMPLE A — Full Data:
   - Recently enrolled in part-time TAFE course (Hospitality Fundamentals)
 • **Support System:**
   - **Formal Supports:**
-    - Riley (Support Worker – Wellbeing Focus)
-    - Chantelle (Support Worker – Community Access)
+    - Riley (Support Worker - Wellbeing Focus)
+    - Chantelle (Support Worker - Community Access)
   - **Informal Supports:**
     - Mother (primary carer)
     - Sibling (older sister, 24, occasional transport and emotional support)
@@ -208,10 +208,10 @@ STEP 2 — EXTRACT PARTICIPANT PROFILE
   • Name from clientInfo.name (use "the participant" if missing — never "[NAME]")
   • Age from clientInfo.age
   • Diagnosis verbatim from clientInfo.diagnosis
-  • Note 1–2 characteristics relevant to support approach (derive from case notes only)
+  • Note 1-2 characteristics relevant to support approach (derive from case notes only)
  
 STEP 3 — REPORT PERIOD SCOPE (numbers are pre-computed — never recount)
-  • Format dates as: Month–Month YYYY (e.g., "May–July 2025")
+  • Format dates as: Month-Month YYYY (e.g., "May-July 2025")
   • Session count = metrics.shifts.deliveredShifts.completed (copy verbatim)
   • Support-worker count = read from clientProfile.supportWorkers (copy verbatim)
   • NEVER count or sum anything yourself; caseNoteExcerpts is a sample, NOT the full set.
@@ -219,7 +219,7 @@ STEP 3 — REPORT PERIOD SCOPE (numbers are pre-computed — never recount)
 STEP 4 — REPORT MILESTONES (Tier 1 and 2 only)
   • Use ONLY the `milestones` array provided in the input — it is the complete,
     pre-extracted list. Do NOT scan caseNoteExcerpts for additional milestones.
-  • Surface the 1–2 highest-weight milestones (weight field) for the narrative.
+  • Surface the 1-2 highest-weight milestones (weight field) for the narrative.
   • If the milestones array is empty → write about planned next steps instead.
  
 STEP 5 — LANGUAGE AUDIT RULES (apply during drafting)
@@ -242,7 +242,7 @@ STEP 6 — DRAFT AS RICH BULLETS
 </internal_steps>
  
 <rules>
-  ✓ Format as full-sentence bullet points (4–6 rich bullets, NOT "label: value" fragments)
+  ✓ Format as full-sentence bullet points (4-6 rich bullets, NOT "label: value" fragments)
   ✓ Preserve the narrative depth of a written introduction — bullets aid readability only
   ✓ Session count must be copied verbatim from metrics (never recounted)
   ✓ Milestones must come from the provided `milestones` array only
@@ -258,7 +258,7 @@ STEP 6 — DRAFT AS RICH BULLETS
 EXAMPLE A — Tier 1 (Full Data):
 ## 2. Introduction
 • Jordan is a 19-year-old NDIS participant with a primary diagnosis of Autism Spectrum Disorder (Level 2), presenting with social anxiety, sensory sensitivities, and difficulties transitioning between tasks and environments.
-• Over the current period (May–July 2025), support focused on building community engagement, communication confidence, and independent living capabilities.
+• Over the current period (May-July 2025), support focused on building community engagement, communication confidence, and independent living capabilities.
 • A notable milestone was Jordan's independent initiation of volunteering at a local op shop, achieved through a staged exposure strategy developed collaboratively with the support team.
 • Support also pivoted toward strengthening executive functioning and emotional regulation in preparation for upcoming educational responsibilities (TAFE commencement).
 • Participation spanned 24 support sessions, combining in-home and community-based activities captured by two support workers.
@@ -292,7 +292,7 @@ Run these checks silently before writing:
   □ All milestones are internally traceable to a source case note ID or feedback ID
   □ No deficit-based or stigmatising language
   □ No superlatives without supporting evidence
-  □ Format is full-sentence bullets (4–6), each a complete sentence — not label:value
+  □ Format is full-sentence bullets (4-6), each a complete sentence — not label:value
   □ Australian English spellings used throughout
   □ Third-person past tense throughout
   □ No citation/reference format used for quotes
@@ -301,7 +301,7 @@ Run these checks silently before writing:
 
 <output_format>
 ## 2. Introduction
-[4–6 full-sentence bullet points carrying the same depth as a written introduction,
+[4-6 full-sentence bullet points carrying the same depth as a written introduction,
 adaptive to data tier — never "label: value" fragments, never a single paragraph]
 </output_format>
 
@@ -349,8 +349,8 @@ INDEPENDENT_LIVING    : grooming, alarm, checklist, tidied, meal prep, living, r
 </domain_keyword_map>
  
 <adaptive_data_rules>
-Rich   (3+ months, 4+ notes, quotes present) → 3–4 domains, 3 bullets each
-Moderate (1–2 months, 2–3 notes, no quotes) → 2–3 domains, 2 bullets each
+Rich   (3+ months, 4+ notes, quotes present) → 3-4 domains, 3 bullets each
+Moderate (1-2 months, 2-3 notes, no quotes) → 2-3 domains, 2 bullets each
 Sparse   (some notes, no quotes, few metrics) → 2 domains, 2 bullets,
            mark [Participant quote not recorded this quarter]
 Empty    (no case notes)                     → Single placeholder block
@@ -561,7 +561,7 @@ FOR each risk signal S found:
     Source type   : formal incident | restrictive practice | observed pattern
     Date          : from incident.date if formal; case note date if observed
     Location      : from incident.location or case note context
-    Description   : factual, non-stigmatising, 1–2 sentences
+    Description   : factual, non-stigmatising, 1-2 sentences
     Response      : what was done, by whom
     Priority      : High (formal/restrictive) | Medium (recurring pattern) | Low (isolated)
  
@@ -672,7 +672,7 @@ metric calculation notes, self-verification, blockquotes, or any reasoning trace
 <task>
 Generate Section 5 (Trend Analysis Over Time) of an NDIS Progress Summary Report.
 Use internal graph aggregation to aggregate date-level data into monthly metrics.
-Perform graph reasoning silently. Output a Markdown table and a 1–2 sentence visual summary only.
+Perform graph reasoning silently. Output a Markdown table and a 1-2 sentence visual summary only.
 </task>
  
 <input>
@@ -810,7 +810,7 @@ Run these checks silently before writing:
 | ...   | ...                 | ...                    | ...                       | ...               |
 
 **Visual Summary:**
-[1–2 sentences referencing specific metrics]
+[1-2 sentences referencing specific metrics]
 </output_format>
 
 CRITICAL: Write ONLY the formatted report section below. No verification log. No metric notes. No blockquotes. No analysis. No emoji.
@@ -968,9 +968,9 @@ SECTION 4 OUTPUT: {{SECTION_4}}
 SECTION 5 OUTPUT: {{SECTION_5}}
 
 TIER DEFINITIONS:
-- Short-Term (0–4 weeks): SW-implemented tactics using existing resources; no external funding.
-- Medium-Term (1–6 months): Capacity building requiring coordination; possible external referral.
-- Systemic (6–12 months / Plan Review): Structural changes; NDIS funding amendments.
+- Short-Term (0-4 weeks): SW-implemented tactics using existing resources; no external funding.
+- Medium-Term (1-6 months): Capacity building requiring coordination; possible external referral.
+- Systemic (6-12 months / Plan Review): Structural changes; NDIS funding amendments.
 
 NEED→RECOMMENDATION MAPPING:
 - Sensory overload → Short: backup visual aid for transport; Medium: sensory profile OT assessment.
