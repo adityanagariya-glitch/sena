@@ -23,20 +23,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN pip install -U pip
-
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.base.txt /tmp/requirements.base.txt
-RUN pip install -r /tmp/requirements.base.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.base.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     find /opt/venv -type f -name "*.so" -exec strip {} \; 2>/dev/null || true && \
     rm -rf /tmp/requirements.base.txt /root/.cache
 
 COPY shared /app/shared
-RUN pip install /app/shared && \
+RUN pip install --no-cache-dir /app/shared && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete
 
@@ -45,7 +43,7 @@ RUN pip install /app/shared && \
 FROM base AS voice
 
 COPY voice/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
@@ -66,7 +64,7 @@ CMD uvicorn voice.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8008}
 FROM base AS onboarding
 
 COPY onboarding/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
@@ -87,7 +85,7 @@ CMD uvicorn onboarding.main:create_app --factory --host 0.0.0.0 --port ${SENA_AI
 FROM base AS case-review
 
 COPY case_review/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
@@ -108,7 +106,7 @@ CMD uvicorn main:create_app --factory --host 0.0.0.0 --port ${SENA_AI_CASE_REVIE
 FROM base AS casenote-monthly
 
 COPY casenote_monthly/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
@@ -144,7 +142,7 @@ CMD ["uvicorn", "api_main:app", "--host", "0.0.0.0", "--port", "8004"]
 FROM base AS policy-proc
 
 COPY policy_proc/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
@@ -230,7 +228,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]
 FROM base AS ai-text-extraction
 
 COPY ai-text-extraction/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
@@ -251,7 +249,7 @@ CMD ["uvicorn", "scripts.api:app", "--host", "0.0.0.0", "--port", "8007"]
 FROM base AS doc-service
 
 COPY doc_service/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
