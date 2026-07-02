@@ -20,7 +20,7 @@ from app.prompts.sentiment_batch_prompt import BATCH_SYSTEM_PROMPT, build_batch_
 logger = logging.getLogger(__name__)
 
 langfuse = get_client()
-_SERVICE = "ai-communication-log"
+_SERVICE = "ai_communication_log"
 
 # Fetch prompt from Langfuse Prompt Management; fall back to hardcoded string
 _lf_prompt = None

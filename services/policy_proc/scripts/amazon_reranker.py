@@ -16,13 +16,16 @@ from nova_reranker import rerank_with_nova
 
 logger = logging.getLogger(__name__)
 
+_SERVICE = "policy_proc"
+_TAG = "policy_proc_reranker_amazon"
+
 rerank_runtime = boto3.client(
     "bedrock-agent-runtime",
     region_name=RERANK_REGION
 )
 
 
-@observe(as_type="generation", name="rerank", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="policy-proc-rerank-amazon", capture_input=False, capture_output=False)
 def rerank_with_amazon(question: str, chunks: list) -> list:
     """
     Uses Amazon Bedrock native Rerank API as a cross-encoder reranker.
@@ -90,7 +93,7 @@ def rerank_with_amazon(question: str, chunks: list) -> list:
         langfuse.update_current_generation(
             output={"reranked_count": len(reranked_chunks)},
             usage_details={"queries": query_units},
-            metadata={"service": "policy_proc_reranker_amazon"},
+            metadata={"service": _TAG},
         )
 
         logger.info(
@@ -103,7 +106,7 @@ def rerank_with_amazon(question: str, chunks: list) -> list:
         langfuse.update_current_generation(
             output={"error": str(e)},
             usage_details={"queries": 0},
-            metadata={"service": "policy_proc_reranker_amazon"},
+            metadata={"service": _TAG},
         )
         logger.warning(
             f"Amazon Bedrock reranker error: {e} -> falling back to Nova reranker | "

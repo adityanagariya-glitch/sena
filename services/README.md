@@ -197,12 +197,13 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 
 ### policy_proc (Pipeline)
 ```python
-"policy_proc_classifier"          # Classify user query (staff vs policy)
-"policy_proc_rewriter"            # Rewrite query for better RAG retrieval
+# Service-level tags (metadata.service) — all use _SERVICE = "policy_proc"
+"policy_proc_classifier"          # Classify user query (staff vs policy) — obs: "policy-proc-classify"
+"policy_proc_rewriter"            # Rewrite query for better RAG retrieval — obs: "policy-proc-rewrite"
+"policy_proc_generator"           # Generate final response from retrieved docs — obs: "policy-proc-generate"
+"policy_proc_reranker_amazon"     # Amazon Rerank v1.0 cross-encoder — obs: "policy-proc-rerank-amazon"
+"policy_proc_reranker_nova"       # Nova Rerank alternative path — obs: "policy-proc-rerank-nova"
 "policy_proc_rag"                 # RAG retrieval (implicit, not tagged separately)
-"policy_proc_reranker_amazon"     # Amazon Rerank v1.0 cross-encoder reranking
-"policy_proc_reranker_nova"       # Nova Rerank (alternative reranker)
-"policy_proc_generator"           # Generate final response from retrieved docs
 
 # Main policy_proc namespace (Langfuse managed prompts)
 "policy_proc"                     # Prompt namespace — do NOT rename
@@ -234,8 +235,8 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 
 ### ai-communication-log
 ```python
-"ai-communication-log"       # Generic tag (used in classifier)
-"ai_communication_log"       # Alternate tag (used in main sentiment service)
+# Service-level tags (metadata.service) — consolidated to single _SERVICE = "ai_communication_log"
+"ai_communication_log"       # Sentiment analysis & classification (both ai-classifier/ and app/ trees)
 ```
 
 ### ai-text-extraction

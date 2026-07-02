@@ -9,6 +9,9 @@ from config import REGION, REWRITER_MODEL
 
 logger = logging.getLogger(__name__)
 
+_SERVICE = "policy_proc"
+_TAG = "policy_proc_rewriter"
+
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
 
 REWRITER_PROMPT = """You are a search query optimiser for an NDIS (National Disability Insurance Scheme) policy knowledge base.
@@ -65,7 +68,7 @@ def _is_valid_rewrite(rewritten: str) -> bool:
         return False
     return True
 
-@observe(as_type="generation", name="rewrite-query", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="policy-proc-rewrite", capture_input=False, capture_output=False)
 def rewrite_query(question: str, recent_turns: str = "") -> tuple:
     """
     Rewrites user question into optimised KB search query using Nova Lite.
@@ -110,7 +113,7 @@ def rewrite_query(question: str, recent_turns: str = "") -> tuple:
             input={"question": question, "recent_turns": recent_turns[:300] if recent_turns else None},
             output=final_query,
             usage_details={"input": usage_dict["input_tokens"], "output": usage_dict["output_tokens"]},
-            metadata={"service": "policy_proc_rewriter"},
+            metadata={"service": _TAG},
         )
         return final_query, usage_dict
     except Exception as e:

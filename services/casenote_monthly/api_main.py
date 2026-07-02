@@ -54,7 +54,7 @@ langfuse = get_client()
 # Distinct from bedrock_client.py's "casenote_monthly" tag — this is the
 # per-section report generation loop in api_main.py's _call_bedrock, a
 # separate call path from that module's functions.
-_SERVICE = "casenote_monthly_report"
+_SERVICE = "casenote_monthly"
 
 HERE = Path(__file__).resolve().parent
 

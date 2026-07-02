@@ -11,6 +11,9 @@ from config import REGION, CLASSIFIER_MODEL, MESSAGES
 
 logger = logging.getLogger(__name__)
 
+_SERVICE = "policy_proc"
+_TAG = "policy_proc_classifier"
+
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
 
 CLASSIFIER_PROMPT = """You are an intent classifier for an NDIS (National Disability Insurance Scheme) policy chatbot.
@@ -91,7 +94,7 @@ Respond with a JSON object in this exact format — no preamble, no markdown fen
   "reason": "User is asking about incident reporting procedure."
 }"""
 
-@observe(as_type="generation", name="classify", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="policy-proc-classify", capture_input=False, capture_output=False)
 def classify(question: str, recent_turns: str = "") -> dict:
     """
     Classifies user question into NDIS, GREETING, SENSITIVE, OFF_TOPIC, or HARMFUL.
@@ -126,7 +129,7 @@ def classify(question: str, recent_turns: str = "") -> dict:
             input=question,
             output={"label": label, "confidence": confidence, "reason": reason},
             usage_details={"input": input_total, "output": output_total, "total": input_total + output_total},
-            metadata={"service": "policy_proc_classifier"},
+            metadata={"service": _TAG},
         )
         logger.info(f"Classified: {label} ({confidence}) — {reason}")
         return {

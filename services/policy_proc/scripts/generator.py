@@ -11,10 +11,13 @@ from prompt import SYSTEM_PROMPTS, ACTIVE_PROMPT_VERSION
 
 logger = logging.getLogger(__name__)
 
+_SERVICE = "policy_proc"
+_TAG = "policy_proc_generator"
+
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
 
 
-@observe(as_type="generation", name="generate", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="policy-proc-generate", capture_input=False, capture_output=False)
 def generate_stream(
     question: str,
     context: str,
@@ -146,7 +149,7 @@ Do not use the NOT_IN_KB message for greetings.
                 langfuse.update_current_generation(
                     output="".join(_answer_parts),
                     usage_details={"input": in_tok, "output": out_tok, "total": in_tok + out_tok},
-                    metadata={"service": "policy_proc_generator"},
+                    metadata={"service": _TAG},
                 )
                 yield {
                     "type": "usage",
