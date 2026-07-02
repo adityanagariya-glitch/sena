@@ -38,7 +38,7 @@ RUN pip install --no-cache-dir /app/shared && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete
 
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 
 # ── Voice — case note dictation via Bedrock (port 8008) ───────────────────
 FROM base AS voice
@@ -49,7 +49,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
 
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 COPY voice/ /app/voice/
 WORKDIR /app
 ENV PYTHONPATH=/app
@@ -71,7 +71,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
 
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 
 COPY onboarding/ /app/onboarding/
 WORKDIR /app
@@ -94,7 +94,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
 
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 
 COPY case_review/ /app/case_review/
 WORKDIR /app/case_review
@@ -117,7 +117,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
 
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 
 COPY casenote_monthly/api_main.py \
      casenote_monthly/auth.py \
@@ -155,7 +155,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
 
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 
 COPY policy_proc /app/policy_proc
 WORKDIR /app/policy_proc
@@ -242,7 +242,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 
 COPY ai-text-extraction/scripts /app/scripts
 WORKDIR /app
@@ -264,7 +264,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
     find /opt/venv -type d -name __pycache__ -exec rm -r {} + 2>/dev/null || true && \
     find /opt/venv -type f -name "*.pyc" -delete && \
     rm -rf /tmp/requirements.txt /root/.cache
-RUN pip cache purge
+RUN rm -rf /root/.cache/pip
 COPY doc_service /app/doc_service
 WORKDIR /app/doc_service
 ENV PYTHONPATH=/app/doc_service
