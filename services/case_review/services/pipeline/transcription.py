@@ -37,10 +37,34 @@ logger = logging.getLogger(__name__)
 # path), so this small pure helper is duplicated rather than shared.
 _FILLER_RE = re.compile(r"\b(?:um+|uh+|erm+|err+|er+)\b", re.IGNORECASE)
 
+# Spoken-number words are PROTECTED from repeat-collapse: "five five five" is a
+# phone-digit run (5-5-5) and "oh oh oh" is 0-0-0 (e.g. 000) — collapsing those
+# would corrupt personal/phone data.
+_NUMBER_WORDS = frozenset({
+    "oh", "o", "zero", "one", "two", "three", "four", "five",
+    "six", "seven", "eight", "nine", "ten", "double", "triple",
+})
+# 3+ consecutive identical words (space/comma separated) are disfluency or
+# emphasis — "ok ok ok" -> "ok". Threshold is 3 ON PURPOSE: valid English
+# doubles ("had had", "that that", "bye bye", "no-no", "so so") must survive.
+_REPEAT_RE = re.compile(r"\b(\w+)\b(?:[\s,]+\1\b){2,}", re.IGNORECASE)
 
-def _strip_fillers(text: str) -> str:
-    """Remove vocalized filler sounds from an ASR transcript (meaning-preserving)."""
+
+def _collapse_repeat(m: "re.Match[str]") -> str:
+    token = m.group(1)
+    # Protect both spelled-out number words ("five five five") AND numeral
+    # digits ("5 5 5") — ASR engines (incl. AWS Transcribe, used by this
+    # service) often render spoken phone/ID numbers as numerals not words.
+    if token.lower() in _NUMBER_WORDS or token.isdigit():
+        return m.group(0)  # keep run intact (phone digits, 000/999, etc.)
+    return token            # 3+ repeats -> single occurrence
+
+
+def strip_fillers(text: str) -> str:
+    """Clean an ASR transcript (meaning-preserving): drop vocalized fillers and
+    collapse 3+ identical-word repeats. Spoken-number runs are protected."""
     cleaned = _FILLER_RE.sub("", text)
+    cleaned = _REPEAT_RE.sub(_collapse_repeat, cleaned)  # "ok ok ok" -> "ok" (numbers exempt)
     cleaned = re.sub(r",(?:\s*,)+", ",", cleaned)       # collapse commas orphaned by removal
     cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)  # drop space before punctuation
     cleaned = re.sub(r",\s*([.!?])", r"\1", cleaned)    # drop comma stranded before sentence end
@@ -221,13 +245,13 @@ async def run_transcription(
         await asyncio.to_thread(_upload_audio, bucket, s3_key, audio_bytes, f"audio/{media_format}")
         await asyncio.to_thread(_start_job, job_name, s3_uri, media_format)
         transcript_uri = await asyncio.to_thread(_poll_job, job_name)
+        # Returned RAW — this is the audit/compliance record of what was
+        # actually said. A support worker's or participant's speech pattern
+        # (incl. repetition from stuttering, echolalia, palilalia) is not
+        # noise to "correct" here; filler/repeat cleanup is applied only to
+        # the copy sent to the drafter model, in drafter.py, never here.
         transcript = await _fetch_transcript(transcript_uri)
-        raw_len = len(transcript)
-        transcript = _strip_fillers(transcript)
-        logger.info(
-            "transcription: extracted %d chars from job %s (%d after filler strip)",
-            raw_len, job_name, len(transcript),
-        )
+        logger.info("transcription: extracted %d chars from job %s", len(transcript), job_name)
         return transcript
     finally:
         await asyncio.to_thread(_delete_s3_key, bucket, s3_key)

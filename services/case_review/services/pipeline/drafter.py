@@ -18,6 +18,7 @@ from core.settings import settings
 from case_review.models.schemas import CaseDraftResponse, CaseNoteInput, DraftInput
 from case_review.services.pipeline.quality_score import score_note
 from case_review.services.pipeline.style_examples import FEW_SHOT_DRAFTER, STYLE_GUIDE
+from case_review.services.pipeline.transcription import strip_fillers
 from case_review.services.usage import record_and_print_converse
 
 logger = logging.getLogger(__name__)
@@ -148,7 +149,13 @@ def _run_drafter(transcript: str) -> _DrafterResponse:
         style_guide=STYLE_GUIDE,
         few_shot_drafter=FEW_SHOT_DRAFTER,
     )
-    dynamic_suffix = transcript + suffix_tmpl
+    # Cleaned ONLY for the model input — the caller's `payload.transcript`
+    # (used for the quality scorer + stored case-note record) stays raw. A
+    # worker's or participant's actual speech pattern (incl. repetition from
+    # stuttering, echolalia, palilalia) must remain intact wherever it's
+    # stored or audited; only this working copy is compressed.
+    clean_transcript = strip_fillers(transcript)
+    dynamic_suffix = clean_transcript + suffix_tmpl
 
     response = client.converse(
         modelId=settings.evaluator_model,

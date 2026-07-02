@@ -1,3 +1,5 @@
+from voice.services.transcribe_service import strip_fillers
+
 SYSTEM_PROMPT = """
 You are the SENA Dictation Agent for Australian disability support case notes.
 Transform support worker dictation into clear, factual, neutral, clinically appropriate language.
@@ -60,11 +62,21 @@ def build_user_prompt(transcript: str, session_snapshot: dict, history: list[dic
     existing_draft = session_snapshot.get("existing_draft", {})
     filled_draft = {k: v for k, v in existing_draft.items() if v}
     snapshot = {**session_snapshot, "existing_draft": filled_draft}
+    # Filler/repeat cleanup happens HERE only — on the copy sent to the model —
+    # never on the caller's stored transcript/history. Applied only to
+    # transcript+history (the worker's actual dictated words); existing_draft
+    # is already the model's own synthesized case-note prose, not verbatim
+    # speech, so there's nothing to clean there. A speaker's actual speech
+    # pattern (incl. repetition from stuttering, echolalia, palilalia) must
+    # remain intact in the permanent record; only the model's working copy
+    # is compressed.
+    clean_transcript = strip_fillers(transcript)
+    clean_history = [{**turn, "text": strip_fillers(turn.get("text", ""))} for turn in history]
     return (
         "LATEST_TRANSCRIPT:\n"
-        f"{transcript}\n\n"
+        f"{clean_transcript}\n\n"
         "SESSION_SNAPSHOT_JSON (existing_draft only lists sections with content so far):\n"
         f"{snapshot}\n\n"
         "RECENT_HISTORY_JSON:\n"
-        f"{history}"
+        f"{clean_history}"
     )

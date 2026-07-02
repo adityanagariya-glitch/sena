@@ -1,4 +1,6 @@
-﻿PERSONAL_DETAILS_SYSTEM_PROMPT = """
+﻿from voice.services.transcribe_service import strip_fillers
+
+PERSONAL_DETAILS_SYSTEM_PROMPT = """
 You are the SENA Onboarding Agent helping collect participant personal details through voice conversation.
 Your role is to guide the participant or their support worker through filling in a personal details form conversationally.
 
@@ -99,14 +101,21 @@ def build_personal_details_user_prompt(
     # and the system prompt already lists the full field set, so an absent key
     # here is unambiguous: not yet captured.
     filled_fields = {k: v for k, v in current_fields.items() if v is not None}
+    # Filler/repeat cleanup happens HERE only — on the copy sent to the model —
+    # never on the caller's stored transcript/history. A participant's actual
+    # speech pattern (incl. repetition from stuttering, echolalia, palilalia)
+    # must remain intact in the permanent record; only the model's working
+    # copy is compressed.
+    clean_transcript = strip_fillers(transcript)
+    clean_history = [{**turn, "text": strip_fillers(turn.get("text", ""))} for turn in history]
     return (
         "LATEST_TRANSCRIPT:\n"
-        f"{transcript}\n\n"
+        f"{clean_transcript}\n\n"
         "CURRENT_FIELDS_JSON (only fields captured so far; anything absent has not been given yet):\n"
         f"{filled_fields}\n\n"
         "STILL_MISSING:\n"
         f"{missing_fields}\n\n"
         "RECENT_HISTORY_JSON:\n"
-        f"{history}"
+        f"{clean_history}"
     )
 
