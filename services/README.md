@@ -160,12 +160,30 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 
 ### voice
 ```python
+# Metadata tags (metadata.service) — service-level grouping
 "voice_dictation"               # Bedrock Claude Sonnet (case note dictation)
 "voice_personal_details_gemini" # Gemini 3.5-flash REST (personal details collection)
 "voice_live"                    # Gemini Live 3.1 WebSocket (audio sessions)
+
+# Observation spans (Langfuse @observe names) — individual operation traces
+"voice-bedrock-invoke"          # Bedrock Claude invoke — synchronous API call for dictation
+"personal-details-gemini"       # Gemini 3.5-flash REST call — personal details collection
+"voice-live-turn"               # Gemini Live WebSocket turn — per-audio-turn processing
+"voice-dictation"               # Dictation span — separate from bedrock-invoke if tracked independently
 ```
 
-### case_review (Pipeline)
+### ai-text-extraction
+```python
+# Metadata tag (metadata.service) — for filtering/grouping in dashboard
+"ai-text-extraction"         # Document extraction service (Amazon Nova Lite)
+
+# Observation spans (Langfuse @observe names) — individual operation traces
+"document-extract"           # Amazon Nova Lite extraction — structured document parsing
+"text-extraction"            # Top-level extraction orchestration — handles format routing & aggregation
+```
+
+### case_review (Langfuse)
+
 ```python
 # Turn-level observation (shared engine)
 "case-review-update"              # Per-turn generation for voice case-note dictation
@@ -209,21 +227,35 @@ Comprehensive reference for all AI models and Langfuse tracking tags across SENA
 "policy_proc"                     # Prompt namespace — do NOT rename
 ```
 
-### staff (Agent)
+### staff
+
 ```python
-"staff"                      # Main staff agent loop (tool-calling iterations)
-"staff_client_agent"         # Client lookup & validation agent (embedded in staff)
+# Metadata tag (metadata.service) — for filtering/grouping in dashboard
+"staff-client"               # Staff agent service — complete query → response flow
+
+# Observation span (Langfuse @observe name) — individual operation trace
+"staff-query"                # Client query processing — tool-calling agent loop + response generation
+                             # (Covers all variants: sync, streaming, async, async+streaming)
 ```
 
 ### casenote_monthly
 ```python
-"casenote_monthly"           # Monthly casenote report generation
-"casenote_monthly_report"    # (alternate tag for same service)
+# Metadata tag (metadata.service) — for filtering/grouping in dashboard
+"casenote_monthly"           # Monthly casenote report generation (consolidated tag)
+
+# Observation spans (Langfuse @observe names) — individual operation traces
+"casenote-generate"          # Bedrock Claude Sonnet generation — synchronous API call
+"casenote-monthly-section"   # Monthly section generation — api_main.py multi-section loop
+"casenote-section"           # Individual section generation — run_prompts.py per-section processing
 ```
 
 ### shift-summary
 ```python
+# Metadata tag (metadata.service) — for filtering/grouping in dashboard
 "shift-summary"              # Consolidate/summarize shift notes (claude-haiku)
+
+# Observation spans (Langfuse @observe names) — individual operation traces
+"shift-summary-consolidate"  # Bedrock Claude Haiku consolidation — summarize shift notes across time period
 ```
 
 ### ai_chatbot

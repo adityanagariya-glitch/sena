@@ -22,7 +22,7 @@ from guardrails import _last_user_text, _apply_guardrail
 from agents_types import StopReasonResponse
 
 langfuse = get_client()
-_SERVICE = "staff"
+_SERVICE = "staff-client"
 
 _lf_prompt = None
 try:
@@ -75,7 +75,7 @@ def _log_cache_usage(response: dict, label: str) -> None:
         print(f"[bedrock-cache] {label} read={read} write={write}", file=sys.stderr)
 
 
-@observe(as_type="generation", name="staff-generate-stream", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="staff-query", capture_input=False, capture_output=False)
 def call_bedrock_stream(messages: list[dict], system_prompt: str | None = None, use_guardrail: bool = True, user_profile: str | None = None) -> str | None:
     """Streaming variant of call_bedrock. Prints tokens live and returns full text.
 
@@ -184,7 +184,7 @@ def call_bedrock_stream(messages: list[dict], system_prompt: str | None = None, 
         return None
 
 
-@observe(as_type="generation", name="staff-generate", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="staff-query", capture_input=False, capture_output=False)
 def call_bedrock(messages: list[dict], system_prompt: str | None = None, user_profile: str | None = None, use_guardrail: bool = True) -> str | None:
     """Call Claude via Bedrock, wrapped with stacked AWS Bedrock Guardrails.
 
@@ -271,7 +271,7 @@ def call_bedrock(messages: list[dict], system_prompt: str | None = None, user_pr
 
 # ---- Async Variants (for parallelization) ----
 
-@observe(as_type="generation", name="staff-generate-async", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="staff-query", capture_input=False, capture_output=False)
 async def call_bedrock_async(messages: list[dict], system_prompt: str | None = None, user_profile: str | None = None, use_guardrail: bool = True) -> str | None:
     """Async variant of call_bedrock using asyncio.to_thread to wrap sync boto3 calls."""
     import time
@@ -351,7 +351,7 @@ async def call_bedrock_async(messages: list[dict], system_prompt: str | None = N
         return None
 
 
-@observe(as_type="generation", name="staff-generate-stream-async", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="staff-query", capture_input=False, capture_output=False)
 async def call_bedrock_stream_async(messages: list[dict], system_prompt: str | None = None, use_guardrail: bool = True, user_profile: str | None = None) -> str | None:
     """Async variant of call_bedrock_stream using asyncio.to_thread for streaming."""
     import time

@@ -32,7 +32,7 @@ langfuse = get_client()
 # Distinct from bedrock_client.py's "staff" tag — this is the tool-calling
 # agent loop (process_query_agent), a separate feature from that module's
 # call_bedrock/call_bedrock_stream helpers.
-_SERVICE = "staff_client_agent"
+_SERVICE = "staff-client"
 
 # How many tool-call iterations to allow before giving up (prevents infinite loops).
 _MAX_TOOL_ITERATIONS = 6
@@ -177,7 +177,7 @@ def _content_blocks_with_tool_use(message: dict) -> tuple[list[str], list[dict]]
     return text_blocks, tool_use_blocks
 
 
-@observe(as_type="generation", name="staff-agent-query", capture_input=False, capture_output=False)
+@observe(as_type="generation", name="staff-query", capture_input=False, capture_output=False)
 def process_query_agent(user_question: str, scope: str = "staff", usage_sink: dict | None = None) -> str:
     """Agentic processing of a user query, scoped to ONE section.
 
