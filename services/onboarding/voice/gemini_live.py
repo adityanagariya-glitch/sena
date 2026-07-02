@@ -161,6 +161,7 @@ class GeminiLiveSession:
         tenant_id: str | None = None,
         user_id: str | None = None,
         participant_id: str | None = None,
+        user_type: str | None = None,
     ) -> None:
         self._ws = websocket
         self._session_id = session_id
@@ -181,6 +182,7 @@ class GeminiLiveSession:
         self._tenant_id = tenant_id
         self._user_id = user_id
         self._participant_id = participant_id
+        self._user_type = user_type  # "organizationMember" = staff, "serviceProvider" = client
         # Hidden text turn injected at session open so the model greets from the
         # REAL screen state without the participant having to say "these are
         # already filled" and without waiting for a get_current_state round-trip.
@@ -278,6 +280,12 @@ class GeminiLiveSession:
         # model definition.
         d_prompt_text = max(0, d_prompt - d_prompt_audio)
         d_response_text = max(0, d_response - d_response_audio)
+        # Distinguish staff from client onboarding based on JWT userType
+        service_tag = _SERVICE
+        if self._user_type == "organizationMember":
+            service_tag = "onboarding_staff_voice"
+        elif self._user_type == "serviceProvider":
+            service_tag = "onboarding_client_voice"
         langfuse.update_current_generation(
             model=model,
             input=None,
@@ -289,7 +297,7 @@ class GeminiLiveSession:
                 "output_audio": d_response_audio,
             },
             metadata={
-                "service": _SERVICE,
+                "service": service_tag,
                 "turn_id": turn_id,
                 "cached_tokens": d_cached,
                 "audio_chunks": chunk_count,

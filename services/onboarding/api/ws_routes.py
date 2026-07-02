@@ -41,7 +41,7 @@ import json
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
-from onboarding.api.deps import get_repo, get_ws_auth
+from onboarding.api.deps import get_repo, get_ws_auth, get_ws_jwt_claims
 from onboarding.core.settings import settings
 from voice.config import VoiceEngineConfig
 from voice.gemini_live import GeminiLiveSession
@@ -74,6 +74,7 @@ async def onboarding_ws(
     # ── 0. JWT / dev-header auth ───────────────────────────────────────────────
     try:
         auth = get_ws_auth(websocket)
+        jwt_claims = get_ws_jwt_claims(websocket)
     except HTTPException as exc:
         await _close_with_error(websocket, "unauthorized", exc.detail, 4401)
         return
@@ -258,6 +259,10 @@ async def onboarding_ws(
                 + _action
             )
 
+        # Extract user type from JWT for Langfuse service tag (staff vs client onboarding)
+        type_context = jwt_claims.get("typeContext", {})
+        user_type = type_context.get("userType")  # "organizationMember" or "serviceProvider"
+
         live_session = GeminiLiveSession(
             websocket=websocket,
             session_id=session_id,
@@ -275,6 +280,7 @@ async def onboarding_ws(
             tenant_id=(state.tenant_id if state else None),
             user_id=None,  # Phase 1.6 — thread once route handler exposes user_id
             participant_id=(state.participant_id if state else None),
+            user_type=user_type,
         )
         await live_session.run()
 

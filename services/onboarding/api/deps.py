@@ -102,6 +102,25 @@ def get_ws_auth(websocket: WebSocket) -> OnboardingAuthContext:
     return _context_from_claims(_decode_claims(token))
 
 
+def get_ws_jwt_claims(websocket: WebSocket) -> dict:
+    """Extract full JWT claims from WebSocket for accessing typeContext and other fields.
+
+    jwt_enabled=false — returns empty dict (dev mode, no real JWT).
+    """
+    if not settings.jwt_enabled:
+        return {}
+
+    raw = websocket.headers.get("authorization") or websocket.query_params.get("token", "")
+    token = raw.removeprefix("Bearer ").strip()
+    if not token:
+        return {}
+
+    try:
+        return _decode_claims(token)
+    except Exception:
+        return {}
+
+
 # ── HTTP Bearer auth (for REST routes) ─────────────────────────────────────
 
 _http_bearer = HTTPBearer(
